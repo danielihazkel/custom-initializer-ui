@@ -1,4 +1,4 @@
-export function ProjectForm({ values, onChange }) {
+export function ProjectForm({ values, onChange, isDark }) {
   function handle(field) {
     return e => {
       const val = e.target.value
@@ -16,31 +16,39 @@ export function ProjectForm({ values, onChange }) {
     }
   }
 
+  const inputClass = isDark
+    ? 'w-full bg-surface-container border border-outline-variant rounded px-3 py-2 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all'
+    : 'w-full bg-surface-container-low border-0 rounded-lg px-4 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 outline-none transition-all'
+
+  const labelClass = isDark
+    ? 'block text-[11px] text-secondary-fixed'
+    : 'block text-[11px] font-bold text-on-surface-variant/80 px-1'
+
   return (
-    <section className="form-section">
-      <h2>Project</h2>
-      <div className="field-grid">
-        <label>
-          <span>Group</span>
-          <input value={values.groupId} onChange={handle('groupId')} />
-        </label>
-        <label>
-          <span>Artifact</span>
-          <input value={values.artifactId} onChange={handle('artifactId')} />
-        </label>
-        <label>
-          <span>Name</span>
-          <input value={values.name} onChange={handle('name')} />
-        </label>
-        <label className="full-width">
-          <span>Description</span>
-          <input value={values.description} onChange={handle('description')} />
-        </label>
-        <label className="full-width">
-          <span>Package name</span>
-          <input value={values.packageName} onChange={handle('packageName')} />
-        </label>
+    <div className="space-y-4 pt-4">
+      <span className="text-xs font-bold uppercase tracking-widest text-secondary">Project Metadata</span>
+      <div className="grid grid-cols-2 gap-4 mt-3">
+        <div className="space-y-1.5">
+          <label className={labelClass}>Group</label>
+          <input className={inputClass} type="text" value={values.groupId} onChange={handle('groupId')} />
+        </div>
+        <div className="space-y-1.5">
+          <label className={labelClass}>Artifact</label>
+          <input className={inputClass} type="text" value={values.artifactId} onChange={handle('artifactId')} />
+        </div>
+        <div className="col-span-2 space-y-1.5">
+          <label className={labelClass}>Name</label>
+          <input className={inputClass} type="text" value={values.name} onChange={handle('name')} />
+        </div>
+        <div className="col-span-2 space-y-1.5">
+          <label className={labelClass}>Description</label>
+          <input className={inputClass} type="text" value={values.description} onChange={handle('description')} />
+        </div>
+        <div className="col-span-2 space-y-1.5">
+          <label className={labelClass}>Package name</label>
+          <input className={inputClass} type="text" value={values.packageName} onChange={handle('packageName')} />
+        </div>
       </div>
-    </section>
+    </div>
   )
 }

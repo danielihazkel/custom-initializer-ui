@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Geist+Mono:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-tint": "#6d3bd7",
+              "on-primary": "#ffffff",
+              "outline-variant": "#cbc3d7",
+              "on-background": "#191c1e",
+              "surface-container": "#eceef0",
+              "tertiary-fixed-dim": "#ffb869",
+              "tertiary": "#855000",
+              "on-secondary-fixed-variant": "#4e3b7c",
+              "outline": "#7b7486",
+              "secondary": "#665396",
+              "on-error-container": "#93000a",
+              "primary-fixed-dim": "#d0bcff",
+              "tertiary-fixed": "#ffdcbb",
+              "surface-container-highest": "#e0e3e5",
+              "surface-container-low": "#f2f4f6",
+              "secondary-container": "#c9b3fd",
+              "on-secondary-fixed": "#220b4e",
+              "on-primary-fixed": "#23005c",
+              "error-container": "#ffdad6",
+              "surface-container-lowest": "#ffffff",
+              "primary-container": "#8455ef",
+              "surface-bright": "#f7f9fb",
+              "primary": "#6b38d4",
+              "error": "#ba1a1a",
+              "surface-variant": "#e0e3e5",
+              "inverse-surface": "#2d3133",
+              "on-error": "#ffffff",
+              "on-surface-variant": "#494454",
+              "on-tertiary-fixed-variant": "#673d00",
+              "on-secondary-container": "#544183",
+              "surface-container-high": "#e6e8ea",
+              "on-primary-fixed-variant": "#5516be",
+              "surface-dim": "#d8dadc",
+              "tertiary-container": "#a76500",
+              "surface": "#f7f9fb",
+              "on-tertiary": "#ffffff",
+              "inverse-on-surface": "#eff1f3",
+              "on-secondary": "#ffffff",
+              "on-tertiary-container": "#fffbff",
+              "primary-fixed": "#e9ddff",
+              "secondary-fixed-dim": "#d0bcff",
+              "background": "#f7f9fb",
+              "on-surface": "#191c1e",
+              "inverse-primary": "#d0bcff",
+              "secondary-fixed": "#e9ddff",
+              "on-tertiary-fixed": "#2c1700",
+              "on-primary-container": "#fffbff"
+            },
+            fontFamily: {
+              "headline": ["Geist", "Inter", "sans-serif"],
+              "body": ["Geist", "Inter", "sans-serif"],
+              "label": ["Geist Mono", "monospace"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .tonal-shift-only { background-color: #f2f4f6; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(203, 195, 215, 0.2);
+        }
+        .signature-gradient {
+            background: linear-gradient(135deg, #6b38d4 0%, #8455ef 100%);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body min-h-screen selection:bg-primary-fixed selection:text-on-primary-fixed-variant">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center w-full px-8 py-4 bg-[#f7f9fb] dark:bg-[#191c1e] fixed top-0 z-50">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-tighter text-[#191c1e] dark:text-[#f7f9fb]">Spring Initializr</span>
+<nav class="hidden md:flex gap-6">
+<a class="font-['Geist'] font-medium text-sm tracking-tight text-[#494454] dark:text-[#cbc3d7] hover:text-[#6b38d4] transition-colors duration-200" href="#">Guides</a>
+<a class="font-['Geist'] font-medium text-sm tracking-tight text-[#494454] dark:text-[#cbc3d7] hover:text-[#6b38d4] transition-colors duration-200" href="#">Projects</a>
+<a class="font-['Geist'] font-medium text-sm tracking-tight text-[#494454] dark:text-[#cbc3d7] hover:text-[#6b38d4] transition-colors duration-200" href="#">Training</a>
+</nav>
+</div>
+<div class="flex items-center gap-3">
+<button class="px-5 py-2 text-sm font-bold tracking-tight text-[#494454] hover:text-[#6b38d4] transition-all">Explore</button>
+<button class="px-6 py-2 signature-gradient text-white rounded-md text-sm font-bold tracking-tight shadow-lg shadow-primary/20 scale-100 active:scale-95 transition-all">Generate</button>
+</div>
+</header>
+<div class="flex pt-[72px] h-screen overflow-hidden">
+<!-- SideNavBar -->
+<aside class="flex flex-col w-64 p-4 gap-2 bg-[#f2f4f6] dark:bg-[#1f2225] h-full">
+<div class="mb-6 px-2">
+<h2 class="font-['Geist_Mono'] text-xs uppercase tracking-widest text-[#8b5cf6]">Project Setup</h2>
+<p class="text-[10px] text-on-surface-variant opacity-60">Configure metadata</p>
+</div>
+<nav class="flex flex-col gap-1">
+<button class="flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-[#ffffff05] text-[#8b5cf6] shadow-sm rounded-md font-['Geist_Mono'] text-xs uppercase tracking-widest transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="account_tree">account_tree</span>
+                    Project
+                </button>
+<button class="flex items-center gap-3 px-3 py-2.5 text-[#494454] dark:text-[#938f99] hover:bg-[#ffffff50] dark:hover:bg-[#ffffff10] rounded-md font-['Geist_Mono'] text-xs uppercase tracking-widest transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="Extension">extension</span>
+                    Dependencies
+                </button>
+<button class="flex items-center gap-3 px-3 py-2.5 text-[#494454] dark:text-[#938f99] hover:bg-[#ffffff50] dark:hover:bg-[#ffffff10] rounded-md font-['Geist_Mono'] text-xs uppercase tracking-widest transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="code">code</span>
+                    Explorer
+                </button>
+<button class="flex items-center gap-3 px-3 py-2.5 text-[#494454] dark:text-[#938f99] hover:bg-[#ffffff50] dark:hover:bg-[#ffffff10] rounded-md font-['Geist_Mono'] text-xs uppercase tracking-widest transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="settings">settings</span>
+                    Settings
+                </button>
+</nav>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 overflow-y-auto bg-surface p-8">
+<div class="max-w-6xl mx-auto grid grid-cols-12 gap-8">
+<!-- Left Column: Config -->
+<div class="col-span-12 lg:col-span-7 space-y-12">
+<!-- Top Row: Project & Language -->
+<div class="grid grid-cols-2 gap-8">
+<section>
+<h3 class="font-['Geist_Mono'] text-[10px] uppercase tracking-[0.2em] text-on-surface-variant mb-4">Project</h3>
+<div class="flex flex-col gap-2">
+<label class="flex items-center gap-3 p-3 rounded-xl cursor-pointer bg-surface-container-lowest border border-transparent hover:border-primary/20 transition-all">
+<input checked="" class="text-primary focus:ring-primary w-4 h-4" name="project" type="radio"/>
+<span class="text-sm font-medium">Maven</span>
+</label>
+<label class="flex items-center gap-3 p-3 rounded-xl cursor-pointer bg-surface-container-low border border-transparent hover:border-primary/20 transition-all">
+<input class="text-primary focus:ring-primary w-4 h-4" name="project" type="radio"/>
+<span class="text-sm font-medium">Gradle - Groovy</span>
+</label>
+<label class="flex items-center gap-3 p-3 rounded-xl cursor-pointer bg-surface-container-low border border-transparent hover:border-primary/20 transition-all">
+<input class="text-primary focus:ring-primary w-4 h-4" name="project" type="radio"/>
+<span class="text-sm font-medium">Gradle - Kotlin</span>
+</label>
+</div>
+</section>
+<section>
+<h3 class="font-['Geist_Mono'] text-[10px] uppercase tracking-[0.2em] text-on-surface-variant mb-4">Language</h3>
+<div class="flex flex-col gap-2">
+<label class="flex items-center gap-3 p-3 rounded-xl cursor-pointer bg-surface-container-lowest border border-transparent hover:border-primary/20 transition-all">
+<input checked="" class="text-primary focus:ring-primary w-4 h-4" name="language" type="radio"/>
+<span class="text-sm font-medium">Java</span>
+</label>
+<label class="flex items-center gap-3 p-3 rounded-xl cursor-pointer bg-surface-container-low border border-transparent hover:border-primary/20 transition-all">
+<input class="text-primary focus:ring-primary w-4 h-4" name="language" type="radio"/>
+<span class="text-sm font-medium">Kotlin</span>
+</label>
+<label class="flex items-center gap-3 p-3 rounded-xl cursor-pointer bg-surface-container-low border border-transparent hover:border-primary/20 transition-all">
+<input class="text-primary focus:ring-primary w-4 h-4" name="language" type="radio"/>
+<span class="text-sm font-medium">Groovy</span>
+</label>
+</div>
+</section>
+</div>
+<!-- Spring Boot Version -->
+<section>
+<h3 class="font-['Geist_Mono'] text-[10px] uppercase tracking-[0.2em] text-on-surface-variant mb-4">Spring Boot</h3>
+<div class="flex flex-wrap gap-2">
+<button class="px-4 py-2 rounded-full border border-primary text-primary text-sm font-bold bg-primary/5">3.2.3</button>
+<button class="px-4 py-2 rounded-full border border-outline-variant/30 text-on-surface-variant text-sm font-medium hover:border-primary/50 transition-all">3.1.9</button>
+<button class="px-4 py-2 rounded-full border border-outline-variant/30 text-on-surface-variant text-sm font-medium hover:border-primary/50 transition-all">3.3.0 (SNAPSHOT)</button>
+<button class="px-4 py-2 rounded-full border border-outline-variant/30 text-on-surface-variant text-sm font-medium hover:border-primary/50 transition-all">2.7.18</button>
+</div>
+</section>
+<!-- Metadata Form -->
+<section class="space-y-6">
+<h3 class="font-['Geist_Mono'] text-[10px] uppercase tracking-[0.2em] text-on-surface-variant mb-4">Project Metadata</h3>
+<div class="grid grid-cols-2 gap-x-8 gap-y-6">
+<div class="flex flex-col gap-1.5">
+<label class="text-[11px] font-bold text-on-surface-variant/80 px-1">Group</label>
+<input class="bg-surface-container-low border-0 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 transition-all" type="text" value="com.example"/>
+</div>
+<div class="flex flex-col gap-1.5">
+<label class="text-[11px] font-bold text-on-surface-variant/80 px-1">Artifact</label>
+<input class="bg-surface-container-low border-0 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 transition-all" type="text" value="demo"/>
+</div>
+<div class="flex flex-col gap-1.5 col-span-2">
+<label class="text-[11px] font-bold text-on-surface-variant/80 px-1">Description</label>
+<input class="bg-surface-container-low border-0 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 transition-all" type="text" value="Demo project for Spring Boot"/>
+</div>
+</div>
+<!-- Packaging & Java -->
+<div class="grid grid-cols-2 gap-8 pt-4">
+<div>
+<h4 class="text-[11px] font-bold text-on-surface-variant/80 mb-3">Packaging</h4>
+<div class="flex gap-2">
+<button class="flex-1 py-2 text-sm font-bold bg-white shadow-sm border border-primary/10 rounded-lg text-primary">Jar</button>
+<button class="flex-1 py-2 text-sm font-medium bg-surface-container-low rounded-lg text-on-surface-variant">War</button>
+</div>
+</div>
+<div>
+<h4 class="text-[11px] font-bold text-on-surface-variant/80 mb-3">Java Version</h4>
+<div class="flex gap-2">
+<button class="flex-1 py-2 text-sm font-medium bg-surface-container-low rounded-lg text-on-surface-variant">21</button>
+<button class="flex-1 py-2 text-sm font-bold bg-white shadow-sm border border-primary/10 rounded-lg text-primary">17</button>
+<button class="flex-1 py-2 text-sm font-medium bg-surface-container-low rounded-lg text-on-surface-variant">11</button>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Column: Dependencies -->
+<div class="col-span-12 lg:col-span-5">
+<div class="glass-card rounded-2xl p-6 min-h-[600px] sticky top-24 flex flex-col gap-6">
+<div class="flex justify-between items-end">
+<div>
+<h3 class="font-['Geist_Mono'] text-[10px] uppercase tracking-[0.2em] text-on-surface-variant mb-1">Dependencies</h3>
+<p class="text-2xl font-bold tracking-tight">Project Stack</p>
+</div>
+<button class="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary text-xs font-bold rounded-full hover:bg-primary/20 transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                                Add Dependencies
+                            </button>
+</div>
+<div class="space-y-3 flex-1">
+<!-- Dependency Item -->
+<div class="group p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/20 hover:border-primary/30 transition-all">
+<div class="flex justify-between items-start mb-1">
+<h4 class="text-sm font-bold text-primary">Spring Web</h4>
+<button class="text-on-surface-variant/40 hover:text-error transition-colors">
+<span class="material-symbols-outlined text-base" data-icon="close">close</span>
+</button>
+</div>
+<p class="text-xs text-on-surface-variant leading-relaxed">Build web, including RESTful, applications using Spring MVC. Uses Apache Tomcat as the default embedded container.</p>
+</div>
+<!-- Dependency Item -->
+<div class="group p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/20 hover:border-primary/30 transition-all">
+<div class="flex justify-between items-start mb-1">
+<h4 class="text-sm font-bold text-primary">Spring Data JPA</h4>
+<button class="text-on-surface-variant/40 hover:text-error transition-colors">
+<span class="material-symbols-outlined text-base" data-icon="close">close</span>
+</button>
+</div>
+<p class="text-xs text-on-surface-variant leading-relaxed">Persist data in SQL stores with Java Persistence API using Spring Data and Hibernate.</p>
+</div>
+<!-- Dependency Item -->
+<div class="group p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/20 hover:border-primary/30 transition-all">
+<div class="flex justify-between items-start mb-1">
+<h4 class="text-sm font-bold text-primary">Lombok</h4>
+<button class="text-on-surface-variant/40 hover:text-error transition-colors">
+<span class="material-symbols-outlined text-base" data-icon="close">close</span>
+</button>
+</div>
+<p class="text-xs text-on-surface-variant leading-relaxed">Java annotation library which helps to reduce boilerplate code.</p>
+</div>
+<!-- Empty State / Suggestion -->
+<div class="border-2 border-dashed border-outline-variant/20 rounded-xl p-8 flex flex-col items-center justify-center text-center opacity-40">
+<span class="material-symbols-outlined text-3xl mb-2" data-icon="layers">layers</span>
+<p class="text-xs font-medium">Add more dependencies to customize your stack</p>
+</div>
+</div>
+<div class="pt-6 border-t border-outline-variant/10">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-xl bg-primary-container/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="auto_awesome">auto_awesome</span>
+</div>
+<div>
+<p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Quick Tip</p>
+<p class="text-xs text-on-surface-variant/70">Press <kbd class="px-1.5 py-0.5 bg-surface-container-high rounded text-[10px]">Ctrl + B</kbd> to explore the project structure before generating.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Floating Action for Mobile / Small Screens -->
+<div class="md:hidden fixed bottom-6 right-6 z-50">
+<button class="w-14 h-14 rounded-full signature-gradient text-white shadow-xl flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="download">download</span>
+</button>
+</div>
+</body></html>
