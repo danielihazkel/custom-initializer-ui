@@ -1,16 +1,17 @@
 import { useState, useMemo } from 'react'
+import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
 
-export function DependencySelector({ metadata, selected, onChange, isDark }) {
-  const [search, setSearch] = useState('')
+export function DependencySelector({ metadata, selected, onChange, isDark }: DependencySelectorProps) {
+  const [search, setSearch] = useState<string>('')
 
-  const groups = useMemo(() => {
+  const groups = useMemo<DependencyGroup[]>(() => {
     if (!metadata?.dependencies?.values) return []
     return metadata.dependencies.values
   }, [metadata])
 
-  const allDeps = useMemo(() => groups.flatMap(g => g.values ?? []), [groups])
+  const allDeps = useMemo<MetadataOption[]>(() => groups.flatMap(g => g.values ?? []), [groups])
 
-  const filtered = useMemo(() => {
+  const filtered = useMemo<DependencyGroup[]>(() => {
     if (!search.trim()) return groups
     const q = search.toLowerCase()
     return groups
@@ -23,7 +24,7 @@ export function DependencySelector({ metadata, selected, onChange, isDark }) {
       .filter(g => g.values.length > 0)
   }, [groups, search])
 
-  function toggle(depId) {
+  function toggle(depId: string): void {
     if (selected.includes(depId)) {
       onChange(selected.filter(id => id !== depId))
     } else {

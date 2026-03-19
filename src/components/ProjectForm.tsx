@@ -1,8 +1,10 @@
-export function ProjectForm({ values, onChange, isDark }) {
-  function handle(field) {
-    return e => {
+import type { ProjectFormProps, ProjectFormValues } from '../types'
+
+export function ProjectForm({ values, onChange, isDark }: ProjectFormProps) {
+  function handle(field: keyof ProjectFormValues) {
+    return (e: React.ChangeEvent<HTMLInputElement>): void => {
       const val = e.target.value
-      const updates = { [field]: val }
+      const updates: Partial<ProjectFormValues> = { [field]: val }
 
       if (field === 'artifactId') {
         updates.name = val

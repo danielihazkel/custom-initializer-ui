@@ -3,8 +3,9 @@ import { useMetadata } from './hooks/useMetadata'
 import { ProjectForm } from './components/ProjectForm'
 import { OptionsPanel } from './components/OptionsPanel'
 import { DependencySelector } from './components/DependencySelector'
+import type { InitializrMetadata, ProjectFormValues } from './types'
 
-function defaultForm(metadata) {
+function defaultForm(metadata: InitializrMetadata | null): ProjectFormValues {
   return {
     groupId: 'com.menora',
     artifactId: 'demo',
@@ -19,7 +20,7 @@ function defaultForm(metadata) {
   }
 }
 
-function triggerDownload(form, selected) {
+function triggerDownload(form: ProjectFormValues, selected: string[]): void {
   const url = new URL('/starter.zip', window.location.origin)
   url.searchParams.set('type', form.type)
   url.searchParams.set('language', form.language)
@@ -44,10 +45,10 @@ function triggerDownload(form, selected) {
 
 export default function App() {
   const { metadata, loading, error } = useMetadata()
-  const [form, setForm] = useState(() => defaultForm(null))
-  const [selected, setSelected] = useState([])
-  const [initialized, setInitialized] = useState(false)
-  const [isDark, setIsDark] = useState(() => {
+  const [form, setForm] = useState<ProjectFormValues>(() => defaultForm(null))
+  const [selected, setSelected] = useState<string[]>([])
+  const [initialized, setInitialized] = useState<boolean>(false)
+  const [isDark, setIsDark] = useState<boolean>(() => {
     const saved = localStorage.getItem('theme')
     return saved ? saved === 'dark' : true
   })
@@ -72,7 +73,7 @@ export default function App() {
     }
   }, [metadata, initialized])
 
-  function handleFormChange(updates) {
+  function handleFormChange(updates: Partial<ProjectFormValues>): void {
     setForm(prev => ({ ...prev, ...updates }))
   }
 

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
+import type { InitializrMetadata, UseMetadataResult } from '../types'
 
-export function useMetadata() {
-  const [metadata, setMetadata] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+export function useMetadata(): UseMetadataResult {
+  const [metadata, setMetadata] = useState<InitializrMetadata | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/metadata/client', { headers: { Accept: 'application/json' } })
@@ -12,10 +13,10 @@ export function useMetadata() {
         return res.json()
       })
       .then(data => {
-        setMetadata(data)
+        setMetadata(data as InitializrMetadata)
         setLoading(false)
       })
-      .catch(err => {
+      .catch((err: Error) => {
         setError(err.message)
         setLoading(false)
       })

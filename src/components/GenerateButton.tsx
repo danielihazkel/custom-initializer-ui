@@ -1,4 +1,6 @@
-export function GenerateButton({ form, selected }) {
+import type { GenerateButtonProps } from '../types'
+
+export function GenerateButton({ form, selected }: GenerateButtonProps) {
   function handleGenerate() {
     const url = new URL('/starter.zip', window.location.origin)
     url.searchParams.set('type', form.type)

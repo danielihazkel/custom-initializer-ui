@@ -1,4 +1,6 @@
-export function OptionsPanel({ metadata, values, onChange, section, isDark }) {
+import type { OptionsPanelProps } from '../types'
+
+export function OptionsPanel({ metadata, values, onChange, section, isDark }: OptionsPanelProps) {
   if (!metadata) return null
 
   const bootVersions = metadata.bootVersion?.values ?? []
@@ -13,8 +15,7 @@ export function OptionsPanel({ metadata, values, onChange, section, isDark }) {
 
   const sectionLabelClass = 'text-xs font-bold uppercase tracking-widest text-secondary'
 
-  // Radio row for project type / language
-  function radioRowClass(active) {
+  function radioRowClass(active: boolean): string {
     if (isDark) {
       return `flex items-center gap-3 p-3 rounded border cursor-pointer transition-colors ${
         active
