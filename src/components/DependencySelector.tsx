@@ -37,11 +37,11 @@ export function DependencySelector({ metadata, selected, onChange, isDark }: Dep
 
   const panelClass = isDark
     ? 'bg-surface-container border border-outline-variant rounded-xl p-6 flex flex-col'
-    : 'glass-card rounded-2xl p-6 flex flex-col'
+    : 'dependency-panel-bg border border-outline-variant rounded-2xl p-7 flex flex-col shadow-sm'
 
   const searchInputClass = isDark
     ? 'w-full bg-background border border-outline-variant rounded-lg pl-10 pr-4 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all'
-    : 'w-full bg-surface-container-low border-0 rounded-lg pl-10 pr-4 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 outline-none transition-all'
+    : 'w-full bg-white border border-outline rounded-lg pl-11 pr-4 py-3 text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all shadow-sm'
 
   return (
     <div className={`${panelClass} sticky top-24`} style={{ minHeight: 'calc(100vh - 8rem)' }}>
@@ -58,7 +58,7 @@ export function DependencySelector({ metadata, selected, onChange, isDark }: Dep
         <button className={`text-xs font-bold transition-all ${
           isDark
             ? 'text-primary hover:underline'
-            : 'flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-full hover:bg-primary/20'
+            : 'flex items-center gap-2 px-5 py-2.5 signature-gradient text-white rounded-lg shadow-sm hover:shadow-md transition-all active:scale-95'
         }`}>
           {!isDark && <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>}
           Add Dependencies
@@ -160,11 +160,16 @@ export function DependencySelector({ metadata, selected, onChange, isDark }: Dep
               <span className="material-symbols-outlined text-secondary mb-2" style={{ fontSize: '28px' }}>
                 {isDark ? 'inventory_2' : 'layers'}
               </span>
-              <p className="text-xs text-secondary italic">
-                {isDark
-                  ? 'Search and select dependencies to add to your project.'
-                  : 'Add more dependencies to customize your stack.'}
-              </p>
+              {isDark ? (
+                <p className="text-xs text-secondary italic">
+                  Search and select dependencies to add to your project.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-wider">Stack incomplete</p>
+                  <p className="text-[11px] text-on-surface-variant/40 mt-1">Add dependencies to build your app</p>
+                </>
+              )}
             </div>
           </>
         )}

@@ -20,15 +20,15 @@ export function ProjectForm({ values, onChange, isDark }: ProjectFormProps) {
 
   const inputClass = isDark
     ? 'w-full bg-surface-container border border-outline-variant rounded px-3 py-2 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all'
-    : 'w-full bg-surface-container-low border-0 rounded-lg px-4 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 outline-none transition-all'
+    : 'w-full bg-white border border-outline-variant rounded-lg px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all'
 
   const labelClass = isDark
     ? 'block text-[11px] text-secondary-fixed'
-    : 'block text-[11px] font-bold text-on-surface-variant/80 px-1'
+    : 'block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider px-0.5'
 
   return (
     <div className="space-y-4 pt-4">
-      <span className="text-xs font-bold uppercase tracking-widest text-secondary">Project Metadata</span>
+      <span className={`text-xs font-bold uppercase tracking-widest ${isDark ? 'text-secondary' : "font-['Geist_Mono'] text-[10px] text-on-surface-variant"}`}>Project Metadata</span>
       <div className="grid grid-cols-2 gap-4 mt-3">
         <div className="space-y-1.5">
           <label className={labelClass}>Group</label>

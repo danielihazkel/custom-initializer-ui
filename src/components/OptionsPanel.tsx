@@ -13,7 +13,9 @@ export function OptionsPanel({ metadata, values, onChange, section, isDark }: Op
     ['maven-project', 'gradle-project', 'gradle-project-kotlin'].includes(t.id)
   )
 
-  const sectionLabelClass = 'text-xs font-bold uppercase tracking-widest text-secondary'
+  const sectionLabelClass = isDark
+    ? 'text-xs font-bold uppercase tracking-widest text-secondary'
+    : "font-['Geist_Mono'] text-[10px] uppercase tracking-[0.2em] font-bold text-on-surface-variant"
 
   function radioRowClass(active: boolean): string {
     if (isDark) {
@@ -25,7 +27,7 @@ export function OptionsPanel({ metadata, values, onChange, section, isDark }: Op
     } else {
       return `flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${
         active
-          ? 'bg-surface-container-lowest border border-primary/30 text-on-surface'
+          ? 'bg-surface-container-lowest border border-primary/30 text-on-surface ring-1 ring-primary/20'
           : 'bg-surface-container-lowest border border-transparent hover:border-primary/20 text-on-surface'
       }`
     }
@@ -90,8 +92,8 @@ export function OptionsPanel({ metadata, values, onChange, section, isDark }: Op
                       ? 'rounded border border-primary text-primary bg-primary/5 font-bold'
                       : 'rounded border border-outline-variant text-secondary hover:text-on-surface hover:border-outline'
                     : values.bootVersion === v.id
-                      ? 'rounded-full border border-primary text-primary bg-primary/5 font-bold'
-                      : 'rounded-full border border-outline-variant/30 text-on-surface-variant hover:border-primary/50'
+                      ? 'rounded-lg border border-primary text-primary bg-primary/5 font-bold'
+                      : 'rounded-lg border border-outline-variant/30 text-on-surface-variant hover:border-primary/50'
                 }`}
               >
                 {v.name}
@@ -125,7 +127,7 @@ export function OptionsPanel({ metadata, values, onChange, section, isDark }: Op
               ))}
             </div>
           ) : (
-            <div className="flex gap-2 mt-1">
+            <div className="flex gap-2.5 p-1 bg-surface-container rounded-xl border border-outline-variant mt-1">
               {packagings.map(p => (
                 <button
                   key={p.id}
@@ -133,8 +135,8 @@ export function OptionsPanel({ metadata, values, onChange, section, isDark }: Op
                   onClick={() => onChange({ packaging: p.id })}
                   className={`flex-1 py-2 text-sm rounded-lg transition-all ${
                     values.packaging === p.id
-                      ? 'bg-white shadow-sm border border-primary/10 text-primary font-bold'
-                      : 'bg-surface-container-low text-on-surface-variant font-medium'
+                      ? 'bg-white shadow-sm border border-outline-variant text-primary font-bold'
+                      : 'text-on-surface-variant font-medium hover:text-on-surface'
                   }`}
                 >
                   {p.name}
@@ -163,7 +165,7 @@ export function OptionsPanel({ metadata, values, onChange, section, isDark }: Op
               ))}
             </div>
           ) : (
-            <div className="flex gap-2 mt-1">
+            <div className="flex gap-2.5 p-1 bg-surface-container rounded-xl border border-outline-variant mt-1">
               {javaVersions.map(v => (
                 <button
                   key={v.id}
@@ -171,8 +173,8 @@ export function OptionsPanel({ metadata, values, onChange, section, isDark }: Op
                   onClick={() => onChange({ javaVersion: v.id })}
                   className={`flex-1 py-2 text-sm rounded-lg transition-all ${
                     values.javaVersion === v.id
-                      ? 'bg-white shadow-sm border border-primary/10 text-primary font-bold'
-                      : 'bg-surface-container-low text-on-surface-variant font-medium'
+                      ? 'bg-white shadow-sm border border-outline-variant text-primary font-bold'
+                      : 'text-on-surface-variant font-medium hover:text-on-surface'
                   }`}
                 >
                   {v.name}

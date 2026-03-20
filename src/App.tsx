@@ -77,9 +77,6 @@ export default function App() {
     setForm(prev => ({ ...prev, ...updates }))
   }
 
-  const buildTypeName = metadata?.type?.values?.find(t => t.id === form.type)?.name ?? form.type
-  const liveStatus = `${buildTypeName} • Java ${form.javaVersion} • Spring Boot ${form.bootVersion}`
-
   if (error) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -132,65 +129,31 @@ export default function App() {
         </div>
       </header>
 
-      {/* Side Nav */}
-      <aside className={`fixed left-0 top-16 w-64 h-[calc(100vh-64px)] z-40 flex flex-col border-r border-outline-variant text-sm text-secondary ${
-        isDark ? 'bg-surface' : 'bg-surface-container-low'
-      }`}>
-        <div className="p-6 pb-2">
-          <h2 className="text-lg font-bold text-on-surface">Project Setup</h2>
-          <p className="text-xs text-secondary mt-0.5 opacity-60">Configure metadata</p>
-        </div>
-        <nav className="mt-4 flex flex-col gap-1 px-2">
-          {[
-            { icon: 'settings', label: 'Project', active: true },
-            { icon: 'add_box', label: 'Dependencies', active: false },
-            { icon: 'code', label: 'Explorer', active: false },
-            { icon: 'tune', label: 'Settings', active: false },
-          ].map(({ icon, label, active }) => (
-            <a
-              key={label}
-              href="#"
-              className={`flex items-center gap-3 px-4 py-2.5 transition-all duration-200 text-xs font-bold uppercase tracking-widest ${
-                active
-                  ? isDark
-                    ? 'bg-surface-container-high text-primary border-r-2 border-primary -mr-2 rounded-l'
-                    : 'bg-white shadow-sm text-primary rounded-md'
-                  : isDark
-                    ? 'hover:bg-surface-container-high hover:text-on-surface rounded'
-                    : 'text-on-surface-variant hover:bg-white/50 rounded-md'
-              }`}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>{icon}</span>
-              <span>{label}</span>
-            </a>
-          ))}
-        </nav>
-        <div className="mt-auto p-4 m-4 bg-surface-container rounded-lg border border-outline-variant">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-tertiary"></div>
-            <span className="text-xs font-medium text-on-surface">Live Status</span>
-          </div>
-          <p className="text-[10px] leading-relaxed text-secondary-fixed">{liveStatus}</p>
-        </div>
-      </aside>
-
       {/* Main Content */}
-      <main className="ml-64 pt-16 min-h-screen bg-surface">
+      <main className="pt-16 min-h-screen bg-background">
         {loading ? (
           <div className="flex items-center justify-center p-16 text-secondary text-sm">
             Loading metadata…
           </div>
         ) : (
-          <div className="max-w-6xl mx-auto p-8 grid grid-cols-12 gap-8">
+          <div className="max-w-7xl mx-auto p-8 grid grid-cols-12 gap-8">
             {/* Left Column */}
-            <section className="col-span-12 lg:col-span-7 space-y-8">
+            <section className="col-span-12 lg:col-span-8 space-y-8">
+              <div className="mb-2">
+                <h2 className={`font-['Geist_Mono'] text-[10px] uppercase tracking-[0.15em] font-bold ${isDark ? 'text-secondary' : 'text-primary'}`}>
+                  Project Setup
+                </h2>
+                <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">
+                  Configure metadata and core language settings
+                </p>
+              </div>
               <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="upper" isDark={isDark} />
               <ProjectForm values={form} onChange={handleFormChange} isDark={isDark} />
               <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="lower" isDark={isDark} />
             </section>
 
             {/* Right Column — Dependencies */}
-            <section className="col-span-12 lg:col-span-5">
+            <section className="col-span-12 lg:col-span-4">
               <DependencySelector
                 metadata={metadata}
                 selected={selected}
