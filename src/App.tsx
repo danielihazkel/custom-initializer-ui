@@ -118,11 +118,7 @@ export default function App() {
           </button>
           <button
             onClick={() => triggerDownload(form, selected)}
-            className={`px-5 py-1.5 rounded text-sm font-bold transition-all duration-200 active:scale-95 ${
-              isDark
-                ? 'bg-primary-container text-on-primary-container hover:brightness-110'
-                : 'signature-gradient text-white shadow-lg hover:brightness-105'
-            }`}
+            className="px-5 py-1.5 rounded text-sm font-bold transition-all duration-200 active:scale-95 bg-primary-container text-on-primary-container hover:brightness-110"
           >
             Generate
           </button>
@@ -140,16 +136,16 @@ export default function App() {
             {/* Left Column */}
             <section className="col-span-12 lg:col-span-8 space-y-8">
               <div className="mb-2">
-                <h2 className={`font-['Geist_Mono'] text-[10px] uppercase tracking-[0.15em] font-bold ${isDark ? 'text-secondary' : 'text-primary'}`}>
+                <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">
                   Project Setup
                 </h2>
                 <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">
                   Configure metadata and core language settings
                 </p>
               </div>
-              <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="upper" isDark={isDark} />
-              <ProjectForm values={form} onChange={handleFormChange} isDark={isDark} />
-              <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="lower" isDark={isDark} />
+              <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="upper" />
+              <ProjectForm values={form} onChange={handleFormChange} />
+              <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="lower" />
             </section>
 
             {/* Right Column — Dependencies */}
@@ -158,7 +154,6 @@ export default function App() {
                 metadata={metadata}
                 selected={selected}
                 onChange={setSelected}
-                isDark={isDark}
               />
             </section>
           </div>
@@ -173,9 +168,7 @@ export default function App() {
         </div>
         <button
           onClick={() => triggerDownload(form, selected)}
-          className={`px-6 py-2 rounded-full text-xs font-bold ${
-            isDark ? 'bg-primary text-on-primary' : 'signature-gradient text-white'
-          }`}
+          className="px-6 py-2 rounded-full text-xs font-bold bg-primary text-on-primary"
         >
           Generate
         </button>

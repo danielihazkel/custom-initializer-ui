@@ -46,20 +46,17 @@ export interface UseMetadataResult {
 export interface ProjectFormProps {
   values:   ProjectFormValues
   onChange: (updates: Partial<ProjectFormValues>) => void
-  isDark:   boolean
 }
 export interface OptionsPanelProps {
   metadata: InitializrMetadata | null
   values:   ProjectFormValues
   onChange: (updates: Partial<ProjectFormValues>) => void
   section:  'upper' | 'lower'
-  isDark:   boolean
 }
 export interface DependencySelectorProps {
   metadata: InitializrMetadata | null
   selected: string[]
   onChange: (selected: string[]) => void
-  isDark:   boolean
 }
 export interface GenerateButtonProps {
   form:     ProjectFormValues

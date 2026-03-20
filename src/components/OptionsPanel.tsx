@@ -1,6 +1,6 @@
 import type { OptionsPanelProps } from '../types'
 
-export function OptionsPanel({ metadata, values, onChange, section, isDark }: OptionsPanelProps) {
+export function OptionsPanel({ metadata, values, onChange, section }: OptionsPanelProps) {
   if (!metadata) return null
 
   const bootVersions = metadata.bootVersion?.values ?? []
@@ -13,24 +13,14 @@ export function OptionsPanel({ metadata, values, onChange, section, isDark }: Op
     ['maven-project', 'gradle-project', 'gradle-project-kotlin'].includes(t.id)
   )
 
-  const sectionLabelClass = isDark
-    ? 'text-xs font-bold uppercase tracking-widest text-secondary'
-    : "font-['Geist_Mono'] text-[10px] uppercase tracking-[0.2em] font-bold text-on-surface-variant"
+  const sectionLabelClass = 'text-xs font-bold uppercase tracking-widest text-secondary'
 
   function radioRowClass(active: boolean): string {
-    if (isDark) {
-      return `flex items-center gap-3 p-3 rounded border cursor-pointer transition-colors ${
-        active
-          ? 'border-primary bg-primary/5 text-primary'
-          : 'border-outline-variant bg-surface-container-low hover:border-primary/50 text-on-surface'
-      }`
-    } else {
-      return `flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${
-        active
-          ? 'bg-surface-container-lowest border border-primary/30 text-on-surface ring-1 ring-primary/20'
-          : 'bg-surface-container-lowest border border-transparent hover:border-primary/20 text-on-surface'
-      }`
-    }
+    return `flex items-center gap-3 p-3 rounded border cursor-pointer transition-colors ${
+      active
+        ? 'border-primary bg-primary/5 text-primary'
+        : 'border-outline-variant bg-surface-container-low hover:border-primary/50 text-on-surface'
+    }`
   }
 
   if (section === 'upper') {
@@ -86,14 +76,10 @@ export function OptionsPanel({ metadata, values, onChange, section, isDark }: Op
                 key={v.id}
                 type="button"
                 onClick={() => onChange({ bootVersion: v.id })}
-                className={`px-4 py-2 text-sm font-medium transition-all ${
-                  isDark
-                    ? values.bootVersion === v.id
-                      ? 'rounded border border-primary text-primary bg-primary/5 font-bold'
-                      : 'rounded border border-outline-variant text-secondary hover:text-on-surface hover:border-outline'
-                    : values.bootVersion === v.id
-                      ? 'rounded-lg border border-primary text-primary bg-primary/5 font-bold'
-                      : 'rounded-lg border border-outline-variant/30 text-on-surface-variant hover:border-primary/50'
+                className={`px-4 py-2 text-sm font-medium transition-all rounded border ${
+                  values.bootVersion === v.id
+                    ? 'border-primary text-primary bg-primary/5 font-bold'
+                    : 'border-outline-variant text-secondary hover:text-on-surface hover:border-outline'
                 }`}
               >
                 {v.name}
@@ -110,78 +96,40 @@ export function OptionsPanel({ metadata, values, onChange, section, isDark }: Op
       <div className="grid grid-cols-2 gap-8 pt-4">
         <div className="space-y-3">
           <span className={sectionLabelClass}>Packaging</span>
-          {isDark ? (
-            <div className="flex gap-4 mt-1">
-              {packagings.map(p => (
-                <label key={p.id} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="packaging"
-                    value={p.id}
-                    checked={values.packaging === p.id}
-                    onChange={() => onChange({ packaging: p.id })}
-                    className="accent-primary"
-                  />
-                  <span className="text-sm text-on-surface">{p.name}</span>
-                </label>
-              ))}
-            </div>
-          ) : (
-            <div className="flex gap-2.5 p-1 bg-surface-container rounded-xl border border-outline-variant mt-1">
-              {packagings.map(p => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => onChange({ packaging: p.id })}
-                  className={`flex-1 py-2 text-sm rounded-lg transition-all ${
-                    values.packaging === p.id
-                      ? 'bg-white shadow-sm border border-outline-variant text-primary font-bold'
-                      : 'text-on-surface-variant font-medium hover:text-on-surface'
-                  }`}
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex gap-4 mt-1">
+            {packagings.map(p => (
+              <label key={p.id} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="packaging"
+                  value={p.id}
+                  checked={values.packaging === p.id}
+                  onChange={() => onChange({ packaging: p.id })}
+                  className="accent-primary"
+                />
+                <span className="text-sm text-on-surface">{p.name}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-3">
           <span className={sectionLabelClass}>Java Version</span>
-          {isDark ? (
-            <div className="flex gap-4 mt-1">
-              {javaVersions.map(v => (
-                <label key={v.id} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="java-version"
-                    value={v.id}
-                    checked={values.javaVersion === v.id}
-                    onChange={() => onChange({ javaVersion: v.id })}
-                    className="accent-primary"
-                  />
-                  <span className="text-sm text-on-surface">{v.name}</span>
-                </label>
-              ))}
-            </div>
-          ) : (
-            <div className="flex gap-2.5 p-1 bg-surface-container rounded-xl border border-outline-variant mt-1">
-              {javaVersions.map(v => (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => onChange({ javaVersion: v.id })}
-                  className={`flex-1 py-2 text-sm rounded-lg transition-all ${
-                    values.javaVersion === v.id
-                      ? 'bg-white shadow-sm border border-outline-variant text-primary font-bold'
-                      : 'text-on-surface-variant font-medium hover:text-on-surface'
-                  }`}
-                >
-                  {v.name}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex gap-4 mt-1">
+            {javaVersions.map(v => (
+              <label key={v.id} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="java-version"
+                  value={v.id}
+                  checked={values.javaVersion === v.id}
+                  onChange={() => onChange({ javaVersion: v.id })}
+                  className="accent-primary"
+                />
+                <span className="text-sm text-on-surface">{v.name}</span>
+              </label>
+            ))}
+          </div>
         </div>
       </div>
     )

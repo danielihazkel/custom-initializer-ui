@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
 
-export function DependencySelector({ metadata, selected, onChange, isDark }: DependencySelectorProps) {
+export function DependencySelector({ metadata, selected, onChange }: DependencySelectorProps) {
   const [search, setSearch] = useState<string>('')
 
   const groups = useMemo<DependencyGroup[]>(() => {
@@ -35,32 +35,12 @@ export function DependencySelector({ metadata, selected, onChange, isDark }: Dep
   const selectedDeps = allDeps.filter(d => selected.includes(d.id))
   const isSearching = search.trim().length > 0
 
-  const panelClass = isDark
-    ? 'bg-surface-container border border-outline-variant rounded-xl p-6 flex flex-col'
-    : 'dependency-panel-bg border border-outline-variant rounded-2xl p-7 flex flex-col shadow-sm'
-
-  const searchInputClass = isDark
-    ? 'w-full bg-background border border-outline-variant rounded-lg pl-10 pr-4 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all'
-    : 'w-full bg-white border border-outline rounded-lg pl-11 pr-4 py-3 text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all shadow-sm'
-
   return (
-    <div className={`${panelClass} sticky top-24`} style={{ minHeight: 'calc(100vh - 8rem)' }}>
+    <div className="bg-surface-container border border-outline-variant rounded-xl p-6 flex flex-col sticky top-24" style={{ minHeight: 'calc(100vh - 8rem)' }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        {isDark ? (
-          <h3 className="text-sm font-bold uppercase tracking-widest text-on-surface">Dependencies</h3>
-        ) : (
-          <div>
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Dependencies</h3>
-            <p className="text-2xl font-bold tracking-tight text-on-surface">Project Stack</p>
-          </div>
-        )}
-        <button className={`text-xs font-bold transition-all ${
-          isDark
-            ? 'text-primary hover:underline'
-            : 'flex items-center gap-2 px-5 py-2.5 signature-gradient text-white rounded-lg shadow-sm hover:shadow-md transition-all active:scale-95'
-        }`}>
-          {!isDark && <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>}
+        <h3 className="text-sm font-bold uppercase tracking-widest text-on-surface">Dependencies</h3>
+        <button className="text-xs font-bold text-primary hover:underline transition-all">
           Add Dependencies
         </button>
       </div>
@@ -75,7 +55,7 @@ export function DependencySelector({ metadata, selected, onChange, isDark }: Dep
         </span>
         <input
           type="search"
-          className={searchInputClass}
+          className="w-full bg-background border border-outline-variant rounded-lg pl-10 pr-4 py-2.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
           placeholder="Search dependencies (e.g. Web, Security, JPA)..."
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -97,9 +77,7 @@ export function DependencySelector({ metadata, selected, onChange, isDark }: Dep
                     className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                       selected.includes(dep.id)
                         ? 'border-primary/40 bg-primary/5'
-                        : isDark
-                          ? 'border-outline-variant bg-surface-container-low hover:border-primary/30'
-                          : 'border-outline-variant/20 bg-surface-container-lowest hover:border-primary/30'
+                        : 'border-outline-variant bg-surface-container-low hover:border-primary/30'
                     }`}
                   >
                     <input
@@ -111,7 +89,7 @@ export function DependencySelector({ metadata, selected, onChange, isDark }: Dep
                     <div>
                       <div className="text-sm font-medium text-on-surface">{dep.name}</div>
                       {dep.description && (
-                        <div className="text-xs text-secondary-fixed leading-relaxed mt-0.5">{dep.description}</div>
+                        <div className="text-xs text-on-surface-variant leading-relaxed mt-0.5">{dep.description}</div>
                       )}
                     </div>
                   </label>
@@ -129,16 +107,10 @@ export function DependencySelector({ metadata, selected, onChange, isDark }: Dep
             {selectedDeps.map(dep => (
               <div
                 key={dep.id}
-                className={`p-4 rounded-xl border transition-all ${
-                  isDark
-                    ? 'bg-surface-container-high border-outline-variant hover:border-primary/40'
-                    : 'bg-surface-container-lowest border-outline-variant/20 hover:border-primary/30'
-                }`}
+                className="p-4 rounded-xl border bg-surface-container-high border-outline-variant hover:border-primary/40 transition-all"
               >
                 <div className="flex justify-between items-start mb-1">
-                  <h4 className={`text-sm font-bold ${isDark ? 'text-on-surface' : 'text-primary'}`}>
-                    {dep.name}
-                  </h4>
+                  <h4 className="text-sm font-bold text-on-surface">{dep.name}</h4>
                   <button
                     type="button"
                     onClick={() => toggle(dep.id)}
@@ -154,50 +126,21 @@ export function DependencySelector({ metadata, selected, onChange, isDark }: Dep
               </div>
             ))}
             {/* Empty state */}
-            <div className={`p-8 border-2 border-dashed rounded-xl flex flex-col items-center justify-center text-center ${
-              isDark ? 'border-outline-variant' : 'border-outline-variant/20 opacity-40'
-            }`}>
-              <span className="material-symbols-outlined text-secondary mb-2" style={{ fontSize: '28px' }}>
-                {isDark ? 'inventory_2' : 'layers'}
-              </span>
-              {isDark ? (
-                <p className="text-xs text-secondary italic">
-                  Search and select dependencies to add to your project.
-                </p>
-              ) : (
-                <>
-                  <p className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-wider">Stack incomplete</p>
-                  <p className="text-[11px] text-on-surface-variant/40 mt-1">Add dependencies to build your app</p>
-                </>
-              )}
+            <div className="p-8 border-2 border-dashed border-outline-variant rounded-xl flex flex-col items-center justify-center text-center">
+              <span className="material-symbols-outlined text-secondary mb-2" style={{ fontSize: '28px' }}>inventory_2</span>
+              <p className="text-xs text-secondary italic">
+                Search and select dependencies to add to your project.
+              </p>
             </div>
           </>
         )}
       </div>
 
       {/* Footer */}
-      {isDark ? (
-        <div className="mt-6 pt-6 border-t border-outline-variant text-[10px] text-secondary uppercase tracking-tighter flex justify-between">
-          <span>{selected.length} {selected.length === 1 ? 'Dependency' : 'Dependencies'} Selected</span>
-          <span className="text-tertiary">All stable versions</span>
-        </div>
-      ) : (
-        <div className="mt-6 pt-6 border-t border-outline-variant/10">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <span className="material-symbols-outlined text-primary" style={{ fontSize: '22px' }}>auto_awesome</span>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">
-                {selected.length} {selected.length === 1 ? 'Dependency' : 'Dependencies'} Selected
-              </p>
-              <p className="text-xs text-on-surface-variant/70 mt-0.5">
-                Press <kbd className="px-1.5 py-0.5 bg-surface-container-high rounded text-[10px]">Ctrl + B</kbd> to explore the project structure.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="mt-6 pt-6 border-t border-outline-variant text-[10px] text-secondary uppercase tracking-tighter flex justify-between">
+        <span>{selected.length} {selected.length === 1 ? 'Dependency' : 'Dependencies'} Selected</span>
+        <span className="text-tertiary">All stable versions</span>
+      </div>
     </div>
   )
 }
