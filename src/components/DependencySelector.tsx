@@ -1,7 +1,14 @@
 import { useState, useMemo } from 'react'
 import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
 
-export function DependencySelector({ metadata, selected, onChange }: DependencySelectorProps) {
+export function DependencySelector({
+  metadata,
+  selected,
+  onChange,
+  extensions,
+  selectedOptions,
+  onOptionsChange,
+}: DependencySelectorProps) {
   const [search, setSearch] = useState<string>('')
 
   const groups = useMemo<DependencyGroup[]>(() => {
@@ -30,6 +37,14 @@ export function DependencySelector({ metadata, selected, onChange }: DependencyS
     } else {
       onChange([...selected, depId])
     }
+  }
+
+  function toggleOption(depId: string, optId: string): void {
+    const current = selectedOptions[depId] ?? []
+    const next = current.includes(optId)
+      ? current.filter(id => id !== optId)
+      : [...current, optId]
+    onOptionsChange(depId, next)
   }
 
   const selectedDeps = allDeps.filter(d => selected.includes(d.id))
@@ -62,6 +77,23 @@ export function DependencySelector({ metadata, selected, onChange }: DependencyS
               </div>
               {dep.description && (
                 <p className="text-xs text-on-surface-variant leading-relaxed mt-0.5">{dep.description}</p>
+              )}
+              {(extensions[dep.id]?.length ?? 0) > 0 && (
+                <div className="mt-2 pt-2 border-t border-outline-variant space-y-1">
+                  {extensions[dep.id].map(opt => (
+                    <label key={opt.id} className="flex items-center gap-2 text-xs cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={(selectedOptions[dep.id] ?? []).includes(opt.id)}
+                        onChange={() => toggleOption(dep.id, opt.id)}
+                        className="accent-secondary flex-shrink-0"
+                      />
+                      <span className="text-on-surface-variant group-hover:text-on-surface transition-colors" title={opt.description}>
+                        {opt.label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               )}
             </div>
           )) : (

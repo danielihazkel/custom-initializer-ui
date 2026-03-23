@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useMetadata } from './hooks/useMetadata'
+import { useExtensions } from './hooks/useExtensions'
 import { ProjectForm } from './components/ProjectForm'
 import { OptionsPanel } from './components/OptionsPanel'
 import { DependencySelector } from './components/DependencySelector'
@@ -20,7 +21,11 @@ function defaultForm(metadata: InitializrMetadata | null): ProjectFormValues {
   }
 }
 
-function triggerDownload(form: ProjectFormValues, selected: string[]): void {
+function triggerDownload(
+  form: ProjectFormValues,
+  selected: string[],
+  selectedOptions: Record<string, string[]>
+): void {
   const url = new URL('/starter.zip', window.location.origin)
   url.searchParams.set('type', form.type)
   url.searchParams.set('language', form.language)
@@ -35,6 +40,11 @@ function triggerDownload(form: ProjectFormValues, selected: string[]): void {
   if (selected.length > 0) {
     url.searchParams.set('dependencies', selected.join(','))
   }
+  for (const [depId, optIds] of Object.entries(selectedOptions)) {
+    if (optIds.length > 0 && selected.includes(depId)) {
+      url.searchParams.set(`opts-${depId}`, optIds.join(','))
+    }
+  }
   const a = document.createElement('a')
   a.href = url.toString()
   a.download = `${form.artifactId}.zip`
@@ -45,8 +55,10 @@ function triggerDownload(form: ProjectFormValues, selected: string[]): void {
 
 export default function App() {
   const { metadata, loading, error } = useMetadata()
+  const { extensions } = useExtensions()
   const [form, setForm] = useState<ProjectFormValues>(() => defaultForm(null))
   const [selected, setSelected] = useState<string[]>([])
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({})
   const [initialized, setInitialized] = useState<boolean>(false)
   const [isDark, setIsDark] = useState<boolean>(() => {
     const saved = localStorage.getItem('theme')
@@ -75,6 +87,23 @@ export default function App() {
 
   function handleFormChange(updates: Partial<ProjectFormValues>): void {
     setForm(prev => ({ ...prev, ...updates }))
+  }
+
+  function handleDepsChange(newSelected: string[]): void {
+    // Clear sub-options for any dependency that was just removed
+    const removed = selected.filter(id => !newSelected.includes(id))
+    if (removed.length > 0) {
+      setSelectedOptions(prev => {
+        const next = { ...prev }
+        for (const id of removed) delete next[id]
+        return next
+      })
+    }
+    setSelected(newSelected)
+  }
+
+  function handleOptionsChange(depId: string, optIds: string[]): void {
+    setSelectedOptions(prev => ({ ...prev, [depId]: optIds }))
   }
 
   if (error) {
@@ -117,7 +146,7 @@ export default function App() {
             Explore
           </button>
           <button
-            onClick={() => triggerDownload(form, selected)}
+            onClick={() => triggerDownload(form, selected, selectedOptions)}
             className="px-5 py-1.5 rounded text-sm font-bold transition-all duration-200 active:scale-95 bg-primary-container text-on-primary-container hover:brightness-110"
           >
             Generate
@@ -153,7 +182,10 @@ export default function App() {
               <DependencySelector
                 metadata={metadata}
                 selected={selected}
-                onChange={setSelected}
+                onChange={handleDepsChange}
+                extensions={extensions}
+                selectedOptions={selectedOptions}
+                onOptionsChange={handleOptionsChange}
               />
             </section>
           </div>
@@ -167,7 +199,7 @@ export default function App() {
           <span className="text-xs font-bold text-on-surface">{form.artifactId}.zip</span>
         </div>
         <button
-          onClick={() => triggerDownload(form, selected)}
+          onClick={() => triggerDownload(form, selected, selectedOptions)}
           className="px-6 py-2 rounded-full text-xs font-bold bg-primary text-on-primary"
         >
           Generate

@@ -35,11 +35,25 @@ export interface ProjectFormValues {
   javaVersion: string
 }
 
+// Dependency sub-options
+export interface SubOption {
+  id: string
+  label: string
+  description: string
+}
+export type DependencyExtensions = Record<string, SubOption[]>
+
 // Hook return
 export interface UseMetadataResult {
   metadata: InitializrMetadata | null
   loading:  boolean
   error:    string | null
+}
+
+export interface UseExtensionsResult {
+  extensions: DependencyExtensions
+  loading:    boolean
+  error:      string | null
 }
 
 // Component props
@@ -54,9 +68,12 @@ export interface OptionsPanelProps {
   section:  'upper' | 'lower'
 }
 export interface DependencySelectorProps {
-  metadata: InitializrMetadata | null
-  selected: string[]
-  onChange: (selected: string[]) => void
+  metadata:        InitializrMetadata | null
+  selected:        string[]
+  onChange:        (selected: string[]) => void
+  extensions:      DependencyExtensions
+  selectedOptions: Record<string, string[]>
+  onOptionsChange: (depId: string, optIds: string[]) => void
 }
 export interface GenerateButtonProps {
   form:     ProjectFormValues
