@@ -4,6 +4,7 @@ import { useExtensions } from './hooks/useExtensions'
 import { ProjectForm } from './components/ProjectForm'
 import { OptionsPanel } from './components/OptionsPanel'
 import { DependencySelector } from './components/DependencySelector'
+import { TutorialView } from './components/tutorial/TutorialView'
 import type { InitializrMetadata, ProjectFormValues } from './types'
 
 function defaultForm(metadata: InitializrMetadata | null): ProjectFormValues {
@@ -64,6 +65,7 @@ export default function App() {
     const saved = localStorage.getItem('theme')
     return saved ? saved === 'dark' : true
   })
+  const [view, setView] = useState<'initializr' | 'tutorial'>('initializr')
 
   // Sync html class with theme
   useEffect(() => {
@@ -127,7 +129,12 @@ export default function App() {
           <nav className="hidden md:flex items-center gap-6">
             <a className="text-secondary hover:text-on-surface transition-colors duration-200 text-sm" href="#">Guides</a>
             <a className="text-secondary hover:text-on-surface transition-colors duration-200 text-sm" href="#">Projects</a>
-            <a className="text-secondary hover:text-on-surface transition-colors duration-200 text-sm" href="#">Training</a>
+            <button
+              onClick={() => setView(v => v === 'tutorial' ? 'initializr' : 'tutorial')}
+              className={`text-sm transition-colors duration-200 ${view === 'tutorial' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
+            >
+              Training
+            </button>
           </nav>
         </div>
         <div className="flex items-center gap-3">
@@ -156,7 +163,9 @@ export default function App() {
 
       {/* Main Content */}
       <main className="pt-16 min-h-screen bg-background">
-        {loading ? (
+        {view === 'tutorial' ? (
+          <TutorialView onClose={() => setView('initializr')} />
+        ) : loading ? (
           <div className="flex items-center justify-center p-16 text-secondary text-sm">
             Loading metadata…
           </div>
@@ -192,19 +201,21 @@ export default function App() {
         )}
       </main>
 
-      {/* Mobile FAB */}
-      <div className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] bg-surface-container-high border border-outline-variant shadow-2xl rounded-full px-6 py-3 flex items-center justify-between z-50">
-        <div className="flex flex-col">
-          <span className="text-[10px] text-secondary font-bold uppercase">Ready?</span>
-          <span className="text-xs font-bold text-on-surface">{form.artifactId}.zip</span>
+      {/* Mobile FAB — only shown in initializr view */}
+      {view === 'initializr' && (
+        <div className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] bg-surface-container-high border border-outline-variant shadow-2xl rounded-full px-6 py-3 flex items-center justify-between z-50">
+          <div className="flex flex-col">
+            <span className="text-[10px] text-secondary font-bold uppercase">Ready?</span>
+            <span className="text-xs font-bold text-on-surface">{form.artifactId}.zip</span>
+          </div>
+          <button
+            onClick={() => triggerDownload(form, selected, selectedOptions)}
+            className="px-6 py-2 rounded-full text-xs font-bold bg-primary text-on-primary"
+          >
+            Generate
+          </button>
         </div>
-        <button
-          onClick={() => triggerDownload(form, selected, selectedOptions)}
-          className="px-6 py-2 rounded-full text-xs font-bold bg-primary text-on-primary"
-        >
-          Generate
-        </button>
-      </div>
+      )}
     </div>
   )
 }
