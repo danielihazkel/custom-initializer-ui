@@ -79,3 +79,74 @@ export interface GenerateButtonProps {
   form:     ProjectFormValues
   selected: string[]
 }
+
+// ── Admin entity types ────────────────────────────────────────────────────────
+
+export interface AdminDependencyGroup {
+  id: number
+  name: string
+  sortOrder: number
+}
+
+export interface AdminDependencyEntry {
+  id: number
+  group: { id: number }
+  depId: string
+  name: string
+  description: string
+  mavenGroupId: string
+  mavenArtifactId: string
+  version: string
+  scope: string
+  repository: string
+  sortOrder: number
+}
+
+export type FileType = 'STATIC_COPY' | 'YAML_MERGE' | 'TEMPLATE' | 'DELETE'
+export type SubstitutionType = 'PROJECT' | 'PACKAGE' | 'NONE'
+
+export interface AdminFileContribution {
+  id: number
+  dependencyId: string
+  fileType: FileType
+  content: string
+  targetPath: string
+  substitutionType: SubstitutionType
+  javaVersion: string
+  subOptionId: string
+  sortOrder: number
+}
+
+export type BuildCustomizationType = 'ADD_DEPENDENCY' | 'EXCLUDE_DEPENDENCY' | 'ADD_REPOSITORY'
+
+export interface AdminBuildCustomization {
+  id: number
+  dependencyId: string
+  customizationType: BuildCustomizationType
+  mavenGroupId: string
+  mavenArtifactId: string
+  version: string
+  excludeFromGroupId: string
+  excludeFromArtifactId: string
+  repoId: string
+  repoName: string
+  repoUrl: string
+  snapshotsEnabled: boolean
+  sortOrder: number
+}
+
+export interface AdminSubOption {
+  id: number
+  dependencyId: string
+  optionId: string
+  label: string
+  description: string
+  sortOrder: number
+}
+
+export type AdminTab = 'groups' | 'entries' | 'files' | 'builds' | 'suboptions'
+
+export interface Toast {
+  message: string
+  type: 'success' | 'error'
+}

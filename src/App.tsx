@@ -5,6 +5,7 @@ import { ProjectForm } from './components/ProjectForm'
 import { OptionsPanel } from './components/OptionsPanel'
 import { DependencySelector } from './components/DependencySelector'
 import { TutorialView } from './components/tutorial/TutorialView'
+import { AdminPage } from './components/admin/AdminPage'
 import type { InitializrMetadata, ProjectFormValues } from './types'
 
 function defaultForm(metadata: InitializrMetadata | null): ProjectFormValues {
@@ -65,7 +66,7 @@ export default function App() {
     const saved = localStorage.getItem('theme')
     return saved ? saved === 'dark' : true
   })
-  const [view, setView] = useState<'initializr' | 'tutorial'>('initializr')
+  const [view, setView] = useState<'initializr' | 'tutorial' | 'admin'>('initializr')
 
   // Sync html class with theme
   useEffect(() => {
@@ -135,6 +136,12 @@ export default function App() {
             >
               Training
             </button>
+            <button
+              onClick={() => setView(v => v === 'admin' ? 'initializr' : 'admin')}
+              className={`text-sm transition-colors duration-200 ${view === 'admin' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
+            >
+              Config
+            </button>
           </nav>
         </div>
         <div className="flex items-center gap-3">
@@ -165,6 +172,8 @@ export default function App() {
       <main className="pt-16 min-h-screen bg-background">
         {view === 'tutorial' ? (
           <TutorialView onClose={() => setView('initializr')} />
+        ) : view === 'admin' ? (
+          <AdminPage />
         ) : loading ? (
           <div className="flex items-center justify-center p-16 text-secondary text-sm">
             Loading metadata…
