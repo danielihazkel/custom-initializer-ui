@@ -7,7 +7,8 @@ export function useMetadata(): UseMetadataResult {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/metadata/client', { headers: { Accept: 'application/json' } })
+    const rand = Math.random().toString(36).slice(2)
+    fetch(`/metadata/client?r=${rand}`, { headers: { Accept: 'application/json' } })
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
