@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useMetadata } from './hooks/useMetadata'
 import { useExtensions } from './hooks/useExtensions'
+import { useCompatibility } from './hooks/useCompatibility'
 import { ProjectForm } from './components/ProjectForm'
 import { OptionsPanel } from './components/OptionsPanel'
 import { DependencySelector } from './components/DependencySelector'
@@ -58,6 +59,7 @@ function triggerDownload(
 export default function App() {
   const { metadata, loading, error } = useMetadata()
   const { extensions } = useExtensions()
+  const { rules: compatibilityRules } = useCompatibility()
   const [form, setForm] = useState<ProjectFormValues>(() => defaultForm(null))
   const [selected, setSelected] = useState<string[]>([])
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({})
@@ -204,6 +206,7 @@ export default function App() {
                 extensions={extensions}
                 selectedOptions={selectedOptions}
                 onOptionsChange={handleOptionsChange}
+                compatibilityRules={compatibilityRules}
               />
             </section>
           </div>

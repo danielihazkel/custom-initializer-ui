@@ -8,6 +8,7 @@ export function DependencySelector({
   extensions,
   selectedOptions,
   onOptionsChange,
+  compatibilityRules,
 }: DependencySelectorProps) {
   const [search, setSearch] = useState<string>('')
 
@@ -49,6 +50,26 @@ export function DependencySelector({
 
   const selectedDeps = allDeps.filter(d => selected.includes(d.id))
 
+  const warnings = useMemo(() => {
+    const conflicts: { source: string; target: string; desc: string }[] = []
+    const requires:  { source: string; target: string; desc: string }[] = []
+    const recommends:{ source: string; target: string; desc: string }[] = []
+    const depName = (id: string) => allDeps.find(d => d.id === id)?.name ?? id
+    for (const rule of compatibilityRules) {
+      if (!selected.includes(rule.sourceDepId)) continue
+      if (rule.relationType === 'CONFLICTS' && selected.includes(rule.targetDepId)) {
+        conflicts.push({ source: rule.sourceDepId, target: rule.targetDepId, desc: rule.description ?? `${depName(rule.sourceDepId)} conflicts with ${depName(rule.targetDepId)}` })
+      }
+      if (rule.relationType === 'REQUIRES' && !selected.includes(rule.targetDepId)) {
+        requires.push({ source: rule.sourceDepId, target: rule.targetDepId, desc: rule.description ?? `${depName(rule.sourceDepId)} requires ${depName(rule.targetDepId)}` })
+      }
+      if (rule.relationType === 'RECOMMENDS' && !selected.includes(rule.targetDepId)) {
+        recommends.push({ source: rule.sourceDepId, target: rule.targetDepId, desc: rule.description ?? `${depName(rule.sourceDepId)} recommends ${depName(rule.targetDepId)}` })
+      }
+    }
+    return { conflicts, requires, recommends }
+  }, [selected, compatibilityRules, allDeps])
+
   return (
     <div className="grid grid-cols-2 gap-4 sticky top-24" style={{ minHeight: 'calc(100vh - 8rem)' }}>
 
@@ -58,6 +79,44 @@ export function DependencySelector({
           <h3 className="text-sm font-bold uppercase tracking-widest text-on-surface">Selected Dependencies</h3>
           <span className="text-xs text-secondary">{selected.length} {selected.length === 1 ? 'dependency' : 'dependencies'}</span>
         </div>
+        {/* Compatibility warnings */}
+        {(warnings.conflicts.length > 0 || warnings.requires.length > 0 || warnings.recommends.length > 0) && (
+          <div className="space-y-1.5 mb-3">
+        {warnings.conflicts.map((w, i) => (
+          <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg border border-error/30 bg-error/5 text-xs text-error">
+            <span className="material-symbols-outlined flex-shrink-0 mt-0.5" style={{ fontSize: '14px' }}>warning</span>
+            <span>{w.desc}</span>
+          </div>
+        ))}
+        {warnings.requires.map((w, i) => (
+          <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg border border-yellow-500/30 bg-yellow-500/5 text-xs text-yellow-600 dark:text-yellow-400">
+            <span className="material-symbols-outlined flex-shrink-0 mt-0.5" style={{ fontSize: '14px' }}>error</span>
+            <span className="flex-1">{w.desc}</span>
+            <button
+              type="button"
+              onClick={() => onChange([...selected, w.target])}
+              className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded border border-yellow-500/40 hover:bg-yellow-500/10 transition-colors"
+            >
+              Add
+            </button>
+          </div>
+        ))}
+        {warnings.recommends.map((w, i) => (
+          <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg border border-primary/20 bg-primary/5 text-xs text-secondary">
+            <span className="material-symbols-outlined flex-shrink-0 mt-0.5" style={{ fontSize: '14px' }}>info</span>
+            <span className="flex-1">{w.desc}</span>
+            <button
+              type="button"
+              onClick={() => onChange([...selected, w.target])}
+              className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded border border-primary/30 hover:bg-primary/10 text-primary transition-colors"
+            >
+              Add
+            </button>
+          </div>
+        ))}
+          </div>
+        )}
+
         <div className="space-y-2 flex-grow overflow-y-auto pr-1">
           {selectedDeps.length > 0 ? selectedDeps.map(dep => (
             <div

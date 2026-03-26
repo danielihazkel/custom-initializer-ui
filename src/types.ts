@@ -68,12 +68,13 @@ export interface OptionsPanelProps {
   section:  'upper' | 'lower'
 }
 export interface DependencySelectorProps {
-  metadata:        InitializrMetadata | null
-  selected:        string[]
-  onChange:        (selected: string[]) => void
-  extensions:      DependencyExtensions
-  selectedOptions: Record<string, string[]>
-  onOptionsChange: (depId: string, optIds: string[]) => void
+  metadata:           InitializrMetadata | null
+  selected:           string[]
+  onChange:           (selected: string[]) => void
+  extensions:         DependencyExtensions
+  selectedOptions:    Record<string, string[]>
+  onOptionsChange:    (depId: string, optIds: string[]) => void
+  compatibilityRules: CompatibilityRule[]
 }
 export interface GenerateButtonProps {
   form:     ProjectFormValues
@@ -144,7 +145,26 @@ export interface AdminSubOption {
   sortOrder: number
 }
 
-export type AdminTab = 'groups' | 'entries' | 'files' | 'builds' | 'suboptions'
+// Compatibility rules
+export type RelationType = 'REQUIRES' | 'CONFLICTS' | 'RECOMMENDS'
+
+export interface CompatibilityRule {
+  sourceDepId: string
+  targetDepId: string
+  relationType: RelationType
+  description: string
+}
+
+export interface AdminDependencyCompatibility {
+  id: number
+  sourceDepId: string
+  targetDepId: string
+  relationType: RelationType
+  description: string
+  sortOrder: number
+}
+
+export type AdminTab = 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility'
 
 export interface Toast {
   message: string

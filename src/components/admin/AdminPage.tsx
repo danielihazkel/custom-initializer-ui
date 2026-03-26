@@ -6,6 +6,7 @@ import { DependencyEntriesTab } from './dependency-entries/DependencyEntriesTab'
 import { FileContributionsTab } from './file-contributions/FileContributionsTab'
 import { BuildCustomizationsTab } from './build-customizations/BuildCustomizationsTab'
 import { SubOptionsTab } from './sub-options/SubOptionsTab'
+import { CompatibilityTab } from './compatibility/CompatibilityTab'
 
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('groups')
@@ -25,7 +26,8 @@ export function AdminPage() {
       {activeTab === 'entries'    && <DependencyEntriesTab />}
       {activeTab === 'files'      && <FileContributionsTab />}
       {activeTab === 'builds'     && <BuildCustomizationsTab />}
-      {activeTab === 'suboptions' && <SubOptionsTab />}
+      {activeTab === 'suboptions'    && <SubOptionsTab />}
+      {activeTab === 'compatibility' && <CompatibilityTab />}
     </div>
   )
 }
