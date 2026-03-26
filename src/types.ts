@@ -170,3 +170,21 @@ export interface Toast {
   message: string
   type: 'success' | 'error'
 }
+
+// Project Preview
+export interface PreviewFile {
+  path: string
+  content: string
+}
+
+export interface TreeNode {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  children: TreeNode[]
+}
+
+export interface PreviewResponse {
+  files: PreviewFile[]
+  tree: TreeNode[]
+}

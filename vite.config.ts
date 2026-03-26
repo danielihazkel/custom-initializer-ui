@@ -7,7 +7,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/metadata': 'http://localhost:8080',
-      '/starter.zip': 'http://localhost:8080',
+      '/starter.zip':     'http://localhost:8080',
+      '/starter.preview': 'http://localhost:8080',
       '/actuator': 'http://localhost:8080',
       '/admin': 'http://localhost:8080',
     }

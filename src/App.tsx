@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useMetadata } from './hooks/useMetadata'
 import { useExtensions } from './hooks/useExtensions'
 import { useCompatibility } from './hooks/useCompatibility'
+import { useProjectPreview } from './hooks/useProjectPreview'
+import { ProjectPreview } from './components/ProjectPreview'
 import { ProjectForm } from './components/ProjectForm'
 import { OptionsPanel } from './components/OptionsPanel'
 import { DependencySelector } from './components/DependencySelector'
@@ -60,6 +62,7 @@ export default function App() {
   const { metadata, loading, error } = useMetadata()
   const { extensions } = useExtensions()
   const { rules: compatibilityRules } = useCompatibility()
+  const { preview, loading: previewLoading, error: previewError, fetchPreview, clearPreview } = useProjectPreview()
   const [form, setForm] = useState<ProjectFormValues>(() => defaultForm(null))
   const [selected, setSelected] = useState<string[]>([])
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({})
@@ -158,8 +161,15 @@ export default function App() {
               {isDark ? 'light_mode' : 'dark_mode'}
             </span>
           </button>
-          <button className="px-4 py-1.5 rounded text-sm font-medium text-secondary hover:text-on-surface transition-all duration-200 active:scale-95">
-            Explore
+          <button
+            onClick={() => fetchPreview(form, selected, selectedOptions)}
+            disabled={previewLoading}
+            title={previewError ?? 'Preview project files before downloading'}
+            className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
+          >
+            {previewLoading
+              ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }}>progress_activity</span>
+              : 'Explore'}
           </button>
           <button
             onClick={() => triggerDownload(form, selected, selectedOptions)}
@@ -212,6 +222,16 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Project Preview modal */}
+      {preview && (
+        <ProjectPreview
+          preview={preview}
+          artifactId={form.artifactId}
+          onClose={clearPreview}
+          onDownload={() => { triggerDownload(form, selected, selectedOptions); clearPreview() }}
+        />
+      )}
 
       {/* Mobile FAB — only shown in initializr view */}
       {view === 'initializr' && (
