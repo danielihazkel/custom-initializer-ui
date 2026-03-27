@@ -234,7 +234,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background text-on-background">
       {/* Top Nav */}
-      <header className="fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 bg-background border-b border-outline-variant">
+      <header className="fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 glass-header">
         <div className="flex items-center gap-8">
           <span className="text-xl font-bold text-on-surface tracking-tighter">Spring Initializr</span>
           <nav className="hidden md:flex items-center gap-6">
@@ -289,7 +289,7 @@ export default function App() {
           </button>
           <button
             onClick={() => triggerDownload(form, selected, selectedOptions)}
-            className="px-5 py-1.5 rounded text-sm font-bold transition-all duration-200 active:scale-95 bg-primary-container text-on-primary-container hover:brightness-110"
+            className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn"
           >
             Generate
           </button>
@@ -297,17 +297,21 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-      <main className="pt-16 min-h-screen bg-background">
+      <main className="pt-20 pb-32 min-h-screen bg-background relative overflow-hidden">
+        {/* Decorative ambient background blobs */}
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-tertiary/10 rounded-full blur-[120px] pointer-events-none" />
+
         {view === 'tutorial' ? (
-          <TutorialView onClose={() => setView('initializr')} />
+          <div className="relative z-10 animate-fade-in-up"><TutorialView onClose={() => setView('initializr')} /></div>
         ) : view === 'admin' ? (
-          <AdminPage />
+          <div className="relative z-10 animate-fade-in-up"><AdminPage /></div>
         ) : loading ? (
-          <div className="flex items-center justify-center p-16 text-secondary text-sm">
+          <div className="flex items-center justify-center p-16 text-secondary text-sm relative z-10">
             Loading metadata…
           </div>
         ) : (
-          <div className="max-w-7xl mx-auto p-8 grid grid-cols-12 gap-8">
+          <div className="max-w-7xl mx-auto px-8 grid grid-cols-12 gap-10 relative z-10 animate-fade-in-up">
             {/* Left Column */}
             <section className="col-span-12 lg:col-span-5 space-y-8">
               <div className="mb-2">
@@ -349,18 +353,28 @@ export default function App() {
         />
       )}
 
-      {/* Mobile FAB — only shown in initializr view */}
+      {/* Floating Summary & Generate Panel */}
       {view === 'initializr' && (
-        <div className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] bg-surface-container-high border border-outline-variant shadow-2xl rounded-full px-6 py-3 flex items-center justify-between z-50">
-          <div className="flex flex-col">
-            <span className="text-[10px] text-secondary font-bold uppercase">Ready?</span>
-            <span className="text-xs font-bold text-on-surface">{form.artifactId}.zip</span>
+        <div className="fixed bottom-6 lg:bottom-8 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl glass-card rounded-2xl px-6 py-4 flex items-center justify-between z-50 animate-fade-in-up shadow-2xl">
+          <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-8">
+            <div className="flex flex-col">
+              <span className="text-[10px] text-primary font-bold uppercase tracking-widest">Ready to go?</span>
+              <span className="text-sm font-bold text-on-surface">{form.artifactId}.zip</span>
+            </div>
+            <div className="hidden md:flex items-center gap-4 text-xs text-on-surface-variant font-medium">
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-primary/60"></span>{form.type.includes('maven') ? 'Maven' : 'Gradle'}</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-tertiary/60"></span>Java {form.javaVersion}</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-secondary"></span>Boot {form.bootVersion}</span>
+              {selected.length > 0 && (
+                <span className="flex items-center gap-1.5 pl-3 border-l border-outline-variant text-on-surface">{selected.length} deps</span>
+              )}
+            </div>
           </div>
           <button
             onClick={() => triggerDownload(form, selected, selectedOptions)}
-            className="px-6 py-2 rounded-full text-xs font-bold bg-primary text-on-primary"
+            className="px-8 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-lg"
           >
-            Generate
+            GENERATE
           </button>
         </div>
       )}
