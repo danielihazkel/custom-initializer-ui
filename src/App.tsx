@@ -11,6 +11,36 @@ import { TutorialView } from './components/tutorial/TutorialView'
 import { AdminPage } from './components/admin/AdminPage'
 import type { InitializrMetadata, ProjectFormValues } from './types'
 
+function parseUrlParams(): {
+  form: Partial<ProjectFormValues>
+  selected: string[]
+  selectedOptions: Record<string, string[]>
+} | null {
+  const p = new URLSearchParams(window.location.search)
+  if (!p.has('groupId') && !p.has('dependencies')) return null
+
+  const form: Partial<ProjectFormValues> = {}
+  for (const key of [
+    'groupId', 'artifactId', 'name', 'description', 'packageName',
+    'bootVersion', 'language', 'type', 'packaging', 'javaVersion',
+  ] as const) {
+    const v = p.get(key)
+    if (v !== null) form[key] = v
+  }
+
+  const deps = p.get('dependencies')
+  const selected = deps ? deps.split(',').filter(Boolean) : []
+
+  const selectedOptions: Record<string, string[]> = {}
+  for (const [k, v] of p.entries()) {
+    if (k.startsWith('opts-')) {
+      selectedOptions[k.slice(5)] = v.split(',').filter(Boolean)
+    }
+  }
+
+  return { form, selected, selectedOptions }
+}
+
 function defaultForm(metadata: InitializrMetadata | null): ProjectFormValues {
   return {
     groupId: 'com.menora',
@@ -64,18 +94,25 @@ export default function App() {
   const { rules: compatibilityRules } = useCompatibility()
   const { preview, loading: previewLoading, error: previewError, fetchPreview, clearPreview } = useProjectPreview()
   const [form, setForm] = useState<ProjectFormValues>(() => {
+    const url = parseUrlParams()
+    if (url) return { ...defaultForm(null), ...url.form }
     const saved = localStorage.getItem('formValues')
     return saved ? JSON.parse(saved) : defaultForm(null)
   })
   const [selected, setSelected] = useState<string[]>(() => {
+    const url = parseUrlParams()
+    if (url) return url.selected
     const saved = localStorage.getItem('selectedDeps')
     return saved ? JSON.parse(saved) : []
   })
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>(() => {
+    const url = parseUrlParams()
+    if (url) return url.selectedOptions
     const saved = localStorage.getItem('selectedOptions')
     return saved ? JSON.parse(saved) : {}
   })
   const [initialized, setInitialized] = useState<boolean>(false)
+  const [shareCopied, setShareCopied] = useState(false)
   const [isDark, setIsDark] = useState<boolean>(() => {
     const saved = localStorage.getItem('theme')
     return saved ? saved === 'dark' : true
@@ -100,10 +137,35 @@ export default function App() {
   useEffect(() => { localStorage.setItem('selectedDeps', JSON.stringify(selected)) }, [selected])
   useEffect(() => { localStorage.setItem('selectedOptions', JSON.stringify(selectedOptions)) }, [selectedOptions])
 
-  // Apply server defaults on first metadata load (only if no saved form)
+  // Sync form state into the URL so the page is shareable
+  useEffect(() => {
+    if (!initialized) return
+    const p = new URLSearchParams()
+    p.set('groupId', form.groupId)
+    p.set('artifactId', form.artifactId)
+    p.set('name', form.name)
+    p.set('description', form.description)
+    p.set('packageName', form.packageName)
+    p.set('bootVersion', form.bootVersion)
+    p.set('language', form.language)
+    p.set('type', form.type)
+    p.set('packaging', form.packaging)
+    p.set('javaVersion', form.javaVersion)
+    if (selected.length > 0) p.set('dependencies', selected.join(','))
+    for (const [depId, optIds] of Object.entries(selectedOptions)) {
+      if (optIds.length > 0 && selected.includes(depId)) {
+        p.set(`opts-${depId}`, optIds.join(','))
+      }
+    }
+    history.replaceState(null, '', '?' + p.toString())
+  }, [form, selected, selectedOptions, initialized])
+
+  // Apply server defaults on first metadata load (only if no saved form and no URL params)
   useEffect(() => {
     if (metadata && !initialized) {
-      if (!localStorage.getItem('formValues')) {
+      const p = new URLSearchParams(window.location.search)
+      const hasUrl = p.has('groupId') || p.has('dependencies')
+      if (!localStorage.getItem('formValues') && !hasUrl) {
         setForm(defaultForm(metadata))
       } else {
         setForm(prev => ({
@@ -150,6 +212,13 @@ export default function App() {
     setSelectedOptions(prev => ({ ...prev, [depId]: optIds }))
   }
 
+  function handleShare(): void {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2000)
+    })
+  }
+
   if (error) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -186,6 +255,17 @@ export default function App() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          {/* Share button */}
+          <button
+            onClick={handleShare}
+            className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
+            aria-label="Copy share link"
+            title="Copy link to current configuration"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+              {shareCopied ? 'check' : 'share'}
+            </span>
+          </button>
           {/* Theme toggle */}
           <button
             onClick={() => setIsDark(d => !d)}
