@@ -1,5 +1,13 @@
 import { useState, useMemo } from 'react'
+import { Highlight, Prism } from 'prism-react-renderer'
 import type { PreviewResponse, TreeNode } from '../types'
+import { md3SyntaxTheme } from './syntax-theme'
+import { detectLanguage } from './detect-language'
+
+// Register languages not bundled by default
+;(globalThis as typeof globalThis & { Prism: typeof Prism }).Prism = Prism
+import('prismjs/components/prism-docker' as string)
+import('prismjs/components/prism-properties' as string)
 
 interface Props {
   preview:    PreviewResponse
@@ -101,8 +109,8 @@ export function ProjectPreview({ preview, artifactId, onClose, onDownload }: Pro
     })
   }
 
-  const content = fileMap.get(selected) ?? ''
-  const lines   = content.split('\n')
+  const content  = fileMap.get(selected) ?? ''
+  const language = detectLanguage(selected.split('/').pop() ?? '')
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-3">
@@ -154,16 +162,24 @@ export function ProjectPreview({ preview, artifactId, onClose, onDownload }: Pro
               </div>
             )}
             <div className="flex-1 overflow-auto bg-surface-container-lowest">
-              <pre className="text-xs font-mono leading-5 m-0 p-0">
-                {lines.map((line, i) => (
-                  <div key={i} className="flex hover:bg-surface-container/40 min-w-0">
-                    <span className="text-secondary/40 select-none text-right px-3 flex-shrink-0 w-12 border-r border-outline-variant/20">
-                      {i + 1}
-                    </span>
-                    <span className="text-on-surface px-4 whitespace-pre">{line}</span>
-                  </div>
-                ))}
-              </pre>
+              <Highlight theme={md3SyntaxTheme} code={content} language={language}>
+                {({ tokens, getLineProps, getTokenProps }) => (
+                  <pre className="text-xs font-mono leading-5 m-0 p-0" style={{ background: 'transparent' }}>
+                    {tokens.map((line, i) => (
+                      <div key={i} {...getLineProps({ line })} className="flex hover:bg-surface-container/40 min-w-0" style={{}}>
+                        <span className="text-secondary/40 select-none text-right px-3 flex-shrink-0 w-12 border-r border-outline-variant/20">
+                          {i + 1}
+                        </span>
+                        <span className="px-4 whitespace-pre">
+                          {line.map((token, key) => (
+                            <span key={key} {...getTokenProps({ token })} />
+                          ))}
+                        </span>
+                      </div>
+                    ))}
+                  </pre>
+                )}
+              </Highlight>
             </div>
           </div>
 
