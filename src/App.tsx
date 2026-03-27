@@ -63,9 +63,18 @@ export default function App() {
   const { extensions } = useExtensions()
   const { rules: compatibilityRules } = useCompatibility()
   const { preview, loading: previewLoading, error: previewError, fetchPreview, clearPreview } = useProjectPreview()
-  const [form, setForm] = useState<ProjectFormValues>(() => defaultForm(null))
-  const [selected, setSelected] = useState<string[]>([])
-  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({})
+  const [form, setForm] = useState<ProjectFormValues>(() => {
+    const saved = localStorage.getItem('formValues')
+    return saved ? JSON.parse(saved) : defaultForm(null)
+  })
+  const [selected, setSelected] = useState<string[]>(() => {
+    const saved = localStorage.getItem('selectedDeps')
+    return saved ? JSON.parse(saved) : []
+  })
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>(() => {
+    const saved = localStorage.getItem('selectedOptions')
+    return saved ? JSON.parse(saved) : {}
+  })
   const [initialized, setInitialized] = useState<boolean>(false)
   const [isDark, setIsDark] = useState<boolean>(() => {
     const saved = localStorage.getItem('theme')
@@ -86,10 +95,37 @@ export default function App() {
     localStorage.setItem('theme', isDark ? 'dark' : 'light')
   }, [isDark])
 
+  // Persist form state to localStorage
+  useEffect(() => { localStorage.setItem('formValues', JSON.stringify(form)) }, [form])
+  useEffect(() => { localStorage.setItem('selectedDeps', JSON.stringify(selected)) }, [selected])
+  useEffect(() => { localStorage.setItem('selectedOptions', JSON.stringify(selectedOptions)) }, [selectedOptions])
+
+  // Apply server defaults on first metadata load (only if no saved form)
   useEffect(() => {
     if (metadata && !initialized) {
-      setForm(defaultForm(metadata))
+      if (!localStorage.getItem('formValues')) {
+        setForm(defaultForm(metadata))
+      } else {
+        setForm(prev => ({
+          ...prev,
+          bootVersion: prev.bootVersion || metadata.bootVersion?.default || '',
+          javaVersion: prev.javaVersion || metadata.javaVersion?.default || '21',
+        }))
+      }
       setInitialized(true)
+    }
+  }, [metadata, initialized])
+
+  // Remove saved dependencies that no longer exist in the catalog
+  useEffect(() => {
+    if (metadata && initialized && selected.length > 0) {
+      const validIds = new Set(
+        metadata.dependencies.values.flatMap(g => g.values.map(d => d.id))
+      )
+      const filtered = selected.filter(id => validIds.has(id))
+      if (filtered.length !== selected.length) {
+        setSelected(filtered)
+      }
     }
   }, [metadata, initialized])
 
