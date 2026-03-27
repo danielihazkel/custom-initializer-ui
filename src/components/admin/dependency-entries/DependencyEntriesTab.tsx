@@ -9,7 +9,8 @@ import { DependencyEntryForm } from './DependencyEntryForm'
 
 const EMPTY: Partial<AdminDependencyEntry> = {
   group: { id: 0 }, depId: '', name: '', description: '',
-  mavenGroupId: '', mavenArtifactId: '', version: '', scope: '', repository: '', sortOrder: 0
+  mavenGroupId: '', mavenArtifactId: '', version: '', scope: '', repository: '',
+  compatibilityRange: '', sortOrder: 0
 }
 
 export function DependencyEntriesTab() {
@@ -94,6 +95,7 @@ export function DependencyEntriesTab() {
           { label: 'Name', render: r => <span className="font-medium">{r.name}</span> },
           { label: 'Group', render: r => <span className="text-secondary text-xs">{groupName(r.group?.id)}</span> },
           { label: 'Artifact', render: r => r.mavenArtifactId ? <code className="text-xs text-secondary">{r.mavenArtifactId}</code> : <span className="text-secondary text-xs">—</span> },
+          { label: 'Range', render: r => r.compatibilityRange ? <code className="text-xs text-secondary">{r.compatibilityRange}</code> : <span className="text-secondary text-xs">—</span> },
           { label: 'Sort', render: r => r.sortOrder, width: '60px' },
         ]}
         rows={items}

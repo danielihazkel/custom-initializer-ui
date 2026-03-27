@@ -65,6 +65,9 @@ export function DependencyEntryForm({ data, groups, errors, onChange }: Props) {
           <FieldRow label="Repository" hint='e.g. menora-release — leave blank for Maven Central'>
             <input className={inputClass} value={data.repository ?? ''} onChange={e => onChange({ repository: e.target.value })} placeholder="menora-release" />
           </FieldRow>
+          <FieldRow label="Compatibility Range" hint='Spring Boot version range, e.g. [3.2.0,4.0.0) or 3.2.0 — blank = all versions'>
+            <input className={inputClass} value={data.compatibilityRange ?? ''} onChange={e => onChange({ compatibilityRange: e.target.value })} placeholder="[3.2.0,4.0.0)" />
+          </FieldRow>
         </div>
       </div>
       <FieldRow label="Sort Order">

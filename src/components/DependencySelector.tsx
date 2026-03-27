@@ -208,7 +208,14 @@ export function DependencySelector({
                     className="mt-0.5 accent-primary flex-shrink-0"
                   />
                   <div>
-                    <div className="text-sm font-medium text-on-surface">{dep.name}</div>
+                    <div className="text-sm font-medium text-on-surface">
+                      {dep.name}
+                      {dep.versionRange && (
+                        <span className="ml-2 text-[10px] font-medium text-secondary bg-surface-container-high px-1.5 py-0.5 rounded">
+                          Boot {dep.versionRange}
+                        </span>
+                      )}
+                    </div>
                     {dep.description && (
                       <div className="text-xs text-on-surface-variant leading-relaxed mt-0.5">{dep.description}</div>
                     )}

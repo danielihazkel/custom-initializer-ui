@@ -3,6 +3,7 @@ export interface MetadataOption {
   id: string
   name: string
   description?: string
+  versionRange?: string
 }
 export interface DependencyGroup {
   name: string
@@ -100,6 +101,7 @@ export interface AdminDependencyEntry {
   version: string
   scope: string
   repository: string
+  compatibilityRange: string
   sortOrder: number
 }
 
