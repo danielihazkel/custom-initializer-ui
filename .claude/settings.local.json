@@ -4,7 +4,17 @@
       "Bash(npm install:*)",
       "Bash(npm run:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\(''''peerDependencies'''', {}\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''version:'''', d.get\\(''''version''''\\)\\); print\\(''''peerDeps:'''', d.get\\(''''peerDependencies'''', {}\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''react version:'''', d.get\\(''''version''''\\)\\)\")",
+      "Bash(grep:*)",
+      "Bash(ls /c/Users/DANIEL/projects/offline-spring-init/spring-boot-masterClass-main/*.css)",
+      "Bash(npx tsc:*)",
+      "Bash(find C:UsersDANIELprojectsoffline-spring-inituisrc -type f -name *.jsx -o -name *.js -o -name *.tsx -o -name *.ts)",
+      "Bash(xargs ls:*)",
+      "Bash(find C:/Users/DANIEL/projects/offline-spring-init/ui/src -name *.jsx -o -name *.js)",
+      "Bash(git push:*)"
     ]
   }
 }
