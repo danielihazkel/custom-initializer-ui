@@ -162,7 +162,7 @@ export function DependencySelector({
                         <div className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-all ${
                           (selectedOptions[dep.id] ?? []).includes(opt.id) 
                             ? 'bg-secondary border-secondary text-on-surface' 
-                            : 'bg-transparent border-outline-variant group-hover:border-secondary'
+                            : 'bg-surface-container-lowest border-secondary/40 group-hover:border-secondary'
                         }`}>
                            {(selectedOptions[dep.id] ?? []).includes(opt.id) && <span className="material-symbols-outlined font-bold text-background" style={{fontSize: '12px'}}>check</span>}
                         </div>
@@ -267,7 +267,7 @@ export function DependencySelector({
                         <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all duration-300
                           ${isSelected 
                             ? 'bg-primary border-primary text-white shadow-[0_0_10px_rgba(139,92,246,0.5)]' 
-                            : 'bg-surface-container border-outline-variant group-hover:border-primary/50'}`}>
+                            : 'bg-surface-container-lowest border-secondary/40 group-hover:border-primary/50'}`}>
                           {isSelected && <span className="material-symbols-outlined font-bold" style={{fontSize: '14px'}}>check</span>}
                         </div>
                         <div className="flex-1 min-w-0">
