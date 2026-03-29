@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { AdminTab, Toast } from '../../types'
 import { StatusToast } from './shared/StatusToast'
+import { getAuthHeaders } from '../../hooks/useAdminResource'
 
 const TABS: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'groups',     label: 'Dep Groups',    icon: 'folder' },
@@ -24,7 +25,7 @@ export function AdminTabBar({ activeTab, onTabChange }: AdminTabBarProps) {
   async function handleRefresh() {
     setRefreshing(true)
     try {
-      const res = await fetch('/admin/refresh', { method: 'POST' })
+      const res = await fetch('/admin/refresh', { method: 'POST', headers: getAuthHeaders() })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setToast({ message: 'Metadata cache refreshed', type: 'success' })
     } catch (err) {

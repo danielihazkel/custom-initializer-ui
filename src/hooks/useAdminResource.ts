@@ -1,15 +1,34 @@
 import { useState, useEffect, useCallback } from 'react'
 
+function getAuthHeaders(): Record<string, string> {
+  const token = sessionStorage.getItem('adminToken')
+  return token ? { 'Authorization': `Bearer ${token}` } : {}
+}
+
+function handle401(res: Response): Response {
+  if (res.status === 401) {
+    sessionStorage.removeItem('adminToken')
+    window.location.reload()
+  }
+  return res
+}
+
 async function adminFetch(method: string, url: string, body?: unknown): Promise<unknown> {
-  const res = await fetch(url, {
+  const headers: Record<string, string> = { ...getAuthHeaders() }
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json'
+  }
+  const res = handle401(await fetch(url, {
     method,
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+    headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
+  }))
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   if (res.status === 204 || res.headers.get('content-length') === '0') return null
   return res.json()
 }
+
+export { getAuthHeaders, handle401 }
 
 export interface UseAdminResourceResult<T> {
   items: T[]
@@ -29,8 +48,8 @@ export function useAdminResource<T extends { id: number }>(path: string): UseAdm
 
   useEffect(() => {
     setLoading(true)
-    fetch(path, { headers: { Accept: 'application/json' } })
-      .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json() })
+    fetch(path, { headers: { Accept: 'application/json', ...getAuthHeaders() } })
+      .then(res => { handle401(res); if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json() })
       .then((data: T[]) => { setItems(data); setLoading(false) })
       .catch((err: Error) => { setError(err.message); setLoading(false) })
   }, [path, tick])
