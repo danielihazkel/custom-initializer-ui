@@ -166,7 +166,7 @@ export interface AdminDependencyCompatibility {
   sortOrder: number
 }
 
-export type AdminTab = 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates'
+export type AdminTab = 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules'
 
 export interface Toast {
   message: string
@@ -226,4 +226,33 @@ export interface TreeNode {
 export interface PreviewResponse {
   files: PreviewFile[]
   tree: TreeNode[]
+}
+
+// Module Templates (multi-module project generation)
+export interface AdminModuleTemplate {
+  id: number
+  moduleId: string
+  label: string
+  description: string
+  suffix: string
+  packaging: string
+  hasMainClass: boolean
+  sortOrder: number
+}
+
+export interface AdminModuleDependencyMapping {
+  id: number
+  dependencyId: string
+  moduleId: string
+  sortOrder: number
+}
+
+export interface ModuleTemplate {
+  moduleId: string
+  label: string
+  description: string
+  suffix: string
+  packaging: string
+  hasMainClass: boolean
+  dependencyIds: string[]
 }

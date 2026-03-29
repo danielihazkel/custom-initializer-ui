@@ -9,12 +9,17 @@ export function useProjectPreview() {
   const fetchPreview = useCallback(async (
     form: ProjectFormValues,
     selected: string[],
-    selectedOptions: Record<string, string[]>
+    selectedOptions: Record<string, string[]>,
+    multiModule?: { enabled: boolean; modules: string[] }
   ) => {
     setLoading(true)
     setError(null)
     try {
-      const url = new URL('/starter.preview', window.location.origin)
+      const isMultiModule = multiModule?.enabled && multiModule.modules.length > 0
+      const url = new URL(
+        isMultiModule ? '/starter-multimodule.preview' : '/starter.preview',
+        window.location.origin
+      )
       url.searchParams.set('type',        form.type)
       url.searchParams.set('language',    form.language)
       url.searchParams.set('bootVersion', form.bootVersion)
@@ -25,6 +30,9 @@ export function useProjectPreview() {
       url.searchParams.set('packageName', form.packageName)
       url.searchParams.set('packaging',   form.packaging)
       url.searchParams.set('javaVersion', form.javaVersion)
+      if (isMultiModule) {
+        url.searchParams.set('modules', multiModule!.modules.join(','))
+      }
       if (selected.length > 0) {
         url.searchParams.set('dependencies', selected.join(','))
       }

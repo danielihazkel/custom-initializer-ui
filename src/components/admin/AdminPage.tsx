@@ -9,6 +9,7 @@ import { BuildCustomizationsTab } from './build-customizations/BuildCustomizatio
 import { SubOptionsTab } from './sub-options/SubOptionsTab'
 import { CompatibilityTab } from './compatibility/CompatibilityTab'
 import { StarterTemplatesTab } from './starter-templates/StarterTemplatesTab'
+import { ModuleTemplatesTab } from './module-templates/ModuleTemplatesTab'
 
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('groups')
@@ -63,6 +64,7 @@ export function AdminPage() {
       {activeTab === 'suboptions'    && <SubOptionsTab />}
       {activeTab === 'compatibility' && <CompatibilityTab />}
       {activeTab === 'templates'     && <StarterTemplatesTab />}
+      {activeTab === 'modules'       && <ModuleTemplatesTab />}
     </div>
   )
 }

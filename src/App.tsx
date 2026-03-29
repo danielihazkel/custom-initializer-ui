@@ -4,11 +4,13 @@ import { useExtensions } from './hooks/useExtensions'
 import { useCompatibility } from './hooks/useCompatibility'
 import { useProjectPreview } from './hooks/useProjectPreview'
 import { useStarterTemplates } from './hooks/useStarterTemplates'
+import { useModuleTemplates } from './hooks/useModuleTemplates'
 import { ProjectPreview } from './components/ProjectPreview'
 import { ProjectForm } from './components/ProjectForm'
 import { OptionsPanel } from './components/OptionsPanel'
 import { DependencySelector } from './components/DependencySelector'
 import { TemplatePicker } from './components/TemplatePicker'
+import { ModuleSelector } from './components/ModuleSelector'
 import { TutorialView } from './components/tutorial/TutorialView'
 import { AdminPage } from './components/admin/AdminPage'
 import type { InitializrMetadata, ProjectFormValues, StarterTemplate } from './types'
@@ -61,9 +63,11 @@ function defaultForm(metadata: InitializrMetadata | null): ProjectFormValues {
 function triggerDownload(
   form: ProjectFormValues,
   selected: string[],
-  selectedOptions: Record<string, string[]>
+  selectedOptions: Record<string, string[]>,
+  multiModule?: { enabled: boolean; modules: string[] }
 ): void {
-  const url = new URL('/starter.zip', window.location.origin)
+  const isMultiModule = multiModule?.enabled && multiModule.modules.length > 0
+  const url = new URL(isMultiModule ? '/starter-multimodule.zip' : '/starter.zip', window.location.origin)
   url.searchParams.set('type', form.type)
   url.searchParams.set('language', form.language)
   url.searchParams.set('bootVersion', form.bootVersion)
@@ -74,6 +78,9 @@ function triggerDownload(
   url.searchParams.set('packageName', form.packageName)
   url.searchParams.set('packaging', form.packaging)
   url.searchParams.set('javaVersion', form.javaVersion)
+  if (isMultiModule) {
+    url.searchParams.set('modules', multiModule!.modules.join(','))
+  }
   if (selected.length > 0) {
     url.searchParams.set('dependencies', selected.join(','))
   }
@@ -95,6 +102,7 @@ export default function App() {
   const { extensions } = useExtensions()
   const { rules: compatibilityRules } = useCompatibility()
   const { templates } = useStarterTemplates()
+  const { modules: moduleTemplates } = useModuleTemplates()
   const { preview, loading: previewLoading, error: previewError, fetchPreview, clearPreview } = useProjectPreview()
   const [form, setForm] = useState<ProjectFormValues>(() => {
     const url = parseUrlParams()
@@ -122,6 +130,14 @@ export default function App() {
   })
   const [view, setView] = useState<'initializr' | 'tutorial' | 'admin'>('initializr')
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null)
+  const [multiModuleEnabled, setMultiModuleEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('multiModuleEnabled')
+    return saved === 'true'
+  })
+  const [selectedModules, setSelectedModules] = useState<string[]>(() => {
+    const saved = localStorage.getItem('selectedModules')
+    return saved ? JSON.parse(saved) : []
+  })
 
   // Sync html class with theme
   useEffect(() => {
@@ -140,6 +156,8 @@ export default function App() {
   useEffect(() => { localStorage.setItem('formValues', JSON.stringify(form)) }, [form])
   useEffect(() => { localStorage.setItem('selectedDeps', JSON.stringify(selected)) }, [selected])
   useEffect(() => { localStorage.setItem('selectedOptions', JSON.stringify(selectedOptions)) }, [selectedOptions])
+  useEffect(() => { localStorage.setItem('multiModuleEnabled', String(multiModuleEnabled)) }, [multiModuleEnabled])
+  useEffect(() => { localStorage.setItem('selectedModules', JSON.stringify(selectedModules)) }, [selectedModules])
 
   // Sync form state into the URL so the page is shareable
   useEffect(() => {
@@ -309,7 +327,7 @@ export default function App() {
             </span>
           </button>
           <button
-            onClick={() => fetchPreview(form, selected, selectedOptions)}
+            onClick={() => fetchPreview(form, selected, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules })}
             disabled={previewLoading}
             title={previewError ?? 'Preview project files before downloading'}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
@@ -319,7 +337,7 @@ export default function App() {
               : 'Explore'}
           </button>
           <button
-            onClick={() => triggerDownload(form, selected, selectedOptions)}
+            onClick={() => triggerDownload(form, selected, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules })}
             className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn"
           >
             Generate
@@ -364,6 +382,35 @@ export default function App() {
               <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="upper" />
               <ProjectForm values={form} onChange={handleFormChange} />
               <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="lower" />
+
+              {/* Multi-Module Toggle */}
+              {moduleTemplates.length > 0 && (
+                <div className="glass-panel rounded-xl p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1.5">
+                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
+                        Multi-Module Project
+                      </h3>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Generate a parent POM with sub-modules</p>
+                    </div>
+                    <button
+                      onClick={() => setMultiModuleEnabled(v => !v)}
+                      className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${multiModuleEnabled ? 'bg-primary' : 'bg-surface-container-high'}`}
+                      aria-label="Toggle multi-module"
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${multiModuleEnabled ? 'translate-x-5' : ''}`} />
+                    </button>
+                  </div>
+                  {multiModuleEnabled && (
+                    <ModuleSelector
+                      modules={moduleTemplates}
+                      selectedModules={selectedModules}
+                      onChange={setSelectedModules}
+                    />
+                  )}
+                </div>
+              )}
             </section>
 
             {/* Right Column — Dependencies */}
@@ -389,7 +436,7 @@ export default function App() {
           preview={preview}
           artifactId={form.artifactId}
           onClose={clearPreview}
-          onDownload={() => { triggerDownload(form, selected, selectedOptions); clearPreview() }}
+          onDownload={() => { triggerDownload(form, selected, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }); clearPreview() }}
         />
       )}
 
@@ -408,10 +455,16 @@ export default function App() {
               {selected.length > 0 && (
                 <span className="flex items-center gap-1.5 pl-3 border-l border-outline-variant text-on-surface">{selected.length} deps</span>
               )}
+              {multiModuleEnabled && selectedModules.length > 0 && (
+                <span className="flex items-center gap-1.5 pl-3 border-l border-outline-variant text-on-surface">
+                  <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
+                  {selectedModules.length} modules
+                </span>
+              )}
             </div>
           </div>
           <button
-            onClick={() => triggerDownload(form, selected, selectedOptions)}
+            onClick={() => triggerDownload(form, selected, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules })}
             className="px-8 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-lg"
           >
             GENERATE

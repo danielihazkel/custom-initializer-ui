@@ -11,6 +11,7 @@ const TABS: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'suboptions',    label: 'Sub-Options',   icon: 'tune' },
   { id: 'compatibility', label: 'Compatibility', icon: 'compare_arrows' },
   { id: 'templates',     label: 'Templates',     icon: 'dashboard' },
+  { id: 'modules',       label: 'Modules',       icon: 'account_tree' },
 ]
 
 interface AdminTabBarProps {
