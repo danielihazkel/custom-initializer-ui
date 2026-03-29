@@ -9,6 +9,7 @@ const TABS: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'builds',     label: 'Build Custom.', icon: 'build' },
   { id: 'suboptions',    label: 'Sub-Options',   icon: 'tune' },
   { id: 'compatibility', label: 'Compatibility', icon: 'compare_arrows' },
+  { id: 'templates',     label: 'Templates',     icon: 'dashboard' },
 ]
 
 interface AdminTabBarProps {

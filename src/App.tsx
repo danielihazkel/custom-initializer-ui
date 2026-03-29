@@ -3,13 +3,15 @@ import { useMetadata } from './hooks/useMetadata'
 import { useExtensions } from './hooks/useExtensions'
 import { useCompatibility } from './hooks/useCompatibility'
 import { useProjectPreview } from './hooks/useProjectPreview'
+import { useStarterTemplates } from './hooks/useStarterTemplates'
 import { ProjectPreview } from './components/ProjectPreview'
 import { ProjectForm } from './components/ProjectForm'
 import { OptionsPanel } from './components/OptionsPanel'
 import { DependencySelector } from './components/DependencySelector'
+import { TemplatePicker } from './components/TemplatePicker'
 import { TutorialView } from './components/tutorial/TutorialView'
 import { AdminPage } from './components/admin/AdminPage'
-import type { InitializrMetadata, ProjectFormValues } from './types'
+import type { InitializrMetadata, ProjectFormValues, StarterTemplate } from './types'
 
 function parseUrlParams(): {
   form: Partial<ProjectFormValues>
@@ -92,6 +94,7 @@ export default function App() {
   const { metadata, loading, error } = useMetadata()
   const { extensions } = useExtensions()
   const { rules: compatibilityRules } = useCompatibility()
+  const { templates } = useStarterTemplates()
   const { preview, loading: previewLoading, error: previewError, fetchPreview, clearPreview } = useProjectPreview()
   const [form, setForm] = useState<ProjectFormValues>(() => {
     const url = parseUrlParams()
@@ -118,6 +121,7 @@ export default function App() {
     return saved ? saved === 'dark' : true
   })
   const [view, setView] = useState<'initializr' | 'tutorial' | 'admin'>('initializr')
+  const [activeTemplate, setActiveTemplate] = useState<string | null>(null)
 
   // Sync html class with theme
   useEffect(() => {
@@ -206,10 +210,37 @@ export default function App() {
       })
     }
     setSelected(newSelected)
+    setActiveTemplate(null)
   }
 
   function handleOptionsChange(depId: string, optIds: string[]): void {
     setSelectedOptions(prev => ({ ...prev, [depId]: optIds }))
+    setActiveTemplate(null)
+  }
+
+  function handleTemplateSelect(template: StarterTemplate | null): void {
+    if (!template) {
+      setActiveTemplate(null)
+      setSelected([])
+      setSelectedOptions({})
+      return
+    }
+    setActiveTemplate(template.id)
+    setSelected(template.dependencies.map(d => d.depId))
+    const opts: Record<string, string[]> = {}
+    for (const dep of template.dependencies) {
+      if (dep.subOptions.length > 0) {
+        opts[dep.depId] = dep.subOptions
+      }
+    }
+    setSelectedOptions(opts)
+    const formUpdates: Partial<ProjectFormValues> = {}
+    if (template.bootVersion) formUpdates.bootVersion = template.bootVersion
+    if (template.javaVersion) formUpdates.javaVersion = template.javaVersion
+    if (template.packaging) formUpdates.packaging = template.packaging
+    if (Object.keys(formUpdates).length > 0) {
+      setForm(prev => ({ ...prev, ...formUpdates }))
+    }
   }
 
   function handleShare(): void {
@@ -311,6 +342,14 @@ export default function App() {
             Loading metadata…
           </div>
         ) : (
+          <>
+          <div className="max-w-7xl mx-auto px-8 relative z-10 animate-fade-in-up">
+            <TemplatePicker
+              templates={templates}
+              activeTemplateId={activeTemplate}
+              onSelect={handleTemplateSelect}
+            />
+          </div>
           <div className="max-w-7xl mx-auto px-8 grid grid-cols-12 gap-10 relative z-10 animate-fade-in-up">
             {/* Left Column */}
             <section className="col-span-12 lg:col-span-5 space-y-8">
@@ -340,6 +379,7 @@ export default function App() {
               />
             </section>
           </div>
+          </>
         )}
       </main>
 

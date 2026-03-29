@@ -166,11 +166,48 @@ export interface AdminDependencyCompatibility {
   sortOrder: number
 }
 
-export type AdminTab = 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility'
+export type AdminTab = 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates'
 
 export interface Toast {
   message: string
   type: 'success' | 'error'
+}
+
+// Starter Templates
+export interface StarterTemplateDep {
+  depId: string
+  subOptions: string[]
+}
+export interface StarterTemplate {
+  id: string
+  name: string
+  description: string
+  icon: string | null
+  color: string | null
+  bootVersion: string | null
+  javaVersion: string | null
+  packaging: string | null
+  dependencies: StarterTemplateDep[]
+}
+
+export interface AdminStarterTemplate {
+  id: number
+  templateId: string
+  name: string
+  description: string
+  icon: string
+  color: string
+  bootVersion: string
+  javaVersion: string
+  packaging: string
+  sortOrder: number
+}
+
+export interface AdminStarterTemplateDep {
+  id: number
+  template: { id: number }
+  depId: string
+  subOptions: string
 }
 
 // Project Preview

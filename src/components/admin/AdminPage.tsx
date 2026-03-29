@@ -7,6 +7,7 @@ import { FileContributionsTab } from './file-contributions/FileContributionsTab'
 import { BuildCustomizationsTab } from './build-customizations/BuildCustomizationsTab'
 import { SubOptionsTab } from './sub-options/SubOptionsTab'
 import { CompatibilityTab } from './compatibility/CompatibilityTab'
+import { StarterTemplatesTab } from './starter-templates/StarterTemplatesTab'
 
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('groups')
@@ -28,6 +29,7 @@ export function AdminPage() {
       {activeTab === 'builds'     && <BuildCustomizationsTab />}
       {activeTab === 'suboptions'    && <SubOptionsTab />}
       {activeTab === 'compatibility' && <CompatibilityTab />}
+      {activeTab === 'templates'     && <StarterTemplatesTab />}
     </div>
   )
 }
