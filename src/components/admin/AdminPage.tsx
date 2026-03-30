@@ -14,6 +14,7 @@ import { ModuleTemplatesTab } from './module-templates/ModuleTemplatesTab'
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('groups')
   const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('adminToken'))
+  const [reloadKey, setReloadKey] = useState(0)
 
   function handleLogin(newToken: string) {
     sessionStorage.setItem('adminToken', newToken)
@@ -55,16 +56,16 @@ export function AdminPage() {
         </button>
       </div>
 
-      <AdminTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+      <AdminTabBar activeTab={activeTab} onTabChange={setActiveTab} onImportComplete={() => setReloadKey(k => k + 1)} />
 
-      {activeTab === 'groups'     && <DependencyGroupsTab />}
-      {activeTab === 'entries'    && <DependencyEntriesTab />}
-      {activeTab === 'files'      && <FileContributionsTab />}
-      {activeTab === 'builds'     && <BuildCustomizationsTab />}
-      {activeTab === 'suboptions'    && <SubOptionsTab />}
-      {activeTab === 'compatibility' && <CompatibilityTab />}
-      {activeTab === 'templates'     && <StarterTemplatesTab />}
-      {activeTab === 'modules'       && <ModuleTemplatesTab />}
+      {activeTab === 'groups'     && <DependencyGroupsTab key={reloadKey} />}
+      {activeTab === 'entries'    && <DependencyEntriesTab key={reloadKey} />}
+      {activeTab === 'files'      && <FileContributionsTab key={reloadKey} />}
+      {activeTab === 'builds'     && <BuildCustomizationsTab key={reloadKey} />}
+      {activeTab === 'suboptions'    && <SubOptionsTab key={reloadKey} />}
+      {activeTab === 'compatibility' && <CompatibilityTab key={reloadKey} />}
+      {activeTab === 'templates'     && <StarterTemplatesTab key={reloadKey} />}
+      {activeTab === 'modules'       && <ModuleTemplatesTab key={reloadKey} />}
     </div>
   )
 }

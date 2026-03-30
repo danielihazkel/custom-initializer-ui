@@ -13,6 +13,16 @@ function handle401(res: Response): Response {
   return res
 }
 
+export class AdminApiError extends Error {
+  status: number
+  body: unknown
+  constructor(status: number, body: unknown) {
+    super(`HTTP ${status}`)
+    this.status = status
+    this.body = body
+  }
+}
+
 async function adminFetch(method: string, url: string, body?: unknown): Promise<unknown> {
   const headers: Record<string, string> = { ...getAuthHeaders() }
   if (body !== undefined) {
@@ -23,7 +33,11 @@ async function adminFetch(method: string, url: string, body?: unknown): Promise<
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   }))
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    let errorBody: unknown = null
+    try { errorBody = await res.json() } catch { /* ignore */ }
+    throw new AdminApiError(res.status, errorBody)
+  }
   if (res.status === 204 || res.headers.get('content-length') === '0') return null
   return res.json()
 }
@@ -36,7 +50,7 @@ export interface UseAdminResourceResult<T> {
   error: string | null
   create: (body: Omit<T, 'id'>) => Promise<void>
   update: (id: number, body: Partial<T>) => Promise<void>
-  remove: (id: number) => Promise<void>
+  remove: (id: number, force?: boolean) => Promise<void>
   reload: () => void
 }
 
@@ -66,8 +80,9 @@ export function useAdminResource<T extends { id: number }>(path: string): UseAdm
     reload()
   }, [path, reload])
 
-  const remove = useCallback(async (id: number): Promise<void> => {
-    await adminFetch('DELETE', `${path}/${id}`)
+  const remove = useCallback(async (id: number, force?: boolean): Promise<void> => {
+    const url = force ? `${path}/${id}?force=true` : `${path}/${id}`
+    await adminFetch('DELETE', url)
     reload()
   }, [path, reload])
 

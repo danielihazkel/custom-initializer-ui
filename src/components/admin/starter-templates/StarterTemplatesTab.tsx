@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react'
 import type { AdminStarterTemplate, AdminStarterTemplateDep, Toast } from '../../../types'
-import { useAdminResource } from '../../../hooks/useAdminResource'
+import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
-import { DeleteConfirmDialog } from '../shared/DeleteConfirmDialog'
+import { DeleteConfirmDialog, type OrphanDetails } from '../shared/DeleteConfirmDialog'
 import { StatusToast } from '../shared/StatusToast'
 import { StarterTemplateForm } from './StarterTemplateForm'
 import { FieldRow, inputClass } from '../shared/FieldRow'
@@ -29,6 +29,7 @@ export function StarterTemplatesTab() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [orphanDetails, setOrphanDetails] = useState<OrphanDetails | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
 
   // Dep CRUD state
@@ -76,6 +77,26 @@ export function StarterTemplatesTab() {
       await templates.remove(deleteTarget.id)
       setToast({ message: 'Deleted successfully', type: 'success' })
       setDeleteTarget(null)
+      setOrphanDetails(null)
+    } catch (err) {
+      if (err instanceof AdminApiError && err.status === 409 && err.body) {
+        setOrphanDetails(err.body as OrphanDetails)
+      } else {
+        setToast({ message: String(err), type: 'error' })
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function handleForceDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await templates.remove(deleteTarget.id, true)
+      setToast({ message: 'Deleted successfully (with references)', type: 'success' })
+      setDeleteTarget(null)
+      setOrphanDetails(null)
     } catch (err) {
       setToast({ message: String(err), type: 'error' })
     } finally {
@@ -259,8 +280,10 @@ export function StarterTemplatesTab() {
         <DeleteConfirmDialog
           itemLabel={`template "${deleteTarget.name}" (${deleteTarget.templateId})`}
           onConfirm={handleDelete}
-          onCancel={() => setDeleteTarget(null)}
+          onCancel={() => { setDeleteTarget(null); setOrphanDetails(null) }}
           deleting={deleting}
+          orphanDetails={orphanDetails}
+          onForceDelete={handleForceDelete}
         />
       )}
 
