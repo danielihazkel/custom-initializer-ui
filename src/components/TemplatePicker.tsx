@@ -4,9 +4,10 @@ interface TemplatePickerProps {
   templates: StarterTemplate[]
   activeTemplateId: string | null
   onSelect: (template: StarterTemplate | null) => void
+  onCompare?: () => void
 }
 
-export function TemplatePicker({ templates, activeTemplateId, onSelect }: TemplatePickerProps) {
+export function TemplatePicker({ templates, activeTemplateId, onSelect, onCompare }: TemplatePickerProps) {
   if (templates.length === 0) return null
 
   return (
@@ -68,6 +69,15 @@ export function TemplatePicker({ templates, activeTemplateId, onSelect }: Templa
           </button>
         ))}
       </div>
+      {onCompare && templates.length >= 2 && (
+        <button
+          onClick={onCompare}
+          className="mt-2 flex items-center gap-1 text-xs text-secondary hover:text-on-surface transition-colors duration-200"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>compare_arrows</span>
+          Compare templates
+        </button>
+      )}
     </div>
   )
 }

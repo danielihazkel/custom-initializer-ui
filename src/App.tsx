@@ -10,6 +10,7 @@ import { ProjectForm } from './components/ProjectForm'
 import { OptionsPanel } from './components/OptionsPanel'
 import { DependencySelector } from './components/DependencySelector'
 import { TemplatePicker } from './components/TemplatePicker'
+import { TemplateCompare } from './components/TemplateCompare'
 import { ModuleSelector } from './components/ModuleSelector'
 import { TutorialView } from './components/tutorial/TutorialView'
 import { AdminPage } from './components/admin/AdminPage'
@@ -130,6 +131,7 @@ export default function App() {
   })
   const [view, setView] = useState<'initializr' | 'tutorial' | 'admin'>('initializr')
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null)
+  const [compareOpen, setCompareOpen] = useState(false)
   const [multiModuleEnabled, setMultiModuleEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem('multiModuleEnabled')
     return saved === 'true'
@@ -366,6 +368,7 @@ export default function App() {
               templates={templates}
               activeTemplateId={activeTemplate}
               onSelect={handleTemplateSelect}
+              onCompare={() => setCompareOpen(true)}
             />
           </div>
           <div className="max-w-7xl mx-auto px-8 grid grid-cols-12 gap-10 relative z-10 animate-fade-in-up">
@@ -429,6 +432,16 @@ export default function App() {
           </>
         )}
       </main>
+
+      {/* Compare Templates modal */}
+      {compareOpen && (
+        <TemplateCompare
+          templates={templates}
+          metadata={metadata}
+          extensions={extensions}
+          onClose={() => setCompareOpen(false)}
+        />
+      )}
 
       {/* Project Preview modal */}
       {preview && (
