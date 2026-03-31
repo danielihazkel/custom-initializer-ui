@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, useMemo, type ReactNode } from 'react'
 
 export interface ColumnDef<T> {
   label: string
@@ -12,76 +12,120 @@ interface AdminTableProps<T extends { id: number }> {
   onEdit: (row: T) => void
   onDelete: (row: T) => void
   loading: boolean
+  searchable?: boolean
+  searchPlaceholder?: string
 }
 
 export function AdminTable<T extends { id: number }>({
-  columns, rows, onEdit, onDelete, loading
+  columns, rows, onEdit, onDelete, loading, searchable = true, searchPlaceholder = 'Search...'
 }: AdminTableProps<T>) {
+  const [query, setQuery] = useState('')
+
+  const filteredRows = useMemo(() => {
+    if (!searchable || !query.trim()) return rows;
+    const lowerQuery = query.toLowerCase()
+    return rows.filter(row => {
+      // Very naive text-search across all values
+      return Object.values(row).some(val => 
+        String(val).toLowerCase().includes(lowerQuery)
+      )
+    })
+  }, [rows, query, searchable])
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-outline-variant">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-surface-container-high">
-            {columns.map((col, i) => (
-              <th
-                key={i}
-                className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-secondary"
-                style={col.width ? { width: col.width } : undefined}
-              >
-                {col.label}
+    <div className="flex flex-col gap-4">
+      {searchable && (
+        <div className="flex items-center gap-2 bg-surface px-4 py-2.5 rounded-xl border border-outline-variant max-w-sm shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all">
+          <span className="material-symbols-outlined text-secondary" style={{ fontSize: '20px' }}>search</span>
+          <input 
+            type="text" 
+            placeholder={searchPlaceholder}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            className="bg-transparent border-none outline-none text-sm w-full text-on-surface placeholder:text-secondary"
+          />
+          {query && (
+            <button onClick={() => setQuery('')} className="text-secondary hover:text-on-surface">
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-2xl border border-outline-variant bg-surface shadow-sm">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-surface-container-low border-b border-outline-variant">
+              {columns.map((col, i) => (
+                <th
+                  key={i}
+                  className="px-5 py-4 text-left text-[11px] font-bold uppercase tracking-widest text-secondary"
+                  style={col.width ? { width: col.width } : undefined}
+                >
+                  {col.label}
+                </th>
+              ))}
+              <th className="px-5 py-4 text-right text-[11px] font-bold uppercase tracking-widest text-secondary w-24">
+                Actions
               </th>
-            ))}
-            <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-secondary w-20">
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {loading ? (
-            <tr>
-              <td colSpan={columns.length + 1} className="px-4 py-8 text-center text-secondary">
-                <span className="material-symbols-outlined animate-spin" style={{ fontSize: '20px' }}>
-                  progress_activity
-                </span>
-              </td>
             </tr>
-          ) : rows.length === 0 ? (
-            <tr>
-              <td colSpan={columns.length + 1} className="px-4 py-8 text-center text-secondary text-sm">
-                No items yet
-              </td>
-            </tr>
-          ) : (
-            rows.map(row => (
-              <tr key={row.id} className="border-t border-outline-variant hover:bg-surface-container-high transition-colors">
-                {columns.map((col, i) => (
-                  <td key={i} className="px-4 py-3 text-on-surface">
-                    {col.render(row)}
-                  </td>
-                ))}
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <button
-                      onClick={() => onEdit(row)}
-                      className="p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
-                      title="Edit"
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>edit</span>
-                    </button>
-                    <button
-                      onClick={() => onDelete(row)}
-                      className="p-1 rounded text-secondary hover:text-error hover:bg-error/10 transition-colors"
-                      title="Delete"
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>delete</span>
-                    </button>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={columns.length + 1} className="px-6 py-12 text-center text-secondary">
+                  <div className="flex flex-col items-center justify-center gap-3">
+                    <span className="material-symbols-outlined animate-spin text-primary" style={{ fontSize: '28px' }}>
+                      progress_activity
+                    </span>
+                    <span className="text-xs font-medium uppercase tracking-widest text-primary/80">Loading Data</span>
                   </div>
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : filteredRows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length + 1} className="px-6 py-16 text-center">
+                  <div className="flex flex-col items-center justify-center gap-2 text-secondary">
+                    <span className="material-symbols-outlined text-secondary/50" style={{ fontSize: '48px' }}>
+                      search_off
+                    </span>
+                    <p className="text-sm font-medium mt-2 text-on-surface">No results found</p>
+                    <p className="text-xs text-secondary max-w-[200px]">Try adjusting your search criteria</p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              filteredRows.map(row => (
+                <tr key={row.id} className="border-t border-outline-variant hover:bg-primary/5 transition-colors duration-150">
+                  {columns.map((col, i) => (
+                    <td key={i} className="px-5 py-4 text-on-surface">
+                      {col.render(row)}
+                    </td>
+                  ))}
+                  <td className="px-5 py-4 text-right">
+                    <div className="flex items-center justify-end gap-1.5 opacity-70 hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => onEdit(row)}
+                        className="p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
+                        title="Edit"
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>edit</span>
+                      </button>
+                      <button
+                        onClick={() => onDelete(row)}
+                        className="p-1.5 rounded-lg text-secondary hover:text-error hover:bg-error/10 transition-colors"
+                        title="Delete"
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>delete</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

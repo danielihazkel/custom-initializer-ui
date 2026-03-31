@@ -15,14 +15,14 @@ export function AdminFormDrawer({ title, isOpen, onClose, onSave, saving, childr
       {/* Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-background/60 z-30"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 transition-opacity"
           onClick={onClose}
         />
       )}
 
       {/* Drawer */}
       <div
-        className={`fixed inset-y-0 right-0 w-full sm:w-[520px] z-40 bg-surface-container border-l border-outline-variant flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 right-0 w-full sm:w-[520px] z-40 bg-surface/95 backdrop-blur-md border-l border-outline-variant shadow-[0_0_40px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -43,18 +43,18 @@ export function AdminFormDrawer({ title, isOpen, onClose, onSave, saving, childr
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-outline-variant flex-shrink-0">
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-outline-variant flex-shrink-0 bg-surface/50 backdrop-blur-sm">
           <button
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 rounded text-sm font-medium border border-outline-variant text-secondary hover:text-on-surface transition-all disabled:opacity-50"
+            className="px-4 py-2 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-on-surface hover:bg-surface-container-highest transition-all disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={onSave}
             disabled={saving}
-            className="px-5 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="px-5 py-2 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed animated-gradient-btn shadow-md"
           >
             {saving ? 'Saving…' : 'Save'}
           </button>

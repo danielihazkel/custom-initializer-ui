@@ -102,9 +102,9 @@ export function DependencyEntriesTab() {
         </div>
         <button
           onClick={openNew}
-          className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-md"
         >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
           New Entry
         </button>
       </div>

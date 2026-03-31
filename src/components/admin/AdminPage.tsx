@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import type { AdminTab } from '../../types'
-import { AdminTabBar } from './AdminTabBar'
 import { AdminLogin } from './AdminLogin'
+import { AdminSidebar } from './AdminSidebar'
+import { AdminGlobalActions } from './AdminGlobalActions'
+
 import { DependencyGroupsTab } from './dependency-groups/DependencyGroupsTab'
 import { DependencyEntriesTab } from './dependency-entries/DependencyEntriesTab'
 import { FileContributionsTab } from './file-contributions/FileContributionsTab'
@@ -38,34 +40,32 @@ export function AdminPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
-      <div className="mb-6 flex items-start justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-on-surface">Configuration</h1>
-          <p className="text-sm text-secondary mt-0.5">
-            Manage dependency catalog, file contributions, and build customizations. After making changes, click <strong>Refresh Metadata</strong> to apply them to the initializr.
-          </p>
-        </div>
-        <button
-          onClick={handleLogout}
-          title="Lock admin panel"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm text-secondary hover:text-on-surface border border-outline-variant transition-colors"
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>lock</span>
-          Lock
-        </button>
+    <div className="flex bg-surface-container-lowest rounded-2xl overflow-hidden border border-outline-variant shadow-lg relative z-20 mx-auto w-full max-w-[1400px]" style={{ height: 'calc(100vh - 8rem)' }}>
+      {/* Sidebar Navigation */}
+      <AdminSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
+        {/* Header - Top Right Corner Global Actions */}
+        <header className="flex items-center justify-end px-8 py-4 border-b border-outline-variant bg-surface/80 backdrop-blur-md">
+          <AdminGlobalActions 
+            onImportComplete={() => setReloadKey(k => k + 1)} 
+            onLogout={handleLogout} 
+          />
+        </header>
+
+        {/* Tab Content */}
+        <main className="flex-1 overflow-y-auto px-8 py-8 custom-scrollbar">
+          {activeTab === 'groups'     && <DependencyGroupsTab key={`groups-${reloadKey}`} />}
+          {activeTab === 'entries'    && <DependencyEntriesTab key={`entries-${reloadKey}`} />}
+          {activeTab === 'files'      && <FileContributionsTab key={`files-${reloadKey}`} />}
+          {activeTab === 'builds'     && <BuildCustomizationsTab key={`builds-${reloadKey}`} />}
+          {activeTab === 'suboptions' && <SubOptionsTab key={`suboptions-${reloadKey}`} />}
+          {activeTab === 'compatibility' && <CompatibilityTab key={`compat-${reloadKey}`} />}
+          {activeTab === 'templates'  && <StarterTemplatesTab key={`templates-${reloadKey}`} />}
+          {activeTab === 'modules'    && <ModuleTemplatesTab key={`modules-${reloadKey}`} />}
+        </main>
       </div>
-
-      <AdminTabBar activeTab={activeTab} onTabChange={setActiveTab} onImportComplete={() => setReloadKey(k => k + 1)} />
-
-      {activeTab === 'groups'     && <DependencyGroupsTab key={reloadKey} />}
-      {activeTab === 'entries'    && <DependencyEntriesTab key={reloadKey} />}
-      {activeTab === 'files'      && <FileContributionsTab key={reloadKey} />}
-      {activeTab === 'builds'     && <BuildCustomizationsTab key={reloadKey} />}
-      {activeTab === 'suboptions'    && <SubOptionsTab key={reloadKey} />}
-      {activeTab === 'compatibility' && <CompatibilityTab key={reloadKey} />}
-      {activeTab === 'templates'     && <StarterTemplatesTab key={reloadKey} />}
-      {activeTab === 'modules'       && <ModuleTemplatesTab key={reloadKey} />}
     </div>
   )
 }
