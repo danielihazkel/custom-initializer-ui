@@ -1,5 +1,6 @@
 import type { AdminFileContribution, FileType, SubstitutionType } from '../../../types'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
+import { CodeEditor } from './CodeEditor'
 
 const FILE_TYPES: FileType[] = ['STATIC_COPY', 'YAML_MERGE', 'TEMPLATE', 'DELETE']
 const SUB_TYPES: SubstitutionType[] = ['NONE', 'PROJECT', 'PACKAGE']
@@ -75,14 +76,17 @@ export function FileContributionForm({ data, errors, onChange }: Props) {
         />
       </FieldRow>
       <FieldRow label="Content" error={errors.content} hint={`${(data.content ?? '').length} characters`}>
-        <textarea
-          className={`${inputClass} font-mono text-xs resize-y`}
-          rows={14}
-          value={data.content ?? ''}
-          onChange={e => onChange({ content: e.target.value })}
-          placeholder="File content or template…"
-          spellCheck={false}
-        />
+        {data.fileType === 'DELETE' ? (
+          <p className="text-xs italic px-3 py-2 border border-outline-variant rounded opacity-50">
+            No content needed for DELETE contributions.
+          </p>
+        ) : (
+          <CodeEditor
+            value={data.content ?? ''}
+            onChange={content => onChange({ content })}
+            targetPath={data.targetPath ?? ''}
+          />
+        )}
       </FieldRow>
     </>
   )
