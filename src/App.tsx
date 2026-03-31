@@ -14,6 +14,7 @@ import { TemplateCompare } from './components/TemplateCompare'
 import { ModuleSelector } from './components/ModuleSelector'
 import { TutorialView } from './components/tutorial/TutorialView'
 import { AdminPage } from './components/admin/AdminPage'
+import { CommandPalette } from './components/CommandPalette'
 import type { InitializrMetadata, ProjectFormValues, StarterTemplate } from './types'
 
 function parseUrlParams(): {
@@ -140,6 +141,19 @@ export default function App() {
     const saved = localStorage.getItem('selectedModules')
     return saved ? JSON.parse(saved) : []
   })
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+
+  // Command Palette global hotkey
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setCommandPaletteOpen(o => !o)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   // Sync html class with theme
   useEffect(() => {
@@ -485,6 +499,24 @@ export default function App() {
           </button>
         </div>
       )}
+
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        metadata={metadata}
+        templates={templates}
+        form={form}
+        selectedDeps={selected}
+        onSelectTemplate={handleTemplateSelect}
+        onToggleDependency={(depId) => {
+          const newSelected = selected.includes(depId) 
+            ? selected.filter(id => id !== depId) 
+            : [...selected, depId];
+          handleDepsChange(newSelected);
+        }}
+        onFormChange={handleFormChange}
+      />
     </div>
   )
 }
