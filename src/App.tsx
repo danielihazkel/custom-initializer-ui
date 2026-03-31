@@ -289,8 +289,8 @@ export default function App() {
         <div className="flex items-center gap-8">
           <span className="text-xl font-bold text-on-surface tracking-tighter">Spring Initializr</span>
           <nav className="hidden md:flex items-center gap-6">
-            <a className="text-secondary hover:text-on-surface transition-colors duration-200 text-sm" href="#">Guides</a>
-            <a className="text-secondary hover:text-on-surface transition-colors duration-200 text-sm" href="#">Projects</a>
+            {/* <a className="text-secondary hover:text-on-surface transition-colors duration-200 text-sm" href="#">Guides</a>
+            <a className="text-secondary hover:text-on-surface transition-colors duration-200 text-sm" href="#">Projects</a> */}
             <button
               onClick={() => setView(v => v === 'tutorial' ? 'initializr' : 'tutorial')}
               className={`text-sm transition-colors duration-200 ${view === 'tutorial' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
@@ -363,72 +363,72 @@ export default function App() {
           </div>
         ) : (
           <>
-          <div className="max-w-7xl mx-auto px-8 relative z-10 animate-fade-in-up">
-            <TemplatePicker
-              templates={templates}
-              activeTemplateId={activeTemplate}
-              onSelect={handleTemplateSelect}
-              onCompare={() => setCompareOpen(true)}
-            />
-          </div>
-          <div className="max-w-7xl mx-auto px-8 grid grid-cols-12 gap-10 relative z-10 animate-fade-in-up">
-            {/* Left Column */}
-            <section className="col-span-12 lg:col-span-5 space-y-8">
-              <div className="mb-2">
-                <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">
-                  Project Setup
-                </h2>
-                <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">
-                  Configure metadata and core language settings
-                </p>
-              </div>
-              <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="upper" />
-              <ProjectForm values={form} onChange={handleFormChange} />
-              <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="lower" />
-
-              {/* Multi-Module Toggle */}
-              {moduleTemplates.length > 0 && (
-                <div className="glass-panel rounded-xl p-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1.5">
-                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
-                        Multi-Module Project
-                      </h3>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Generate a parent POM with sub-modules</p>
-                    </div>
-                    <button
-                      onClick={() => setMultiModuleEnabled(v => !v)}
-                      className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${multiModuleEnabled ? 'bg-primary' : 'bg-surface-container-high'}`}
-                      aria-label="Toggle multi-module"
-                    >
-                      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${multiModuleEnabled ? 'translate-x-5' : ''}`} />
-                    </button>
-                  </div>
-                  {multiModuleEnabled && (
-                    <ModuleSelector
-                      modules={moduleTemplates}
-                      selectedModules={selectedModules}
-                      onChange={setSelectedModules}
-                    />
-                  )}
-                </div>
-              )}
-            </section>
-
-            {/* Right Column — Dependencies */}
-            <section className="col-span-12 lg:col-span-7">
-              <DependencySelector
-                metadata={metadata}
-                selected={selected}
-                onChange={handleDepsChange}
-                extensions={extensions}
-                selectedOptions={selectedOptions}
-                onOptionsChange={handleOptionsChange}
-                compatibilityRules={compatibilityRules}
+            <div className="max-w-7xl mx-auto px-8 relative z-10 animate-fade-in-up">
+              <TemplatePicker
+                templates={templates}
+                activeTemplateId={activeTemplate}
+                onSelect={handleTemplateSelect}
+                onCompare={() => setCompareOpen(true)}
               />
-            </section>
-          </div>
+            </div>
+            <div className="max-w-7xl mx-auto px-8 grid grid-cols-12 gap-10 relative z-10 animate-fade-in-up">
+              {/* Left Column */}
+              <section className="col-span-12 lg:col-span-5 space-y-8">
+                <div className="mb-2">
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">
+                    Project Setup
+                  </h2>
+                  <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">
+                    Configure metadata and core language settings
+                  </p>
+                </div>
+                <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="upper" />
+                <ProjectForm values={form} onChange={handleFormChange} />
+                <OptionsPanel metadata={metadata} values={form} onChange={handleFormChange} section="lower" />
+
+                {/* Multi-Module Toggle */}
+                {moduleTemplates.length > 0 && (
+                  <div className="glass-panel rounded-xl p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1.5">
+                          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
+                          Multi-Module Project
+                        </h3>
+                        <p className="text-[11px] text-on-surface-variant mt-0.5">Generate a parent POM with sub-modules</p>
+                      </div>
+                      <button
+                        onClick={() => setMultiModuleEnabled(v => !v)}
+                        className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${multiModuleEnabled ? 'bg-primary' : 'bg-surface-container-high'}`}
+                        aria-label="Toggle multi-module"
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${multiModuleEnabled ? 'translate-x-5' : ''}`} />
+                      </button>
+                    </div>
+                    {multiModuleEnabled && (
+                      <ModuleSelector
+                        modules={moduleTemplates}
+                        selectedModules={selectedModules}
+                        onChange={setSelectedModules}
+                      />
+                    )}
+                  </div>
+                )}
+              </section>
+
+              {/* Right Column — Dependencies */}
+              <section className="col-span-12 lg:col-span-7">
+                <DependencySelector
+                  metadata={metadata}
+                  selected={selected}
+                  onChange={handleDepsChange}
+                  extensions={extensions}
+                  selectedOptions={selectedOptions}
+                  onOptionsChange={handleOptionsChange}
+                  compatibilityRules={compatibilityRules}
+                />
+              </section>
+            </div>
           </>
         )}
       </main>
