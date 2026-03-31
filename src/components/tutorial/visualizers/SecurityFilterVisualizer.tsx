@@ -70,32 +70,32 @@ const SecurityFilterVisualizer: React.FC = () => {
   };
 
   const getFilterIcon = (filter: typeof filters[0], state: string) => {
-    if (state === 'passed') return <CheckCircle2 className="text-green-400" size={18} />;
-    if (state === 'failed') return <XCircle className="text-red-400" size={18} />;
+    if (state === 'passed') return <CheckCircle2 className="text-primary" size={18} />;
+    if (state === 'failed') return <XCircle className="text-error" size={18} />;
 
     switch (filter.role) {
-      case 'Authentication': return <User size={18} className="text-blue-400" />;
-      case 'Authorization': return <Lock size={18} className="text-purple-400" />;
-      case 'Protection': return <Shield size={18} className="text-orange-400" />;
-      default: return <ShieldCheck size={18} className="text-gray-400" />;
+      case 'Authentication': return <User size={18} className="text-primary" />;
+      case 'Authorization': return <Lock size={18} className="text-tertiary" />;
+      case 'Protection': return <Shield size={18} className="text-secondary" />;
+      default: return <ShieldCheck size={18} className="text-outline" />;
     }
   };
 
   return (
-    <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-2xl flex flex-col">
-      <div className="p-6 border-b border-gray-800 bg-gray-900/50">
+    <div className="glass-card rounded-2xl overflow-hidden flex flex-col relative">
+      <div className="p-6 border-b border-outline-variant bg-surface-variant/30">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-              <Shield className="text-blue-400" size={20} />
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
+              <Shield className="text-primary" size={20} />
             </div>
             <div>
-              <h3 className="text-white font-bold text-lg">Security Filter Chain</h3>
-              <p className="text-gray-500 text-xs">Visualize request interception and validation</p>
+              <h3 className="text-on-surface font-bold text-lg">Security Filter Chain</h3>
+              <p className="text-secondary text-xs">Visualize request interception and validation</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-gray-950 p-1 rounded-xl border border-gray-800">
+          <div className="flex items-center gap-2 bg-surface-container-high p-1 rounded-xl border border-outline-variant">
             {(['valid', 'invalid-token', 'unauthorized'] as const).map((s) => (
               <button
                 key={s}
@@ -104,8 +104,8 @@ const SecurityFilterVisualizer: React.FC = () => {
                 className={`
                   px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all
                   ${scenario === s
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
-                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                    ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+                    : 'text-secondary hover:text-on-surface hover:bg-surface-variant'
                   }
                 `}
               >
@@ -115,15 +115,15 @@ const SecurityFilterVisualizer: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 bg-gray-950 p-4 rounded-xl border border-gray-800">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700">
-            <Globe size={14} className="text-blue-400" />
-            <span className="text-xs font-mono text-gray-300">GET /api/admin/users</span>
+        <div className="flex items-center gap-4 bg-surface-container/50 p-4 rounded-xl border border-outline-variant">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-variant border border-outline-variant">
+            <Globe size={14} className="text-primary" />
+            <span className="text-xs font-mono text-on-surface-variant">GET /api/admin/users</span>
           </div>
-          <div className="flex-1 h-px bg-gray-800 relative">
+          <div className="flex-1 h-px bg-outline-variant relative">
             {isProcessing && (
               <motion.div
-                className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-primary rounded-full shadow-[0_0_10px_var(--color-primary)]"
                 animate={{ left: ['0%', '100%'] }}
                 transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
               />
@@ -135,8 +135,8 @@ const SecurityFilterVisualizer: React.FC = () => {
             className={`
               flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all
               ${isProcessing
-                ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                : 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-900/20'
+                ? 'bg-surface-variant text-secondary cursor-not-allowed'
+                : 'bg-primary text-on-primary hover:bg-primary-container shadow-lg shadow-primary/20'
               }
             `}
           >
@@ -146,58 +146,57 @@ const SecurityFilterVisualizer: React.FC = () => {
         </div>
       </div>
 
-      <div className="p-8 bg-[#0d1117] flex flex-col items-center gap-8 min-h-[400px]">
+      <div className="p-8 bg-surface-container flex flex-col items-center gap-8 min-h-[400px]">
         <div className="flex flex-wrap justify-center gap-4 max-w-4xl">
           {filters.map((filter, index) => (
             <div key={filter.id} className="flex items-center gap-4">
               <motion.div
                 animate={{
-                  scale: activeFilterIndex === index ? 1.05 : 1,
-                  borderColor: activeFilterIndex === index ? '#3b82f6' :
-                              filterStates[filter.id] === 'passed' ? '#22c55e' :
-                              filterStates[filter.id] === 'failed' ? '#ef4444' : '#1f2937'
+                  scale: activeFilterIndex === index ? 1.05 : 1
                 }}
                 className={`
-                  w-40 p-4 rounded-xl border-2 bg-gray-900/50 backdrop-blur-sm relative transition-colors
-                  ${activeFilterIndex === index ? 'shadow-[0_0_20px_rgba(59,130,246,0.2)]' : ''}
+                  w-40 p-4 rounded-xl border-2 bg-surface backdrop-blur-sm relative transition-colors duration-300
+                  ${activeFilterIndex === index ? 'border-primary shadow-lg shadow-primary/20' :
+                    filterStates[filter.id] === 'passed' ? 'border-primary' :
+                    filterStates[filter.id] === 'failed' ? 'border-error' : 'border-outline-variant'
+                  }
                 `}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <div className="p-1.5 rounded-lg bg-gray-800 border border-gray-700">
+                  <div className="p-1.5 rounded-lg bg-surface-variant border border-outline-variant">
                     {getFilterIcon(filter, filterStates[filter.id])}
                   </div>
-                  <div className="text-[8px] font-black uppercase tracking-widest text-gray-500">
+                  <div className="text-[8px] font-black uppercase tracking-widest text-secondary">
                     {filter.role}
                   </div>
                 </div>
-                <h4 className="text-[10px] font-bold text-white truncate">{filter.name}</h4>
+                <h4 className="text-[10px] font-bold text-on-surface truncate">{filter.name}</h4>
 
                 {activeFilterIndex === index && (
                   <motion.div
                     layoutId="active-indicator"
-                    className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-gray-900 animate-pulse"
+                    className="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full border-2 border-surface animate-pulse"
                   />
                 )}
               </motion.div>
 
               {index < filters.length - 1 && (
-                <ArrowRight size={16} className="text-gray-800 shrink-0" />
+                <ArrowRight size={16} className="text-outline-variant shrink-0" />
               )}
             </div>
           ))}
 
-          <ArrowRight size={16} className="text-gray-800 shrink-0" />
+          <ArrowRight size={16} className="text-outline-variant shrink-0" />
 
           <motion.div
             animate={{
               opacity: requestStatus === 'authorized' ? 1 : 0.3,
-              scale: requestStatus === 'authorized' ? 1.1 : 1,
-              borderColor: requestStatus === 'authorized' ? '#22c55e' : '#1f2937'
+              scale: requestStatus === 'authorized' ? 1.1 : 1
             }}
-            className="w-40 p-4 rounded-xl border-2 bg-gray-900/50 flex flex-col items-center justify-center gap-2"
+            className={`w-40 p-4 rounded-xl border-2 bg-surface flex flex-col items-center justify-center gap-2 transition-colors duration-300 ${requestStatus === 'authorized' ? 'border-primary' : 'border-outline-variant'}`}
           >
-            <Server size={24} className={requestStatus === 'authorized' ? 'text-green-400' : 'text-gray-600'} />
-            <span className="text-[10px] font-bold text-white uppercase tracking-widest">Controller</span>
+            <Server size={24} className={requestStatus === 'authorized' ? 'text-primary' : 'text-secondary'} />
+            <span className="text-[10px] font-bold text-on-surface uppercase tracking-widest">Controller</span>
           </motion.div>
         </div>
 
@@ -209,31 +208,31 @@ const SecurityFilterVisualizer: React.FC = () => {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="bg-gray-900/80 border border-gray-800 p-6 rounded-2xl"
+                className="bg-surface-variant/50 border border-outline-variant p-6 rounded-2xl"
               >
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="px-2 py-1 rounded bg-blue-500/10 border border-blue-500/20 text-[10px] font-bold text-blue-400 uppercase tracking-widest">
+                  <div className="px-2 py-1 rounded bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary uppercase tracking-widest">
                     Active Filter
                   </div>
-                  <h4 className="text-white font-bold">{filters[activeFilterIndex].name}</h4>
+                  <h4 className="text-on-surface font-bold">{filters[activeFilterIndex].name}</h4>
                 </div>
-                <p className="text-gray-400 text-sm leading-relaxed">
+                <p className="text-on-surface-variant text-sm leading-relaxed">
                   {filters[activeFilterIndex].description}
                 </p>
 
                 <div className="mt-4 flex items-center gap-4">
                   <div className="flex flex-col">
-                    <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Status</span>
+                    <span className="text-[9px] text-secondary font-bold uppercase tracking-wider">Status</span>
                     <span className={`text-xs font-mono font-bold uppercase ${
-                      filterStates[filters[activeFilterIndex].id] === 'passed' ? 'text-green-400' :
-                      filterStates[filters[activeFilterIndex].id] === 'failed' ? 'text-red-400' : 'text-blue-400'
+                      filterStates[filters[activeFilterIndex].id] === 'passed' ? 'text-primary' :
+                      filterStates[filters[activeFilterIndex].id] === 'failed' ? 'text-error' : 'text-primary/70'
                     }`}>
                       {filterStates[filters[activeFilterIndex].id]}
                     </span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Context</span>
-                    <span className="text-xs font-mono text-gray-400">
+                    <span className="text-[9px] text-secondary font-bold uppercase tracking-wider">Context</span>
+                    <span className="text-xs font-mono text-on-surface-variant">
                       {requestStatus === 'authenticated' ? 'SecurityContext: AUTHENTICATED' : 'SecurityContext: ANONYMOUS'}
                     </span>
                   </div>
@@ -241,22 +240,22 @@ const SecurityFilterVisualizer: React.FC = () => {
               </motion.div>
             ) : (
               <div className="text-center p-8">
-                <p className="text-gray-600 text-sm italic">Select a scenario and run simulation to see the filter chain in action</p>
+                <p className="text-secondary text-sm italic">Select a scenario and run simulation to see the filter chain in action</p>
               </div>
             )}
           </AnimatePresence>
         </div>
       </div>
 
-      <div className="p-4 bg-gray-950 border-t border-gray-800 flex items-center justify-between">
+      <div className="p-4 bg-surface border-t border-outline-variant flex items-center justify-between">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${requestStatus === 'authenticated' || requestStatus === 'authorized' ? 'bg-green-500' : 'bg-gray-800'}`} />
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Authenticated</span>
+            <div className={`w-2 h-2 rounded-full ${requestStatus === 'authenticated' || requestStatus === 'authorized' ? 'bg-primary' : 'bg-outline-variant'}`} />
+            <span className="text-[10px] font-bold text-secondary uppercase tracking-widest">Authenticated</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${requestStatus === 'authorized' ? 'bg-green-500' : 'bg-gray-800'}`} />
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Authorized</span>
+            <div className={`w-2 h-2 rounded-full ${requestStatus === 'authorized' ? 'bg-primary' : 'bg-outline-variant'}`} />
+            <span className="text-[10px] font-bold text-secondary uppercase tracking-widest">Authorized</span>
           </div>
         </div>
 
@@ -265,7 +264,7 @@ const SecurityFilterVisualizer: React.FC = () => {
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-[10px] font-bold text-green-400 uppercase tracking-widest"
+              className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary uppercase tracking-widest"
             >
               <ShieldCheck size={12} />
               Access Granted
@@ -275,7 +274,7 @@ const SecurityFilterVisualizer: React.FC = () => {
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-[10px] font-bold text-red-400 uppercase tracking-widest"
+              className="flex items-center gap-2 px-3 py-1 rounded-full bg-error/10 border border-error/20 text-[10px] font-bold text-error uppercase tracking-widest"
             >
               <ShieldAlert size={12} />
               Access Denied (403)

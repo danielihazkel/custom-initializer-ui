@@ -41,31 +41,31 @@ const MicroservicesTopology: React.FC = () => {
 
   const getNodeColor = (type: string) => {
     switch (type) {
-      case 'client': return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
-      case 'infrastructure': return 'text-purple-400 bg-purple-500/10 border-purple-500/20';
-      case 'service': return 'text-green-400 bg-green-500/10 border-green-500/20';
-      case 'database': return 'text-orange-400 bg-orange-500/10 border-orange-500/20';
-      default: return 'text-gray-400 bg-gray-500/10 border-gray-500/20';
+      case 'client': return 'text-primary bg-primary/10 border-primary/20';
+      case 'infrastructure': return 'text-secondary bg-secondary/10 border-secondary/20';
+      case 'service': return 'text-tertiary bg-tertiary/10 border-tertiary/20';
+      case 'database': return 'text-on-surface-variant bg-surface-container-high border-outline-variant';
+      default: return 'text-secondary bg-surface-variant border-outline-variant';
     }
   };
 
   const selectedNodeData = nodes.find(n => n.id === selectedNode);
 
   return (
-    <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-2xl flex flex-col">
-      <div className="p-6 border-b border-gray-800 bg-gray-900/50">
+    <div className="glass-card rounded-2xl overflow-hidden flex flex-col relative">
+      <div className="p-6 border-b border-outline-variant bg-surface-variant/30">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center border border-green-500/20">
-              <Share2 className="text-green-400" size={20} />
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
+              <Share2 className="text-primary" size={20} />
             </div>
             <div>
-              <h3 className="text-white font-bold text-lg">Microservices Topology</h3>
-              <p className="text-gray-500 text-xs">Interactive system architecture and service dependencies</p>
+              <h3 className="text-on-surface font-bold text-lg">Microservices Topology</h3>
+              <p className="text-secondary text-xs">Interactive system architecture and service dependencies</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-gray-950 p-1 rounded-xl border border-gray-800">
+          <div className="flex items-center gap-2 bg-surface-variant/50 p-1 rounded-xl border border-outline-variant">
             {(['idle', 'request', 'failure'] as const).map((s) => (
               <button
                 key={s}
@@ -73,8 +73,8 @@ const MicroservicesTopology: React.FC = () => {
                 className={`
                   px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all
                   ${activeScenario === s
-                    ? 'bg-green-600 text-white shadow-lg shadow-green-900/20'
-                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                    ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+                    : 'text-secondary hover:text-on-surface hover:bg-surface-variant'
                   }
                 `}
               >
@@ -85,15 +85,15 @@ const MicroservicesTopology: React.FC = () => {
         </div>
       </div>
 
-      <div className="relative h-[500px] bg-[#0d1117] overflow-hidden group">
+      <div className="relative h-[500px] bg-surface-container overflow-hidden group">
         {/* SVG for Links */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           <defs>
-            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-              <polygon points="0 0, 10 3.5, 0 7" fill="#1f2937" />
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" className="text-outline">
+              <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" />
             </marker>
-            <marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-              <polygon points="0 0, 10 3.5, 0 7" fill="#10b981" />
+            <marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" className="text-primary">
+              <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" />
             </marker>
           </defs>
 
@@ -111,15 +111,14 @@ const MicroservicesTopology: React.FC = () => {
                 <line
                   x1={start.x + 40} y1={start.y + 20}
                   x2={end.x} y2={end.y + 20}
-                  stroke={isActive ? '#10b981' : '#1f2937'}
+                  className={`transition-colors duration-500 ${isActive ? 'stroke-primary' : 'stroke-outline-variant'}`}
                   strokeWidth={isActive ? 2 : 1}
                   markerEnd={isActive ? "url(#arrowhead-active)" : "url(#arrowhead)"}
-                  className="transition-colors duration-500"
                 />
                 {isActive && (
                   <motion.circle
                     r="3"
-                    fill="#10b981"
+                    className="fill-primary"
                     animate={{
                       cx: [start.x + 40, end.x],
                       cy: [start.y + 20, end.y + 20]
@@ -161,18 +160,18 @@ const MicroservicesTopology: React.FC = () => {
               className={`
                 absolute w-40 p-3 rounded-xl border-2 cursor-pointer transition-all
                 ${getNodeColor(node.type)}
-                ${isSelected ? 'shadow-[0_0_20px_rgba(16,185,129,0.2)] z-20' : 'z-10'}
-                ${isFailed ? 'border-red-500/50 bg-red-500/10 animate-pulse' : ''}
+                ${isSelected ? 'shadow-[0_0_20px_var(--color-primary)] border-primary z-20' : 'z-10'}
+                ${isFailed ? 'border-error/50 bg-error/10 animate-pulse' : ''}
               `}
             >
               <div className="flex items-center justify-between mb-1">
-                <div className="p-1.5 rounded-lg bg-gray-900/50 border border-white/5">
-                  {isFailed ? <Zap size={14} className="text-red-400" /> : getNodeIcon(node.type)}
+                <div className="p-1.5 rounded-lg bg-surface-container/50 border border-outline-variant">
+                  {isFailed ? <Zap size={14} className="text-error" /> : getNodeIcon(node.type)}
                 </div>
-                {isSelected && <Activity size={12} className="text-green-400 animate-pulse" />}
+                {isSelected && <Activity size={12} className="text-primary animate-pulse" />}
               </div>
-              <h4 className="text-[10px] font-bold text-white uppercase tracking-wider truncate">{node.label}</h4>
-              <div className="text-[8px] text-gray-500 font-mono mt-1">
+              <h4 className="text-[10px] font-bold text-on-surface uppercase tracking-wider truncate">{node.label}</h4>
+              <div className="text-[8px] opacity-80 font-mono mt-1">
                 {isFailed ? 'STATUS: DOWN' : 'STATUS: UP'}
               </div>
             </motion.div>
@@ -186,31 +185,31 @@ const MicroservicesTopology: React.FC = () => {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
-              className="absolute top-6 right-6 w-72 bg-gray-900/90 backdrop-blur-md border border-gray-800 rounded-2xl p-6 shadow-2xl z-30"
+              className="absolute top-6 right-6 w-72 glass-panel border-outline-variant rounded-2xl p-6 shadow-2xl z-30"
             >
               <div className="flex items-center justify-between mb-4">
-                <div className={`p-2 rounded-xl ${getNodeColor(selectedNodeData.type)}`}>
+                <div className={`p-2 rounded-xl bg-surface-container border border-outline-variant`}>
                   {getNodeIcon(selectedNodeData.type)}
                 </div>
-                <button onClick={() => setSelectedNode(null)} className="text-gray-500 hover:text-white">
+                <button onClick={() => setSelectedNode(null)} className="text-secondary hover:text-on-surface">
                   <Globe size={16} />
                 </button>
               </div>
-              <h4 className="text-white font-bold mb-1">{selectedNodeData.label}</h4>
-              <p className="text-xs text-gray-400 leading-relaxed mb-4">
+              <h4 className="text-on-surface font-bold mb-1">{selectedNodeData.label}</h4>
+              <p className="text-xs text-on-surface-variant leading-relaxed mb-4">
                 {selectedNodeData.description}
               </p>
 
               <div className="space-y-3">
                 <div className="flex flex-col gap-1">
-                  <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Type</span>
-                  <span className="text-[10px] text-gray-300 font-mono">{selectedNodeData.type.toUpperCase()}</span>
+                  <span className="text-[9px] text-secondary font-bold uppercase tracking-wider">Type</span>
+                  <span className="text-[10px] text-on-surface-variant font-mono">{selectedNodeData.type.toUpperCase()}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Dependencies</span>
+                  <span className="text-[9px] text-secondary font-bold uppercase tracking-wider">Dependencies</span>
                   <div className="flex flex-wrap gap-1">
                     {links.filter(l => l.source === selectedNodeData.id).map(l => (
-                      <span key={l.target} className="px-1.5 py-0.5 rounded bg-gray-800 border border-gray-700 text-[8px] text-gray-400">
+                      <span key={l.target} className="px-1.5 py-0.5 rounded bg-surface-variant border border-outline-variant text-[8px] text-secondary">
                         {l.target}
                       </span>
                     ))}
@@ -222,36 +221,36 @@ const MicroservicesTopology: React.FC = () => {
         </AnimatePresence>
 
         {/* Bottom Help Text */}
-        <div className="absolute bottom-4 left-6 flex items-center gap-4 text-[10px] text-gray-500 font-medium">
+        <div className="absolute bottom-4 left-6 flex items-center gap-4 text-[10px] text-secondary font-medium">
           <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-blue-400" /> Client
+            <div className="w-2 h-2 rounded-full bg-primary" /> Client
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-purple-400" /> Infrastructure
+            <div className="w-2 h-2 rounded-full bg-secondary" /> Infrastructure
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-green-400" /> Service
+            <div className="w-2 h-2 rounded-full bg-tertiary" /> Service
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-orange-400" /> Database
+            <div className="w-2 h-2 rounded-full bg-on-surface-variant" /> Database
           </div>
         </div>
       </div>
 
-      <div className="p-4 bg-gray-950 border-t border-gray-800 flex items-center justify-between">
-        <div className="flex items-center gap-4 text-xs text-gray-400">
+      <div className="p-4 bg-surface border-t border-outline-variant flex items-center justify-between">
+        <div className="flex items-center gap-4 text-xs text-secondary">
           <div className="flex items-center gap-2">
-            <Shield size={14} className="text-blue-400" />
+            <Shield size={14} className="text-primary" />
             <span>Encrypted Traffic</span>
           </div>
           <div className="flex items-center gap-2">
-            <Zap size={14} className="text-yellow-400" />
+            <Zap size={14} className="text-tertiary" />
             <span>Auto-Scaling Enabled</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-          <Activity size={12} className="text-green-500" />
+        <div className="flex items-center gap-2 text-[10px] font-bold text-secondary uppercase tracking-widest">
+          <Activity size={12} className="text-primary" />
           System Health: 99.9%
         </div>
       </div>

@@ -117,28 +117,28 @@ tasks.named('test') {
   };
 
   return (
-    <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-2xl">
-      <div className="p-6 border-b border-gray-800 bg-gray-900/50">
+    <div className="glass-card rounded-2xl overflow-hidden flex flex-col relative">
+      <div className="p-6 border-b border-outline-variant bg-surface-variant/30">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-              <Package className="text-blue-400" size={20} />
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
+              <Package className="text-primary" size={20} />
             </div>
             <div>
-              <h3 className="text-white font-bold text-lg">Project Scaffolder</h3>
-              <p className="text-gray-500 text-xs">Generate build configuration for this lesson</p>
+              <h3 className="text-on-surface font-bold text-lg">Project Scaffolder</h3>
+              <p className="text-secondary text-xs">Generate build configuration for this lesson</p>
             </div>
           </div>
-          <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700">
+          <div className="flex bg-surface-container-high p-1 rounded-lg border border-outline-variant">
             <button
               onClick={() => setFormat('maven')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${format === 'maven' ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${format === 'maven' ? 'bg-surface text-on-surface shadow-sm' : 'text-secondary hover:text-on-surface'}`}
             >
               Maven
             </button>
             <button
               onClick={() => setFormat('gradle')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${format === 'gradle' ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${format === 'gradle' ? 'bg-surface text-on-surface shadow-sm' : 'text-secondary hover:text-on-surface'}`}
             >
               Gradle
             </button>
@@ -152,14 +152,14 @@ tasks.named('test') {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05 }}
-              className="bg-gray-800/40 border border-gray-700/50 p-3 rounded-xl flex items-start gap-3 group hover:border-blue-500/30 transition-colors"
+              className="bg-surface/40 border border-outline-variant/60 p-3 rounded-xl flex items-start gap-3 group hover:border-primary/30 hover:bg-surface-variant/40 transition-colors"
             >
               <div className="mt-1">
-                <Box size={14} className="text-gray-500 group-hover:text-blue-400 transition-colors" />
+                <Box size={14} className="text-secondary group-hover:text-primary transition-colors" />
               </div>
               <div className="overflow-hidden">
-                <h4 className="text-gray-200 text-xs font-bold truncate">{dep.artifactId}</h4>
-                <p className="text-gray-500 text-[10px] leading-tight mt-1">{dep.description}</p>
+                <h4 className="text-on-surface-variant text-xs font-bold truncate">{dep.artifactId}</h4>
+                <p className="text-secondary text-[10px] leading-tight mt-1">{dep.description}</p>
               </div>
             </motion.div>
           ))}
@@ -170,29 +170,29 @@ tasks.named('test') {
         <div className="absolute top-4 right-4 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={handleCopy}
-            className="p-2 bg-gray-800/90 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-all flex items-center gap-2 text-xs font-medium"
+            className="p-2 bg-surface-container-high/90 hover:bg-surface-variant text-on-surface-variant rounded-lg border border-outline-variant transition-all flex items-center gap-2 text-xs font-medium"
           >
-            {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+            {copied ? <Check size={14} className="text-tertiary" /> : <Copy size={14} />}
             {copied ? 'Copied!' : 'Copy'}
           </button>
           <button
             onClick={handleDownload}
-            className="p-2 bg-gray-800/90 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-all flex items-center gap-2 text-xs font-medium"
+            className="p-2 bg-surface-container-high/90 hover:bg-surface-variant text-on-surface-variant rounded-lg border border-outline-variant transition-all flex items-center gap-2 text-xs font-medium"
           >
             <Download size={14} />
             Download
           </button>
         </div>
 
-        <div className="bg-[#0d1117] p-6 max-h-[400px] overflow-y-auto tutorial-scroll">
-          <pre className="font-mono text-sm leading-6 text-gray-300">
+        <div className="bg-surface-container p-6 max-h-[400px] overflow-y-auto tutorial-scroll">
+          <pre className="font-mono text-sm leading-6 text-on-surface-variant">
             <code>{code}</code>
           </pre>
         </div>
       </div>
 
-      <div className="p-4 bg-gray-950 border-t border-gray-800 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-[10px] text-gray-500 font-medium uppercase tracking-wider">
+      <div className="p-4 bg-surface border-t border-outline-variant flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[10px] text-secondary font-medium uppercase tracking-wider">
           <Settings2 size={12} />
           Environment: Java 17, Spring Boot 3.2.2
         </div>
@@ -200,7 +200,7 @@ tasks.named('test') {
           href="https://start.spring.io"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 font-bold uppercase tracking-wider transition-colors"
+          className="text-[10px] text-primary hover:text-primary/80 flex items-center gap-1 font-bold uppercase tracking-wider transition-colors"
         >
           Spring Initializr
           <ExternalLink size={10} />

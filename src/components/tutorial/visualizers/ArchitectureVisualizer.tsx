@@ -106,7 +106,7 @@ const COMPONENT_DETAILS: Record<string, ComponentDetail> = {
 };
 
 const getIcon = (id: string, active: boolean) => {
-  const color = active ? 'text-green-400' : 'text-gray-500';
+  const color = active ? 'text-primary' : 'text-secondary';
   switch (id) {
     case 'client': return <Globe className={`w-6 h-6 ${color}`} />;
     case 'gateway': return <Router className={`w-6 h-6 ${color}`} />;
@@ -141,22 +141,22 @@ const ArchitectureVisualizer: React.FC<Props> = ({ activeStage }) => {
 
   return (
     <div className="w-full flex flex-col gap-6" ref={containerRef}>
-      <div className="bg-gray-900/80 p-6 rounded-2xl border border-gray-800 shadow-xl backdrop-blur-md relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-green-500/30 to-transparent"></div>
+      <div className="glass-panel p-6 rounded-2xl relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent"></div>
 
         <div className="flex items-center justify-between mb-8">
-            <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2">
-                <Activity size={12} className="text-green-500" />
+            <h3 className="text-secondary text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2">
+                <Activity size={12} className="text-primary" />
                 System Architecture Flow
             </h3>
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
-                    <span className="text-[10px] text-gray-500 font-medium uppercase">Active</span>
+                    <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_var(--color-primary)]"></div>
+                    <span className="text-[10px] text-secondary font-medium uppercase">Active</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-gray-700"></div>
-                    <span className="text-[10px] text-gray-500 font-medium uppercase">Idle</span>
+                    <div className="w-2 h-2 rounded-full bg-outline-variant"></div>
+                    <span className="text-[10px] text-secondary font-medium uppercase">Idle</span>
                 </div>
             </div>
         </div>
@@ -182,10 +182,10 @@ const ArchitectureVisualizer: React.FC<Props> = ({ activeStage }) => {
                   className={`
                     relative z-10 w-14 h-14 rounded-xl flex items-center justify-center transition-all duration-300 border
                     ${isActive
-                      ? 'bg-green-500/10 border-green-500/50 shadow-[0_0_20px_rgba(34,197,94,0.2)]'
+                      ? 'bg-primary/10 border-primary/50 shadow-[0_0_20px_var(--color-primary)]'
                       : isSelected
-                        ? 'bg-blue-500/10 border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.2)]'
-                        : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
+                        ? 'bg-primary-container/10 border-primary-container/50 shadow-[0_0_20px_var(--color-primary-container)]'
+                        : 'bg-surface-variant border-outline-variant hover:border-outline'
                     }
                   `}
                 >
@@ -193,7 +193,7 @@ const ArchitectureVisualizer: React.FC<Props> = ({ activeStage }) => {
 
                   {/* Label */}
                   <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                    <span className={`text-[10px] font-bold uppercase tracking-tighter transition-colors ${isActive ? 'text-green-400' : isSelected ? 'text-blue-400' : 'text-gray-500'}`}>
+                    <span className={`text-[10px] font-bold uppercase tracking-tighter transition-colors ${isActive ? 'text-primary' : isSelected ? 'text-primary-container' : 'text-secondary'}`}>
                       {step.label}
                     </span>
                   </div>
@@ -202,7 +202,7 @@ const ArchitectureVisualizer: React.FC<Props> = ({ activeStage }) => {
                   {isActive && (
                     <motion.div
                       layoutId="active-ring"
-                      className="absolute inset-0 rounded-xl border-2 border-green-500/50"
+                      className="absolute inset-0 rounded-xl border-2 border-primary/50"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.3 }}
@@ -212,7 +212,7 @@ const ArchitectureVisualizer: React.FC<Props> = ({ activeStage }) => {
 
                 {index < ARCHITECTURE_STEPS.length - 1 && (
                   <div className="w-6 flex items-center justify-center">
-                    <ArrowRight className={`w-3 h-3 transition-colors ${isActive ? 'text-green-500 animate-pulse' : 'text-gray-700'}`} />
+                    <ArrowRight className={`w-3 h-3 transition-colors ${isActive ? 'text-primary animate-pulse' : 'text-outline-variant'}`} />
                   </div>
                 )}
               </div>
@@ -228,54 +228,54 @@ const ArchitectureVisualizer: React.FC<Props> = ({ activeStage }) => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-2xl relative overflow-hidden group"
+            className="glass-card rounded-2xl p-5 relative overflow-hidden group"
           >
             <div className="absolute top-0 right-0 p-2">
                 <button
                     onClick={() => setSelectedId(null)}
-                    className="p-1 hover:bg-gray-800 rounded-md text-gray-500 transition-colors"
+                    className="p-1 hover:bg-surface-variant rounded-md text-secondary transition-colors"
                 >
                     <X size={16} />
                 </button>
             </div>
 
             <div className="flex gap-5">
-                <div className="w-12 h-12 rounded-xl bg-gray-800 flex items-center justify-center shrink-0 border border-gray-700 group-hover:border-blue-500/30 transition-colors">
+                <div className="w-12 h-12 rounded-xl bg-surface-variant flex items-center justify-center shrink-0 border border-outline-variant group-hover:border-primary/30 transition-colors">
                     {selectedDetail.icon}
                 </div>
                 <div className="space-y-4 flex-1">
                     <div>
-                        <h4 className="text-white font-bold text-lg flex items-center gap-2">
+                        <h4 className="text-on-surface font-bold text-lg flex items-center gap-2">
                             {selectedDetail.title}
                             {activeStage === selectedId && (
-                                <span className="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full border border-green-500/30 font-bold uppercase tracking-wider">
+                                <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full border border-primary/30 font-bold uppercase tracking-wider">
                                     Current Context
                                 </span>
                             )}
                         </h4>
-                        <p className="text-gray-400 text-sm leading-relaxed mt-1">
+                        <p className="text-on-surface-variant text-sm leading-relaxed mt-1">
                             {selectedDetail.description}
                         </p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/50">
-                            <h5 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                <Cpu size={12} className="text-blue-400" />
+                        <div className="bg-surface-variant/50 p-3 rounded-xl border border-outline-variant/50">
+                            <h5 className="text-[10px] font-bold text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <Cpu size={12} className="text-primary" />
                                 Spring Framework Role
                             </h5>
-                            <p className="text-xs text-gray-300 leading-relaxed">
+                            <p className="text-xs text-on-surface-variant leading-relaxed">
                                 {selectedDetail.springRole}
                             </p>
                         </div>
-                        <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/50">
-                            <h5 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                <Lock size={12} className="text-purple-400" />
+                        <div className="bg-surface-variant/50 p-3 rounded-xl border border-outline-variant/50">
+                            <h5 className="text-[10px] font-bold text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <Lock size={12} className="text-tertiary" />
                                 Key Annotations
                             </h5>
                             <div className="flex flex-wrap gap-1.5">
                                 {selectedDetail.keyAnnotations.map(anno => (
-                                    <span key={anno} className="text-[10px] font-mono bg-gray-950 text-purple-400 px-1.5 py-0.5 rounded border border-purple-500/20">
+                                    <span key={anno} className="text-[10px] font-mono bg-surface-container-highest text-tertiary px-1.5 py-0.5 rounded border border-tertiary/20">
                                         {anno}
                                     </span>
                                 ))}
@@ -286,13 +286,13 @@ const ArchitectureVisualizer: React.FC<Props> = ({ activeStage }) => {
             </div>
           </motion.div>
         ) : (
-          <div className="bg-gray-900/40 border border-dashed border-gray-800 rounded-2xl p-8 flex flex-col items-center justify-center text-center space-y-3">
-             <div className="w-10 h-10 rounded-full bg-gray-800/50 flex items-center justify-center text-gray-600">
+          <div className="bg-surface-variant/40 border border-dashed border-outline-variant rounded-2xl p-8 flex flex-col items-center justify-center text-center space-y-3">
+             <div className="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center text-secondary">
                 <Info size={20} />
              </div>
              <div>
-                <p className="text-sm text-gray-500 font-medium">Select a component to view its role in Spring Boot</p>
-                <p className="text-xs text-gray-600 mt-1">The visualizer automatically highlights components relevant to the current lesson.</p>
+                <p className="text-sm text-secondary font-medium">Select a component to view its role in Spring Boot</p>
+                <p className="text-xs text-on-surface-variant mt-1">The visualizer automatically highlights components relevant to the current lesson.</p>
              </div>
           </div>
         )}
