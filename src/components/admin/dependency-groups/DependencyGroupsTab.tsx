@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import type { AdminDependencyGroup, Toast } from '../../../types'
-import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
+import { useAdminResource, AdminApiError, adminFetch } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog, type OrphanDetails } from '../shared/DeleteConfirmDialog'
@@ -10,7 +10,7 @@ import { DependencyGroupForm } from './DependencyGroupForm'
 const EMPTY: Partial<AdminDependencyGroup> = { name: '', sortOrder: 0 }
 
 export function DependencyGroupsTab() {
-  const { items, loading, create, update, remove } = useAdminResource<AdminDependencyGroup>('/admin/dependency-groups')
+  const { items, loading, create, update, remove, reload } = useAdminResource<AdminDependencyGroup>('/admin/dependency-groups')
   const [editing, setEditing] = useState<Partial<AdminDependencyGroup> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -29,13 +29,9 @@ export function DependencyGroupsTab() {
   async function handleSaveOrder() {
     setSaving(true)
     try {
-      for (let i = 0; i < localItems.length; i++) {
-        const item = localItems[i]
-        const newSortOrder = i + 1;
-        if (item.sortOrder !== newSortOrder) {
-          await update(item.id, { sortOrder: newSortOrder })
-        }
-      }
+      const orderings = localItems.map((item, i) => ({ id: item.id, sortOrder: i + 1 }))
+      await adminFetch('PUT', '/admin/dependency-groups/reorder', orderings)
+      reload()
       setToast({ message: 'Order saved successfully', type: 'success' })
     } catch (err) {
       setToast({ message: String(err), type: 'error' })

@@ -42,7 +42,7 @@ async function adminFetch(method: string, url: string, body?: unknown): Promise<
   return res.json()
 }
 
-export { getAuthHeaders, handle401 }
+export { getAuthHeaders, handle401, adminFetch }
 
 export interface UseAdminResourceResult<T> {
   items: T[]
