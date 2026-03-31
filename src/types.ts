@@ -166,7 +166,7 @@ export interface AdminDependencyCompatibility {
   sortOrder: number
 }
 
-export type AdminTab = 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules'
+export type AdminTab = 'overview' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules'
 
 export interface Toast {
   message: string

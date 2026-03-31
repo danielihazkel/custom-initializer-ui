@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { AdminDependencyGroup, Toast } from '../../../types'
 import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
@@ -20,6 +20,29 @@ export function DependencyGroupsTab() {
   const [deleting, setDeleting] = useState(false)
   const [orphanDetails, setOrphanDetails] = useState<OrphanDetails | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
+  const [localItems, setLocalItems] = useState<AdminDependencyGroup[]>([])
+
+  useEffect(() => { setLocalItems(items) }, [items])
+
+  const isDirty = localItems.length > 0 && localItems.some((item, i) => item.id !== items[i]?.id)
+
+  async function handleSaveOrder() {
+    setSaving(true)
+    try {
+      for (let i = 0; i < localItems.length; i++) {
+        const item = localItems[i]
+        const newSortOrder = i + 1;
+        if (item.sortOrder !== newSortOrder) {
+          await update(item.id, { sortOrder: newSortOrder })
+        }
+      }
+      setToast({ message: 'Order saved successfully', type: 'success' })
+    } catch (err) {
+      setToast({ message: String(err), type: 'error' })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   function openNew() {
     setEditing({ ...EMPTY })
@@ -109,13 +132,24 @@ export function DependencyGroupsTab() {
           <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Dependency Groups</h2>
           <p className="text-[11px] text-on-surface-variant mt-0.5">Categories shown in the UI (e.g. Web, Data, Messaging)</p>
         </div>
-        <button
-          onClick={openNew}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-md"
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
-          New Group
-        </button>
+        <div className="flex items-center gap-3">
+          {isDirty && (
+            <button
+              onClick={handleSaveOrder}
+              disabled={saving}
+              className="px-4 py-2 rounded-xl text-sm font-bold text-on-primary bg-primary border hover:bg-primary-container disabled:opacity-50 transition-all shadow-md active:scale-95"
+            >
+              Save Order
+            </button>
+          )}
+          <button
+            onClick={openNew}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-md"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
+            New Group
+          </button>
+        </div>
       </div>
 
       <AdminTable
@@ -124,10 +158,11 @@ export function DependencyGroupsTab() {
           { label: 'Name', render: r => <span className="font-medium">{r.name}</span> },
           { label: 'Sort Order', render: r => r.sortOrder, width: '100px' },
         ]}
-        rows={items}
+        rows={localItems}
         loading={loading}
         onEdit={openEdit}
         onDelete={setDeleteTarget}
+        onReorder={setLocalItems}
       />
 
       <AdminFormDrawer

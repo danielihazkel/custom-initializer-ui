@@ -4,6 +4,7 @@ import { AdminLogin } from './AdminLogin'
 import { AdminSidebar } from './AdminSidebar'
 import { AdminGlobalActions } from './AdminGlobalActions'
 
+import { OverviewTab } from './overview/OverviewTab'
 import { DependencyGroupsTab } from './dependency-groups/DependencyGroupsTab'
 import { DependencyEntriesTab } from './dependency-entries/DependencyEntriesTab'
 import { FileContributionsTab } from './file-contributions/FileContributionsTab'
@@ -14,7 +15,7 @@ import { StarterTemplatesTab } from './starter-templates/StarterTemplatesTab'
 import { ModuleTemplatesTab } from './module-templates/ModuleTemplatesTab'
 
 export function AdminPage() {
-  const [activeTab, setActiveTab] = useState<AdminTab>('groups')
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview')
   const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('adminToken'))
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -56,6 +57,7 @@ export function AdminPage() {
 
         {/* Tab Content */}
         <main className="flex-1 overflow-y-auto px-8 py-8 custom-scrollbar">
+          {activeTab === 'overview'   && <OverviewTab key={`overview-${reloadKey}`} />}
           {activeTab === 'groups'     && <DependencyGroupsTab key={`groups-${reloadKey}`} />}
           {activeTab === 'entries'    && <DependencyEntriesTab key={`entries-${reloadKey}`} />}
           {activeTab === 'files'      && <FileContributionsTab key={`files-${reloadKey}`} />}

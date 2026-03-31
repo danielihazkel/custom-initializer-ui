@@ -1,4 +1,5 @@
 import { useState, useMemo, type ReactNode } from 'react'
+import { Reorder, useDragControls } from 'framer-motion'
 
 export interface ColumnDef<T> {
   label: string
@@ -14,10 +15,57 @@ interface AdminTableProps<T extends { id: number }> {
   loading: boolean
   searchable?: boolean
   searchPlaceholder?: string
+  onReorder?: (newOrder: T[]) => void
+}
+
+function DraggableRow<T extends { id: number }>({ row, columns, onEdit, onDelete }: { row: T, columns: ColumnDef<T>[], onEdit: (row: T) => void, onDelete: (row: T) => void }) {
+  const controls = useDragControls()
+  return (
+    <Reorder.Item 
+      as="tr" 
+      value={row} 
+      dragListener={false} 
+      dragControls={controls} 
+      className="border-t border-outline-variant hover:bg-primary/5 transition-colors duration-150 bg-surface"
+    >
+      <td className="px-3 py-4 text-secondary text-center w-10">
+        <button 
+          className="cursor-grab active:cursor-grabbing hover:text-primary transition-colors flex items-center justify-center p-1"
+          onPointerDown={(e) => controls.start(e)}
+          title="Drag to reorder"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>drag_indicator</span>
+        </button>
+      </td>
+      {columns.map((col, i) => (
+        <td key={i} className="px-5 py-4 text-on-surface">
+          {col.render(row)}
+        </td>
+      ))}
+      <td className="px-5 py-4 text-right">
+        <div className="flex items-center justify-end gap-1.5 opacity-70 hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => onEdit(row)}
+            className="p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
+            title="Edit"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>edit</span>
+          </button>
+          <button
+            onClick={() => onDelete(row)}
+            className="p-1.5 rounded-lg text-secondary hover:text-error hover:bg-error/10 transition-colors"
+            title="Delete"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>delete</span>
+          </button>
+        </div>
+      </td>
+    </Reorder.Item>
+  )
 }
 
 export function AdminTable<T extends { id: number }>({
-  columns, rows, onEdit, onDelete, loading, searchable = true, searchPlaceholder = 'Search...'
+  columns, rows, onEdit, onDelete, loading, searchable = true, searchPlaceholder = 'Search...', onReorder
 }: AdminTableProps<T>) {
   const [query, setQuery] = useState('')
 
@@ -31,6 +79,9 @@ export function AdminTable<T extends { id: number }>({
       )
     })
   }, [rows, query, searchable])
+
+  // Disable dragging when a search is active to prevent weird reordering states
+  const isDragEnabled = !!onReorder && !query.trim()
 
   return (
     <div className="flex flex-col gap-4">
@@ -52,10 +103,13 @@ export function AdminTable<T extends { id: number }>({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-2xl border border-outline-variant bg-surface shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-outline-variant bg-surface shadow-sm relative">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-surface-container-low border-b border-outline-variant">
+              {isDragEnabled && (
+                <th className="px-3 py-4 w-10"></th>
+              )}
               {columns.map((col, i) => (
                 <th
                   key={i}
@@ -70,10 +124,11 @@ export function AdminTable<T extends { id: number }>({
               </th>
             </tr>
           </thead>
-          <tbody>
-            {loading ? (
+          
+          {loading ? (
+            <tbody>
               <tr>
-                <td colSpan={columns.length + 1} className="px-6 py-12 text-center text-secondary">
+                <td colSpan={columns.length + (isDragEnabled ? 2 : 1)} className="px-6 py-12 text-center text-secondary">
                   <div className="flex flex-col items-center justify-center gap-3">
                     <span className="material-symbols-outlined animate-spin text-primary" style={{ fontSize: '28px' }}>
                       progress_activity
@@ -82,9 +137,11 @@ export function AdminTable<T extends { id: number }>({
                   </div>
                 </td>
               </tr>
-            ) : filteredRows.length === 0 ? (
+            </tbody>
+          ) : filteredRows.length === 0 ? (
+            <tbody>
               <tr>
-                <td colSpan={columns.length + 1} className="px-6 py-16 text-center">
+                <td colSpan={columns.length + (isDragEnabled ? 2 : 1)} className="px-6 py-16 text-center">
                   <div className="flex flex-col items-center justify-center gap-2 text-secondary">
                     <span className="material-symbols-outlined text-secondary/50" style={{ fontSize: '48px' }}>
                       search_off
@@ -94,9 +151,17 @@ export function AdminTable<T extends { id: number }>({
                   </div>
                 </td>
               </tr>
-            ) : (
-              filteredRows.map(row => (
-                <tr key={row.id} className="border-t border-outline-variant hover:bg-primary/5 transition-colors duration-150">
+            </tbody>
+          ) : isDragEnabled ? (
+            <Reorder.Group as="tbody" values={filteredRows} onReorder={onReorder}>
+              {filteredRows.map(row => (
+                <DraggableRow key={row.id} row={row} columns={columns} onEdit={onEdit} onDelete={onDelete} />
+              ))}
+            </Reorder.Group>
+          ) : (
+            <tbody>
+              {filteredRows.map(row => (
+                <tr key={row.id} className="border-t border-outline-variant hover:bg-primary/5 transition-colors duration-150 bg-surface">
                   {columns.map((col, i) => (
                     <td key={i} className="px-5 py-4 text-on-surface">
                       {col.render(row)}
@@ -121,9 +186,9 @@ export function AdminTable<T extends { id: number }>({
                     </div>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
+              ))}
+            </tbody>
+          )}
         </table>
       </div>
     </div>
