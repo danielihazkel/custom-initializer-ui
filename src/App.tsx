@@ -104,7 +104,7 @@ export default function App() {
   const { rules: compatibilityRules } = useCompatibility()
   const { templates } = useStarterTemplates()
   const { modules: moduleTemplates } = useModuleTemplates()
-  const { preview, loading: previewLoading, error: previewError, fetchPreview, clearPreview } = useProjectPreview()
+  const { preview, previousPreview, loading: previewLoading, error: previewError, fetchPreview, clearPreview } = useProjectPreview()
   const [form, setForm] = useState<ProjectFormValues>(() => {
     const url = parseUrlParams()
     if (url) return { ...defaultForm(null), ...url.form }
@@ -447,6 +447,7 @@ export default function App() {
       {preview && (
         <ProjectPreview
           preview={preview}
+          previousPreview={previousPreview}
           artifactId={form.artifactId}
           onClose={clearPreview}
           onDownload={() => { triggerDownload(form, selected, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }); clearPreview() }}

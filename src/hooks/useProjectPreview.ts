@@ -1,10 +1,12 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import type { PreviewResponse, ProjectFormValues } from '../types'
 
 export function useProjectPreview() {
-  const [preview, setPreview]   = useState<PreviewResponse | null>(null)
-  const [loading, setLoading]   = useState(false)
-  const [error,   setError]     = useState<string | null>(null)
+  const [preview,         setPreview]         = useState<PreviewResponse | null>(null)
+  const [previousPreview, setPreviousPreview] = useState<PreviewResponse | null>(null)
+  const previewRef = useRef<PreviewResponse | null>(null)
+  const [loading, setLoading]                 = useState(false)
+  const [error,   setError]                   = useState<string | null>(null)
 
   const fetchPreview = useCallback(async (
     form: ProjectFormValues,
@@ -43,7 +45,10 @@ export function useProjectPreview() {
       }
       const res = await fetch(url.toString())
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setPreview(await res.json() as PreviewResponse)
+      const data = await res.json() as PreviewResponse
+      setPreviousPreview(previewRef.current)
+      previewRef.current = data
+      setPreview(data)
     } catch (err) {
       setError(String(err))
     } finally {
@@ -54,7 +59,8 @@ export function useProjectPreview() {
   const clearPreview = useCallback(() => {
     setPreview(null)
     setError(null)
+    // previousPreview is intentionally kept so the next fetch can diff against it
   }, [])
 
-  return { preview, loading, error, fetchPreview, clearPreview }
+  return { preview, previousPreview, loading, error, fetchPreview, clearPreview }
 }

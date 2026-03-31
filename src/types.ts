@@ -211,6 +211,16 @@ export interface AdminStarterTemplateDep {
 }
 
 // Project Preview
+export type FileStatus = 'added' | 'removed' | 'modified' | 'unchanged'
+
+export interface DiffResult {
+  fileStatuses: Map<string, FileStatus>
+  addedCount: number
+  removedCount: number
+  modifiedCount: number
+  hasChanges: boolean
+}
+
 export interface PreviewFile {
   path: string
   content: string
