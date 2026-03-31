@@ -4,6 +4,11 @@ import { CodeEditor } from './CodeEditor'
 
 const FILE_TYPES: FileType[] = ['STATIC_COPY', 'YAML_MERGE', 'TEMPLATE', 'DELETE']
 const SUB_TYPES: SubstitutionType[] = ['NONE', 'PROJECT', 'PACKAGE']
+const SUB_TYPE_HINTS: Record<SubstitutionType, string> = {
+  NONE: 'No substitution — content is written verbatim.',
+  PROJECT: 'Available variables: {{artifactId}}, {{groupId}}, {{version}}',
+  PACKAGE: 'Available variable: {{packageName}} — use {{packagePath}} in Target Path',
+}
 
 interface Props {
   data: Partial<AdminFileContribution>
@@ -40,15 +45,17 @@ export function FileContributionForm({ data, errors, onChange }: Props) {
           placeholder="src/main/resources/application.yaml"
         />
       </FieldRow>
-      <FieldRow label="Substitution Type">
-        <select
-          className={selectClass}
-          value={data.substitutionType ?? 'NONE'}
-          onChange={e => onChange({ substitutionType: e.target.value as SubstitutionType })}
-        >
-          {SUB_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-      </FieldRow>
+      {data.fileType === 'TEMPLATE' && (
+        <FieldRow label="Substitution Type" hint={SUB_TYPE_HINTS[data.substitutionType ?? 'NONE']}>
+          <select
+            className={selectClass}
+            value={data.substitutionType ?? 'NONE'}
+            onChange={e => onChange({ substitutionType: e.target.value as SubstitutionType })}
+          >
+            {SUB_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </FieldRow>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <FieldRow label="Java Version" hint="17 or 21 — leave blank for all versions">
           <input
