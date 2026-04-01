@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useMetadata } from './hooks/useMetadata'
 import { useExtensions } from './hooks/useExtensions'
 import { useCompatibility } from './hooks/useCompatibility'
@@ -15,7 +16,8 @@ import { ModuleSelector } from './components/ModuleSelector'
 import { TutorialView } from './components/tutorial/TutorialView'
 import { AdminPage } from './components/admin/AdminPage'
 import { CommandPalette } from './components/CommandPalette'
-import type { InitializrMetadata, ProjectFormValues, StarterTemplate } from './types'
+import { AppToast } from './components/AppToast'
+import type { InitializrMetadata, ProjectFormValues, StarterTemplate, Toast } from './types'
 
 function parseUrlParams(): {
   form: Partial<ProjectFormValues>
@@ -126,6 +128,8 @@ export default function App() {
   })
   const [initialized, setInitialized] = useState<boolean>(false)
   const [shareCopied, setShareCopied] = useState(false)
+  const [generateSuccess, setGenerateSuccess] = useState(false)
+  const [appToast, setAppToast] = useState<Toast | null>(null)
   const [isDark, setIsDark] = useState<boolean>(() => {
     const saved = localStorage.getItem('theme')
     return saved ? saved === 'dark' : true
@@ -280,8 +284,16 @@ export default function App() {
   function handleShare(): void {
     navigator.clipboard.writeText(window.location.href).then(() => {
       setShareCopied(true)
+      setAppToast({ message: 'Link copied to clipboard', type: 'success' })
       setTimeout(() => setShareCopied(false), 2000)
     })
+  }
+
+  function handleGenerate(): void {
+    triggerDownload(form, selected, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules })
+    setGenerateSuccess(true)
+    setAppToast({ message: 'Project downloaded!', type: 'success' })
+    setTimeout(() => setGenerateSuccess(false), 2000)
   }
 
   if (error) {
@@ -327,9 +339,33 @@ export default function App() {
             aria-label="Copy share link"
             title="Copy link to current configuration"
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-              {shareCopied ? 'check' : 'share'}
-            </span>
+            <AnimatePresence mode="wait">
+              {shareCopied ? (
+                <motion.span
+                  key="check"
+                  className="material-symbols-outlined"
+                  style={{ fontSize: '20px', display: 'block' }}
+                  initial={{ opacity: 0, scale: 0.3, rotate: 90 }}
+                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                  exit={{ opacity: 0, scale: 0.3 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                >
+                  check
+                </motion.span>
+              ) : (
+                <motion.span
+                  key="share"
+                  className="material-symbols-outlined"
+                  style={{ fontSize: '20px', display: 'block' }}
+                  initial={{ opacity: 0, scale: 0.3, rotate: -90 }}
+                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                  exit={{ opacity: 0, scale: 0.3, rotate: 90 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                >
+                  share
+                </motion.span>
+              )}
+            </AnimatePresence>
           </button>
           {/* Theme toggle */}
           <button
@@ -353,16 +389,41 @@ export default function App() {
               : 'Explore'}
           </button>
           <button
-            onClick={() => triggerDownload(form, selected, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules })}
-            className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn"
+            onClick={handleGenerate}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn ${generateSuccess ? 'generate-success' : ''}`}
+            style={{ minWidth: '110px' }}
           >
-            Generate
+            <AnimatePresence mode="wait">
+              {generateSuccess ? (
+                <motion.span
+                  key="success"
+                  className="flex items-center justify-center gap-1.5"
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>check_circle</span>
+                  Done!
+                </motion.span>
+              ) : (
+                <motion.span
+                  key="generate"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  Generate
+                </motion.span>
+              )}
+            </AnimatePresence>
           </button>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="pt-20 pb-32 min-h-screen bg-background relative overflow-hidden">
+      <main className="pt-20 pb-8 min-h-screen bg-background relative overflow-hidden">
         {/* Decorative ambient background blobs */}
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-tertiary/10 rounded-full blur-[120px] pointer-events-none" />
@@ -469,7 +530,7 @@ export default function App() {
       )}
 
       {/* Floating Summary & Generate Panel */}
-      {view === 'initializr' && (
+      {/* {view === 'initializr' && (
         <div className="fixed bottom-6 lg:bottom-8 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl glass-card rounded-2xl px-6 py-4 flex items-center justify-between z-50 animate-fade-in-up shadow-2xl">
           <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-8">
             <div className="flex flex-col">
@@ -492,13 +553,38 @@ export default function App() {
             </div>
           </div>
           <button
-            onClick={() => triggerDownload(form, selected, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules })}
-            className="px-8 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-lg"
+            onClick={handleGenerate}
+            className={`px-8 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-lg ${generateSuccess ? 'generate-success' : ''}`}
+            style={{ minWidth: '140px' }}
           >
-            GENERATE
+            <AnimatePresence mode="wait">
+              {generateSuccess ? (
+                <motion.span
+                  key="success"
+                  className="flex items-center justify-center gap-1.5"
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>check_circle</span>
+                  Downloaded!
+                </motion.span>
+              ) : (
+                <motion.span
+                  key="generate"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  GENERATE
+                </motion.span>
+              )}
+            </AnimatePresence>
           </button>
         </div>
-      )}
+      )} */}
 
       {/* Command Palette */}
       <CommandPalette
@@ -510,13 +596,15 @@ export default function App() {
         selectedDeps={selected}
         onSelectTemplate={handleTemplateSelect}
         onToggleDependency={(depId) => {
-          const newSelected = selected.includes(depId) 
-            ? selected.filter(id => id !== depId) 
+          const newSelected = selected.includes(depId)
+            ? selected.filter(id => id !== depId)
             : [...selected, depId];
           handleDepsChange(newSelected);
         }}
         onFormChange={handleFormChange}
       />
+
+      <AppToast toast={appToast} onClear={() => setAppToast(null)} />
     </div>
   )
 }

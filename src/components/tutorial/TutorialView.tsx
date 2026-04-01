@@ -41,13 +41,13 @@ export function TutorialView(_props: TutorialViewProps) {
   const filteredCurriculum = searchQuery.trim() === ''
     ? CURRICULUM
     : CURRICULUM.map(module => ({
-        ...module,
-        lessons: module.lessons.filter(lesson =>
-          lesson.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          lesson.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          module.title.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-      })).filter(module => module.lessons.length > 0);
+      ...module,
+      lessons: module.lessons.filter(lesson =>
+        lesson.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lesson.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        module.title.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    })).filter(module => module.lessons.length > 0);
 
   // Helper to parse basic markdown for rich text rendering
   const parseMarkdown = (text: string) => {
@@ -85,7 +85,7 @@ export function TutorialView(_props: TutorialViewProps) {
         const items = trimmed.split('\n').map(line => line.replace(/^\d+\. /, '').trim());
         return (
           <ol key={index} className="list-decimal pl-6 mb-6 space-y-2 text-on-surface-variant">
-             {items.map((item, i) => (
+            {items.map((item, i) => (
               <li key={i} dangerouslySetInnerHTML={{ __html: parseMarkdown(item) }} />
             ))}
           </ol>
@@ -124,7 +124,7 @@ export function TutorialView(_props: TutorialViewProps) {
     safeCode = safeCode.replace(/(&lt;\/?[a-z][a-z0-9\-\.:]*)/g, '<span class="text-primary">$1</span>');
 
     placeholders.forEach((content, index) => {
-        safeCode = safeCode.replace(`___PLACEHOLDER_${index}___`, content);
+      safeCode = safeCode.replace(`___PLACEHOLDER_${index}___`, content);
     });
 
     return safeCode;
@@ -155,10 +155,10 @@ export function TutorialView(_props: TutorialViewProps) {
       {/* Mobile Sidebar Toggle */}
       {!isSidebarOpen && (
         <button
-            className="fixed top-20 left-4 z-50 p-2 glass-panel rounded-md border border-outline-variant md:hidden shadow-lg"
-            onClick={() => setIsSidebarOpen(true)}
+          className="fixed top-20 left-4 z-50 p-2 glass-panel rounded-md border border-outline-variant md:hidden shadow-lg"
+          onClick={() => setIsSidebarOpen(true)}
         >
-            <Menu size={20} />
+          <Menu size={20} />
         </button>
       )}
 
@@ -172,10 +172,10 @@ export function TutorialView(_props: TutorialViewProps) {
       >
         <div className="p-5 border-b border-outline-variant flex justify-between items-center bg-surface-container">
           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-container rounded-lg flex items-center justify-center shadow-lg shadow-primary/30">
-                <span className="font-bold text-on-primary text-lg">S</span>
-             </div>
-             <h1 className="font-bold text-lg tracking-tight text-on-surface">Spring Master</h1>
+            <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-container rounded-lg flex items-center justify-center shadow-lg shadow-primary/30">
+              <span className="font-bold text-on-primary text-lg">S</span>
+            </div>
+            <h1 className="font-bold text-lg tracking-tight text-on-surface">Spring Master</h1>
           </div>
           <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-secondary">
             <X size={20} />
@@ -207,7 +207,7 @@ export function TutorialView(_props: TutorialViewProps) {
               filteredCurriculum.map((module) => (
                 <div key={module.id}>
                   <h3 className="text-[11px] font-bold text-secondary uppercase tracking-widest mb-3 px-2 flex items-center gap-2">
-                      {module.title}
+                    {module.title}
                   </h3>
                   <div className="space-y-0.5">
                     {module.lessons.map((lesson) => (
@@ -217,8 +217,8 @@ export function TutorialView(_props: TutorialViewProps) {
                         className={`
                           w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group
                           ${activeLesson.id === lesson.id
-                              ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm'
-                              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'}
+                            ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm'
+                            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'}
                         `}
                       >
                         <span className="truncate">{lesson.title}</span>
@@ -245,13 +245,6 @@ export function TutorialView(_props: TutorialViewProps) {
           </div>
 
           <div className="mt-10 mb-6 p-4 glass-panel rounded-xl">
-            <h4 className="text-sm font-medium text-on-surface mb-2 flex items-center gap-2">
-                <Info size={14} className="text-primary" />
-                Learning Mode
-            </h4>
-            <p className="text-xs text-secondary leading-relaxed">
-                Select a topic to begin. Code snippets are interactive and the visualizers are aware of the current lesson context.
-            </p>
           </div>
         </div>
       </div>
@@ -261,154 +254,154 @@ export function TutorialView(_props: TutorialViewProps) {
 
         {/* Top Navigation Bar */}
         <header className="h-16 glass-header flex items-center justify-between px-6 z-10 shrink-0 sticky top-0">
-             <div className="flex items-center gap-3 ml-10 md:ml-0 overflow-hidden">
-                 <span className="text-secondary text-sm whitespace-nowrap">{activeModule.title}</span>
-                 <ChevronRight size={14} className="text-secondary" />
-                 <span className="text-primary font-medium text-sm truncate">{activeLesson.title}</span>
-             </div>
+          <div className="flex items-center gap-3 ml-10 md:ml-0 overflow-hidden">
+            <span className="text-secondary text-sm whitespace-nowrap">{activeModule.title}</span>
+            <ChevronRight size={14} className="text-secondary" />
+            <span className="text-primary font-medium text-sm truncate">{activeLesson.title}</span>
+          </div>
 
-             <div className="flex gap-2 shrink-0">
-                 <button
-                    onClick={() => setShowArchitecture(!showArchitecture)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${showArchitecture ? 'bg-primary/10 text-primary border-primary/20' : 'bg-surface-container text-secondary border-outline-variant hover:border-outline'}`}
-                 >
-                    <Layers size={14} />
-                    {showArchitecture ? 'Hide Architecture' : 'Show Architecture'}
-                 </button>
-             </div>
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={() => setShowArchitecture(!showArchitecture)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${showArchitecture ? 'bg-primary/10 text-primary border-primary/20' : 'bg-surface-container text-secondary border-outline-variant hover:border-outline'}`}
+            >
+              <Layers size={14} />
+              {showArchitecture ? 'Hide Architecture' : 'Show Architecture'}
+            </button>
+          </div>
         </header>
 
         {/* Content Area */}
         <div className="flex-1 flex overflow-hidden">
 
-            {/* Left/Center: Lesson Content */}
-            <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-10 scroll-smooth tutorial-scroll">
+          {/* Left/Center: Lesson Content */}
+          <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-10 scroll-smooth tutorial-scroll">
 
-                <div className="max-w-4xl mx-auto space-y-8 pb-10">
-                    {/* Hero Section of Lesson */}
-                    <div className="space-y-4 border-b border-outline-variant pb-8">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20">
-                            <BookOpen size={12} />
-                            {activeModule.title}
-                        </div>
-                        <h1 className="text-3xl md:text-4xl font-bold text-on-surface tracking-tight leading-tight">{activeLesson.title}</h1>
-                        <p className="text-lg text-on-surface-variant leading-relaxed max-w-3xl">{activeLesson.description}</p>
-                    </div>
-
-                    {/* Main Explanation */}
-                    <div className="space-y-4">
-                        {renderContent(activeLesson.content)}
-                    </div>
-
-                    {/* Code Snippet */}
-                    {activeLesson.codeSnippet && (
-                        <div className="mt-8 space-y-2">
-                            <div className="flex items-center justify-between px-1">
-                                <h4 className="text-sm font-semibold text-secondary flex items-center gap-2">
-                                    <Code2 size={16} />
-                                    Implementation Example
-                                </h4>
-                                <span className="text-xs text-secondary font-mono">
-                                  {activeLesson.id.startsWith('maven') ? 'pom.xml' : 'Java 17+'}
-                                </span>
-                            </div>
-                            <div className="glass-card rounded-xl overflow-hidden shadow-2xl group border border-outline-variant">
-                                <div className="flex items-center justify-between px-4 py-3 bg-surface-variant/50 border-b border-outline-variant">
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex gap-1.5 mr-2">
-                                            <div className="w-2.5 h-2.5 rounded-full bg-error/80"></div>
-                                            <div className="w-2.5 h-2.5 rounded-full bg-orange-400"></div>
-                                            <div className="w-2.5 h-2.5 rounded-full bg-primary/80"></div>
-                                        </div>
-                                        <span className="text-xs font-mono text-secondary opacity-60">
-                                          {activeLesson.id.startsWith('maven') ? 'Maven POM' : 'SpringContext.java'}
-                                        </span>
-                                    </div>
-                                    <div className="px-2 py-0.5 rounded text-[10px] font-medium bg-surface text-secondary border border-outline-variant">Read-Only</div>
-                                </div>
-                                <div className="relative p-6 overflow-x-auto bg-surface/50 tutorial-scroll">
-                                    <pre className="font-mono text-sm leading-6 text-on-surface-variant">
-                                        <code dangerouslySetInnerHTML={{ __html: highlightCode(activeLesson.codeSnippet) }} />
-                                    </pre>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Project Scaffolder */}
-                    {activeLesson.dependencies && activeLesson.dependencies.length > 0 && (
-                        <div className="mt-12">
-                            <ProjectScaffolder dependencies={activeLesson.dependencies} />
-                        </div>
-                    )}
-
-                    {/* Mock API Playground */}
-                    {activeLesson.mockApi && (
-                        <div className="mt-12">
-                            <MockApiPlayground mockApi={activeLesson.mockApi} />
-                        </div>
-                    )}
-
-                    {/* Bean Lifecycle Visualizer */}
-                    {activeLesson.showLifecycleVisualizer && (
-                        <div className="mt-12">
-                            <BeanLifecycleVisualizer />
-                        </div>
-                    )}
-
-                    {/* Security Filter Chain Visualizer */}
-                    {activeLesson.showSecurityVisualizer && (
-                        <div className="mt-12">
-                            <SecurityFilterVisualizer />
-                        </div>
-                    )}
-
-                    {/* JPA Entity-to-Table Mapper */}
-                    {activeLesson.showJpaMapper && (
-                        <div className="mt-12">
-                            <JpaEntityMapper />
-                        </div>
-                    )}
-
-                    {/* Microservices Topology View */}
-                    {activeLesson.showTopologyVisualizer && (
-                        <div className="mt-12">
-                            <MicroservicesTopology />
-                        </div>
-                    )}
-
-                    {/* Interactive Architecture View (Mobile/Tablet inline) */}
-                    <div className="xl:hidden">
-                         {showArchitecture && (
-                            <div className="my-8">
-                                <ArchitectureVisualizer activeStage={activeLesson.architectureHighlight} />
-                            </div>
-                         )}
-                    </div>
+            <div className="max-w-4xl mx-auto space-y-8 pb-10">
+              {/* Hero Section of Lesson */}
+              <div className="space-y-4 border-b border-outline-variant pb-8">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20">
+                  <BookOpen size={12} />
+                  {activeModule.title}
                 </div>
-            </div>
+                <h1 className="text-3xl md:text-4xl font-bold text-on-surface tracking-tight leading-tight">{activeLesson.title}</h1>
+                <p className="text-lg text-on-surface-variant leading-relaxed max-w-3xl">{activeLesson.description}</p>
+              </div>
 
-            {/* Right: Architecture (Desktop) */}
-            <div className="hidden xl:flex w-[420px] bg-surface-container-low border-l border-outline-variant flex-col shrink-0">
-                <div className="p-6 h-full overflow-y-auto tutorial-scroll">
-                    {showArchitecture ? (
-                         <ArchitectureVisualizer activeStage={activeLesson.architectureHighlight} />
-                    ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-secondary space-y-4">
-                            <div className="w-16 h-16 rounded-full bg-surface container flex items-center justify-center border border-outline-variant">
-                                <Terminal size={24} className="opacity-40" />
-                            </div>
-                            <p className="text-sm">Architecture view hidden</p>
-                            <button
-                                onClick={() => setShowArchitecture(true)}
-                                className="text-xs text-primary hover:text-primary-container transition-colors border-b border-primary/30 pb-0.5"
-                            >
-                                Show Visualizer
-                            </button>
+              {/* Main Explanation */}
+              <div className="space-y-4">
+                {renderContent(activeLesson.content)}
+              </div>
+
+              {/* Code Snippet */}
+              {activeLesson.codeSnippet && (
+                <div className="mt-8 space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <h4 className="text-sm font-semibold text-secondary flex items-center gap-2">
+                      <Code2 size={16} />
+                      Implementation Example
+                    </h4>
+                    <span className="text-xs text-secondary font-mono">
+                      {activeLesson.id.startsWith('maven') ? 'pom.xml' : 'Java 17+'}
+                    </span>
+                  </div>
+                  <div className="glass-card rounded-xl overflow-hidden shadow-2xl group border border-outline-variant">
+                    <div className="flex items-center justify-between px-4 py-3 bg-surface-variant/50 border-b border-outline-variant">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1.5 mr-2">
+                          <div className="w-2.5 h-2.5 rounded-full bg-error/80"></div>
+                          <div className="w-2.5 h-2.5 rounded-full bg-orange-400"></div>
+                          <div className="w-2.5 h-2.5 rounded-full bg-primary/80"></div>
                         </div>
-                    )}
+                        <span className="text-xs font-mono text-secondary opacity-60">
+                          {activeLesson.id.startsWith('maven') ? 'Maven POM' : 'SpringContext.java'}
+                        </span>
+                      </div>
+                      <div className="px-2 py-0.5 rounded text-[10px] font-medium bg-surface text-secondary border border-outline-variant">Read-Only</div>
+                    </div>
+                    <div className="relative p-6 overflow-x-auto bg-surface/50 tutorial-scroll">
+                      <pre className="font-mono text-sm leading-6 text-on-surface-variant">
+                        <code dangerouslySetInnerHTML={{ __html: highlightCode(activeLesson.codeSnippet) }} />
+                      </pre>
+                    </div>
+                  </div>
                 </div>
+              )}
+
+              {/* Project Scaffolder */}
+              {activeLesson.dependencies && activeLesson.dependencies.length > 0 && (
+                <div className="mt-12">
+                  <ProjectScaffolder dependencies={activeLesson.dependencies} />
+                </div>
+              )}
+
+              {/* Mock API Playground */}
+              {activeLesson.mockApi && (
+                <div className="mt-12">
+                  <MockApiPlayground mockApi={activeLesson.mockApi} />
+                </div>
+              )}
+
+              {/* Bean Lifecycle Visualizer */}
+              {activeLesson.showLifecycleVisualizer && (
+                <div className="mt-12">
+                  <BeanLifecycleVisualizer />
+                </div>
+              )}
+
+              {/* Security Filter Chain Visualizer */}
+              {activeLesson.showSecurityVisualizer && (
+                <div className="mt-12">
+                  <SecurityFilterVisualizer />
+                </div>
+              )}
+
+              {/* JPA Entity-to-Table Mapper */}
+              {activeLesson.showJpaMapper && (
+                <div className="mt-12">
+                  <JpaEntityMapper />
+                </div>
+              )}
+
+              {/* Microservices Topology View */}
+              {activeLesson.showTopologyVisualizer && (
+                <div className="mt-12">
+                  <MicroservicesTopology />
+                </div>
+              )}
+
+              {/* Interactive Architecture View (Mobile/Tablet inline) */}
+              <div className="xl:hidden">
+                {showArchitecture && (
+                  <div className="my-8">
+                    <ArchitectureVisualizer activeStage={activeLesson.architectureHighlight} />
+                  </div>
+                )}
+              </div>
             </div>
+          </div>
+
+          {/* Right: Architecture (Desktop) */}
+          <div className="hidden xl:flex w-[420px] bg-surface-container-low border-l border-outline-variant flex-col shrink-0">
+            <div className="p-6 h-full overflow-y-auto tutorial-scroll">
+              {showArchitecture ? (
+                <ArchitectureVisualizer activeStage={activeLesson.architectureHighlight} />
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-secondary space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-surface container flex items-center justify-center border border-outline-variant">
+                    <Terminal size={24} className="opacity-40" />
+                  </div>
+                  <p className="text-sm">Architecture view hidden</p>
+                  <button
+                    onClick={() => setShowArchitecture(true)}
+                    className="text-xs text-primary hover:text-primary-container transition-colors border-b border-primary/30 pb-0.5"
+                  >
+                    Show Visualizer
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
 
         </div>
       </div>

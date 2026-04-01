@@ -183,6 +183,30 @@ html.dark .glass-card:hover {
   transform: translateY(0);
 }
 
+@keyframes glow-burst {
+  0% {
+    box-shadow: 0 4px 15px color-mix(in srgb, var(--color-primary) 40%, transparent);
+    transform: scale(1);
+  }
+  15% {
+    box-shadow: 0 0 40px 10px color-mix(in srgb, var(--color-primary) 60%, transparent),
+                0 0 80px 20px color-mix(in srgb, var(--color-tertiary) 30%, transparent);
+    transform: scale(1.05);
+  }
+  50% {
+    box-shadow: 0 0 20px 5px color-mix(in srgb, var(--color-primary) 30%, transparent);
+    transform: scale(1.02);
+  }
+  100% {
+    box-shadow: 0 4px 15px color-mix(in srgb, var(--color-primary) 40%, transparent);
+    transform: scale(1);
+  }
+}
+
+.generate-success {
+  animation: glow-burst 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+}
+
 @keyframes gradient-shift {
   0% {
     background-position: 0% 50%;
