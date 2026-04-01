@@ -256,6 +256,11 @@ html.dark .glass-card:hover {
   background: var(--color-outline);
 }
 
+.custom-scrollbar {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 16px, black calc(100% - 16px), transparent);
+  mask-image: linear-gradient(to bottom, transparent, black 16px, black calc(100% - 16px), transparent);
+}
+
 .tutorial-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--color-outline-variant) transparent;
