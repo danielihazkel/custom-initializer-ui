@@ -1,18 +1,5 @@
 import CodeMirror from '@uiw/react-codemirror'
-import { java } from '@codemirror/lang-java'
-import { yaml } from '@codemirror/lang-yaml'
-import { xml } from '@codemirror/lang-xml'
-import { json } from '@codemirror/lang-json'
-import type { Extension } from '@codemirror/state'
-
-function langFromPath(targetPath: string): Extension[] {
-  const filename = targetPath.split('/').at(-1) ?? ''
-  if (filename.endsWith('.java'))                              return [java()]
-  if (filename.endsWith('.yaml') || filename.endsWith('.yml')) return [yaml()]
-  if (filename.endsWith('.xml'))                               return [xml()]
-  if (filename.endsWith('.json'))                              return [json()]
-  return []
-}
+import { langFromPath } from '../../lang-from-path'
 
 interface Props {
   value: string
