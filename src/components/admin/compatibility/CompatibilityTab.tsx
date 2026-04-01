@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { List, Share2 } from 'lucide-react'
 import type { AdminDependencyCompatibility, Toast } from '../../../types'
 import { useAdminResource } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
@@ -6,6 +7,9 @@ import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog } from '../shared/DeleteConfirmDialog'
 import { StatusToast } from '../shared/StatusToast'
 import { CompatibilityForm } from './CompatibilityForm'
+import { CompatibilityGraph } from './CompatibilityGraph'
+
+type ViewMode = 'table' | 'graph'
 
 const EMPTY: Partial<AdminDependencyCompatibility> = {
   sourceDepId: '', targetDepId: '', relationType: undefined, description: '', sortOrder: 0,
@@ -19,6 +23,7 @@ const RELATION_BADGE: Record<string, string> = {
 
 export function CompatibilityTab() {
   const { items, loading, create, update, remove } = useAdminResource<AdminDependencyCompatibility>('/admin/compatibility')
+  const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [editing, setEditing] = useState<Partial<AdminDependencyCompatibility> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -80,33 +85,58 @@ export function CompatibilityTab() {
           <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Compatibility Rules</h2>
           <p className="text-[11px] text-on-surface-variant mt-0.5">Define REQUIRES, CONFLICTS, and RECOMMENDS relationships between dependencies</p>
         </div>
-        <button
-          onClick={openNew}
-          className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
-          New Rule
-        </button>
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex items-center bg-surface-variant/50 p-0.5 rounded-lg border border-outline-variant">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'table' ? 'bg-primary text-on-primary shadow' : 'text-secondary hover:text-on-surface'}`}
+            >
+              <List size={13} />
+              Table
+            </button>
+            <button
+              onClick={() => setViewMode('graph')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'graph' ? 'bg-primary text-on-primary shadow' : 'text-secondary hover:text-on-surface'}`}
+            >
+              <Share2 size={13} />
+              Graph
+            </button>
+          </div>
+          <button
+            onClick={openNew}
+            className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+            New Rule
+          </button>
+        </div>
       </div>
 
-      <AdminTable
-        columns={[
-          { label: 'ID', render: r => <span className="text-secondary text-xs">{r.id}</span>, width: '60px' },
-          { label: 'Source', render: r => <code className="text-xs bg-surface-container-high px-1.5 py-0.5 rounded">{r.sourceDepId}</code> },
-          { label: 'Relation', render: r => (
-            <span className={`text-xs px-2 py-0.5 rounded border font-medium ${RELATION_BADGE[r.relationType] ?? ''}`}>
-              {r.relationType}
-            </span>
-          )},
-          { label: 'Target', render: r => <code className="text-xs bg-surface-container-high px-1.5 py-0.5 rounded">{r.targetDepId}</code> },
-          { label: 'Description', render: r => <span className="text-xs text-on-surface-variant truncate max-w-xs block">{r.description}</span> },
-          { label: 'Sort', render: r => r.sortOrder, width: '70px' },
-        ]}
-        rows={items}
-        loading={loading}
-        onEdit={openEdit}
-        onDelete={setDeleteTarget}
-      />
+      {viewMode === 'graph' && (
+        <CompatibilityGraph rules={items} onEditRule={openEdit} />
+      )}
+
+      {viewMode === 'table' && (
+        <AdminTable
+          columns={[
+            { label: 'ID', render: r => <span className="text-secondary text-xs">{r.id}</span>, width: '60px' },
+            { label: 'Source', render: r => <code className="text-xs bg-surface-container-high px-1.5 py-0.5 rounded">{r.sourceDepId}</code> },
+            { label: 'Relation', render: r => (
+              <span className={`text-xs px-2 py-0.5 rounded border font-medium ${RELATION_BADGE[r.relationType] ?? ''}`}>
+                {r.relationType}
+              </span>
+            )},
+            { label: 'Target', render: r => <code className="text-xs bg-surface-container-high px-1.5 py-0.5 rounded">{r.targetDepId}</code> },
+            { label: 'Description', render: r => <span className="text-xs text-on-surface-variant truncate max-w-xs block">{r.description}</span> },
+            { label: 'Sort', render: r => r.sortOrder, width: '70px' },
+          ]}
+          rows={items}
+          loading={loading}
+          onEdit={openEdit}
+          onDelete={setDeleteTarget}
+        />
+      )}
 
       <AdminFormDrawer
         title={isNew ? 'New Compatibility Rule' : 'Edit Compatibility Rule'}
