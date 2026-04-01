@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import type { AdminTab } from '../../types'
 import { AdminLogin } from './AdminLogin'
 import { AdminSidebar } from './AdminSidebar'
@@ -57,15 +58,25 @@ export function AdminPage() {
 
         {/* Tab Content */}
         <main className="flex-1 overflow-y-auto px-8 py-8 custom-scrollbar">
-          {activeTab === 'overview'   && <OverviewTab key={`overview-${reloadKey}`} />}
-          {activeTab === 'groups'     && <DependencyGroupsTab key={`groups-${reloadKey}`} />}
-          {activeTab === 'entries'    && <DependencyEntriesTab key={`entries-${reloadKey}`} />}
-          {activeTab === 'files'      && <FileContributionsTab key={`files-${reloadKey}`} />}
-          {activeTab === 'builds'     && <BuildCustomizationsTab key={`builds-${reloadKey}`} />}
-          {activeTab === 'suboptions' && <SubOptionsTab key={`suboptions-${reloadKey}`} />}
-          {activeTab === 'compatibility' && <CompatibilityTab key={`compat-${reloadKey}`} />}
-          {activeTab === 'templates'  && <StarterTemplatesTab key={`templates-${reloadKey}`} />}
-          {activeTab === 'modules'    && <ModuleTemplatesTab key={`modules-${reloadKey}`} />}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`${activeTab}-${reloadKey}`}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {activeTab === 'overview'   && <OverviewTab />}
+              {activeTab === 'groups'     && <DependencyGroupsTab />}
+              {activeTab === 'entries'    && <DependencyEntriesTab />}
+              {activeTab === 'files'      && <FileContributionsTab />}
+              {activeTab === 'builds'     && <BuildCustomizationsTab />}
+              {activeTab === 'suboptions' && <SubOptionsTab />}
+              {activeTab === 'compatibility' && <CompatibilityTab />}
+              {activeTab === 'templates'  && <StarterTemplatesTab />}
+              {activeTab === 'modules'    && <ModuleTemplatesTab />}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import type { AdminTab } from '../../types'
 
 const TABS: { id: AdminTab; label: string; icon: string; desc: string }[] = [
@@ -49,16 +50,24 @@ export function AdminSidebar({ activeTab, onTabChange }: AdminSidebarProps) {
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             title={isCollapsed ? tab.label : undefined}
-            className={`w-full flex items-center px-4 py-3 rounded-xl text-left transition-all duration-200 group ${
+            className={`relative w-full flex items-center px-4 py-3 rounded-xl text-left transition-colors duration-200 group ${
               isCollapsed ? 'justify-center' : 'gap-3'
             } ${
               activeTab === tab.id
-                ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm'
-                : 'text-secondary hover:bg-surface-container-high hover:text-on-surface border border-transparent'
+                ? 'text-primary'
+                : 'text-secondary hover:bg-surface-container-high hover:text-on-surface'
             }`}
           >
+            {activeTab === tab.id && (
+              <motion.div
+                layoutId="activeAdminTab"
+                className="absolute inset-0 bg-primary/10 border border-primary/20 rounded-xl shadow-sm"
+                initial={false}
+                transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+              />
+            )}
             <span 
-              className={`material-symbols-outlined transition-colors duration-200 shrink-0 ${
+              className={`relative z-10 material-symbols-outlined transition-colors duration-200 shrink-0 ${
                 activeTab === tab.id ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'
               }`} 
               style={{ fontSize: '20px' }}
@@ -66,11 +75,11 @@ export function AdminSidebar({ activeTab, onTabChange }: AdminSidebarProps) {
               {tab.icon}
             </span>
             {!isCollapsed && (
-              <div className="flex flex-col whitespace-nowrap overflow-hidden">
-                <span className={`text-sm font-bold truncate ${activeTab === tab.id ? 'text-primary' : 'text-on-surface'}`}>
+              <div className="relative z-10 flex flex-col whitespace-nowrap overflow-hidden">
+                <span className={`text-sm font-bold truncate transition-colors duration-200 ${activeTab === tab.id ? 'text-primary' : 'text-on-surface'}`}>
                   {tab.label}
                 </span>
-                <span className={`text-[10px] truncate ${activeTab === tab.id ? 'text-primary/70' : 'text-on-surface-variant'}`}>
+                <span className={`text-[10px] truncate transition-colors duration-200 ${activeTab === tab.id ? 'text-primary/70' : 'text-on-surface-variant'}`}>
                   {tab.desc}
                 </span>
               </div>
