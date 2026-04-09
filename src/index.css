@@ -160,6 +160,18 @@ html.dark .glass-card:hover {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
+.glass-drawer {
+  background: color-mix(in srgb, var(--color-surface) 95%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-left: 1px solid color-mix(in srgb, var(--color-outline-variant) 80%, transparent);
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.1);
+}
+
+html.dark .glass-drawer {
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.4);
+}
+
 /* Gradients and Animations */
 .signature-gradient {
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-container) 100%);

@@ -11,8 +11,10 @@ import { useProjectState } from './hooks/useProjectState'
 import { InitializrView } from './components/InitializrView'
 import { ProjectPreview } from './components/ProjectPreview'
 import { TemplateCompare } from './components/TemplateCompare'
-import { TutorialView } from './components/tutorial/TutorialView'
-import { AdminPage } from './components/admin/AdminPage'
+import { Suspense, lazy } from 'react'
+
+const TutorialView = lazy(() => import('./components/tutorial/TutorialView').then(m => ({ default: m.TutorialView })))
+const AdminPage = lazy(() => import('./components/admin/AdminPage').then(m => ({ default: m.AdminPage })))
 import { CommandPalette } from './components/CommandPalette'
 import { AppToast } from './components/AppToast'
 
@@ -226,9 +228,17 @@ export default function App() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-tertiary/10 rounded-full blur-[120px] pointer-events-none" />
 
         {view === 'tutorial' ? (
-          <div className="relative z-10 animate-fade-in-up"><TutorialView onClose={() => setView('initializr')} /></div>
+          <div className="relative z-10 animate-fade-in-up">
+            <Suspense fallback={<div className="flex items-center justify-center p-16 text-secondary text-sm">Loading Training...</div>}>
+              <TutorialView onClose={() => setView('initializr')} />
+            </Suspense>
+          </div>
         ) : view === 'admin' ? (
-          <div className="relative z-10"><AdminPage /></div>
+          <div className="relative z-10">
+            <Suspense fallback={<div className="flex items-center justify-center p-16 text-secondary text-sm">Loading Config...</div>}>
+              <AdminPage />
+            </Suspense>
+          </div>
         ) : loading ? (
           <div className="flex items-center justify-center p-16 text-secondary text-sm relative z-10">
             Loading metadata…
