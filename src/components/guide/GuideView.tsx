@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Search, Command, ChevronRight, Menu, X } from 'lucide-react'
 import { GUIDE_SECTIONS } from './guide-constants'
+import { GUIDE_SECTIONS_HE } from './guide-constants-he'
+import { UI_STRINGS, type Lang } from './guide-i18n'
 import type { GuideSection, GuideTopic } from './guide-types'
 import { GuideFieldTable } from './GuideFieldTable'
 import { GuideCallout } from './GuideCallout'
@@ -65,12 +67,26 @@ const renderContent = (content: string) => {
 }
 
 export function GuideView(_props: GuideViewProps) {
+  const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('guide-lang') as Lang) ?? 'en')
   const [activeSection, setActiveSection] = useState<GuideSection>(GUIDE_SECTIONS[0])
   const [activeTopic, setActiveTopic] = useState<GuideTopic>(GUIDE_SECTIONS[0].topics[0])
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const sections = lang === 'he' ? GUIDE_SECTIONS_HE : GUIDE_SECTIONS
+  const ui = UI_STRINGS[lang]
+  const isRtl = lang === 'he'
+
+  // Keep active topic in sync when language changes
+  useEffect(() => {
+    const matchedSection = sections.find(s => s.id === activeSection.id) ?? sections[0]
+    const matchedTopic = matchedSection.topics.find(t => t.id === activeTopic.id) ?? matchedSection.topics[0]
+    setActiveSection(matchedSection)
+    setActiveTopic(matchedTopic)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang])
 
   useEffect(() => {
     const el = containerRef.current
@@ -86,8 +102,8 @@ export function GuideView(_props: GuideViewProps) {
   }, [])
 
   const filteredSections = searchQuery.trim() === ''
-    ? GUIDE_SECTIONS
-    : GUIDE_SECTIONS.map(section => ({
+    ? sections
+    : sections.map(section => ({
         ...section,
         topics: section.topics.filter(topic =>
           topic.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -102,10 +118,20 @@ export function GuideView(_props: GuideViewProps) {
     if (window.innerWidth < 768) setIsSidebarOpen(false)
   }
 
+  const handleLangToggle = () => {
+    setLang(l => {
+      const next: Lang = l === 'en' ? 'he' : 'en'
+      localStorage.setItem('guide-lang', next)
+      return next
+    })
+    setSearchQuery('')
+  }
+
   return (
     <div
       ref={containerRef}
       tabIndex={-1}
+      dir={isRtl ? 'rtl' : 'ltr'}
       className="flex bg-background text-on-background overflow-hidden font-sans outline-none"
       style={{ height: 'calc(100vh - 4rem)' }}
     >
@@ -121,7 +147,7 @@ export function GuideView(_props: GuideViewProps) {
 
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 w-80 bg-surface-container border-r border-outline-variant transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed inset-y-0 ${isRtl ? 'right-0' : 'left-0'} z-40 w-80 bg-surface-container border-${isRtl ? 'l' : 'r'} border-outline-variant transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : isRtl ? 'translate-x-full' : '-translate-x-full'}`}
         style={{ top: '4rem', height: 'calc(100vh - 4rem)' }}
       >
         {/* Header */}
@@ -130,26 +156,36 @@ export function GuideView(_props: GuideViewProps) {
             <div className="w-8 h-8 bg-gradient-to-br from-tertiary to-tertiary-container rounded-lg flex items-center justify-center shadow-lg shadow-tertiary/30">
               <span className="material-symbols-outlined text-on-tertiary" style={{ fontSize: '18px' }}>menu_book</span>
             </div>
-            <h1 className="font-bold text-lg tracking-tight text-on-surface">Admin Guide</h1>
+            <h1 className="font-bold text-lg tracking-tight text-on-surface">{ui.sidebarTitle}</h1>
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-secondary">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Language toggle */}
+            <button
+              onClick={handleLangToggle}
+              className="px-2.5 py-1 rounded-md text-xs font-bold border border-outline-variant text-secondary hover:text-on-surface hover:border-primary/40 transition-colors"
+              title={isRtl ? 'Switch to English' : 'עבור לעברית'}
+            >
+              {ui.langToggleLabel}
+            </button>
+            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-secondary">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Search */}
         <div className="px-4 py-3 border-b border-outline-variant/50">
           <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary group-focus-within:text-primary transition-colors" size={14} />
+            <Search className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-secondary group-focus-within:text-primary transition-colors`} size={14} />
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="Search guide..."
+              placeholder={ui.searchPlaceholder}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-background border border-outline-variant rounded-lg py-2 pl-9 pr-10 text-xs text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+              className={`w-full bg-background border border-outline-variant rounded-lg py-2 ${isRtl ? 'pr-9 pl-10' : 'pl-9 pr-10'} text-xs text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all`}
             />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-surface-variant border border-outline text-[10px] text-secondary font-medium pointer-events-none">
+            <div className={`absolute ${isRtl ? 'left-2' : 'right-2'} top-1/2 -translate-y-1/2 flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-surface-variant border border-outline text-[10px] text-secondary font-medium pointer-events-none`}>
               <Command size={8} />
               <span>K</span>
             </div>
@@ -161,7 +197,7 @@ export function GuideView(_props: GuideViewProps) {
           <div className="space-y-6">
             {filteredSections.length > 0 ? filteredSections.map(section => (
               <div key={section.id}>
-                <h3 className="text-[11px] font-bold text-secondary uppercase tracking-widest mb-2 px-2 flex items-center gap-2">
+                <h3 className={`text-[11px] font-bold text-secondary uppercase tracking-widest mb-2 px-2 flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
                   <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{section.icon}</span>
                   {section.title}
                 </h3>
@@ -170,14 +206,23 @@ export function GuideView(_props: GuideViewProps) {
                     <button
                       key={topic.id}
                       onClick={() => handleTopicSelect(topic, section)}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${
+                      className={`w-full text-${isRtl ? 'right' : 'left'} px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${
                         activeTopic.id === topic.id
                           ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm'
                           : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'
                       }`}
                     >
-                      <span className="truncate">{topic.title}</span>
-                      {activeTopic.id === topic.id && <ChevronRight size={14} className="opacity-100 shrink-0" />}
+                      {isRtl ? (
+                        <>
+                          {activeTopic.id === topic.id && <ChevronRight size={14} className="opacity-100 shrink-0 rotate-180" />}
+                          <span className="truncate">{topic.title}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="truncate">{topic.title}</span>
+                          {activeTopic.id === topic.id && <ChevronRight size={14} className="opacity-100 shrink-0" />}
+                        </>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -187,9 +232,9 @@ export function GuideView(_props: GuideViewProps) {
                 <div className="w-12 h-12 bg-surface-variant rounded-full flex items-center justify-center mx-auto mb-3 border border-outline-variant">
                   <Search size={20} className="text-secondary" />
                 </div>
-                <p className="text-sm text-secondary">No topics found</p>
+                <p className="text-sm text-secondary">{ui.noTopicsFound}</p>
                 <button onClick={() => setSearchQuery('')} className="text-xs text-primary hover:underline mt-2">
-                  Clear search
+                  {ui.clearSearch}
                 </button>
               </div>
             )}
@@ -205,7 +250,7 @@ export function GuideView(_props: GuideViewProps) {
             <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>{activeSection.icon}</span>
             {activeSection.title}
           </span>
-          <ChevronRight size={14} className="text-secondary" />
+          <ChevronRight size={14} className={`text-secondary ${isRtl ? 'rotate-180' : ''}`} />
           <span className="text-primary font-medium text-sm truncate">{activeTopic.title}</span>
         </header>
 
@@ -227,14 +272,14 @@ export function GuideView(_props: GuideViewProps) {
               {renderContent(activeTopic.content)}
             </div>
 
-            {/* Callouts at top (before fields) if any */}
+            {/* Callouts */}
             {activeTopic.callouts?.map((callout, i) => (
-              <GuideCallout key={i} callout={callout} />
+              <GuideCallout key={i} callout={callout} labels={ui} />
             ))}
 
             {/* Field table */}
             {activeTopic.fields && activeTopic.fields.length > 0 && (
-              <GuideFieldTable fields={activeTopic.fields} />
+              <GuideFieldTable fields={activeTopic.fields} labels={ui} />
             )}
 
             {/* Code examples */}
