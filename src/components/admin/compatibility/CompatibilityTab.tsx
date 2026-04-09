@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { List, Share2 } from 'lucide-react'
-import type { AdminDependencyCompatibility, Toast } from '../../../types'
+import type { AdminDependencyCompatibility, AdminDependencyEntry, Toast } from '../../../types'
 import { useAdminResource } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -23,6 +23,7 @@ const RELATION_BADGE: Record<string, string> = {
 
 export function CompatibilityTab() {
   const { items, loading, create, update, remove } = useAdminResource<AdminDependencyCompatibility>('/admin/compatibility')
+  const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [editing, setEditing] = useState<Partial<AdminDependencyCompatibility> | null>(null)
   const [isNew, setIsNew] = useState(false)
@@ -150,6 +151,7 @@ export function CompatibilityTab() {
             data={editing}
             errors={errors}
             onChange={updates => setEditing(prev => ({ ...prev, ...updates }))}
+            dependencyEntries={depEntries}
           />
         )}
       </AdminFormDrawer>

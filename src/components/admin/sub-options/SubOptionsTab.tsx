@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { AdminSubOption, Toast } from '../../../types'
+import type { AdminSubOption, AdminDependencyEntry, Toast } from '../../../types'
 import { useAdminResource } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -11,6 +11,7 @@ const EMPTY: Partial<AdminSubOption> = { dependencyId: '', optionId: '', label: 
 
 export function SubOptionsTab() {
   const { items, loading, create, update, remove } = useAdminResource<AdminSubOption>('/admin/sub-options')
+  const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
   const [editing, setEditing] = useState<Partial<AdminSubOption> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -107,6 +108,7 @@ export function SubOptionsTab() {
             data={editing}
             errors={errors}
             onChange={updates => setEditing(prev => ({ ...prev, ...updates }))}
+            dependencyEntries={depEntries}
           />
         )}
       </AdminFormDrawer>

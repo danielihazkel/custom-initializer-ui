@@ -1,13 +1,14 @@
 import type { AdminModuleTemplate } from '../../../types'
-import { FieldRow, inputClass } from '../shared/FieldRow'
+import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 
 interface Props {
   data: Partial<AdminModuleTemplate>
   errors: Record<string, string>
   onChange: (updates: Partial<AdminModuleTemplate>) => void
+  packagings: string[]
 }
 
-export function ModuleTemplateForm({ data, errors, onChange }: Props) {
+export function ModuleTemplateForm({ data, errors, onChange, packagings }: Props) {
   return (
     <>
       <FieldRow label="Module ID" required error={errors.moduleId} hint="Unique slug (e.g. api, core, persistence)">
@@ -43,12 +44,13 @@ export function ModuleTemplateForm({ data, errors, onChange }: Props) {
         />
       </FieldRow>
       <FieldRow label="Packaging" hint="jar or war">
-        <input
-          className={inputClass}
+        <select
+          className={selectClass}
           value={data.packaging ?? 'jar'}
           onChange={e => onChange({ packaging: e.target.value })}
-          placeholder="jar"
-        />
+        >
+          {packagings.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
       </FieldRow>
       <FieldRow label="Has Main Class" hint="Only one module should get the @SpringBootApplication class">
         <label className="flex items-center gap-2 text-sm text-on-surface">

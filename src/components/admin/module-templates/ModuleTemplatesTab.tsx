@@ -1,12 +1,13 @@
 import { useState, useCallback } from 'react'
-import type { AdminModuleTemplate, AdminModuleDependencyMapping, Toast } from '../../../types'
+import type { AdminModuleTemplate, AdminModuleDependencyMapping, AdminDependencyEntry, Toast } from '../../../types'
 import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
+import { useAdminMetadata } from '../../../hooks/useAdminMetadata'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog, type OrphanDetails } from '../shared/DeleteConfirmDialog'
 import { StatusToast } from '../shared/StatusToast'
 import { ModuleTemplateForm } from './ModuleTemplateForm'
-import { FieldRow, inputClass } from '../shared/FieldRow'
+import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 
 const EMPTY_MODULE: Partial<AdminModuleTemplate> = {
   moduleId: '', label: '', description: '', suffix: '-',
@@ -20,6 +21,8 @@ const EMPTY_MAPPING: Partial<AdminModuleDependencyMapping> = {
 export function ModuleTemplatesTab() {
   const modules = useAdminResource<AdminModuleTemplate>('/admin/module-templates')
   const mappings = useAdminResource<AdminModuleDependencyMapping>('/admin/module-dep-mappings')
+  const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const { packagings } = useAdminMetadata()
 
   // Module CRUD state
   const [editing, setEditing] = useState<Partial<AdminModuleTemplate> | null>(null)
@@ -228,6 +231,7 @@ export function ModuleTemplatesTab() {
             data={editing}
             errors={errors}
             onChange={updates => setEditing(prev => ({ ...prev, ...updates }))}
+            packagings={packagings}
           />
         )}
       </AdminFormDrawer>
@@ -254,13 +258,15 @@ export function ModuleTemplatesTab() {
                 ))}
               </select>
             </FieldRow>
-            <FieldRow label="Dependency ID" required error={mappingErrors.dependencyId} hint="Must match an existing dependency entry (e.g. web, kafka)">
-              <input
-                className={inputClass}
+            <FieldRow label="Dependency ID" required error={mappingErrors.dependencyId} hint="Must match an existing dependency entry">
+              <select
+                className={selectClass}
                 value={editingMapping.dependencyId ?? ''}
                 onChange={e => setEditingMapping(prev => ({ ...prev, dependencyId: e.target.value }))}
-                placeholder="web"
-              />
+              >
+                <option value="">— Select —</option>
+                {depEntries.map(d => <option key={d.depId} value={d.depId}>{d.name} ({d.depId})</option>)}
+              </select>
             </FieldRow>
             <FieldRow label="Sort Order">
               <input

@@ -1,13 +1,16 @@
 import type { AdminStarterTemplate } from '../../../types'
-import { FieldRow, inputClass } from '../shared/FieldRow'
+import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 
 interface Props {
   data: Partial<AdminStarterTemplate>
   errors: Record<string, string>
   onChange: (updates: Partial<AdminStarterTemplate>) => void
+  bootVersions: string[]
+  javaVersions: string[]
+  packagings: string[]
 }
 
-export function StarterTemplateForm({ data, errors, onChange }: Props) {
+export function StarterTemplateForm({ data, errors, onChange, bootVersions, javaVersions, packagings }: Props) {
   return (
     <>
       <FieldRow label="Template ID" required error={errors.templateId} hint="URL-friendly slug (e.g. rest-api)">
@@ -51,28 +54,22 @@ export function StarterTemplateForm({ data, errors, onChange }: Props) {
         />
       </FieldRow>
       <FieldRow label="Boot Version" hint="Optional override (leave blank for no override)">
-        <input
-          className={inputClass}
-          value={data.bootVersion ?? ''}
-          onChange={e => onChange({ bootVersion: e.target.value })}
-          placeholder=""
-        />
+        <select className={selectClass} value={data.bootVersion ?? ''} onChange={e => onChange({ bootVersion: e.target.value })}>
+          <option value="">No override</option>
+          {bootVersions.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
       </FieldRow>
       <FieldRow label="Java Version" hint="Optional override">
-        <input
-          className={inputClass}
-          value={data.javaVersion ?? ''}
-          onChange={e => onChange({ javaVersion: e.target.value })}
-          placeholder=""
-        />
+        <select className={selectClass} value={data.javaVersion ?? ''} onChange={e => onChange({ javaVersion: e.target.value })}>
+          <option value="">No override</option>
+          {javaVersions.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
       </FieldRow>
-      <FieldRow label="Packaging" hint="Optional override (jar or war)">
-        <input
-          className={inputClass}
-          value={data.packaging ?? ''}
-          onChange={e => onChange({ packaging: e.target.value })}
-          placeholder=""
-        />
+      <FieldRow label="Packaging" hint="Optional override">
+        <select className={selectClass} value={data.packaging ?? ''} onChange={e => onChange({ packaging: e.target.value })}>
+          <option value="">No override</option>
+          {packagings.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
       </FieldRow>
       <FieldRow label="Sort Order">
         <input

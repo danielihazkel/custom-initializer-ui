@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
-import type { AdminFileContribution, Toast } from '../../../types'
+import type { AdminFileContribution, AdminDependencyEntry, AdminSubOption, Toast } from '../../../types'
 import { useAdminResource } from '../../../hooks/useAdminResource'
+import { useAdminMetadata } from '../../../hooks/useAdminMetadata'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog } from '../shared/DeleteConfirmDialog'
@@ -18,6 +19,9 @@ function truncate(s: string, n: number) {
 
 export function FileContributionsTab() {
   const { items, loading, create, update, remove } = useAdminResource<AdminFileContribution>('/admin/file-contributions')
+  const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const { items: subOptions } = useAdminResource<AdminSubOption>('/admin/sub-options')
+  const { javaVersions } = useAdminMetadata()
   const [editing, setEditing] = useState<Partial<AdminFileContribution> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -115,6 +119,9 @@ export function FileContributionsTab() {
             data={editing}
             errors={errors}
             onChange={updates => setEditing(prev => ({ ...prev, ...updates }))}
+            dependencyEntries={depEntries}
+            subOptions={subOptions}
+            javaVersions={javaVersions}
           />
         )}
       </AdminFormDrawer>

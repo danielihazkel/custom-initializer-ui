@@ -1,30 +1,35 @@
-import type { AdminDependencyCompatibility, RelationType } from '../../../types'
+import type { AdminDependencyCompatibility, AdminDependencyEntry, RelationType } from '../../../types'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 
 interface Props {
   data: Partial<AdminDependencyCompatibility>
   errors: Record<string, string>
   onChange: (updates: Partial<AdminDependencyCompatibility>) => void
+  dependencyEntries: AdminDependencyEntry[]
 }
 
-export function CompatibilityForm({ data, errors, onChange }: Props) {
+export function CompatibilityForm({ data, errors, onChange, dependencyEntries }: Props) {
   return (
     <>
-      <FieldRow label="Source Dependency ID" required error={errors.sourceDepId} hint="The dep that triggers this rule (e.g. web)">
-        <input
-          className={inputClass}
+      <FieldRow label="Source Dependency ID" required error={errors.sourceDepId} hint="The dep that triggers this rule">
+        <select
+          className={selectClass}
           value={data.sourceDepId ?? ''}
           onChange={e => onChange({ sourceDepId: e.target.value })}
-          placeholder="web"
-        />
+        >
+          <option value="">— Select —</option>
+          {dependencyEntries.map(d => <option key={d.depId} value={d.depId}>{d.name} ({d.depId})</option>)}
+        </select>
       </FieldRow>
-      <FieldRow label="Target Dependency ID" required error={errors.targetDepId} hint="The dep this rule points to (e.g. webflux)">
-        <input
-          className={inputClass}
+      <FieldRow label="Target Dependency ID" required error={errors.targetDepId} hint="The dep this rule points to">
+        <select
+          className={selectClass}
           value={data.targetDepId ?? ''}
           onChange={e => onChange({ targetDepId: e.target.value })}
-          placeholder="webflux"
-        />
+        >
+          <option value="">— Select —</option>
+          {dependencyEntries.map(d => <option key={d.depId} value={d.depId}>{d.name} ({d.depId})</option>)}
+        </select>
       </FieldRow>
       <FieldRow label="Relation Type" required error={errors.relationType}>
         <select

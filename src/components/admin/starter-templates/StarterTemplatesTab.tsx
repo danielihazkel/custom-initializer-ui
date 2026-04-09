@@ -1,12 +1,13 @@
 import { useState, useCallback } from 'react'
-import type { AdminStarterTemplate, AdminStarterTemplateDep, Toast } from '../../../types'
+import type { AdminStarterTemplate, AdminStarterTemplateDep, AdminDependencyEntry, Toast } from '../../../types'
 import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
+import { useAdminMetadata } from '../../../hooks/useAdminMetadata'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog, type OrphanDetails } from '../shared/DeleteConfirmDialog'
 import { StatusToast } from '../shared/StatusToast'
 import { StarterTemplateForm } from './StarterTemplateForm'
-import { FieldRow, inputClass } from '../shared/FieldRow'
+import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 
 const EMPTY_TEMPLATE: Partial<AdminStarterTemplate> = {
   templateId: '', name: '', description: '', icon: '', color: '',
@@ -20,6 +21,8 @@ const EMPTY_DEP: Partial<AdminStarterTemplateDep> = {
 export function StarterTemplatesTab() {
   const templates = useAdminResource<AdminStarterTemplate>('/admin/starter-templates')
   const deps = useAdminResource<AdminStarterTemplateDep>('/admin/starter-template-deps')
+  const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const { bootVersions, javaVersions, packagings } = useAdminMetadata()
 
   // Template CRUD state
   const [editing, setEditing] = useState<Partial<AdminStarterTemplate> | null>(null)
@@ -229,6 +232,9 @@ export function StarterTemplatesTab() {
             data={editing}
             errors={errors}
             onChange={updates => setEditing(prev => ({ ...prev, ...updates }))}
+            bootVersions={bootVersions}
+            javaVersions={javaVersions}
+            packagings={packagings}
           />
         )}
       </AdminFormDrawer>
@@ -255,13 +261,15 @@ export function StarterTemplatesTab() {
                 ))}
               </select>
             </FieldRow>
-            <FieldRow label="Dep ID" required error={depErrors.depId} hint="Must match an existing dependency entry (e.g. web, kafka)">
-              <input
-                className={inputClass}
+            <FieldRow label="Dep ID" required error={depErrors.depId} hint="Must match an existing dependency entry">
+              <select
+                className={selectClass}
                 value={editingDep.depId ?? ''}
                 onChange={e => setEditingDep(prev => ({ ...prev, depId: e.target.value }))}
-                placeholder="web"
-              />
+              >
+                <option value="">— Select —</option>
+                {depEntries.map(d => <option key={d.depId} value={d.depId}>{d.name} ({d.depId})</option>)}
+              </select>
             </FieldRow>
             <FieldRow label="Sub-Options" hint="Comma-separated sub-option IDs (e.g. consumer-example,producer-example)">
               <input

@@ -1,22 +1,25 @@
-import type { AdminSubOption } from '../../../types'
-import { FieldRow, inputClass } from '../shared/FieldRow'
+import type { AdminSubOption, AdminDependencyEntry } from '../../../types'
+import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 
 interface Props {
   data: Partial<AdminSubOption>
   errors: Record<string, string>
   onChange: (updates: Partial<AdminSubOption>) => void
+  dependencyEntries: AdminDependencyEntry[]
 }
 
-export function SubOptionForm({ data, errors, onChange }: Props) {
+export function SubOptionForm({ data, errors, onChange, dependencyEntries }: Props) {
   return (
     <>
-      <FieldRow label="Dependency ID" required error={errors.dependencyId} hint="Must match the depId of an existing dependency entry (e.g. kafka)">
-        <input
-          className={inputClass}
+      <FieldRow label="Dependency ID" required error={errors.dependencyId} hint="Must match the depId of an existing dependency entry">
+        <select
+          className={selectClass}
           value={data.dependencyId ?? ''}
           onChange={e => onChange({ dependencyId: e.target.value })}
-          placeholder="kafka"
-        />
+        >
+          <option value="">— Select —</option>
+          {dependencyEntries.map(d => <option key={d.depId} value={d.depId}>{d.name} ({d.depId})</option>)}
+        </select>
       </FieldRow>
       <FieldRow label="Option ID" required error={errors.optionId} hint="Unique identifier for this sub-option (e.g. consumer-example)">
         <input

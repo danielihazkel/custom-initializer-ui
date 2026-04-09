@@ -1,5 +1,6 @@
 import type { AdminDependencyEntry, AdminDependencyGroup } from '../../../types'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
+import { MAVEN_SCOPES, REPOSITORIES } from '../shared/adminConstants'
 
 interface Props {
   data: Partial<AdminDependencyEntry>
@@ -59,11 +60,17 @@ export function DependencyEntryForm({ data, groups, errors, onChange }: Props) {
           <FieldRow label="Version">
             <input className={inputClass} value={data.version ?? ''} onChange={e => onChange({ version: e.target.value })} placeholder="3.6.0" />
           </FieldRow>
-          <FieldRow label="Scope" hint="e.g. runtime, test — leave blank for default (compile)">
-            <input className={inputClass} value={data.scope ?? ''} onChange={e => onChange({ scope: e.target.value })} placeholder="runtime" />
+          <FieldRow label="Scope" hint="Leave blank for default (compile)">
+            <select className={selectClass} value={data.scope ?? ''} onChange={e => onChange({ scope: e.target.value })}>
+              <option value="">Default (compile)</option>
+              {MAVEN_SCOPES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           </FieldRow>
-          <FieldRow label="Repository" hint='e.g. menora-release — leave blank for Maven Central'>
-            <input className={inputClass} value={data.repository ?? ''} onChange={e => onChange({ repository: e.target.value })} placeholder="menora-release" />
+          <FieldRow label="Repository" hint='Leave blank for Maven Central'>
+            <select className={selectClass} value={data.repository ?? ''} onChange={e => onChange({ repository: e.target.value })}>
+              <option value="">Maven Central (default)</option>
+              {REPOSITORIES.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
           </FieldRow>
           <FieldRow label="Compatibility Range" hint='Spring Boot version range, e.g. [3.2.0,4.0.0) or 3.2.0 — blank = all versions'>
             <input className={inputClass} value={data.compatibilityRange ?? ''} onChange={e => onChange({ compatibilityRange: e.target.value })} placeholder="[3.2.0,4.0.0)" />

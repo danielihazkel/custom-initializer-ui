@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { AdminBuildCustomization, Toast } from '../../../types'
+import type { AdminBuildCustomization, AdminDependencyEntry, Toast } from '../../../types'
 import { useAdminResource } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -16,6 +16,7 @@ const EMPTY: Partial<AdminBuildCustomization> = {
 
 export function BuildCustomizationsTab() {
   const { items, loading, create, update, remove } = useAdminResource<AdminBuildCustomization>('/admin/build-customizations')
+  const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
   const [editing, setEditing] = useState<Partial<AdminBuildCustomization> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -129,6 +130,7 @@ export function BuildCustomizationsTab() {
             isEditing={!isNew}
             errors={errors}
             onChange={updates => setEditing(prev => ({ ...prev, ...updates }))}
+            dependencyEntries={depEntries}
           />
         )}
       </AdminFormDrawer>

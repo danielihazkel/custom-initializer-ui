@@ -1,5 +1,6 @@
-import type { AdminBuildCustomization, BuildCustomizationType } from '../../../types'
+import type { AdminBuildCustomization, AdminDependencyEntry, BuildCustomizationType } from '../../../types'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
+import { COMMON_DEP_ID } from '../shared/adminConstants'
 
 const CUST_TYPES: BuildCustomizationType[] = ['ADD_DEPENDENCY', 'EXCLUDE_DEPENDENCY', 'ADD_REPOSITORY']
 
@@ -8,20 +9,24 @@ interface Props {
   isEditing: boolean
   errors: Record<string, string>
   onChange: (updates: Partial<AdminBuildCustomization>) => void
+  dependencyEntries: AdminDependencyEntry[]
 }
 
-export function BuildCustomizationForm({ data, isEditing, errors, onChange }: Props) {
+export function BuildCustomizationForm({ data, isEditing, errors, onChange, dependencyEntries }: Props) {
   const type = data.customizationType
 
   return (
     <>
       <FieldRow label="Dependency ID" required error={errors.dependencyId} hint='Use __common__ for rules that apply to every generated project'>
-        <input
-          className={inputClass}
+        <select
+          className={selectClass}
           value={data.dependencyId ?? ''}
           onChange={e => onChange({ dependencyId: e.target.value })}
-          placeholder="kafka or __common__"
-        />
+        >
+          <option value="">— Select —</option>
+          <option value={COMMON_DEP_ID}>{COMMON_DEP_ID} (all projects)</option>
+          {dependencyEntries.map(d => <option key={d.depId} value={d.depId}>{d.name} ({d.depId})</option>)}
+        </select>
       </FieldRow>
       <FieldRow label="Customization Type" required error={errors.customizationType}>
         <select
