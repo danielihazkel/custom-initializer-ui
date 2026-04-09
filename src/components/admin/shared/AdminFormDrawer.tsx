@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 interface AdminFormDrawerProps {
   title: string
@@ -10,7 +11,7 @@ interface AdminFormDrawerProps {
 }
 
 export function AdminFormDrawer({ title, isOpen, onClose, onSave, saving, children }: AdminFormDrawerProps) {
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       {isOpen && (
@@ -60,6 +61,7 @@ export function AdminFormDrawer({ title, isOpen, onClose, onSave, saving, childr
           </button>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }
