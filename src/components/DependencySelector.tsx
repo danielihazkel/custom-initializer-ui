@@ -158,96 +158,98 @@ export function DependencySelector({
           <span className="text-xs font-bold py-1 px-3 bg-primary/10 text-primary rounded-full">{selected.length}</span>
         </div>
         
-        {/* Compatibility warnings */}
-        <AnimatePresence>
-          {(warnings.conflicts.length > 0 || warnings.requires.length > 0 || warnings.recommends.length > 0) && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-2 mb-4 overflow-hidden"
-            >
-              {warnings.conflicts.map((w, i) => (
-                <div key={`c-${i}`} className="flex items-start gap-2 px-4 py-3 rounded-xl border border-error/30 bg-error/10 text-xs text-error shadow-sm">
-                  <span className="material-symbols-outlined flex-shrink-0 mt-0.5" style={{ fontSize: '16px' }}>warning</span>
-                  <span className="leading-relaxed font-medium">{w.desc}</span>
-                </div>
-              ))}
-              {warnings.requires.map((w, i) => (
-                <div key={`req-${i}`} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 text-xs text-yellow-600 dark:text-yellow-400 shadow-sm">
-                  <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: '16px' }}>error</span>
-                  <span className="flex-1 leading-relaxed font-medium">{w.desc}</span>
-                  <button
-                    type="button"
-                    onClick={() => onChange([...selected, w.target])}
-                    className="flex-shrink-0 text-[10px] font-bold px-3 py-1 rounded bg-yellow-500 text-white dark:text-gray-900 shadow-sm transition-transform active:scale-95 hover:brightness-110"
-                  >
-                    ADD IT
-                  </button>
-                </div>
-              ))}
-              {warnings.recommends.map((w, i) => (
-                <div key={`rec-${i}`} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-primary/20 bg-primary/10 text-xs text-primary shadow-sm">
-                  <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: '16px' }}>info</span>
-                  <span className="flex-1 leading-relaxed font-medium">{w.desc}</span>
-                  <button
-                    type="button"
-                    onClick={() => onChange([...selected, w.target])}
-                    className="flex-shrink-0 text-[10px] font-bold px-3 py-1 rounded bg-primary text-white shadow-sm transition-transform active:scale-95 hover:brightness-110"
-                  >
-                    ADD IT
-                  </button>
-                </div>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Single scroll container — warnings + primary DB selector + deps list */}
+        <div className="flex flex-col gap-3 flex-grow overflow-y-auto pr-2 tutorial-scroll">
 
-        {/* Primary Database selector */}
-        <AnimatePresence>
-          {selectedDrivers.length >= 1 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mb-4 p-4 rounded-xl border border-secondary/30 bg-secondary/5 overflow-hidden"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <span className="material-symbols-outlined text-secondary" style={{ fontSize: '16px' }}>database</span>
-                <span className="text-xs font-bold uppercase tracking-widest text-secondary">Primary Database</span>
-              </div>
-              <div className="space-y-2">
-                {selectedDrivers.map(drv => {
-                  const dep = allDeps.find(d => d.id === drv)
-                  const isPrimary = primaryDriver === drv
-                  return (
-                    <label key={drv} className="flex items-center gap-3 text-xs cursor-pointer group">
-                      <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
-                        isPrimary
-                          ? 'border-secondary bg-secondary'
-                          : 'border-secondary/40 group-hover:border-secondary'
-                      }`}>
-                        {isPrimary && <div className="w-1.5 h-1.5 rounded-full bg-background" />}
-                      </div>
-                      <input
-                        type="radio"
-                        name="primaryDb"
-                        checked={isPrimary}
-                        onChange={() => handlePrimaryChange(drv)}
-                        className="sr-only"
-                      />
-                      <span className="text-on-surface-variant font-medium group-hover:text-on-surface transition-colors">
-                        {dep?.name ?? drv}
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+          {/* Compatibility warnings */}
+          <AnimatePresence>
+            {(warnings.conflicts.length > 0 || warnings.requires.length > 0 || warnings.recommends.length > 0) && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-2 overflow-hidden flex-shrink-0"
+              >
+                {warnings.conflicts.map((w, i) => (
+                  <div key={`c-${i}`} className="flex items-start gap-2 px-4 py-3 rounded-xl border border-error/30 bg-error/10 text-xs text-error shadow-sm">
+                    <span className="material-symbols-outlined flex-shrink-0 mt-0.5" style={{ fontSize: '16px' }}>warning</span>
+                    <span className="leading-relaxed font-medium">{w.desc}</span>
+                  </div>
+                ))}
+                {warnings.requires.map((w, i) => (
+                  <div key={`req-${i}`} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 text-xs text-yellow-600 dark:text-yellow-400 shadow-sm">
+                    <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: '16px' }}>error</span>
+                    <span className="flex-1 leading-relaxed font-medium">{w.desc}</span>
+                    <button
+                      type="button"
+                      onClick={() => onChange([...selected, w.target])}
+                      className="flex-shrink-0 text-[10px] font-bold px-3 py-1 rounded bg-yellow-500 text-white dark:text-gray-900 shadow-sm transition-transform active:scale-95 hover:brightness-110"
+                    >
+                      ADD IT
+                    </button>
+                  </div>
+                ))}
+                {warnings.recommends.map((w, i) => (
+                  <div key={`rec-${i}`} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-primary/20 bg-primary/10 text-xs text-primary shadow-sm">
+                    <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: '16px' }}>info</span>
+                    <span className="flex-1 leading-relaxed font-medium">{w.desc}</span>
+                    <button
+                      type="button"
+                      onClick={() => onChange([...selected, w.target])}
+                      className="flex-shrink-0 text-[10px] font-bold px-3 py-1 rounded bg-primary text-white shadow-sm transition-transform active:scale-95 hover:brightness-110"
+                    >
+                      ADD IT
+                    </button>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        <div className="space-y-3 flex-grow overflow-y-auto pr-2 tutorial-scroll">
+          {/* Primary Database selector */}
+          <AnimatePresence>
+            {selectedDrivers.length >= 1 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="p-4 rounded-xl border border-secondary/30 bg-secondary/5 overflow-hidden flex-shrink-0"
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="material-symbols-outlined text-secondary" style={{ fontSize: '16px' }}>database</span>
+                  <span className="text-xs font-bold uppercase tracking-widest text-secondary">Primary Database</span>
+                </div>
+                <div className="space-y-2">
+                  {selectedDrivers.map(drv => {
+                    const dep = allDeps.find(d => d.id === drv)
+                    const isPrimary = primaryDriver === drv
+                    return (
+                      <label key={drv} className="flex items-center gap-3 text-xs cursor-pointer group">
+                        <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
+                          isPrimary
+                            ? 'border-secondary bg-secondary'
+                            : 'border-secondary/40 group-hover:border-secondary'
+                        }`}>
+                          {isPrimary && <div className="w-1.5 h-1.5 rounded-full bg-background" />}
+                        </div>
+                        <input
+                          type="radio"
+                          name="primaryDb"
+                          checked={isPrimary}
+                          onChange={() => handlePrimaryChange(drv)}
+                          className="sr-only"
+                        />
+                        <span className="text-on-surface-variant font-medium group-hover:text-on-surface transition-colors">
+                          {dep?.name ?? drv}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <AnimatePresence mode="popLayout">
             {selectedDeps.length > 0 ? selectedDeps.map(dep => (
               <motion.div
@@ -299,10 +301,10 @@ export function DependencySelector({
                 )}
               </motion.div>
             )) : (
-              <motion.div 
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
-                className="h-full border-2 border-dashed border-outline-variant/50 rounded-2xl flex flex-col items-center justify-center text-center p-8 bg-surface-container-low/30"
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="min-h-[200px] border-2 border-dashed border-outline-variant/50 rounded-2xl flex flex-col items-center justify-center text-center p-8 bg-surface-container-low/30"
               >
                 <div className="w-16 h-16 rounded-full bg-surface-container-highest flex items-center justify-center mb-4">
                   <span className="material-symbols-outlined text-secondary opacity-50" style={{ fontSize: '32px' }}>inventory_2</span>
