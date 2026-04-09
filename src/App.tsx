@@ -228,7 +228,7 @@ export default function App() {
         {view === 'tutorial' ? (
           <div className="relative z-10 animate-fade-in-up"><TutorialView onClose={() => setView('initializr')} /></div>
         ) : view === 'admin' ? (
-          <div className="relative z-10 animate-fade-in-up"><AdminPage /></div>
+          <div className="relative z-10"><AdminPage /></div>
         ) : loading ? (
           <div className="flex items-center justify-center p-16 text-secondary text-sm relative z-10">
             Loading metadata…
