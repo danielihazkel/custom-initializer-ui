@@ -3,8 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
 
 const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle'] as const
-const DB_PRIMARY_SUFFIX = '-primary'
-const DB_SECONDARY_SUFFIX = '-secondary'
 const DB_PRIMARY_OPTIONS: Record<string, string> = {
   postgresql: 'pg-primary',
   mssql: 'mssql-primary',

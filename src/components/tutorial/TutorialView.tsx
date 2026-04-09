@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { BookOpen, Code2, Terminal, ChevronRight, Menu, X, Info, Layers, Search, Command } from 'lucide-react';
+import { BookOpen, Code2, Terminal, ChevronRight, Menu, X, Layers, Search, Command } from 'lucide-react';
 import { CURRICULUM } from './tutorial-constants';
 import { Module, Lesson } from './tutorial-types';
 import ArchitectureVisualizer from './visualizers/ArchitectureVisualizer';
