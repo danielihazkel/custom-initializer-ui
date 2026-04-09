@@ -1,6 +1,26 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
+
+const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle'] as const
+const DB_PRIMARY_SUFFIX = '-primary'
+const DB_SECONDARY_SUFFIX = '-secondary'
+const DB_PRIMARY_OPTIONS: Record<string, string> = {
+  postgresql: 'pg-primary',
+  mssql: 'mssql-primary',
+  db2: 'db2-primary',
+  oracle: 'oracle-primary',
+}
+const DB_SECONDARY_OPTIONS: Record<string, string> = {
+  postgresql: 'pg-secondary',
+  mssql: 'mssql-secondary',
+  db2: 'db2-secondary',
+  oracle: 'oracle-secondary',
+}
+const DB_SUB_OPTION_IDS = new Set([
+  ...Object.values(DB_PRIMARY_OPTIONS),
+  ...Object.values(DB_SECONDARY_OPTIONS),
+])
 
 export function DependencySelector({
   metadata,
@@ -48,6 +68,60 @@ export function DependencySelector({
       : [...current, optId]
     onOptionsChange(depId, next)
   }
+
+  // ── Primary Database auto-management ───────────────────────────────────
+  const selectedDrivers = useMemo(
+    () => DB_DRIVERS.filter(id => selected.includes(id)),
+    [selected]
+  )
+
+  const primaryDriver = useMemo(() => {
+    for (const drv of selectedDrivers) {
+      if ((selectedOptions[drv] ?? []).includes(DB_PRIMARY_OPTIONS[drv])) return drv
+    }
+    return null
+  }, [selectedDrivers, selectedOptions])
+
+  // Auto-set primary/secondary when drivers change
+  useEffect(() => {
+    if (selectedDrivers.length === 0) return
+    const currentPrimary = primaryDriver
+    // If the current primary was removed or no primary is set, pick the first driver
+    const effectivePrimary = (currentPrimary && selectedDrivers.includes(currentPrimary))
+      ? currentPrimary
+      : selectedDrivers[0]
+    for (const drv of selectedDrivers) {
+      const expected = drv === effectivePrimary
+        ? [DB_PRIMARY_OPTIONS[drv]]
+        : [DB_SECONDARY_OPTIONS[drv]]
+      const current = selectedOptions[drv] ?? []
+      // Only update if the DB sub-options are wrong (preserve non-DB sub-options)
+      const currentDbOpts = current.filter(o => DB_SUB_OPTION_IDS.has(o))
+      if (currentDbOpts.length !== expected.length || currentDbOpts[0] !== expected[0]) {
+        const nonDbOpts = current.filter(o => !DB_SUB_OPTION_IDS.has(o))
+        onOptionsChange(drv, [...nonDbOpts, ...expected])
+      }
+    }
+  }, [selectedDrivers.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handlePrimaryChange = useCallback((drv: string) => {
+    for (const d of selectedDrivers) {
+      const current = selectedOptions[d] ?? []
+      const nonDbOpts = current.filter(o => !DB_SUB_OPTION_IDS.has(o))
+      const dbOpt = d === drv ? DB_PRIMARY_OPTIONS[d] : DB_SECONDARY_OPTIONS[d]
+      onOptionsChange(d, [...nonDbOpts, dbOpt])
+    }
+  }, [selectedDrivers, selectedOptions, onOptionsChange])
+
+  // Filter out DB sub-options from the normal checkbox UI
+  const filteredExtensions = useMemo(() => {
+    const result: Record<string, typeof extensions[string]> = {}
+    for (const [depId, opts] of Object.entries(extensions)) {
+      const filtered = opts.filter(o => !DB_SUB_OPTION_IDS.has(o.id))
+      if (filtered.length > 0) result[depId] = filtered
+    }
+    return result
+  }, [extensions])
 
   const selectedDeps = allDeps.filter(d => selected.includes(d.id))
 
@@ -129,6 +203,50 @@ export function DependencySelector({
           )}
         </AnimatePresence>
 
+        {/* Primary Database selector */}
+        <AnimatePresence>
+          {selectedDrivers.length >= 1 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-4 p-4 rounded-xl border border-secondary/30 bg-secondary/5 overflow-hidden"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <span className="material-symbols-outlined text-secondary" style={{ fontSize: '16px' }}>database</span>
+                <span className="text-xs font-bold uppercase tracking-widest text-secondary">Primary Database</span>
+              </div>
+              <div className="space-y-2">
+                {selectedDrivers.map(drv => {
+                  const dep = allDeps.find(d => d.id === drv)
+                  const isPrimary = primaryDriver === drv
+                  return (
+                    <label key={drv} className="flex items-center gap-3 text-xs cursor-pointer group">
+                      <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
+                        isPrimary
+                          ? 'border-secondary bg-secondary'
+                          : 'border-secondary/40 group-hover:border-secondary'
+                      }`}>
+                        {isPrimary && <div className="w-1.5 h-1.5 rounded-full bg-background" />}
+                      </div>
+                      <input
+                        type="radio"
+                        name="primaryDb"
+                        checked={isPrimary}
+                        onChange={() => handlePrimaryChange(drv)}
+                        className="sr-only"
+                      />
+                      <span className="text-on-surface-variant font-medium group-hover:text-on-surface transition-colors">
+                        {dep?.name ?? drv}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="space-y-3 flex-grow overflow-y-auto pr-2 tutorial-scroll">
           <AnimatePresence mode="popLayout">
             {selectedDeps.length > 0 ? selectedDeps.map(dep => (
@@ -155,9 +273,9 @@ export function DependencySelector({
                 {dep.description && (
                   <p className="text-xs text-on-surface-variant leading-relaxed opacity-80">{dep.description}</p>
                 )}
-                {(extensions[dep.id]?.length ?? 0) > 0 && (
+                {(filteredExtensions[dep.id]?.length ?? 0) > 0 && (
                   <div className="mt-3 pt-3 border-t border-outline-variant/60 space-y-2">
-                    {extensions[dep.id].map(opt => (
+                    {filteredExtensions[dep.id].map(opt => (
                       <label key={opt.id} className="flex items-center gap-3 text-xs cursor-pointer group">
                         <div className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-all ${
                           (selectedOptions[dep.id] ?? []).includes(opt.id) 
