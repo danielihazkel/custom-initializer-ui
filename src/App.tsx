@@ -15,6 +15,7 @@ import { Suspense, lazy } from 'react'
 
 const TutorialView = lazy(() => import('./components/tutorial/TutorialView').then(m => ({ default: m.TutorialView })))
 const AdminPage = lazy(() => import('./components/admin/AdminPage').then(m => ({ default: m.AdminPage })))
+const GuideView = lazy(() => import('./components/guide/GuideView').then(m => ({ default: m.GuideView })))
 import { CommandPalette } from './components/CommandPalette'
 import { AppToast } from './components/AppToast'
 
@@ -53,7 +54,7 @@ export default function App() {
     return saved ? saved === 'dark' : true
   })
   
-  const [view, setView] = useState<'initializr' | 'tutorial' | 'admin'>('initializr')
+  const [view, setView] = useState<'initializr' | 'tutorial' | 'admin' | 'guide'>('initializr')
   const [compareOpen, setCompareOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
@@ -121,6 +122,12 @@ export default function App() {
               className={`text-sm transition-colors duration-200 ${view === 'tutorial' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
             >
               Training
+            </button>
+            <button
+              onClick={() => setView(v => v === 'guide' ? 'initializr' : 'guide')}
+              className={`text-sm transition-colors duration-200 ${view === 'guide' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
+            >
+              Guide
             </button>
             <button
               onClick={() => setView(v => v === 'admin' ? 'initializr' : 'admin')}
@@ -231,6 +238,12 @@ export default function App() {
           <div className="relative z-10 animate-fade-in-up">
             <Suspense fallback={<div className="flex items-center justify-center p-16 text-secondary text-sm">Loading Training...</div>}>
               <TutorialView onClose={() => setView('initializr')} />
+            </Suspense>
+          </div>
+        ) : view === 'guide' ? (
+          <div className="relative z-10 animate-fade-in-up">
+            <Suspense fallback={<div className="flex items-center justify-center p-16 text-secondary text-sm">Loading Guide...</div>}>
+              <GuideView onClose={() => setView('initializr')} />
             </Suspense>
           </div>
         ) : view === 'admin' ? (
