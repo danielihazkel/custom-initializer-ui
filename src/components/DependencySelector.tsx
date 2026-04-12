@@ -21,6 +21,17 @@ const DB_SUB_OPTION_IDS = new Set([
   ...Object.values(DB_PRIMARY_OPTIONS),
   ...Object.values(DB_SECONDARY_OPTIONS),
 ])
+const DB_DRIVER_KINDS: Record<string, 'jdbc' | 'mongodb'> = {
+  postgresql: 'jdbc',
+  mssql: 'jdbc',
+  db2: 'jdbc',
+  oracle: 'jdbc',
+  mongodb: 'mongodb',
+}
+const DB_KIND_LABELS: Record<string, string> = {
+  jdbc: 'Primary JDBC Database',
+  mongodb: 'Primary MongoDB Connection',
+}
 
 export function DependencySelector({
   metadata,
@@ -69,49 +80,58 @@ export function DependencySelector({
     onOptionsChange(depId, next)
   }
 
-  // ── Primary Database auto-management ───────────────────────────────────
-  const selectedDrivers = useMemo(
-    () => DB_DRIVERS.filter(id => selected.includes(id)),
-    [selected]
-  )
-
-  const primaryDriver = useMemo(() => {
-    for (const drv of selectedDrivers) {
-      if ((selectedOptions[drv] ?? []).includes(DB_PRIMARY_OPTIONS[drv])) return drv
+  // ── Primary Database auto-management (scoped per driver kind) ──────────
+  const driversByKind = useMemo(() => {
+    const map: Record<string, string[]> = {}
+    for (const id of DB_DRIVERS) {
+      if (!selected.includes(id)) continue
+      const kind = DB_DRIVER_KINDS[id]
+      ;(map[kind] ??= []).push(id)
     }
-    return null
-  }, [selectedDrivers, selectedOptions])
+    return map
+  }, [selected])
 
-  // Auto-set primary/secondary when drivers change
+  const primaryByKind = useMemo(() => {
+    const map: Record<string, string | null> = {}
+    for (const [kind, drivers] of Object.entries(driversByKind)) {
+      map[kind] = drivers.find(d => (selectedOptions[d] ?? []).includes(DB_PRIMARY_OPTIONS[d])) ?? null
+    }
+    return map
+  }, [driversByKind, selectedOptions])
+
+  const driversByKindKey = Object.entries(driversByKind)
+    .map(([k, d]) => `${k}:${d.join(',')}`)
+    .join('|')
+
+  // Auto-set primary/secondary per kind. A kind with only one selected driver
+  // still gets its `*-primary` sub-option silently — @Primary on its beans is
+  // harmless because no other driver of that kind competes.
   useEffect(() => {
-    if (selectedDrivers.length === 0) return
-    const currentPrimary = primaryDriver
-    // If the current primary was removed or no primary is set, pick the first driver
-    const effectivePrimary = (currentPrimary && selectedDrivers.includes(currentPrimary))
-      ? currentPrimary
-      : selectedDrivers[0]
-    for (const drv of selectedDrivers) {
-      const expected = drv === effectivePrimary
-        ? [DB_PRIMARY_OPTIONS[drv]]
-        : [DB_SECONDARY_OPTIONS[drv]]
-      const current = selectedOptions[drv] ?? []
-      // Only update if the DB sub-options are wrong (preserve non-DB sub-options)
-      const currentDbOpts = current.filter(o => DB_SUB_OPTION_IDS.has(o))
-      if (currentDbOpts.length !== expected.length || currentDbOpts[0] !== expected[0]) {
-        const nonDbOpts = current.filter(o => !DB_SUB_OPTION_IDS.has(o))
-        onOptionsChange(drv, [...nonDbOpts, ...expected])
+    for (const [, drivers] of Object.entries(driversByKind)) {
+      if (drivers.length === 0) continue
+      const existing = drivers.find(d => (selectedOptions[d] ?? []).includes(DB_PRIMARY_OPTIONS[d])) ?? null
+      const effectivePrimary = existing && drivers.includes(existing) ? existing : drivers[0]
+      for (const drv of drivers) {
+        const expected = drv === effectivePrimary ? DB_PRIMARY_OPTIONS[drv] : DB_SECONDARY_OPTIONS[drv]
+        const current = selectedOptions[drv] ?? []
+        const currentDbOpts = current.filter(o => DB_SUB_OPTION_IDS.has(o))
+        if (currentDbOpts.length !== 1 || currentDbOpts[0] !== expected) {
+          const nonDbOpts = current.filter(o => !DB_SUB_OPTION_IDS.has(o))
+          onOptionsChange(drv, [...nonDbOpts, expected])
+        }
       }
     }
-  }, [selectedDrivers.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [driversByKindKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handlePrimaryChange = useCallback((drv: string) => {
-    for (const d of selectedDrivers) {
+  const handlePrimaryChange = useCallback((kind: string, drv: string) => {
+    const drivers = driversByKind[kind] ?? []
+    for (const d of drivers) {
       const current = selectedOptions[d] ?? []
       const nonDbOpts = current.filter(o => !DB_SUB_OPTION_IDS.has(o))
       const dbOpt = d === drv ? DB_PRIMARY_OPTIONS[d] : DB_SECONDARY_OPTIONS[d]
       onOptionsChange(d, [...nonDbOpts, dbOpt])
     }
-  }, [selectedDrivers, selectedOptions, onOptionsChange])
+  }, [driversByKind, selectedOptions, onOptionsChange])
 
   // Filter out DB sub-options from the normal checkbox UI
   const filteredExtensions = useMemo(() => {
@@ -206,47 +226,50 @@ export function DependencySelector({
             )}
           </AnimatePresence>
 
-          {/* Primary Database selector */}
+          {/* Primary Database selector — one panel per kind with ≥2 selected drivers */}
           <AnimatePresence>
-            {selectedDrivers.length >= 1 && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="p-4 rounded-xl border border-secondary/30 bg-secondary/5 overflow-hidden flex-shrink-0"
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="material-symbols-outlined text-secondary" style={{ fontSize: '16px' }}>database</span>
-                  <span className="text-xs font-bold uppercase tracking-widest text-secondary">Primary Database</span>
-                </div>
-                <div className="space-y-2">
-                  {selectedDrivers.map(drv => {
-                    const dep = allDeps.find(d => d.id === drv)
-                    const isPrimary = primaryDriver === drv
-                    return (
-                      <label key={drv} className="flex items-center gap-3 text-xs cursor-pointer group">
-                        <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${isPrimary
-                          ? 'border-secondary bg-secondary'
-                          : 'border-secondary/40 group-hover:border-secondary'
-                          }`}>
-                          {isPrimary && <div className="w-1.5 h-1.5 rounded-full bg-background" />}
-                        </div>
-                        <input
-                          type="radio"
-                          name="primaryDb"
-                          checked={isPrimary}
-                          onChange={() => handlePrimaryChange(drv)}
-                          className="sr-only"
-                        />
-                        <span className="text-on-surface-variant font-medium group-hover:text-on-surface transition-colors">
-                          {dep?.name ?? drv}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </motion.div>
-            )}
+            {Object.entries(driversByKind)
+              .filter(([, drivers]) => drivers.length >= 2)
+              .map(([kind, drivers]) => (
+                <motion.div
+                  key={kind}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="p-4 rounded-xl border border-secondary/30 bg-secondary/5 overflow-hidden flex-shrink-0"
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="material-symbols-outlined text-secondary" style={{ fontSize: '16px' }}>database</span>
+                    <span className="text-xs font-bold uppercase tracking-widest text-secondary">{DB_KIND_LABELS[kind] ?? 'Primary Database'}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {drivers.map(drv => {
+                      const dep = allDeps.find(d => d.id === drv)
+                      const isPrimary = primaryByKind[kind] === drv
+                      return (
+                        <label key={drv} className="flex items-center gap-3 text-xs cursor-pointer group">
+                          <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${isPrimary
+                            ? 'border-secondary bg-secondary'
+                            : 'border-secondary/40 group-hover:border-secondary'
+                            }`}>
+                            {isPrimary && <div className="w-1.5 h-1.5 rounded-full bg-background" />}
+                          </div>
+                          <input
+                            type="radio"
+                            name={`primary-${kind}`}
+                            checked={isPrimary}
+                            onChange={() => handlePrimaryChange(kind, drv)}
+                            className="sr-only"
+                          />
+                          <span className="text-on-surface-variant font-medium group-hover:text-on-surface transition-colors">
+                            {dep?.name ?? drv}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </motion.div>
+              ))}
           </AnimatePresence>
 
           <AnimatePresence mode="popLayout">
