@@ -2,18 +2,20 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
 
-const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle'] as const
+const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle', 'mongodb'] as const
 const DB_PRIMARY_OPTIONS: Record<string, string> = {
   postgresql: 'pg-primary',
   mssql: 'mssql-primary',
   db2: 'db2-primary',
   oracle: 'oracle-primary',
+  mongodb: 'mongodb-primary'
 }
 const DB_SECONDARY_OPTIONS: Record<string, string> = {
   postgresql: 'pg-secondary',
   mssql: 'mssql-secondary',
   db2: 'db2-secondary',
   oracle: 'oracle-secondary',
+  mongodb: 'mongodb-secondary'
 }
 const DB_SUB_OPTION_IDS = new Set([
   ...Object.values(DB_PRIMARY_OPTIONS),
@@ -125,8 +127,8 @@ export function DependencySelector({
 
   const warnings = useMemo(() => {
     const conflicts: { source: string; target: string; desc: string }[] = []
-    const requires:  { source: string; target: string; desc: string }[] = []
-    const recommends:{ source: string; target: string; desc: string }[] = []
+    const requires: { source: string; target: string; desc: string }[] = []
+    const recommends: { source: string; target: string; desc: string }[] = []
     const depName = (id: string) => allDeps.find(d => d.id === id)?.name ?? id
     for (const rule of compatibilityRules) {
       if (!selected.includes(rule.sourceDepId)) continue
@@ -155,7 +157,7 @@ export function DependencySelector({
           </div>
           <span className="text-xs font-bold py-1 px-3 bg-primary/10 text-primary rounded-full">{selected.length}</span>
         </div>
-        
+
         {/* Single scroll container — warnings + primary DB selector + deps list */}
         <div className="flex flex-col gap-3 flex-grow overflow-y-auto pr-2 tutorial-scroll">
 
@@ -223,11 +225,10 @@ export function DependencySelector({
                     const isPrimary = primaryDriver === drv
                     return (
                       <label key={drv} className="flex items-center gap-3 text-xs cursor-pointer group">
-                        <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
-                          isPrimary
-                            ? 'border-secondary bg-secondary'
-                            : 'border-secondary/40 group-hover:border-secondary'
-                        }`}>
+                        <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${isPrimary
+                          ? 'border-secondary bg-secondary'
+                          : 'border-secondary/40 group-hover:border-secondary'
+                          }`}>
                           {isPrimary && <div className="w-1.5 h-1.5 rounded-full bg-background" />}
                         </div>
                         <input
@@ -277,12 +278,11 @@ export function DependencySelector({
                   <div className="mt-3 pt-3 border-t border-outline-variant/60 space-y-2">
                     {filteredExtensions[dep.id].map(opt => (
                       <label key={opt.id} className="flex items-center gap-3 text-xs cursor-pointer group">
-                        <div className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-all ${
-                          (selectedOptions[dep.id] ?? []).includes(opt.id) 
-                            ? 'bg-secondary border-secondary text-on-surface' 
-                            : 'bg-surface-container-lowest border-secondary/40 group-hover:border-secondary'
-                        }`}>
-                           {(selectedOptions[dep.id] ?? []).includes(opt.id) && <span className="material-symbols-outlined font-bold text-background" style={{fontSize: '12px'}}>check</span>}
+                        <div className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-all ${(selectedOptions[dep.id] ?? []).includes(opt.id)
+                          ? 'bg-secondary border-secondary text-on-surface'
+                          : 'bg-surface-container-lowest border-secondary/40 group-hover:border-secondary'
+                          }`}>
+                          {(selectedOptions[dep.id] ?? []).includes(opt.id) && <span className="material-symbols-outlined font-bold text-background" style={{ fontSize: '12px' }}>check</span>}
                         </div>
                         <input
                           type="checkbox"
@@ -346,12 +346,12 @@ export function DependencySelector({
         <div className="flex-grow space-y-6 overflow-y-auto pr-2 tutorial-scroll pb-20">
           <AnimatePresence>
             {filtered.map(group => (
-              <motion.div 
-                layout 
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
-                exit={{ opacity: 0 }} 
-                key={group.name} 
+              <motion.div
+                layout
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                key={group.name}
                 className="space-y-3"
               >
                 <div className="flex items-center gap-3">
@@ -369,8 +369,8 @@ export function DependencySelector({
                         layout
                         key={dep.id}
                         className={`flex items-start gap-4 p-4 rounded-xl border relative cursor-pointer overflow-hidden group transition-all duration-300
-                          ${isSelected 
-                            ? 'border-primary bg-primary/10 shadow-[0_4px_20px_rgba(139,92,246,0.1)]' 
+                          ${isSelected
+                            ? 'border-primary bg-primary/10 shadow-[0_4px_20px_rgba(139,92,246,0.1)]'
                             : 'border-outline-variant bg-surface-container-high hover:border-primary/50 hover:bg-surface-container-highest'}`}
                       >
                         {isSelected && (
@@ -383,10 +383,10 @@ export function DependencySelector({
                           className="sr-only"
                         />
                         <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all duration-300
-                          ${isSelected 
-                            ? 'bg-primary border-primary text-white shadow-[0_0_10px_rgba(139,92,246,0.5)]' 
+                          ${isSelected
+                            ? 'bg-primary border-primary text-white shadow-[0_0_10px_rgba(139,92,246,0.5)]'
                             : 'bg-surface-container-lowest border-secondary/40 group-hover:border-primary/50'}`}>
-                          {isSelected && <span className="material-symbols-outlined font-bold" style={{fontSize: '14px'}}>check</span>}
+                          {isSelected && <span className="material-symbols-outlined font-bold" style={{ fontSize: '14px' }}>check</span>}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-bold text-on-surface flex items-center flex-wrap gap-2">
@@ -410,9 +410,9 @@ export function DependencySelector({
           </AnimatePresence>
           {filtered.length === 0 && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-16 text-center">
-               <span className="material-symbols-outlined text-secondary opacity-30 mb-3" style={{ fontSize: '48px' }}>search_off</span>
-               <p className="text-sm font-medium text-on-surface">No results found</p>
-               <p className="text-xs text-secondary mt-1 max-w-[200px]">We couldn't find any dependencies matching &ldquo;{search}&rdquo;</p>
+              <span className="material-symbols-outlined text-secondary opacity-30 mb-3" style={{ fontSize: '48px' }}>search_off</span>
+              <p className="text-sm font-medium text-on-surface">No results found</p>
+              <p className="text-xs text-secondary mt-1 max-w-[200px]">We couldn't find any dependencies matching &ldquo;{search}&rdquo;</p>
             </motion.div>
           )}
         </div>
