@@ -43,6 +43,18 @@ export function DependencySelector({
   compatibilityRules,
 }: DependencySelectorProps) {
   const [search, setSearch] = useState<string>('')
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+
+  const toggleGroup = useCallback((name: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }, [])
+
+  const isCollapsed = (name: string) => !search.trim() && collapsedGroups.has(name)
 
   const groups = useMemo<DependencyGroup[]>(() => {
     if (!metadata?.dependencies?.values) return []
@@ -368,7 +380,11 @@ export function DependencySelector({
         {/* Grouped checkboxes */}
         <div className="flex-grow space-y-6 overflow-y-auto pr-2 tutorial-scroll pb-20">
           <AnimatePresence>
-            {filtered.map(group => (
+            {filtered.map(group => {
+              const collapsed = isCollapsed(group.name)
+              const selectedCount = group.values.filter(d => selected.includes(d.id)).length
+              const gridId = `dep-group-${group.name.replace(/\s+/g, '-').toLowerCase()}`
+              return (
               <motion.div
                 layout
                 initial={{ opacity: 0 }}
@@ -377,13 +393,41 @@ export function DependencySelector({
                 key={group.name}
                 className="space-y-3"
               >
-                <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.name)}
+                  aria-expanded={!collapsed}
+                  aria-controls={gridId}
+                  className="w-full flex items-center gap-3 cursor-pointer group/header"
+                >
                   <div className="h-px flex-1 bg-outline-variant/50"></div>
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-secondary px-2 py-1 bg-surface-container-lowest rounded-full border border-outline-variant/30">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-secondary px-2 py-1 bg-surface-container-lowest rounded-full border border-outline-variant/30 group-hover/header:border-primary/50 group-hover/header:text-on-surface transition-colors">
+                    <span
+                      className={`material-symbols-outlined transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`}
+                      style={{ fontSize: '14px' }}
+                    >
+                      expand_more
+                    </span>
                     {group.name}
+                    {selectedCount > 0 && (
+                      <span className="ml-1 px-1.5 py-px rounded-full bg-primary/15 text-primary text-[9px] font-bold">
+                        {selectedCount}
+                      </span>
+                    )}
                   </div>
                   <div className="h-px flex-1 bg-outline-variant/50"></div>
-                </div>
+                </button>
+                <AnimatePresence initial={false}>
+                {!collapsed && (
+                <motion.div
+                  key="grid"
+                  id={gridId}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: 'easeInOut' }}
+                  style={{ overflow: 'hidden' }}
+                >
                 <div className="grid gap-2">
                   {group.values.map(dep => {
                     const isSelected = selected.includes(dep.id)
@@ -428,8 +472,12 @@ export function DependencySelector({
                     )
                   })}
                 </div>
+                </motion.div>
+                )}
+                </AnimatePresence>
               </motion.div>
-            ))}
+              )
+            })}
           </AnimatePresence>
           {filtered.length === 0 && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-16 text-center">
