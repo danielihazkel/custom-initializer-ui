@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { BookOpen, Code2, Terminal, ChevronRight, Menu, X, Layers, Search, Command } from 'lucide-react';
 import { CURRICULUM } from './tutorial-constants';
+import { CURRICULUM_HE } from './tutorial-constants-he';
+import { UI_STRINGS, type Lang } from './tutorial-i18n';
 import { Module, Lesson } from './tutorial-types';
 import ArchitectureVisualizer from './visualizers/ArchitectureVisualizer';
 import ProjectScaffolder from './visualizers/ProjectScaffolder';
@@ -15,6 +17,7 @@ interface TutorialViewProps {
 }
 
 export function TutorialView(_props: TutorialViewProps) {
+  const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('tutorial-lang') as Lang) ?? 'en');
   const [activeModule, setActiveModule] = useState<Module>(CURRICULUM[0]);
   const [activeLesson, setActiveLesson] = useState<Lesson>(CURRICULUM[0].lessons[0]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -22,6 +25,19 @@ export function TutorialView(_props: TutorialViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const curriculum = lang === 'he' ? CURRICULUM_HE : CURRICULUM;
+  const ui = UI_STRINGS[lang];
+  const isRtl = lang === 'he';
+
+  // Keep active module/lesson in sync by id when language changes
+  useEffect(() => {
+    const matchedModule = curriculum.find(m => m.id === activeModule.id) ?? curriculum[0];
+    const matchedLesson = matchedModule.lessons.find(l => l.id === activeLesson.id) ?? matchedModule.lessons[0];
+    setActiveModule(matchedModule);
+    setActiveLesson(matchedLesson);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
 
   // Scoped keyboard shortcut — only fires when tutorial container is focused
   useEffect(() => {
@@ -39,8 +55,8 @@ export function TutorialView(_props: TutorialViewProps) {
 
   // Filtered curriculum based on search query
   const filteredCurriculum = searchQuery.trim() === ''
-    ? CURRICULUM
-    : CURRICULUM.map(module => ({
+    ? curriculum
+    : curriculum.map(module => ({
       ...module,
       lessons: module.lessons.filter(lesson =>
         lesson.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -142,6 +158,15 @@ export function TutorialView(_props: TutorialViewProps) {
     if (window.innerWidth < 768) setIsSidebarOpen(false);
   };
 
+  const handleLangToggle = () => {
+    setLang(l => {
+      const next: Lang = l === 'en' ? 'he' : 'en';
+      localStorage.setItem('tutorial-lang', next);
+      return next;
+    });
+    setSearchQuery('');
+  };
+
   // suppress unused warning for handleModuleSelect (kept for potential future use)
   void handleModuleSelect;
 
@@ -149,6 +174,7 @@ export function TutorialView(_props: TutorialViewProps) {
     <div
       ref={containerRef}
       tabIndex={-1}
+      dir={isRtl ? 'rtl' : 'ltr'}
       className="flex bg-background text-on-background overflow-hidden font-sans outline-none"
       style={{ height: 'calc(100vh - 4rem)' }}
     >
@@ -164,10 +190,7 @@ export function TutorialView(_props: TutorialViewProps) {
 
       {/* Sidebar */}
       <div
-        className={`
-            fixed inset-y-0 left-0 z-40 w-80 bg-surface-container border-r border-outline-variant transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0
-            ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        `}
+        className={`fixed inset-y-0 ${isRtl ? 'right-0' : 'left-0'} z-40 w-80 bg-surface-container border-${isRtl ? 'l' : 'r'} border-outline-variant transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : isRtl ? 'translate-x-full' : '-translate-x-full'}`}
         style={{ top: '4rem', height: 'calc(100vh - 4rem)' }}
       >
         <div className="p-5 border-b border-outline-variant flex justify-between items-center bg-surface-container">
@@ -175,26 +198,35 @@ export function TutorialView(_props: TutorialViewProps) {
             <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-container rounded-lg flex items-center justify-center shadow-lg shadow-primary/30">
               <span className="font-bold text-on-primary text-lg">S</span>
             </div>
-            <h1 className="font-bold text-lg tracking-tight text-on-surface">Spring Master</h1>
+            <h1 className="font-bold text-lg tracking-tight text-on-surface">{ui.sidebarTitle}</h1>
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-secondary">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLangToggle}
+              className="px-2.5 py-1 rounded-md text-xs font-bold border border-outline-variant text-secondary hover:text-on-surface hover:border-primary/40 transition-colors"
+              title={ui.langToggleTitle}
+            >
+              {ui.langToggleLabel}
+            </button>
+            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-secondary">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Search Bar */}
         <div className="px-4 py-3 border-b border-outline-variant/50">
           <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary group-focus-within:text-primary transition-colors" size={14} />
+            <Search className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-secondary group-focus-within:text-primary transition-colors`} size={14} />
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="Search lessons..."
+              placeholder={ui.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-background border border-outline-variant rounded-lg py-2 pl-9 pr-10 text-xs text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+              className={`w-full bg-background border border-outline-variant rounded-lg py-2 ${isRtl ? 'pr-9 pl-10' : 'pl-9 pr-10'} text-xs text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all`}
             />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-surface-variant border border-outline text-[10px] text-secondary font-medium pointer-events-none">
+            <div className={`absolute ${isRtl ? 'left-2' : 'right-2'} top-1/2 -translate-y-1/2 flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-surface-variant border border-outline text-[10px] text-secondary font-medium pointer-events-none`}>
               <Command size={8} />
               <span>K</span>
             </div>
@@ -214,15 +246,21 @@ export function TutorialView(_props: TutorialViewProps) {
                       <button
                         key={lesson.id}
                         onClick={() => handleLessonSelect(lesson, module)}
-                        className={`
-                          w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group
-                          ${activeLesson.id === lesson.id
+                        className={`w-full ${isRtl ? 'text-right' : 'text-left'} px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${activeLesson.id === lesson.id
                             ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm'
-                            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'}
-                        `}
+                            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'}`}
                       >
-                        <span className="truncate">{lesson.title}</span>
-                        {activeLesson.id === lesson.id && <ChevronRight size={14} className="opacity-100" />}
+                        {isRtl ? (
+                          <>
+                            {activeLesson.id === lesson.id && <ChevronRight size={14} className="opacity-100 shrink-0 rotate-180" />}
+                            <span className="truncate">{lesson.title}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="truncate">{lesson.title}</span>
+                            {activeLesson.id === lesson.id && <ChevronRight size={14} className="opacity-100 shrink-0" />}
+                          </>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -233,12 +271,12 @@ export function TutorialView(_props: TutorialViewProps) {
                 <div className="w-12 h-12 bg-surface-variant rounded-full flex items-center justify-center mx-auto mb-3 border border-outline-variant">
                   <Search size={20} className="text-secondary" />
                 </div>
-                <p className="text-sm text-secondary">No lessons found</p>
+                <p className="text-sm text-secondary">{ui.noLessonsFound}</p>
                 <button
                   onClick={() => setSearchQuery('')}
                   className="text-xs text-primary hover:underline mt-2"
                 >
-                  Clear search
+                  {ui.clearSearch}
                 </button>
               </div>
             )}
@@ -256,7 +294,7 @@ export function TutorialView(_props: TutorialViewProps) {
         <header className="h-16 glass-header flex items-center justify-between px-6 z-10 shrink-0 sticky top-0">
           <div className="flex items-center gap-3 ml-10 md:ml-0 overflow-hidden">
             <span className="text-secondary text-sm whitespace-nowrap">{activeModule.title}</span>
-            <ChevronRight size={14} className="text-secondary" />
+            <ChevronRight size={14} className={`text-secondary ${isRtl ? 'rotate-180' : ''}`} />
             <span className="text-primary font-medium text-sm truncate">{activeLesson.title}</span>
           </div>
 
@@ -266,7 +304,7 @@ export function TutorialView(_props: TutorialViewProps) {
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${showArchitecture ? 'bg-primary/10 text-primary border-primary/20' : 'bg-surface-container text-secondary border-outline-variant hover:border-outline'}`}
             >
               <Layers size={14} />
-              {showArchitecture ? 'Hide Architecture' : 'Show Architecture'}
+              {showArchitecture ? ui.hideArchitecture : ui.showArchitecture}
             </button>
           </div>
         </header>
@@ -299,13 +337,13 @@ export function TutorialView(_props: TutorialViewProps) {
                   <div className="flex items-center justify-between px-1">
                     <h4 className="text-sm font-semibold text-secondary flex items-center gap-2">
                       <Code2 size={16} />
-                      Implementation Example
+                      {ui.implementationExample}
                     </h4>
                     <span className="text-xs text-secondary font-mono">
                       {activeLesson.id.startsWith('maven') ? 'pom.xml' : 'Java 17+'}
                     </span>
                   </div>
-                  <div className="glass-card rounded-xl overflow-hidden shadow-2xl group border border-outline-variant">
+                  <div dir="ltr" className="glass-card rounded-xl overflow-hidden shadow-2xl group border border-outline-variant">
                     <div className="flex items-center justify-between px-4 py-3 bg-surface-variant/50 border-b border-outline-variant">
                       <div className="flex items-center gap-2">
                         <div className="flex gap-1.5 mr-2">
@@ -317,7 +355,7 @@ export function TutorialView(_props: TutorialViewProps) {
                           {activeLesson.id.startsWith('maven') ? 'Maven POM' : 'SpringContext.java'}
                         </span>
                       </div>
-                      <div className="px-2 py-0.5 rounded text-[10px] font-medium bg-surface text-secondary border border-outline-variant">Read-Only</div>
+                      <div className="px-2 py-0.5 rounded text-[10px] font-medium bg-surface text-secondary border border-outline-variant">{ui.readOnly}</div>
                     </div>
                     <div className="relative p-6 overflow-x-auto bg-surface/50 tutorial-scroll">
                       <pre className="font-mono text-sm leading-6 text-on-surface-variant">
@@ -382,7 +420,7 @@ export function TutorialView(_props: TutorialViewProps) {
           </div>
 
           {/* Right: Architecture (Desktop) */}
-          <div className="hidden xl:flex w-[420px] bg-surface-container-low border-l border-outline-variant flex-col shrink-0">
+          <div className={`hidden xl:flex w-[420px] bg-surface-container-low border-${isRtl ? 'r' : 'l'} border-outline-variant flex-col shrink-0`}>
             <div className="p-6 h-full overflow-y-auto tutorial-scroll">
               {showArchitecture ? (
                 <ArchitectureVisualizer activeStage={activeLesson.architectureHighlight} />
@@ -391,12 +429,12 @@ export function TutorialView(_props: TutorialViewProps) {
                   <div className="w-16 h-16 rounded-full bg-surface container flex items-center justify-center border border-outline-variant">
                     <Terminal size={24} className="opacity-40" />
                   </div>
-                  <p className="text-sm">Architecture view hidden</p>
+                  <p className="text-sm">{ui.architectureHidden}</p>
                   <button
                     onClick={() => setShowArchitecture(true)}
                     className="text-xs text-primary hover:text-primary-container transition-colors border-b border-primary/30 pb-0.5"
                   >
-                    Show Visualizer
+                    {ui.showVisualizer}
                   </button>
                 </div>
               )}
