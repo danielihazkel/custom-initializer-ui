@@ -159,18 +159,9 @@ export function StarterTemplatesTab() {
     <div className="space-y-10">
       {/* Templates section */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Starter Templates</h2>
-            <p className="text-[11px] text-on-surface-variant mt-0.5">Pre-configured project templates shown in the Quick Start section</p>
-          </div>
-          <button
-            onClick={openNew}
-            className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
-            New Template
-          </button>
+        <div>
+          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Starter Templates</h2>
+          <p className="text-[11px] text-on-surface-variant mt-0.5">Pre-configured project templates shown in the Quick Start section</p>
         </div>
 
         <AdminTable
@@ -186,23 +177,23 @@ export function StarterTemplatesTab() {
           loading={templates.loading}
           onEdit={openEdit}
           onDelete={setDeleteTarget}
+          addButton={
+            <button
+              onClick={openNew}
+              className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+              New Template
+            </button>
+          }
         />
       </div>
 
       {/* Template Dependencies section */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Template Dependencies</h2>
-            <p className="text-[11px] text-on-surface-variant mt-0.5">Dependencies included in each template</p>
-          </div>
-          <button
-            onClick={openNewDep}
-            className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
-            New Dep Mapping
-          </button>
+        <div>
+          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Template Dependencies</h2>
+          <p className="text-[11px] text-on-surface-variant mt-0.5">Dependencies included in each template</p>
         </div>
 
         <AdminTable
@@ -216,6 +207,15 @@ export function StarterTemplatesTab() {
           loading={deps.loading}
           onEdit={openEditDep}
           onDelete={setDeleteDepTarget}
+          addButton={
+            <button
+              onClick={openNewDep}
+              className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+              New Dep Mapping
+            </button>
+          }
         />
       </div>
 

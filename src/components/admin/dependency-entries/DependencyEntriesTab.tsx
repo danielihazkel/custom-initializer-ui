@@ -95,18 +95,9 @@ export function DependencyEntriesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Dependency Entries</h2>
-          <p className="text-[11px] text-on-surface-variant mt-0.5">Individual dependencies shown in the UI dependency picker</p>
-        </div>
-        <button
-          onClick={openNew}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-md"
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
-          New Entry
-        </button>
+      <div>
+        <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Dependency Entries</h2>
+        <p className="text-[11px] text-on-surface-variant mt-0.5">Individual dependencies shown in the UI dependency picker</p>
       </div>
 
       <AdminTable
@@ -123,6 +114,15 @@ export function DependencyEntriesTab() {
         loading={loading}
         onEdit={openEdit}
         onDelete={setDeleteTarget}
+        addButton={
+          <button
+            onClick={openNew}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-md"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
+            New Entry
+          </button>
+        }
       />
 
       <AdminFormDrawer

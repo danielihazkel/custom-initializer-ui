@@ -16,6 +16,7 @@ interface AdminTableProps<T extends { id: number }> {
   searchable?: boolean
   searchPlaceholder?: string
   onReorder?: (newOrder: T[]) => void
+  addButton?: ReactNode
 }
 
 function DraggableRow<T extends { id: number }>({ row, columns, onEdit, onDelete }: { row: T, columns: ColumnDef<T>[], onEdit: (row: T) => void, onDelete: (row: T) => void }) {
@@ -65,7 +66,7 @@ function DraggableRow<T extends { id: number }>({ row, columns, onEdit, onDelete
 }
 
 export function AdminTable<T extends { id: number }>({
-  columns, rows, onEdit, onDelete, loading, searchable = true, searchPlaceholder = 'Search...', onReorder
+  columns, rows, onEdit, onDelete, loading, searchable = true, searchPlaceholder = 'Search...', onReorder, addButton
 }: AdminTableProps<T>) {
   const [query, setQuery] = useState('')
 
@@ -85,20 +86,29 @@ export function AdminTable<T extends { id: number }>({
 
   return (
     <div className="flex flex-col gap-4">
-      {searchable && (
-        <div className="flex items-center gap-2 bg-surface px-4 py-2.5 rounded-xl border border-outline-variant max-w-sm shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all">
-          <span className="material-symbols-outlined text-secondary" style={{ fontSize: '20px' }}>search</span>
-          <input 
-            type="text" 
-            placeholder={searchPlaceholder}
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            className="bg-transparent border-none outline-none text-sm w-full text-on-surface placeholder:text-secondary"
-          />
-          {query && (
-            <button onClick={() => setQuery('')} className="text-secondary hover:text-on-surface">
-              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
-            </button>
+      {(searchable || addButton) && (
+        <div className="sticky top-0 z-10 bg-background border-b border-outline-variant py-3 flex items-center justify-between gap-3">
+          {searchable && (
+            <div className="flex items-center gap-2 bg-surface px-4 py-2 rounded-xl border border-outline-variant max-w-sm shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all">
+              <span className="material-symbols-outlined text-secondary" style={{ fontSize: '20px' }}>search</span>
+              <input
+                type="text"
+                placeholder={searchPlaceholder}
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                className="bg-transparent border-none outline-none text-sm w-full text-on-surface placeholder:text-secondary"
+              />
+              {query && (
+                <button onClick={() => setQuery('')} className="text-secondary hover:text-on-surface">
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+                </button>
+              )}
+            </div>
+          )}
+          {addButton && (
+            <div className="flex items-center gap-2 shrink-0 ml-auto">
+              {addButton}
+            </div>
           )}
         </div>
       )}

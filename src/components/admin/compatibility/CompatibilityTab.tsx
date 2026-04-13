@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { List, Share2 } from 'lucide-react'
 import type { AdminDependencyCompatibility, AdminDependencyEntry, Toast } from '../../../types'
 import { useAdminResource } from '../../../hooks/useAdminResource'
@@ -25,6 +25,13 @@ export function CompatibilityTab() {
   const { items, loading, create, update, remove } = useAdminResource<AdminDependencyCompatibility>('/admin/compatibility')
   const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
   const [viewMode, setViewMode] = useState<ViewMode>('table')
+  const [tableQuery, setTableQuery] = useState('')
+
+  const filteredItems = useMemo(() => {
+    if (!tableQuery.trim()) return items
+    const q = tableQuery.toLowerCase()
+    return items.filter(row => Object.values(row).some(val => String(val).toLowerCase().includes(q)))
+  }, [items, tableQuery])
   const [editing, setEditing] = useState<Partial<AdminDependencyCompatibility> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -81,11 +88,7 @@ export function CompatibilityTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Compatibility Rules</h2>
-          <p className="text-[11px] text-on-surface-variant mt-0.5">Define REQUIRES, CONFLICTS, and RECOMMENDS relationships between dependencies</p>
-        </div>
+      <div className="sticky top-0 z-10 bg-background border-b border-outline-variant py-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {/* View toggle */}
           <div className="flex items-center bg-surface-variant/50 p-0.5 rounded-lg border border-outline-variant">
@@ -104,14 +107,32 @@ export function CompatibilityTab() {
               Graph
             </button>
           </div>
-          <button
-            onClick={openNew}
-            className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
-            New Rule
-          </button>
+          {/* Search — only in table mode */}
+          {viewMode === 'table' && (
+            <div className="flex items-center gap-2 bg-surface px-4 py-2 rounded-xl border border-outline-variant max-w-sm shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all">
+              <span className="material-symbols-outlined text-secondary" style={{ fontSize: '20px' }}>search</span>
+              <input
+                type="text"
+                placeholder="Search..."
+                value={tableQuery}
+                onChange={e => setTableQuery(e.target.value)}
+                className="bg-transparent border-none outline-none text-sm w-full text-on-surface placeholder:text-secondary"
+              />
+              {tableQuery && (
+                <button onClick={() => setTableQuery('')} className="text-secondary hover:text-on-surface">
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
+        <button
+          onClick={openNew}
+          className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95 shrink-0"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+          New Rule
+        </button>
       </div>
 
       {viewMode === 'graph' && (
@@ -132,10 +153,11 @@ export function CompatibilityTab() {
             { label: 'Description', render: r => <span className="text-xs text-on-surface-variant truncate max-w-xs block">{r.description}</span> },
             { label: 'Sort', render: r => r.sortOrder, width: '70px' },
           ]}
-          rows={items}
+          rows={filteredItems}
           loading={loading}
           onEdit={openEdit}
           onDelete={setDeleteTarget}
+          searchable={false}
         />
       )}
 
