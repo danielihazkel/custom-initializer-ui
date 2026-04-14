@@ -68,8 +68,8 @@ export function TutorialView(_props: TutorialViewProps) {
   // Helper to parse basic markdown for rich text rendering
   const parseMarkdown = (text: string) => {
     let parsed = text.replace(/\*\*(.*?)\*\*/g, '<strong class="text-on-surface font-semibold">$1</strong>');
-    parsed = parsed.replace(/`([^`]+)`/g, '<code class="bg-surface-container-high border border-outline-variant px-1.5 py-0.5 rounded text-primary text-sm font-mono">$1</code>');
-    parsed = parsed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-primary hover:underline">$1</a>');
+    parsed = parsed.replace(/`([^`]+)`/g, '<code class="bg-surface-container-high border border-outline-variant px-1.5 py-0.5 rounded text-primary text-sm font-mono"><bdi>$1</bdi></code>');
+    parsed = parsed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-primary hover:underline"><bdi>$1</bdi></a>');
     return parsed;
   };
 
@@ -78,18 +78,30 @@ export function TutorialView(_props: TutorialViewProps) {
       const trimmed = block.trim();
 
       if (trimmed.startsWith('### ')) {
+        const lines = trimmed.split('\n');
+        const heading = lines[0];
+        const rest = lines.slice(1);
+
         return (
-          <h3 key={index} className="text-xl font-bold text-on-surface mt-8 mb-4 flex items-center gap-2">
-            <span className="w-1.5 h-6 bg-primary rounded-full inline-block"></span>
-            {trimmed.replace('### ', '')}
-          </h3>
+          <div key={index}>
+            <h3 className="text-xl font-bold text-on-surface mt-8 mb-4 flex items-center gap-2">
+              <span className="w-1.5 h-6 bg-primary rounded-full inline-block"></span>
+              {heading.replace('### ', '')}
+            </h3>
+            {rest.length > 0 && (
+              <p
+                className="text-on-surface-variant leading-7 mb-4 text-base"
+                dangerouslySetInnerHTML={{ __html: parseMarkdown(rest.join('\n')) }}
+              />
+            )}
+          </div>
         );
       }
 
       if (trimmed.startsWith('- ')) {
         const items = trimmed.split('\n').map(line => line.replace(/^- /, '').trim());
         return (
-          <ul key={index} className="list-disc pl-6 mb-6 space-y-2 text-on-surface-variant">
+          <ul key={index} className={`list-disc ${isRtl ? 'pr-6' : 'pl-6'} mb-6 space-y-2 text-on-surface-variant`}>
             {items.map((item, i) => (
               <li key={i} dangerouslySetInnerHTML={{ __html: parseMarkdown(item) }} />
             ))}
@@ -100,7 +112,7 @@ export function TutorialView(_props: TutorialViewProps) {
       if (/^\d+\. /.test(trimmed)) {
         const items = trimmed.split('\n').map(line => line.replace(/^\d+\. /, '').trim());
         return (
-          <ol key={index} className="list-decimal pl-6 mb-6 space-y-2 text-on-surface-variant">
+          <ol key={index} className={`list-decimal ${isRtl ? 'pr-6' : 'pl-6'} mb-6 space-y-2 text-on-surface-variant`}>
             {items.map((item, i) => (
               <li key={i} dangerouslySetInnerHTML={{ __html: parseMarkdown(item) }} />
             ))}
