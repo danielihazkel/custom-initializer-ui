@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react'
-import type { AdminDependencyEntry, AdminDependencyGroup, Toast } from '../../../types'
+import { useState, useCallback, useMemo } from 'react'
+import type { AdminDependencyEntry, AdminDependencyGroup, AdminBuildCustomization, AdminFileContribution, Toast } from '../../../types'
 import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -16,6 +16,16 @@ const EMPTY: Partial<AdminDependencyEntry> = {
 export function DependencyEntriesTab() {
   const { items, loading, create, update, remove } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
   const { items: groups } = useAdminResource<AdminDependencyGroup>('/admin/dependency-groups')
+  const { items: buildCustomizations } = useAdminResource<AdminBuildCustomization>('/admin/build-customizations')
+  const { items: fileContributions } = useAdminResource<AdminFileContribution>('/admin/file-contributions')
+  const depIdsWithPomEntry = useMemo(
+    () => new Set(buildCustomizations.filter(c => c.customizationType === 'ADD_DEPENDENCY').map(c => c.dependencyId)),
+    [buildCustomizations],
+  )
+  const depIdsWithFiles = useMemo(
+    () => new Set(fileContributions.map(f => f.dependencyId)),
+    [fileContributions],
+  )
   const [editing, setEditing] = useState<Partial<AdminDependencyEntry> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -137,6 +147,8 @@ export function DependencyEntriesTab() {
             data={editing}
             groups={groups}
             errors={errors}
+            depIdsWithPomEntry={depIdsWithPomEntry}
+            depIdsWithFiles={depIdsWithFiles}
             onChange={updates => setEditing(prev => ({ ...prev, ...updates }))}
           />
         )}

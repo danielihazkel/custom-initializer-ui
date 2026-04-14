@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { AdminDependencyEntry, AdminDependencyGroup } from '../../../types'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 import { MAVEN_SCOPES, REPOSITORIES } from '../shared/adminConstants'
@@ -6,10 +7,31 @@ interface Props {
   data: Partial<AdminDependencyEntry>
   groups: AdminDependencyGroup[]
   errors: Record<string, string>
+  depIdsWithPomEntry: Set<string>
+  depIdsWithFiles: Set<string>
   onChange: (updates: Partial<AdminDependencyEntry>) => void
 }
 
-export function DependencyEntryForm({ data, groups, errors, onChange }: Props) {
+const isBlank = (v: string | null | undefined) => !v || v.trim() === ''
+
+export function DependencyEntryForm({ data, groups, errors, depIdsWithPomEntry, depIdsWithFiles, onChange }: Props) {
+  const entryHasNoMaven = isBlank(data.mavenGroupId) && isBlank(data.mavenArtifactId) && isBlank(data.version)
+  const depIdAddsPomViaCustomization = !!data.depId && depIdsWithPomEntry.has(data.depId)
+  const depIdHasFileContributions = !!data.depId && depIdsWithFiles.has(data.depId)
+  // A depId with blank maven fields AND no ADD_DEPENDENCY customization is treated by the
+  // Spring Initializr framework as an auto-starter (adds spring-boot-starter-<depId> to pom).
+  // Only entries that also contribute files qualify as truly "file-only".
+  const [fileOnly, setFileOnly] = useState(
+    entryHasNoMaven && !depIdAddsPomViaCustomization && depIdHasFileContributions,
+  )
+
+  const toggleFileOnly = (next: boolean) => {
+    setFileOnly(next)
+    if (next) {
+      onChange({ mavenGroupId: '', mavenArtifactId: '', version: '', scope: '', repository: '' })
+    }
+  }
+
   return (
     <>
       <FieldRow label="Group" required error={errors.group}>
@@ -49,29 +71,52 @@ export function DependencyEntryForm({ data, groups, errors, onChange }: Props) {
         />
       </FieldRow>
       <div className="border-t border-outline-variant pt-4">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-secondary mb-3">Maven Coordinates (optional — leave blank for Spring-managed deps)</p>
-        <div className="space-y-4">
-          <FieldRow label="Maven Group ID">
-            <input className={inputClass} value={data.mavenGroupId ?? ''} onChange={e => onChange({ mavenGroupId: e.target.value })} placeholder="org.apache.kafka" />
-          </FieldRow>
-          <FieldRow label="Maven Artifact ID">
-            <input className={inputClass} value={data.mavenArtifactId ?? ''} onChange={e => onChange({ mavenArtifactId: e.target.value })} placeholder="kafka-clients" />
-          </FieldRow>
-          <FieldRow label="Version">
-            <input className={inputClass} value={data.version ?? ''} onChange={e => onChange({ version: e.target.value })} placeholder="3.6.0" />
-          </FieldRow>
-          <FieldRow label="Scope" hint="Leave blank for default (compile)">
-            <select className={selectClass} value={data.scope ?? ''} onChange={e => onChange({ scope: e.target.value })}>
-              <option value="">Default (compile)</option>
-              {MAVEN_SCOPES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </FieldRow>
-          <FieldRow label="Repository" hint='Leave blank for Maven Central'>
-            <select className={selectClass} value={data.repository ?? ''} onChange={e => onChange({ repository: e.target.value })}>
-              <option value="">Maven Central (default)</option>
-              {REPOSITORIES.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </FieldRow>
+        <label className="flex items-start gap-2 mb-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={fileOnly}
+            onChange={e => toggleFileOnly(e.target.checked)}
+          />
+          <span className="text-sm">
+            <span className="font-medium">File-only option</span>
+            <span className="block text-xs text-on-surface-variant">No pom dependency is added — this entry only contributes files/sub-options when selected.</span>
+          </span>
+        </label>
+        {fileOnly && depIdAddsPomViaCustomization && (
+          <p className="mb-4 text-xs text-error">
+            Heads up: a build customization (ADD_DEPENDENCY) already references <code>{data.depId}</code>, so a pom entry will still be added when this option is selected. Remove that customization in the Build Customizations tab to make this truly file-only.
+          </p>
+        )}
+        {!fileOnly && (
+          <>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-secondary mb-3">Maven Coordinates (optional — leave blank for Spring-managed deps)</p>
+            <div className="space-y-4">
+              <FieldRow label="Maven Group ID">
+                <input className={inputClass} value={data.mavenGroupId ?? ''} onChange={e => onChange({ mavenGroupId: e.target.value })} placeholder="org.apache.kafka" />
+              </FieldRow>
+              <FieldRow label="Maven Artifact ID">
+                <input className={inputClass} value={data.mavenArtifactId ?? ''} onChange={e => onChange({ mavenArtifactId: e.target.value })} placeholder="kafka-clients" />
+              </FieldRow>
+              <FieldRow label="Version">
+                <input className={inputClass} value={data.version ?? ''} onChange={e => onChange({ version: e.target.value })} placeholder="3.6.0" />
+              </FieldRow>
+              <FieldRow label="Scope" hint="Leave blank to omit the <scope> element (maven then applies compile by default)">
+                <select className={selectClass} value={data.scope ?? ''} onChange={e => onChange({ scope: e.target.value })}>
+                  <option value="">— none —</option>
+                  {MAVEN_SCOPES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </FieldRow>
+              <FieldRow label="Repository" hint='Leave blank to omit the <repository> element'>
+                <select className={selectClass} value={data.repository ?? ''} onChange={e => onChange({ repository: e.target.value })}>
+                  <option value="">— none —</option>
+                  {REPOSITORIES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </FieldRow>
+            </div>
+          </>
+        )}
+        <div className={fileOnly ? '' : 'space-y-4 mt-4'}>
           <FieldRow label="Compatibility Range" hint='Spring Boot version range, e.g. [3.2.0,4.0.0) or 3.2.0 — blank = all versions'>
             <input className={inputClass} value={data.compatibilityRange ?? ''} onChange={e => onChange({ compatibilityRange: e.target.value })} placeholder="[3.2.0,4.0.0)" />
           </FieldRow>
