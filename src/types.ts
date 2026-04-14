@@ -103,6 +103,7 @@ export interface AdminDependencyEntry {
   repository: string
   compatibilityRange: string
   sortOrder: number
+  starter: boolean
 }
 
 export type FileType = 'STATIC_COPY' | 'YAML_MERGE' | 'TEMPLATE' | 'DELETE'

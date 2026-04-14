@@ -2,20 +2,22 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
 
-const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle', 'mongodb'] as const
+const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle', 'mongodb', 'h2'] as const
 const DB_PRIMARY_OPTIONS: Record<string, string> = {
   postgresql: 'pg-primary',
   mssql: 'mssql-primary',
   db2: 'db2-primary',
   oracle: 'oracle-primary',
-  mongodb: 'mongodb-primary'
+  mongodb: 'mongodb-primary',
+  h2: 'h2-primary'
 }
 const DB_SECONDARY_OPTIONS: Record<string, string> = {
   postgresql: 'pg-secondary',
   mssql: 'mssql-secondary',
   db2: 'db2-secondary',
   oracle: 'oracle-secondary',
-  mongodb: 'mongodb-secondary'
+  mongodb: 'mongodb-secondary',
+  h2: 'h2-secondary'
 }
 const DB_SUB_OPTION_IDS = new Set([
   ...Object.values(DB_PRIMARY_OPTIONS),
@@ -26,6 +28,7 @@ const DB_DRIVER_KINDS: Record<string, 'jdbc' | 'mongodb'> = {
   mssql: 'jdbc',
   db2: 'jdbc',
   oracle: 'jdbc',
+  h2: 'jdbc',
   mongodb: 'mongodb',
 }
 const DB_KIND_LABELS: Record<string, string> = {
@@ -98,7 +101,7 @@ export function DependencySelector({
     for (const id of DB_DRIVERS) {
       if (!selected.includes(id)) continue
       const kind = DB_DRIVER_KINDS[id]
-      ;(map[kind] ??= []).push(id)
+        ; (map[kind] ??= []).push(id)
     }
     return map
   }, [selected])
@@ -385,97 +388,97 @@ export function DependencySelector({
               const selectedCount = group.values.filter(d => selected.includes(d.id)).length
               const gridId = `dep-group-${group.name.replace(/\s+/g, '-').toLowerCase()}`
               return (
-              <motion.div
-                layout
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                key={group.name}
-                className="space-y-3"
-              >
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(group.name)}
-                  aria-expanded={!collapsed}
-                  aria-controls={gridId}
-                  className="w-full flex items-center gap-3 cursor-pointer group/header"
-                >
-                  <div className="h-px flex-1 bg-outline-variant/50"></div>
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-secondary px-2 py-1 bg-surface-container-lowest rounded-full border border-outline-variant/30 group-hover/header:border-primary/50 group-hover/header:text-on-surface transition-colors">
-                    <span
-                      className={`material-symbols-outlined transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`}
-                      style={{ fontSize: '14px' }}
-                    >
-                      expand_more
-                    </span>
-                    {group.name}
-                    {selectedCount > 0 && (
-                      <span className="ml-1 px-1.5 py-px rounded-full bg-primary/15 text-primary text-[9px] font-bold">
-                        {selectedCount}
-                      </span>
-                    )}
-                  </div>
-                  <div className="h-px flex-1 bg-outline-variant/50"></div>
-                </button>
-                <AnimatePresence initial={false}>
-                {!collapsed && (
                 <motion.div
-                  key="grid"
-                  id={gridId}
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: 'easeInOut' }}
-                  style={{ overflow: 'hidden' }}
+                  layout
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  key={group.name}
+                  className="space-y-3"
                 >
-                <div className="grid gap-2">
-                  {group.values.map(dep => {
-                    const isSelected = selected.includes(dep.id)
-                    return (
-                      <motion.label
-                        layout
-                        key={dep.id}
-                        className={`flex items-start gap-4 p-4 rounded-xl border relative cursor-pointer overflow-hidden group transition-all duration-300
-                          ${isSelected
-                            ? 'border-primary bg-primary/10 shadow-[0_4px_20px_rgba(139,92,246,0.1)]'
-                            : 'border-outline-variant bg-surface-container-high hover:border-primary/50 hover:bg-surface-container-highest'}`}
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.name)}
+                    aria-expanded={!collapsed}
+                    aria-controls={gridId}
+                    className="w-full flex items-center gap-3 cursor-pointer group/header"
+                  >
+                    <div className="h-px flex-1 bg-outline-variant/50"></div>
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-secondary px-2 py-1 bg-surface-container-lowest rounded-full border border-outline-variant/30 group-hover/header:border-primary/50 group-hover/header:text-on-surface transition-colors">
+                      <span
+                        className={`material-symbols-outlined transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`}
+                        style={{ fontSize: '14px' }}
                       >
-                        {isSelected && (
-                          <motion.div layoutId="active-indicator" className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
-                        )}
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggle(dep.id)}
-                          className="sr-only"
-                        />
-                        <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all duration-300
+                        expand_more
+                      </span>
+                      {group.name}
+                      {selectedCount > 0 && (
+                        <span className="ml-1 px-1.5 py-px rounded-full bg-primary/15 text-primary text-[9px] font-bold">
+                          {selectedCount}
+                        </span>
+                      )}
+                    </div>
+                    <div className="h-px flex-1 bg-outline-variant/50"></div>
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {!collapsed && (
+                      <motion.div
+                        key="grid"
+                        id={gridId}
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: 'easeInOut' }}
+                        style={{ overflow: 'hidden' }}
+                      >
+                        <div className="grid gap-2">
+                          {group.values.map(dep => {
+                            const isSelected = selected.includes(dep.id)
+                            return (
+                              <motion.label
+                                layout
+                                key={dep.id}
+                                className={`flex items-start gap-4 p-4 rounded-xl border relative cursor-pointer overflow-hidden group transition-all duration-300
                           ${isSelected
-                            ? 'bg-primary border-primary text-white shadow-[0_0_10px_rgba(139,92,246,0.5)]'
-                            : 'bg-surface-container-lowest border-secondary/40 group-hover:border-primary/50'}`}>
-                          {isSelected && <span className="material-symbols-outlined font-bold" style={{ fontSize: '14px' }}>check</span>}
+                                    ? 'border-primary bg-primary/10 shadow-[0_4px_20px_rgba(139,92,246,0.1)]'
+                                    : 'border-outline-variant bg-surface-container-high hover:border-primary/50 hover:bg-surface-container-highest'}`}
+                              >
+                                {isSelected && (
+                                  <motion.div layoutId="active-indicator" className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
+                                )}
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggle(dep.id)}
+                                  className="sr-only"
+                                />
+                                <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all duration-300
+                          ${isSelected
+                                    ? 'bg-primary border-primary text-white shadow-[0_0_10px_rgba(139,92,246,0.5)]'
+                                    : 'bg-surface-container-lowest border-secondary/40 group-hover:border-primary/50'}`}>
+                                  {isSelected && <span className="material-symbols-outlined font-bold" style={{ fontSize: '14px' }}>check</span>}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-bold text-on-surface flex items-center flex-wrap gap-2">
+                                    {dep.name}
+                                    {dep.versionRange && (
+                                      <span className="text-[9px] font-bold text-secondary bg-surface-container px-1.5 py-0.5 rounded-full border border-outline-variant/50">
+                                        Boot {dep.versionRange}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {dep.description && (
+                                    <div className="text-xs text-on-surface-variant leading-relaxed mt-1">{dep.description}</div>
+                                  )}
+                                </div>
+                              </motion.label>
+                            )
+                          })}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-bold text-on-surface flex items-center flex-wrap gap-2">
-                            {dep.name}
-                            {dep.versionRange && (
-                              <span className="text-[9px] font-bold text-secondary bg-surface-container px-1.5 py-0.5 rounded-full border border-outline-variant/50">
-                                Boot {dep.versionRange}
-                              </span>
-                            )}
-                          </div>
-                          {dep.description && (
-                            <div className="text-xs text-on-surface-variant leading-relaxed mt-1">{dep.description}</div>
-                          )}
-                        </div>
-                      </motion.label>
-                    )
-                  })}
-                </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
-                )}
-                </AnimatePresence>
-              </motion.div>
               )
             })}
           </AnimatePresence>

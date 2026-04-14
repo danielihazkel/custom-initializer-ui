@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import type { AdminDependencyEntry, AdminDependencyGroup, AdminBuildCustomization, AdminFileContribution, Toast } from '../../../types'
+import type { AdminDependencyEntry, AdminDependencyGroup, AdminBuildCustomization, Toast } from '../../../types'
 import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -10,21 +10,16 @@ import { DependencyEntryForm } from './DependencyEntryForm'
 const EMPTY: Partial<AdminDependencyEntry> = {
   group: { id: 0 }, depId: '', name: '', description: '',
   mavenGroupId: '', mavenArtifactId: '', version: '', scope: '', repository: '',
-  compatibilityRange: '', sortOrder: 0
+  compatibilityRange: '', sortOrder: 0, starter: true
 }
 
 export function DependencyEntriesTab() {
   const { items, loading, create, update, remove } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
   const { items: groups } = useAdminResource<AdminDependencyGroup>('/admin/dependency-groups')
   const { items: buildCustomizations } = useAdminResource<AdminBuildCustomization>('/admin/build-customizations')
-  const { items: fileContributions } = useAdminResource<AdminFileContribution>('/admin/file-contributions')
   const depIdsWithPomEntry = useMemo(
     () => new Set(buildCustomizations.filter(c => c.customizationType === 'ADD_DEPENDENCY').map(c => c.dependencyId)),
     [buildCustomizations],
-  )
-  const depIdsWithFiles = useMemo(
-    () => new Set(fileContributions.map(f => f.dependencyId)),
-    [fileContributions],
   )
   const [editing, setEditing] = useState<Partial<AdminDependencyEntry> | null>(null)
   const [isNew, setIsNew] = useState(false)
@@ -148,7 +143,6 @@ export function DependencyEntriesTab() {
             groups={groups}
             errors={errors}
             depIdsWithPomEntry={depIdsWithPomEntry}
-            depIdsWithFiles={depIdsWithFiles}
             onChange={updates => setEditing(prev => ({ ...prev, ...updates }))}
           />
         )}

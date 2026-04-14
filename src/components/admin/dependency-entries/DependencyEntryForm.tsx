@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import type { AdminDependencyEntry, AdminDependencyGroup } from '../../../types'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 import { MAVEN_SCOPES, REPOSITORIES } from '../shared/adminConstants'
@@ -8,27 +7,18 @@ interface Props {
   groups: AdminDependencyGroup[]
   errors: Record<string, string>
   depIdsWithPomEntry: Set<string>
-  depIdsWithFiles: Set<string>
   onChange: (updates: Partial<AdminDependencyEntry>) => void
 }
 
-const isBlank = (v: string | null | undefined) => !v || v.trim() === ''
-
-export function DependencyEntryForm({ data, groups, errors, depIdsWithPomEntry, depIdsWithFiles, onChange }: Props) {
-  const entryHasNoMaven = isBlank(data.mavenGroupId) && isBlank(data.mavenArtifactId) && isBlank(data.version)
+export function DependencyEntryForm({ data, groups, errors, depIdsWithPomEntry, onChange }: Props) {
   const depIdAddsPomViaCustomization = !!data.depId && depIdsWithPomEntry.has(data.depId)
-  const depIdHasFileContributions = !!data.depId && depIdsWithFiles.has(data.depId)
-  // A depId with blank maven fields AND no ADD_DEPENDENCY customization is treated by the
-  // Spring Initializr framework as an auto-starter (adds spring-boot-starter-<depId> to pom).
-  // Only entries that also contribute files qualify as truly "file-only".
-  const [fileOnly, setFileOnly] = useState(
-    entryHasNoMaven && !depIdAddsPomViaCustomization && depIdHasFileContributions,
-  )
+  const fileOnly = data.starter === false
 
   const toggleFileOnly = (next: boolean) => {
-    setFileOnly(next)
     if (next) {
-      onChange({ mavenGroupId: '', mavenArtifactId: '', version: '', scope: '', repository: '' })
+      onChange({ starter: false, mavenGroupId: '', mavenArtifactId: '', version: '', scope: '', repository: '' })
+    } else {
+      onChange({ starter: true })
     }
   }
 
