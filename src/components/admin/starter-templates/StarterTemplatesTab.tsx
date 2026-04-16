@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { AdminStarterTemplate, AdminStarterTemplateDep, AdminDependencyEntry, Toast } from '../../../types'
-import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
+import { useAdminResource, AdminApiError, adminFetch } from '../../../hooks/useAdminResource'
 import { useAdminMetadata } from '../../../hooks/useAdminMetadata'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -34,6 +34,25 @@ export function StarterTemplatesTab() {
   const [deleting, setDeleting] = useState(false)
   const [orphanDetails, setOrphanDetails] = useState<OrphanDetails | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
+  const [localTemplates, setLocalTemplates] = useState<AdminStarterTemplate[]>([])
+
+  useEffect(() => { setLocalTemplates(templates.items) }, [templates.items])
+
+  const isTemplateDirty = localTemplates.length > 0 && localTemplates.some((item, i) => item.id !== templates.items[i]?.id)
+
+  async function handleSaveTemplateOrder() {
+    setSaving(true)
+    try {
+      const orderings = localTemplates.map((item, i) => ({ id: item.id, sortOrder: i + 1 }))
+      await adminFetch('PUT', '/admin/starter-templates/reorder', orderings)
+      templates.reload()
+      setToast({ message: 'Order saved successfully', type: 'success' })
+    } catch (err) {
+      setToast({ message: String(err), type: 'error' })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   // Dep CRUD state
   const [editingDep, setEditingDep] = useState<Partial<AdminStarterTemplateDep> | null>(null)
@@ -173,18 +192,30 @@ export function StarterTemplatesTab() {
             { label: 'Icon', render: r => r.icon ? <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>{r.icon}</span> : '—' , width: '60px' },
             { label: 'Sort', render: r => r.sortOrder, width: '60px' },
           ]}
-          rows={templates.items}
+          rows={localTemplates}
           loading={templates.loading}
           onEdit={openEdit}
           onDelete={setDeleteTarget}
+          onReorder={setLocalTemplates}
           addButton={
-            <button
-              onClick={openNew}
-              className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
-              New Template
-            </button>
+            <>
+              {isTemplateDirty && (
+                <button
+                  onClick={handleSaveTemplateOrder}
+                  disabled={saving}
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-on-primary bg-primary border hover:bg-primary-container disabled:opacity-50 transition-all shadow-md active:scale-95"
+                >
+                  Save Order
+                </button>
+              )}
+              <button
+                onClick={openNew}
+                className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+                New Template
+              </button>
+            </>
           }
         />
       </div>

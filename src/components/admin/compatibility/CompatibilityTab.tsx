@@ -1,7 +1,7 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { List, Share2 } from 'lucide-react'
 import type { AdminDependencyCompatibility, AdminDependencyEntry, Toast } from '../../../types'
-import { useAdminResource } from '../../../hooks/useAdminResource'
+import { useAdminResource, adminFetch } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog } from '../shared/DeleteConfirmDialog'
@@ -22,16 +22,35 @@ const RELATION_BADGE: Record<string, string> = {
 }
 
 export function CompatibilityTab() {
-  const { items, loading, create, update, remove } = useAdminResource<AdminDependencyCompatibility>('/admin/compatibility')
+  const { items, loading, create, update, remove, reload } = useAdminResource<AdminDependencyCompatibility>('/admin/compatibility')
   const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [tableQuery, setTableQuery] = useState('')
+  const [localItems, setLocalItems] = useState<AdminDependencyCompatibility[]>([])
+
+  useEffect(() => { setLocalItems(items) }, [items])
+
+  const isDirty = localItems.length > 0 && localItems.some((item, i) => item.id !== items[i]?.id)
+
+  async function handleSaveOrder() {
+    setSaving(true)
+    try {
+      const orderings = localItems.map((item, i) => ({ id: item.id, sortOrder: i + 1 }))
+      await adminFetch('PUT', '/admin/compatibility/reorder', orderings)
+      reload()
+      setToast({ message: 'Order saved successfully', type: 'success' })
+    } catch (err) {
+      setToast({ message: String(err), type: 'error' })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const filteredItems = useMemo(() => {
-    if (!tableQuery.trim()) return items
+    if (!tableQuery.trim()) return localItems
     const q = tableQuery.toLowerCase()
-    return items.filter(row => Object.values(row).some(val => String(val).toLowerCase().includes(q)))
-  }, [items, tableQuery])
+    return localItems.filter(row => Object.values(row).some(val => String(val).toLowerCase().includes(q)))
+  }, [localItems, tableQuery])
   const [editing, setEditing] = useState<Partial<AdminDependencyCompatibility> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -126,13 +145,24 @@ export function CompatibilityTab() {
             </div>
           )}
         </div>
-        <button
-          onClick={openNew}
-          className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95 shrink-0"
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
-          New Rule
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {isDirty && viewMode === 'table' && (
+            <button
+              onClick={handleSaveOrder}
+              disabled={saving}
+              className="px-4 py-2 rounded-xl text-sm font-bold text-on-primary bg-primary border hover:bg-primary-container disabled:opacity-50 transition-all shadow-md active:scale-95"
+            >
+              Save Order
+            </button>
+          )}
+          <button
+            onClick={openNew}
+            className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+            New Rule
+          </button>
+        </div>
       </div>
 
       {viewMode === 'graph' && (
@@ -157,6 +187,7 @@ export function CompatibilityTab() {
           loading={loading}
           onEdit={openEdit}
           onDelete={setDeleteTarget}
+          onReorder={setLocalItems}
           searchable={false}
         />
       )}

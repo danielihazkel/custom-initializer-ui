@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { AdminModuleTemplate, AdminModuleDependencyMapping, AdminDependencyEntry, Toast } from '../../../types'
-import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
+import { useAdminResource, AdminApiError, adminFetch } from '../../../hooks/useAdminResource'
 import { useAdminMetadata } from '../../../hooks/useAdminMetadata'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -34,6 +34,25 @@ export function ModuleTemplatesTab() {
   const [deleting, setDeleting] = useState(false)
   const [orphanDetails, setOrphanDetails] = useState<OrphanDetails | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
+  const [localModules, setLocalModules] = useState<AdminModuleTemplate[]>([])
+
+  useEffect(() => { setLocalModules(modules.items) }, [modules.items])
+
+  const isModuleDirty = localModules.length > 0 && localModules.some((item, i) => item.id !== modules.items[i]?.id)
+
+  async function handleSaveModuleOrder() {
+    setSaving(true)
+    try {
+      const orderings = localModules.map((item, i) => ({ id: item.id, sortOrder: i + 1 }))
+      await adminFetch('PUT', '/admin/module-templates/reorder', orderings)
+      modules.reload()
+      setToast({ message: 'Order saved successfully', type: 'success' })
+    } catch (err) {
+      setToast({ message: String(err), type: 'error' })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   // Mapping CRUD state
   const [editingMapping, setEditingMapping] = useState<Partial<AdminModuleDependencyMapping> | null>(null)
@@ -43,6 +62,25 @@ export function ModuleTemplatesTab() {
   const [mappingErrors, setMappingErrors] = useState<Record<string, string>>({})
   const [savingMapping, setSavingMapping] = useState(false)
   const [deletingMapping, setDeletingMapping] = useState(false)
+  const [localMappings, setLocalMappings] = useState<AdminModuleDependencyMapping[]>([])
+
+  useEffect(() => { setLocalMappings(mappings.items) }, [mappings.items])
+
+  const isMappingDirty = localMappings.length > 0 && localMappings.some((item, i) => item.id !== mappings.items[i]?.id)
+
+  async function handleSaveMappingOrder() {
+    setSavingMapping(true)
+    try {
+      const orderings = localMappings.map((item, i) => ({ id: item.id, sortOrder: i + 1 }))
+      await adminFetch('PUT', '/admin/module-dep-mappings/reorder', orderings)
+      mappings.reload()
+      setToast({ message: 'Order saved successfully', type: 'success' })
+    } catch (err) {
+      setToast({ message: String(err), type: 'error' })
+    } finally {
+      setSavingMapping(false)
+    }
+  }
 
   // Module handlers
   function openNew() { setEditing({ ...EMPTY_MODULE }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
@@ -172,18 +210,30 @@ export function ModuleTemplatesTab() {
             { label: 'Main', render: r => r.hasMainClass ? <span className="text-tertiary">Yes</span> : '—', width: '60px' },
             { label: 'Sort', render: r => r.sortOrder, width: '60px' },
           ]}
-          rows={modules.items}
+          rows={localModules}
           loading={modules.loading}
           onEdit={openEdit}
           onDelete={setDeleteTarget}
+          onReorder={setLocalModules}
           addButton={
-            <button
-              onClick={openNew}
-              className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
-              New Module
-            </button>
+            <>
+              {isModuleDirty && (
+                <button
+                  onClick={handleSaveModuleOrder}
+                  disabled={saving}
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-on-primary bg-primary border hover:bg-primary-container disabled:opacity-50 transition-all shadow-md active:scale-95"
+                >
+                  Save Order
+                </button>
+              )}
+              <button
+                onClick={openNew}
+                className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+                New Module
+              </button>
+            </>
           }
         />
       </div>
@@ -202,18 +252,30 @@ export function ModuleTemplatesTab() {
             { label: 'Dependency', render: r => <code className="text-xs bg-surface-container-high px-1.5 py-0.5 rounded">{r.dependencyId}</code> },
             { label: 'Sort', render: r => r.sortOrder, width: '60px' },
           ]}
-          rows={mappings.items}
+          rows={localMappings}
           loading={mappings.loading}
           onEdit={openEditMapping}
           onDelete={setDeleteMappingTarget}
+          onReorder={setLocalMappings}
           addButton={
-            <button
-              onClick={openNewMapping}
-              className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
-              New Mapping
-            </button>
+            <>
+              {isMappingDirty && (
+                <button
+                  onClick={handleSaveMappingOrder}
+                  disabled={savingMapping}
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-on-primary bg-primary border hover:bg-primary-container disabled:opacity-50 transition-all shadow-md active:scale-95"
+                >
+                  Save Order
+                </button>
+              )}
+              <button
+                onClick={openNewMapping}
+                className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+                New Mapping
+              </button>
+            </>
           }
         />
       </div>

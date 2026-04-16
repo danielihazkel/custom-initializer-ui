@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { AdminFileContribution, AdminDependencyEntry, AdminSubOption, Toast } from '../../../types'
-import { useAdminResource } from '../../../hooks/useAdminResource'
+import { useAdminResource, adminFetch } from '../../../hooks/useAdminResource'
 import { useAdminMetadata } from '../../../hooks/useAdminMetadata'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -18,7 +18,7 @@ function truncate(s: string, n: number) {
 }
 
 export function FileContributionsTab() {
-  const { items, loading, create, update, remove } = useAdminResource<AdminFileContribution>('/admin/file-contributions')
+  const { items, loading, create, update, remove, reload } = useAdminResource<AdminFileContribution>('/admin/file-contributions')
   const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
   const { items: subOptions } = useAdminResource<AdminSubOption>('/admin/sub-options')
   const { javaVersions } = useAdminMetadata()
@@ -30,6 +30,25 @@ export function FileContributionsTab() {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
+  const [localItems, setLocalItems] = useState<AdminFileContribution[]>([])
+
+  useEffect(() => { setLocalItems(items) }, [items])
+
+  const isDirty = localItems.length > 0 && localItems.some((item, i) => item.id !== items[i]?.id)
+
+  async function handleSaveOrder() {
+    setSaving(true)
+    try {
+      const orderings = localItems.map((item, i) => ({ id: item.id, sortOrder: i + 1 }))
+      await adminFetch('PUT', '/admin/file-contributions/reorder', orderings)
+      reload()
+      setToast({ message: 'Order saved successfully', type: 'success' })
+    } catch (err) {
+      setToast({ message: String(err), type: 'error' })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   function openNew() { setEditing({ ...EMPTY }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
   function openEdit(row: AdminFileContribution) { setEditing({ ...row }); setIsNew(false); setErrors({}); setDrawerOpen(true) }
@@ -92,18 +111,30 @@ export function FileContributionsTab() {
           { label: 'Sub-Opt', render: r => r.subOptionId ? <code className="text-xs bg-surface-container-high px-1 rounded">{r.subOptionId}</code> : <span className="text-secondary text-xs">—</span>, width: '100px' },
           { label: 'Sort', render: r => r.sortOrder, width: '60px' },
         ]}
-        rows={items}
+        rows={localItems}
         loading={loading}
         onEdit={openEdit}
         onDelete={setDeleteTarget}
+        onReorder={setLocalItems}
         addButton={
-          <button
-            onClick={openNew}
-            className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
-            New Contribution
-          </button>
+          <>
+            {isDirty && (
+              <button
+                onClick={handleSaveOrder}
+                disabled={saving}
+                className="px-4 py-2 rounded-xl text-sm font-bold text-on-primary bg-primary border hover:bg-primary-container disabled:opacity-50 transition-all shadow-md active:scale-95"
+              >
+                Save Order
+              </button>
+            )}
+            <button
+              onClick={openNew}
+              className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+              New Contribution
+            </button>
+          </>
         }
       />
 
