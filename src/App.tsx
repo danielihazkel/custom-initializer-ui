@@ -142,6 +142,18 @@ export default function App() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          {/* Search button */}
+          <button
+            onClick={() => setCommandPaletteOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-high transition-colors duration-200 text-secondary hover:text-on-surface group shadow-sm"
+            aria-label="Search dependencies"
+            title="Search dependencies (Cmd/Ctrl + K)"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>search</span>
+            <span className="hidden sm:inline text-xs font-medium">Search</span>
+            <span className="hidden sm:flex border border-outline-variant bg-surface-container rounded px-1.5 py-0.5 text-[10px] font-bold text-secondary group-hover:text-on-surface">⌘K</span>
+          </button>
+
           {/* Share button */}
           <button
             onClick={handleShare}

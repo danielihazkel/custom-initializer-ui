@@ -79,7 +79,7 @@ export function AdminFormDrawer({ title, isOpen, onClose, onSave, saving, childr
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
-            transition={{ type: 'spring', stiffness: 400, damping: 40 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
             className="fixed inset-y-0 right-0 w-full sm:w-[520px] z-40 glass-drawer flex flex-col outline-none"
           >
             {/* Header */}

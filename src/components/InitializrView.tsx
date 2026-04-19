@@ -84,7 +84,7 @@ export function InitializrView({
             <div className="glass-panel rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1.5">
+                  <h3 id="multi-module-label" className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1.5">
                     <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
                     Multi-Module Project
                   </h3>
@@ -93,6 +93,7 @@ export function InitializrView({
                 <button
                   role="switch"
                   aria-checked={multiModuleEnabled}
+                  aria-labelledby="multi-module-label"
                   onClick={onMultiModuleToggle}
                   className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${multiModuleEnabled ? 'bg-primary' : 'bg-surface-container-high'}`}
                   aria-label="Toggle multi-module"
