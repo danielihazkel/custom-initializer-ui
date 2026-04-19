@@ -768,7 +768,97 @@ Export the full configuration to \`data/config-backup-YYYY-MM-DD.json\` before a
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // 11. COMMON WORKFLOWS
+  // 11. ACTIVITY & AUDIT
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'activity',
+    title: 'Activity & Audit',
+    icon: 'monitoring',
+    topics: [
+      {
+        id: 'activity-what',
+        title: 'Generation Audit Log',
+        description: 'See what teams actually generate, how fast, and how often generation fails.',
+        content: `### What It Records
+Every call to a \`/starter*\` endpoint (ZIP download, preview, SQL wizard, multi-module) is recorded with: timestamp, endpoint, artifact/group IDs, Boot version, Java version, packaging, language, selected dependencies, duration in milliseconds, outcome (SUCCESS/FAILURE), and optional client IP.
+
+The audit filter runs asynchronously on the response path — a database hiccup never breaks project generation.
+
+### Where to Find It
+Open the admin and click the **Activity** tab in the sidebar. You'll see:
+- **Four summary cards** — total generations, success rate, p50 duration, p95 duration.
+- **Top Dependencies** — which deps are actually selected most, with a horizontal bar chart.
+- **Boot Versions** — distribution of Boot versions in use.
+- **Recent Events table** — the last 50 generations with full detail (artifact ID, deps selected, duration, status).
+
+### Time Window
+The toggle at the top right switches the rollup between **1 day**, **7 days**, **30 days** (default), and **90 days**. Summary cards, top lists, and the recent-events table all re-fetch when you change it.
+
+### Why This Matters
+- **Spot drift** — if teams keep generating the same 10 deps together, make a starter template for them.
+- **Debug failures** — the recent events table flags failed generations with the error message, so you don't need to tail server logs.
+- **Capacity planning** — the p95/p99 timers tell you whether generation has slowed after a catalog change.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'The `POST /starter-sql.zip` endpoint uses a JSON body, so its audit record captures endpoint/status/duration/remote-addr but not the SQL wizard parameters. That is a deliberate trade-off — query-param capture would miss the wizard entirely.'
+          }
+        ]
+      },
+      {
+        id: 'activity-api',
+        title: 'REST API & Metrics',
+        description: 'Hit the endpoints directly for dashboards, scripts, or Prometheus scrapes.',
+        content: `### REST Endpoints
+Both endpoints require admin auth (\`Authorization: Bearer <token>\`).
+
+\`GET /admin/activity/recent?limit=50\` — most recent events, newest first.
+
+\`GET /admin/activity/summary?days=30\` — rollup for the given window, returning total count, success rate, p50/p95/p99 durations, top 10 dependencies, and Boot-version distribution.
+
+### Micrometer Metrics
+The filter also publishes to Micrometer, exposed on \`/actuator/metrics\`:
+
+- \`menora.generation.count\` — counter tagged by \`status=success|failure\`
+- \`menora.generation.duration\` — timer tagged by status, with p50/p95/p99 percentile histograms
+
+Point a Prometheus scraper at \`/actuator/prometheus\` (add \`prometheus\` to the exposure list first) if you want to ship these to a dashboard.
+
+### Privacy Toggle
+Client IPs are recorded by default. To disable (e.g. for GDPR compliance), set in \`application.yml\`:
+
+\`\`\`
+menora:
+  audit:
+    log-remote-addr: false
+\`\`\`
+
+Existing rows are unaffected; only new events skip the field.`,
+        codeExamples: [
+          {
+            title: 'Pull the last 50 events',
+            language: 'bash',
+            code: `curl -H "Authorization: Bearer $TOKEN" \\
+  http://localhost:8080/admin/activity/recent?limit=50`
+          },
+          {
+            title: 'Get a 7-day summary',
+            language: 'bash',
+            code: `curl -H "Authorization: Bearer $TOKEN" \\
+  http://localhost:8080/admin/activity/summary?days=7`
+          },
+          {
+            title: 'Check the Micrometer counter',
+            language: 'bash',
+            code: `curl http://localhost:8080/actuator/metrics/menora.generation.count`
+          }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 12. COMMON WORKFLOWS
   // ─────────────────────────────────────────────────────────────────
   {
     id: 'workflows',

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { parseUrlParams, defaultForm } from '../utils/projectUtils'
-import type { InitializrMetadata, ProjectFormValues, StarterTemplate, SqlByDep, SqlWizardEntry } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, StarterTemplate, SqlByDep, SqlWizardEntry } from '../types'
 
 export function useProjectState(metadata: InitializrMetadata | null) {
   const [form, setForm] = useState<ProjectFormValues>(() => {
@@ -169,6 +169,16 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     }
   }, [])
 
+  const applySnapshot = useCallback((snapshot: ProjectSnapshot) => {
+    setForm({ ...snapshot.form })
+    setSelected([...snapshot.selected])
+    setSelectedOptions(JSON.parse(JSON.stringify(snapshot.selectedOptions)))
+    setSqlByDep(JSON.parse(JSON.stringify(snapshot.sqlByDep)))
+    setMultiModuleEnabled(snapshot.multiModuleEnabled)
+    setSelectedModules([...snapshot.selectedModules])
+    setActiveTemplate(null)
+  }, [])
+
   return {
     form,
     selected,
@@ -184,6 +194,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     handleOptionsChange,
     handleSqlByDepChange,
     handleTemplateSelect,
+    applySnapshot,
     setActiveTemplate,
   }
 }

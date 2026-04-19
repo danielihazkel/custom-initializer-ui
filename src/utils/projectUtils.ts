@@ -1,4 +1,22 @@
-import type { InitializrMetadata, ProjectFormValues, SqlByDep } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlByDep } from '../types'
+
+export function captureSnapshot(args: {
+  form: ProjectFormValues
+  selected: string[]
+  selectedOptions: Record<string, string[]>
+  sqlByDep: SqlByDep
+  multiModuleEnabled: boolean
+  selectedModules: string[]
+}): ProjectSnapshot {
+  return {
+    form: { ...args.form },
+    selected: [...args.selected],
+    selectedOptions: JSON.parse(JSON.stringify(args.selectedOptions)),
+    sqlByDep: JSON.parse(JSON.stringify(args.sqlByDep)),
+    multiModuleEnabled: args.multiModuleEnabled,
+    selectedModules: [...args.selectedModules],
+  }
+}
 
 export function parseUrlParams(): {
   form: Partial<ProjectFormValues>

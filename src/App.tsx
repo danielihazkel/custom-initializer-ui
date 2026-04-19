@@ -8,6 +8,7 @@ import { useProjectPreview } from './hooks/useProjectPreview'
 import { useStarterTemplates } from './hooks/useStarterTemplates'
 import { useModuleTemplates } from './hooks/useModuleTemplates'
 import { useProjectState } from './hooks/useProjectState'
+import { useProjectPresets } from './hooks/useProjectPresets'
 
 import { InitializrView } from './components/InitializrView'
 import { ProjectPreview } from './components/ProjectPreview'
@@ -20,7 +21,7 @@ const GuideView = lazy(() => import('./components/guide/GuideView').then(m => ({
 import { CommandPalette } from './components/CommandPalette'
 import { AppToast } from './components/AppToast'
 
-import { triggerDownload } from './utils/projectUtils'
+import { triggerDownload, captureSnapshot } from './utils/projectUtils'
 import type { Toast } from './types'
 
 export default function App() {
@@ -46,8 +47,27 @@ export default function App() {
     handleOptionsChange,
     handleSqlByDepChange,
     handleTemplateSelect,
+    applySnapshot,
     setSelectedModules
   } = useProjectState(metadata)
+
+  const {
+    presets,
+    recents,
+    savePreset,
+    deletePreset,
+    deleteRecent,
+    pushRecent,
+  } = useProjectPresets()
+
+  const currentSnapshot = captureSnapshot({
+    form,
+    selected: selectedDeps,
+    selectedOptions,
+    sqlByDep,
+    multiModuleEnabled,
+    selectedModules,
+  })
 
   const [shareCopied, setShareCopied] = useState(false)
   const [generateSuccess, setGenerateSuccess] = useState(false)
@@ -97,6 +117,7 @@ export default function App() {
 
   function handleGenerate(): void {
     triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep)
+    pushRecent(currentSnapshot)
     setGenerateSuccess(true)
     setAppToast({ message: 'Project downloaded!', type: 'success' })
     setTimeout(() => setGenerateSuccess(false), 2000)
@@ -201,7 +222,7 @@ export default function App() {
             </span>
           </button>
           <button
-            onClick={() => fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep)}
+            onClick={() => { fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep); pushRecent(currentSnapshot) }}
             disabled={previewLoading}
             title={previewError ?? 'Preview project files before downloading'}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
@@ -295,6 +316,13 @@ export default function App() {
             onMultiModuleToggle={() => setMultiModuleEnabled(v => !v)}
             onModulesChange={setSelectedModules}
             onCompareOpen={() => setCompareOpen(true)}
+            presets={presets}
+            recents={recents}
+            currentSnapshot={currentSnapshot}
+            onPresetLoad={applySnapshot}
+            onPresetSave={savePreset}
+            onPresetDelete={deletePreset}
+            onRecentDelete={deleteRecent}
           />
         )}
       </main>

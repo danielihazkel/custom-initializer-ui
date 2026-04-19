@@ -1,9 +1,10 @@
 import { TemplatePicker } from './TemplatePicker'
+import { PresetPicker } from './PresetPicker'
 import { OptionsPanel } from './OptionsPanel'
 import { ProjectForm } from './ProjectForm'
 import { ModuleSelector } from './ModuleSelector'
 import { DependencySelector } from './DependencySelector'
-import type { InitializrMetadata, ProjectFormValues, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry } from '../types'
 
 interface InitializrViewProps {
   metadata: InitializrMetadata | null
@@ -29,6 +30,14 @@ interface InitializrViewProps {
   onMultiModuleToggle: () => void
   onModulesChange: (modules: string[]) => void
   onCompareOpen: () => void
+
+  presets: ProjectPreset[]
+  recents: ProjectPreset[]
+  currentSnapshot: ProjectSnapshot
+  onPresetLoad: (snapshot: ProjectSnapshot) => void
+  onPresetSave: (name: string, snapshot: ProjectSnapshot) => void
+  onPresetDelete: (id: string) => void
+  onRecentDelete: (id: string) => void
 }
 
 export function InitializrView({
@@ -52,7 +61,14 @@ export function InitializrView({
   onTemplateSelect,
   onMultiModuleToggle,
   onModulesChange,
-  onCompareOpen
+  onCompareOpen,
+  presets,
+  recents,
+  currentSnapshot,
+  onPresetLoad,
+  onPresetSave,
+  onPresetDelete,
+  onRecentDelete,
 }: InitializrViewProps) {
   return (
     <>
@@ -62,6 +78,15 @@ export function InitializrView({
           activeTemplateId={activeTemplate}
           onSelect={onTemplateSelect}
           onCompare={onCompareOpen}
+        />
+        <PresetPicker
+          presets={presets}
+          recents={recents}
+          currentSnapshot={currentSnapshot}
+          onLoad={onPresetLoad}
+          onSave={onPresetSave}
+          onDeletePreset={onPresetDelete}
+          onDeleteRecent={onRecentDelete}
         />
       </div>
       <div className="max-w-7xl mx-auto px-8 grid grid-cols-12 gap-10 relative z-10 animate-fade-in-up">

@@ -101,6 +101,23 @@ export interface GenerateButtonProps {
   selected: string[]
 }
 
+// ── Project presets ───────────────────────────────────────────────────────────
+export interface ProjectSnapshot {
+  form: ProjectFormValues
+  selected: string[]
+  selectedOptions: Record<string, string[]>
+  sqlByDep: SqlByDep
+  multiModuleEnabled: boolean
+  selectedModules: string[]
+}
+
+export interface ProjectPreset {
+  id: string
+  name: string
+  createdAt: number
+  snapshot: ProjectSnapshot
+}
+
 // ── Admin entity types ────────────────────────────────────────────────────────
 
 export interface AdminDependencyGroup {
@@ -186,7 +203,40 @@ export interface AdminDependencyCompatibility {
   sortOrder: number
 }
 
-export type AdminTab = 'overview' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules'
+export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules'
+
+// Activity / Audit
+export type GenerationEventStatus = 'SUCCESS' | 'FAILURE'
+
+export interface GenerationEvent {
+  id: number
+  eventTimestamp: string
+  endpoint: string
+  artifactId: string | null
+  groupId: string | null
+  bootVersion: string | null
+  javaVersion: string | null
+  packaging: string | null
+  language: string | null
+  dependencyIds: string | null
+  durationMs: number
+  status: GenerationEventStatus
+  errorMessage: string | null
+  remoteAddr: string | null
+}
+
+export interface ActivitySummary {
+  days: number
+  totalCount: number
+  successCount: number
+  failureCount: number
+  successRate: number
+  p50Ms: number
+  p95Ms: number
+  p99Ms: number
+  topDependencies: { depId: string; count: number }[]
+  topBootVersions: { bootVersion: string; count: number }[]
+}
 
 export interface Toast {
   message: string
