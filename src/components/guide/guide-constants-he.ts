@@ -615,7 +615,123 @@ public class KafkaConfig {
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // 10. ייצוא / ייבוא
+  // 10. אשף SQL → JPA
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'sql-wizard',
+    title: 'אשף ישויות SQL',
+    icon: 'auto_fix_high',
+    topics: [
+      {
+        id: 'sql-wizard-what',
+        title: 'מה האשף עושה',
+        description: 'הדביקו סקריפטי CREATE TABLE וקבלו ישויות JPA בפרויקט שנוצר.',
+        content: `### מטרה
+כאשר המפתח בוחר תלות של דרייבר מסד נתונים רלציוני (PostgreSQL, MSSQL, Oracle, DB2, H2, MySQL), כפתור **"Generate entities from SQL…"** מופיע על הכרטיסיה של אותו דרייבר בפאנל התלויות שנבחרו. לחיצה עליו פותחת מגירה בה המפתח מדביק סקריפט \`CREATE TABLE\` אחד או יותר. כשלוחצים על Generate, ה-backend מנתח את ה-DDL וכותב מחלקות \`@Entity\` של JPA מוכנות לשימוש — בתוספת ממשקי \`JpaRepository\` אופציונליים — ישירות ל-ZIP המופק.
+
+זה מבטל את השלב המייגע של כתיבה ידנית של מחלקות ישות לאחר יצירת הפרויקט.
+
+### אילו דרייברים זכאים
+ה-UI קורא ל-\`GET /metadata/sql-dialects\` בטעינת הדף כדי ללמוד אילו מזהי תלות ה-backend יכול לטפל בהם. הכפתור מופיע רק על כרטיסיות תלות שנוכחות בתגובה זו. הוספת דרייבר JDBC חדש לקטלוג התלויות שתואם לדיאלקט ידוע חושפת אוטומטית את האשף עבורו — לא נדרשת תצורת אדמין עבור האשף עצמו.
+
+MongoDB אינו כלול מכיוון שאין לו חוזה DDL.
+
+### הזרימה במבט כולל
+1. המפתח בוחר תלות דרייבר מסד נתונים (למשל \`postgresql\`) בתוספת \`data-jpa\`.
+2. לוחץ על **Generate entities from SQL…** בכרטיסיית התלות.
+3. מדביק \`CREATE TABLE users (...); CREATE TABLE orders (...);\`.
+4. טבלאות שזוהו מופיעות כרשימה עם תיבת סימון **Generate repository** בכל שורה (ברירת מחדל דלוקה).
+5. אופציונלי: שנה את תת-החבילה (ברירת מחדל \`entity\`).
+6. שמור → המגירה נסגרת וכרטיסיית התלות מציגה תווית קטנה (✓ N טבלאות).
+7. לחץ על **Generate** או **Explore** — ה-UI עובר לשליחת POST ל-\`/starter-sql.zip\` / \`/starter-sql.preview\` עם גוף JSON, והישויות/repositories מופיעים בפרויקט שהורד ובעץ הקבצים.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'מפתחים שלא משתמשים באשף אינם מושפעים — כאשר sqlByDep ריק, ה-UI ממשיך להשתמש בזרימת GET /starter.zip הרגילה. Lombok מתווסף לפרויקטים שנוצרו רק כאשר SQL מצורף.'
+          }
+        ]
+      },
+      {
+        id: 'sql-wizard-mapping',
+        title: 'מיפוי טיפוסים מודע לדיאלקט',
+        description: 'כיצד טיפוסי עמודות SQL הופכים לטיפוסי שדות Java.',
+        content: `### כללי מיפוי
+כל עמודה ב-\`CREATE TABLE\` שנותח הופכת לשדה בישות. טיפוס Java נבחר על בסיס טיפוס ה-SQL הגולמי, דיוק/סקלה במקומות רלוונטיים, והדיאלקט שנבחר. נקודות עיקריות:
+
+| טיפוס SQL | טיפוס Java | הערות |
+|---|---|---|
+| \`VARCHAR\`, \`CHAR\`, \`TEXT\`, \`CLOB\`, \`NVARCHAR\`, \`VARCHAR2\` | \`String\` | \`length\` → \`@Column(length=...)\` |
+| \`INT\`, \`INTEGER\` | \`Integer\` | |
+| \`BIGINT\`, \`BIGSERIAL\`, \`SERIAL\` | \`Long\` | SERIAL/BIGSERIAL גם מקבלים \`@GeneratedValue(IDENTITY)\` |
+| \`BOOLEAN\`, \`BIT\` (MSSQL), \`TINYINT(1)\` (MySQL) | \`Boolean\` | |
+| \`DATE\` / \`TIMESTAMP\` / \`TIME\` | \`LocalDate\` / \`LocalDateTime\` / \`LocalTime\` | |
+| \`NUMERIC(p,s)\`, \`DECIMAL(p,s)\` | \`BigDecimal\` | precision/scale מועתקים ל-\`@Column\` |
+| \`NUMBER(p,0)\` (Oracle) | \`Integer\` / \`Long\` | ≤9 → Integer, אחרת Long |
+| \`UUID\` (PG), \`UNIQUEIDENTIFIER\` (MSSQL) | \`UUID\` | |
+| \`JSON\`, \`JSONB\` (PG) | \`String\` | |
+| \`BYTEA\`, \`BLOB\` | \`byte[]\` | |
+
+### מוסכמות שמות
+- טבלה \`user_orders\` → מחלקה \`UserOrders\`
+- עמודה \`created_at\` → שדה \`createdAt\` + \`@Column(name = "created_at")\`
+- מפתח ראשי → \`@Id\`; מפתח ראשי מורכב → \`@IdClass\` עם record מלווה שנוצר
+- \`BIGSERIAL\` / \`SERIAL\` / \`AUTO_INCREMENT\` / \`IDENTITY\` → \`@GeneratedValue(strategy = IDENTITY)\`
+
+### מפתחות זרים
+עמודת ה-FK נשמרת כשדה סקלרי עם הערה \`// TODO: map as @ManyToOne\`. גרסה 1 לעולם לא מייצרת אוטומטית אסוציאציות — קרדינליות ואסטרטגיית fetch נדחות למפתח.
+
+### Lombok
+ישויות שנוצרו משתמשות ב-\`@Data\`, \`@NoArgsConstructor\`, ו-\`@AllArgsConstructor\`. ה-build customizer מוסיף \`org.projectlombok:lombok\` (scope \`annotationProcessor\`) ל-build של Maven **רק** כאשר SQL מצורף.`,
+        callouts: [
+          {
+            type: 'warning',
+            text: '@Data מייצר equals/hashCode על כל שדה, מה שעלול להפתיע ישויות JPA מנוהלות עם אסוציאציות עצלות. מכיוון שגרסה 1 לא מייצרת אסוציאציות, זו ברירת מחדל בטוחה — בחנו מחדש אם תרחיבו את האשף לפלוט @ManyToOne.'
+          }
+        ]
+      },
+      {
+        id: 'sql-wizard-api',
+        title: 'REST API',
+        description: 'נקודות קצה POST ומטא-דאטה נלווית.',
+        content: `### נקודות קצה
+
+| שיטה | נתיב | מטרה |
+|---|---|---|
+| \`GET\` | \`/metadata/sql-dialects\` | מפת dep-id → שם דיאלקט (רק תלויות הנמצאות בקטלוג) |
+| \`POST\` | \`/starter-sql.zip\` | יצירת ZIP עם ישויות/repositories |
+| \`POST\` | \`/starter-sql.preview\` | עץ קבצים + תוכן (אותה צורה כמו \`/starter.preview\`) |
+| \`POST\` | \`/starter-sql.tables\` | ניתוח בצד שרת: \`{ sql }\` → \`["users", "orders", ...]\` |
+
+### מדוע נקודת קצה POST חדשה
+\`/starter.zip\` היא GET ששורת השאילתה שלה נושאת את כל קלטי היצירה. כמה משפטי \`CREATE TABLE\` חורגים בקלות ממגבלות אורך URL טיפוסיות (~2–8 KB). נקודת קצה POST אחות המקבלת את אותם שדות בתוספת \`sqlByDep\` / \`sqlOptions\` היא התשובה הנקייה ביותר — ללא מצב session בצד שרת, וזרימת GET נשארת ללא שינוי עבור משתמשים שאינם צריכים את האשף.`,
+        codeExamples: [
+          {
+            title: 'יצירת פרויקט עם ישות users וה-repository שלה',
+            language: 'bash',
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-sql.zip \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "groupId":"com.menora","artifactId":"demo","name":"demo",
+    "packageName":"com.menora.demo","type":"maven-project","language":"java",
+    "bootVersion":"3.2.1","packaging":"jar","javaVersion":"21",
+    "dependencies":["postgresql","data-jpa","web"],
+    "sqlByDep":{"postgresql":"CREATE TABLE users (id BIGSERIAL PRIMARY KEY, email VARCHAR(200) NOT NULL);"},
+    "sqlOptions":{"postgresql":{"subPackage":"entity","tables":[{"name":"users","generateRepository":true}]}}
+  }'
+unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
+          }
+        ],
+        fields: [
+          { name: 'sqlByDep', type: 'object', required: false, description: 'מפת depId → סקריפט SQL גולמי המכיל משפט CREATE TABLE אחד או יותר.', example: '{ "postgresql": "CREATE TABLE users (...);" }' },
+          { name: 'sqlOptions', type: 'object', required: false, description: 'מפת depId → { subPackage, tables[] }. tables[].generateRepository שולט בפליטת repository לכל טבלה; subPackage ברירת מחדל "entity".', example: '{ "postgresql": { "subPackage": "entity", "tables": [ { "name": "users", "generateRepository": true } ] } }' },
+          { name: 'opts', type: 'object', required: false, description: 'אותה מפת תת-אפשרויות המשמשת עם פרמטרי שאילתה opts-{depId} של /starter.zip — למשל בחירת DB ראשי/משני.', example: '{ "postgresql": ["pg-primary"] }' }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 11. ייצוא / ייבוא
   // ─────────────────────────────────────────────────────────────────
   {
     id: 'export-import',

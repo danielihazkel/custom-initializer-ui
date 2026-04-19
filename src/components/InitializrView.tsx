@@ -3,7 +3,7 @@ import { OptionsPanel } from './OptionsPanel'
 import { ProjectForm } from './ProjectForm'
 import { ModuleSelector } from './ModuleSelector'
 import { DependencySelector } from './DependencySelector'
-import type { InitializrMetadata, ProjectFormValues, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate } from '../types'
+import type { InitializrMetadata, ProjectFormValues, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry } from '../types'
 
 interface InitializrViewProps {
   metadata: InitializrMetadata | null
@@ -11,14 +11,17 @@ interface InitializrViewProps {
   moduleTemplates: ModuleTemplate[]
   extensions: DependencyExtensions
   compatibilityRules: CompatibilityRule[]
-  
+  sqlDialects: SqlDialects
+  sqlByDep: SqlByDep
+  onSqlByDepChange: (depId: string, entry: SqlWizardEntry | null) => void
+
   form: ProjectFormValues
   selectedDeps: string[]
   selectedOptions: Record<string, string[]>
   activeTemplate: string | null
   multiModuleEnabled: boolean
   selectedModules: string[]
-  
+
   onFormChange: (updates: Partial<ProjectFormValues>) => void
   onDepsChange: (newSelected: string[]) => void
   onOptionsChange: (depId: string, optIds: string[]) => void
@@ -34,6 +37,9 @@ export function InitializrView({
   moduleTemplates,
   extensions,
   compatibilityRules,
+  sqlDialects,
+  sqlByDep,
+  onSqlByDepChange,
   form,
   selectedDeps,
   selectedOptions,
@@ -115,6 +121,9 @@ export function InitializrView({
             selectedOptions={selectedOptions}
             onOptionsChange={onOptionsChange}
             compatibilityRules={compatibilityRules}
+            sqlDialects={sqlDialects}
+            sqlByDep={sqlByDep}
+            onSqlByDepChange={onSqlByDepChange}
           />
         </section>
       </div>

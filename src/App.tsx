@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useMetadata } from './hooks/useMetadata'
 import { useExtensions } from './hooks/useExtensions'
+import { useSqlDialects } from './hooks/useSqlDialects'
 import { useCompatibility } from './hooks/useCompatibility'
 import { useProjectPreview } from './hooks/useProjectPreview'
 import { useStarterTemplates } from './hooks/useStarterTemplates'
@@ -25,6 +26,7 @@ import type { Toast } from './types'
 export default function App() {
   const { metadata, loading, error } = useMetadata()
   const { extensions } = useExtensions()
+  const { dialects: sqlDialects } = useSqlDialects()
   const { rules: compatibilityRules } = useCompatibility()
   const { templates } = useStarterTemplates()
   const { modules: moduleTemplates } = useModuleTemplates()
@@ -34,6 +36,7 @@ export default function App() {
     form,
     selected: selectedDeps,
     selectedOptions,
+    sqlByDep,
     multiModuleEnabled,
     selectedModules,
     activeTemplate,
@@ -41,6 +44,7 @@ export default function App() {
     handleFormChange,
     handleDepsChange,
     handleOptionsChange,
+    handleSqlByDepChange,
     handleTemplateSelect,
     setSelectedModules
   } = useProjectState(metadata)
@@ -92,7 +96,7 @@ export default function App() {
   }
 
   function handleGenerate(): void {
-    triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules })
+    triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep)
     setGenerateSuccess(true)
     setAppToast({ message: 'Project downloaded!', type: 'success' })
     setTimeout(() => setGenerateSuccess(false), 2000)
@@ -185,7 +189,7 @@ export default function App() {
             </span>
           </button>
           <button
-            onClick={() => fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules })}
+            onClick={() => fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep)}
             disabled={previewLoading}
             title={previewError ?? 'Preview project files before downloading'}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
@@ -263,6 +267,9 @@ export default function App() {
             moduleTemplates={moduleTemplates}
             extensions={extensions}
             compatibilityRules={compatibilityRules}
+            sqlDialects={sqlDialects}
+            sqlByDep={sqlByDep}
+            onSqlByDepChange={handleSqlByDepChange}
             form={form}
             selectedDeps={selectedDeps}
             selectedOptions={selectedOptions}
@@ -297,7 +304,8 @@ export default function App() {
           previousPreview={previousPreview}
           artifactId={form.artifactId}
           onClose={clearPreview}
-          onDownload={() => { triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }); clearPreview() }}
+          onDownload={() => { triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep); clearPreview() }}
+
         />
       )}
 

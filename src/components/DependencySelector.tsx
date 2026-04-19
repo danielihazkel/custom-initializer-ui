@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
+import { SqlWizardDrawer } from './SqlWizardDrawer'
 
 const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle', 'mongodb', 'h2'] as const
 const DB_PRIMARY_OPTIONS: Record<string, string> = {
@@ -44,9 +45,13 @@ export function DependencySelector({
   selectedOptions,
   onOptionsChange,
   compatibilityRules,
+  sqlDialects,
+  sqlByDep,
+  onSqlByDepChange,
 }: DependencySelectorProps) {
   const [search, setSearch] = useState<string>('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [wizardDepId, setWizardDepId] = useState<string | null>(null)
 
   const toggleGroup = useCallback((name: string) => {
     setCollapsedGroups(prev => {
@@ -180,7 +185,10 @@ export function DependencySelector({
     return { conflicts, requires, recommends }
   }, [selected, compatibilityRules, allDeps])
 
+  const wizardDep = wizardDepId ? allDeps.find(d => d.id === wizardDepId) : null
+
   return (
+    <>
     <div className="grid grid-cols-2 gap-6 sticky top-20" style={{ height: 'calc(100vh - 12rem)' }}>
 
       {/* Panel 1: Selected Dependencies */}
@@ -333,6 +341,23 @@ export function DependencySelector({
                         </span>
                       </label>
                     ))}
+                  </div>
+                )}
+                {sqlDialects[dep.id] && (
+                  <div className="mt-3 pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setWizardDepId(dep.id)}
+                      className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>auto_fix_high</span>
+                      {sqlByDep[dep.id] ? 'Edit SQL entities…' : 'Generate entities from SQL…'}
+                    </button>
+                    {sqlByDep[dep.id] && (
+                      <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
+                        ✓ {sqlByDep[dep.id].tables.length} {sqlByDep[dep.id].tables.length === 1 ? 'table' : 'tables'}
+                      </span>
+                    )}
                   </div>
                 )}
               </motion.div>
@@ -493,5 +518,17 @@ export function DependencySelector({
       </div>
 
     </div>
+    {wizardDep && (
+      <SqlWizardDrawer
+        isOpen={wizardDepId !== null}
+        onClose={() => setWizardDepId(null)}
+        depId={wizardDep.id}
+        depName={wizardDep.name}
+        dialectName={sqlDialects[wizardDep.id] ?? ''}
+        initial={sqlByDep[wizardDep.id] ?? null}
+        onSave={entry => onSqlByDepChange(wizardDep.id, entry)}
+      />
+    )}
+    </>
   )
 }
