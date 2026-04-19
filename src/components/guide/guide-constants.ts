@@ -615,7 +615,123 @@ Dependencies the developer selects in the generator UI are applied to all module
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // 10. EXPORT / IMPORT
+  // 10. SQL → JPA ENTITY WIZARD
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'sql-wizard',
+    title: 'SQL Entity Wizard',
+    icon: 'auto_fix_high',
+    topics: [
+      {
+        id: 'sql-wizard-what',
+        title: 'What the Wizard Does',
+        description: 'Paste CREATE TABLE scripts and get JPA entities in the generated project.',
+        content: `### Purpose
+When the developer selects a relational DB driver dependency (PostgreSQL, MSSQL, Oracle, DB2, H2, MySQL), a **"Generate entities from SQL…"** button appears on that driver's card in the selected-dependencies panel. Clicking it opens a drawer where the developer pastes one or more \`CREATE TABLE\` scripts. When they hit Generate, the backend parses the DDL and writes ready-to-use JPA \`@Entity\` classes — plus optional \`JpaRepository\` interfaces — directly into the output ZIP.
+
+This removes the tedious step of hand-writing entity classes after project generation.
+
+### Which Drivers Are Eligible
+The UI calls \`GET /metadata/sql-dialects\` at page load to learn which dep IDs the backend can handle. The button only appears on dep cards present in that response. Adding a new JDBC driver to the dependency catalog that matches a known dialect automatically surfaces the wizard for it — no admin-side configuration is needed for the wizard itself.
+
+MongoDB is excluded because it has no DDL contract.
+
+### Flow At a Glance
+1. Developer selects a DB driver dep (e.g. \`postgresql\`) plus \`data-jpa\`.
+2. Clicks **Generate entities from SQL…** on the dep's card.
+3. Pastes \`CREATE TABLE users (...); CREATE TABLE orders (...);\`.
+4. Detected tables appear as a list with a **Generate repository** checkbox per row (default on).
+5. Optional: change the sub-package (default \`entity\`).
+6. Save → the drawer closes and the dep card shows a small badge (✓ N tables).
+7. Click **Generate** or **Explore** — the UI switches to POST \`/starter-sql.zip\` / \`/starter-sql.preview\` with a JSON body, and entities/repositories appear in the downloaded project and file tree.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'Developers who do not use the wizard are unaffected — when sqlByDep is empty, the UI keeps using the regular GET /starter.zip flow. Lombok is only added to generated projects when SQL is attached.'
+          }
+        ]
+      },
+      {
+        id: 'sql-wizard-mapping',
+        title: 'Dialect-Aware Type Mapping',
+        description: 'How SQL column types become Java field types.',
+        content: `### Mapping Rules
+Each column in a parsed \`CREATE TABLE\` becomes a field on the entity. The Java type is chosen based on the raw SQL type, precision/scale where applicable, and the selected dialect. Highlights:
+
+| SQL Type | Java Type | Notes |
+|---|---|---|
+| \`VARCHAR\`, \`CHAR\`, \`TEXT\`, \`CLOB\`, \`NVARCHAR\`, \`VARCHAR2\` | \`String\` | \`length\` → \`@Column(length=...)\` |
+| \`INT\`, \`INTEGER\` | \`Integer\` | |
+| \`BIGINT\`, \`BIGSERIAL\`, \`SERIAL\` | \`Long\` | SERIAL/BIGSERIAL also gets \`@GeneratedValue(IDENTITY)\` |
+| \`BOOLEAN\`, \`BIT\` (MSSQL), \`TINYINT(1)\` (MySQL) | \`Boolean\` | |
+| \`DATE\` / \`TIMESTAMP\` / \`TIME\` | \`LocalDate\` / \`LocalDateTime\` / \`LocalTime\` | |
+| \`NUMERIC(p,s)\`, \`DECIMAL(p,s)\` | \`BigDecimal\` | precision/scale copied to \`@Column\` |
+| \`NUMBER(p,0)\` (Oracle) | \`Integer\` / \`Long\` | ≤9 → Integer, else Long |
+| \`UUID\` (PG), \`UNIQUEIDENTIFIER\` (MSSQL) | \`UUID\` | |
+| \`JSON\`, \`JSONB\` (PG) | \`String\` | |
+| \`BYTEA\`, \`BLOB\` | \`byte[]\` | |
+
+### Naming Conventions
+- Table \`user_orders\` → class \`UserOrders\`
+- Column \`created_at\` → field \`createdAt\` + \`@Column(name = "created_at")\`
+- Primary key → \`@Id\`; composite PK → \`@IdClass\` with a generated companion record
+- \`BIGSERIAL\` / \`SERIAL\` / \`AUTO_INCREMENT\` / \`IDENTITY\` → \`@GeneratedValue(strategy = IDENTITY)\`
+
+### Foreign Keys
+The FK column is kept as a scalar field with a \`// TODO: map as @ManyToOne\` comment. v1 never auto-generates associations — cardinality and fetch strategy are deferred to the developer.
+
+### Lombok
+Generated entities use \`@Data\`, \`@NoArgsConstructor\`, and \`@AllArgsConstructor\`. The build customizer adds \`org.projectlombok:lombok\` (scope \`annotationProcessor\`) to the Maven build **only** when SQL is attached.`,
+        callouts: [
+          {
+            type: 'warning',
+            text: '@Data generates equals/hashCode across every field, which can surprise managed JPA entities with lazy associations. Since v1 does not generate associations, this is a safe default — revisit if you extend the wizard to emit @ManyToOne.'
+          }
+        ]
+      },
+      {
+        id: 'sql-wizard-api',
+        title: 'REST API',
+        description: 'POST endpoints and companion metadata.',
+        content: `### Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| \`GET\` | \`/metadata/sql-dialects\` | Dep-id → dialect name map (only catalog-present deps) |
+| \`POST\` | \`/starter-sql.zip\` | Generate ZIP with entities/repositories |
+| \`POST\` | \`/starter-sql.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
+| \`POST\` | \`/starter-sql.tables\` | Server-side parse: \`{ sql }\` → \`["users", "orders", ...]\` |
+
+### Why a New POST Endpoint
+\`/starter.zip\` is a GET whose query string carries all generation inputs. A few \`CREATE TABLE\` statements easily exceed typical URL length limits (~2–8 KB). A sibling POST endpoint that accepts the same fields plus \`sqlByDep\` / \`sqlOptions\` is the cleanest answer — no server-side session state, and the GET flow stays untouched for users who don't need the wizard.`,
+        codeExamples: [
+          {
+            title: 'Generate a project with a users entity and its repository',
+            language: 'bash',
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-sql.zip \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "groupId":"com.menora","artifactId":"demo","name":"demo",
+    "packageName":"com.menora.demo","type":"maven-project","language":"java",
+    "bootVersion":"3.2.1","packaging":"jar","javaVersion":"21",
+    "dependencies":["postgresql","data-jpa","web"],
+    "sqlByDep":{"postgresql":"CREATE TABLE users (id BIGSERIAL PRIMARY KEY, email VARCHAR(200) NOT NULL);"},
+    "sqlOptions":{"postgresql":{"subPackage":"entity","tables":[{"name":"users","generateRepository":true}]}}
+  }'
+unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
+          }
+        ],
+        fields: [
+          { name: 'sqlByDep', type: 'object', required: false, description: 'Map of depId → raw SQL script containing one or more CREATE TABLE statements.', example: '{ "postgresql": "CREATE TABLE users (...);" }' },
+          { name: 'sqlOptions', type: 'object', required: false, description: 'Map of depId → { subPackage, tables[] }. tables[].generateRepository toggles repository emission per table; subPackage defaults to "entity".', example: '{ "postgresql": { "subPackage": "entity", "tables": [ { "name": "users", "generateRepository": true } ] } }' },
+          { name: 'opts', type: 'object', required: false, description: 'Same sub-option map as used with /starter.zip\'s opts-{depId} query params — e.g. primary/secondary DB selection.', example: '{ "postgresql": ["pg-primary"] }' }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 11. EXPORT / IMPORT
   // ─────────────────────────────────────────────────────────────────
   {
     id: 'export-import',
