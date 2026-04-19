@@ -76,7 +76,26 @@ export interface DependencySelectorProps {
   selectedOptions:    Record<string, string[]>
   onOptionsChange:    (depId: string, optIds: string[]) => void
   compatibilityRules: CompatibilityRule[]
+  sqlDialects:        SqlDialects
+  sqlByDep:           SqlByDep
+  onSqlByDepChange:   (depId: string, entry: SqlWizardEntry | null) => void
 }
+
+// ── SQL Entity Wizard ─────────────────────────────────────────────────────────
+export type SqlDialects = Record<string, string>  // depId → dialect enum name
+
+export interface SqlTableConfig {
+  name: string
+  generateRepository: boolean
+}
+
+export interface SqlWizardEntry {
+  sql: string
+  subPackage: string
+  tables: SqlTableConfig[]
+}
+
+export type SqlByDep = Record<string, SqlWizardEntry>
 export interface GenerateButtonProps {
   form:     ProjectFormValues
   selected: string[]
