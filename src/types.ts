@@ -69,16 +69,19 @@ export interface OptionsPanelProps {
   section:  'upper' | 'lower'
 }
 export interface DependencySelectorProps {
-  metadata:           InitializrMetadata | null
-  selected:           string[]
-  onChange:           (selected: string[]) => void
-  extensions:         DependencyExtensions
-  selectedOptions:    Record<string, string[]>
-  onOptionsChange:    (depId: string, optIds: string[]) => void
-  compatibilityRules: CompatibilityRule[]
-  sqlDialects:        SqlDialects
-  sqlByDep:           SqlByDep
-  onSqlByDepChange:   (depId: string, entry: SqlWizardEntry | null) => void
+  metadata:            InitializrMetadata | null
+  selected:            string[]
+  onChange:            (selected: string[]) => void
+  extensions:          DependencyExtensions
+  selectedOptions:     Record<string, string[]>
+  onOptionsChange:     (depId: string, optIds: string[]) => void
+  compatibilityRules:  CompatibilityRule[]
+  sqlDialects:         SqlDialects
+  sqlByDep:            SqlByDep
+  onSqlByDepChange:    (depId: string, entry: SqlWizardEntry | null) => void
+  openApiCapableDeps:  string[]
+  openApiByDep:        OpenApiByDep
+  onOpenApiByDepChange: (depId: string, entry: OpenApiWizardEntry | null) => void
 }
 
 // ── SQL Entity Wizard ─────────────────────────────────────────────────────────
@@ -96,6 +99,16 @@ export interface SqlWizardEntry {
 }
 
 export type SqlByDep = Record<string, SqlWizardEntry>
+
+// ── OpenAPI Wizard ────────────────────────────────────────────────────────────
+export interface OpenApiWizardEntry {
+  spec: string
+  apiSubPackage: string
+  dtoSubPackage: string
+}
+
+export type OpenApiByDep = Record<string, OpenApiWizardEntry>
+
 export interface GenerateButtonProps {
   form:     ProjectFormValues
   selected: string[]
@@ -107,6 +120,7 @@ export interface ProjectSnapshot {
   selected: string[]
   selectedOptions: Record<string, string[]>
   sqlByDep: SqlByDep
+  openApiByDep: OpenApiByDep
   multiModuleEnabled: boolean
   selectedModules: string[]
 }

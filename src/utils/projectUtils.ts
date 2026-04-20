@@ -1,10 +1,11 @@
-import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlByDep } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlByDep, OpenApiByDep } from '../types'
 
 export function captureSnapshot(args: {
   form: ProjectFormValues
   selected: string[]
   selectedOptions: Record<string, string[]>
   sqlByDep: SqlByDep
+  openApiByDep: OpenApiByDep
   multiModuleEnabled: boolean
   selectedModules: string[]
 }): ProjectSnapshot {
@@ -13,6 +14,7 @@ export function captureSnapshot(args: {
     selected: [...args.selected],
     selectedOptions: JSON.parse(JSON.stringify(args.selectedOptions)),
     sqlByDep: JSON.parse(JSON.stringify(args.sqlByDep)),
+    openApiByDep: JSON.parse(JSON.stringify(args.openApiByDep)),
     multiModuleEnabled: args.multiModuleEnabled,
     selectedModules: [...args.selectedModules],
   }
@@ -69,7 +71,18 @@ export function triggerDownload(
   selectedOptions: Record<string, string[]>,
   multiModule?: { enabled: boolean; modules: string[] },
   sqlByDep?: SqlByDep,
+  openApiByDep?: OpenApiByDep,
 ): void {
+  // Branch: OpenAPI wizard requires POST (JSON body carrying spec text).
+  // Takes precedence over SQL wizard when both are attached (v1: mutually exclusive).
+  const activeOpenApi = openApiByDep
+    ? Object.fromEntries(Object.entries(openApiByDep).filter(([id]) => selected.includes(id)))
+    : {}
+  if (Object.keys(activeOpenApi).length > 0) {
+    triggerOpenApiDownload(form, selected, selectedOptions, activeOpenApi)
+    return
+  }
+
   // Branch: SQL wizard requires POST (JSON body carrying CREATE TABLE scripts)
   const activeSql = sqlByDep
     ? Object.fromEntries(Object.entries(sqlByDep).filter(([id]) => selected.includes(id)))
@@ -111,6 +124,62 @@ export function triggerDownload(
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
+}
+
+async function triggerOpenApiDownload(
+  form: ProjectFormValues,
+  selected: string[],
+  selectedOptions: Record<string, string[]>,
+  openApiByDep: OpenApiByDep,
+): Promise<void> {
+  const opts: Record<string, string[]> = {}
+  for (const [depId, optIds] of Object.entries(selectedOptions)) {
+    if (optIds.length > 0 && selected.includes(depId)) {
+      opts[depId] = optIds
+    }
+  }
+  const specByDep: Record<string, string> = {}
+  const openApiOptions: Record<string, { apiSubPackage: string; dtoSubPackage: string }> = {}
+  for (const [depId, entry] of Object.entries(openApiByDep)) {
+    specByDep[depId] = entry.spec
+    openApiOptions[depId] = {
+      apiSubPackage: entry.apiSubPackage,
+      dtoSubPackage: entry.dtoSubPackage,
+    }
+  }
+  const body = {
+    groupId: form.groupId,
+    artifactId: form.artifactId,
+    name: form.name,
+    description: form.description,
+    packageName: form.packageName,
+    type: form.type,
+    language: form.language,
+    bootVersion: form.bootVersion,
+    packaging: form.packaging,
+    javaVersion: form.javaVersion,
+    dependencies: selected,
+    opts,
+    specByDep,
+    openApiOptions,
+  }
+  const res = await fetch('/starter-openapi.zip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    throw new Error(`OpenAPI generation failed: HTTP ${res.status}`)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${form.artifactId}.zip`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 async function triggerSqlDownload(

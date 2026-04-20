@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useMetadata } from './hooks/useMetadata'
 import { useExtensions } from './hooks/useExtensions'
 import { useSqlDialects } from './hooks/useSqlDialects'
+import { useOpenApiCapable } from './hooks/useOpenApiCapable'
 import { useCompatibility } from './hooks/useCompatibility'
 import { useProjectPreview } from './hooks/useProjectPreview'
 import { useStarterTemplates } from './hooks/useStarterTemplates'
@@ -28,6 +29,7 @@ export default function App() {
   const { metadata, loading, error } = useMetadata()
   const { extensions } = useExtensions()
   const { dialects: sqlDialects } = useSqlDialects()
+  const { depIds: openApiCapableDeps } = useOpenApiCapable()
   const { rules: compatibilityRules } = useCompatibility()
   const { templates } = useStarterTemplates()
   const { modules: moduleTemplates } = useModuleTemplates()
@@ -38,6 +40,7 @@ export default function App() {
     selected: selectedDeps,
     selectedOptions,
     sqlByDep,
+    openApiByDep,
     multiModuleEnabled,
     selectedModules,
     activeTemplate,
@@ -46,6 +49,7 @@ export default function App() {
     handleDepsChange,
     handleOptionsChange,
     handleSqlByDepChange,
+    handleOpenApiByDepChange,
     handleTemplateSelect,
     applySnapshot,
     setSelectedModules
@@ -65,6 +69,7 @@ export default function App() {
     selected: selectedDeps,
     selectedOptions,
     sqlByDep,
+    openApiByDep,
     multiModuleEnabled,
     selectedModules,
   })
@@ -116,7 +121,7 @@ export default function App() {
   }
 
   function handleGenerate(): void {
-    triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep)
+    triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep)
     pushRecent(currentSnapshot)
     setGenerateSuccess(true)
     setAppToast({ message: 'Project downloaded!', type: 'success' })
@@ -222,7 +227,7 @@ export default function App() {
             </span>
           </button>
           <button
-            onClick={() => { fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep); pushRecent(currentSnapshot) }}
+            onClick={() => { fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep); pushRecent(currentSnapshot) }}
             disabled={previewLoading}
             title={previewError ?? 'Preview project files before downloading'}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
@@ -303,6 +308,9 @@ export default function App() {
             sqlDialects={sqlDialects}
             sqlByDep={sqlByDep}
             onSqlByDepChange={handleSqlByDepChange}
+            openApiCapableDeps={openApiCapableDeps}
+            openApiByDep={openApiByDep}
+            onOpenApiByDepChange={handleOpenApiByDepChange}
             form={form}
             selectedDeps={selectedDeps}
             selectedOptions={selectedOptions}
@@ -344,7 +352,7 @@ export default function App() {
           previousPreview={previousPreview}
           artifactId={form.artifactId}
           onClose={clearPreview}
-          onDownload={() => { triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep); clearPreview() }}
+          onDownload={() => { triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep); clearPreview() }}
 
         />
       )}

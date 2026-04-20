@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import type { PreviewResponse, ProjectFormValues, SqlByDep } from '../types'
+import type { PreviewResponse, ProjectFormValues, SqlByDep, OpenApiByDep } from '../types'
 
 export function useProjectPreview() {
   const [preview,         setPreview]         = useState<PreviewResponse | null>(null)
@@ -14,17 +14,60 @@ export function useProjectPreview() {
     selectedOptions: Record<string, string[]>,
     multiModule?: { enabled: boolean; modules: string[] },
     sqlByDep?: SqlByDep,
+    openApiByDep?: OpenApiByDep,
   ) => {
     setLoading(true)
     setError(null)
     try {
+      const activeOpenApi = openApiByDep
+        ? Object.fromEntries(Object.entries(openApiByDep).filter(([id]) => selected.includes(id)))
+        : {}
+      const hasOpenApi = Object.keys(activeOpenApi).length > 0
+
       const activeSql = sqlByDep
         ? Object.fromEntries(Object.entries(sqlByDep).filter(([id]) => selected.includes(id)))
         : {}
       const hasSql = Object.keys(activeSql).length > 0
 
       let data: PreviewResponse
-      if (hasSql) {
+      if (hasOpenApi) {
+        const opts: Record<string, string[]> = {}
+        for (const [depId, optIds] of Object.entries(selectedOptions)) {
+          if (optIds.length > 0 && selected.includes(depId)) opts[depId] = optIds
+        }
+        const specByDep: Record<string, string> = {}
+        const openApiOptionsBody: Record<string, { apiSubPackage: string; dtoSubPackage: string }> = {}
+        for (const [depId, entry] of Object.entries(activeOpenApi)) {
+          specByDep[depId] = entry.spec
+          openApiOptionsBody[depId] = {
+            apiSubPackage: entry.apiSubPackage,
+            dtoSubPackage: entry.dtoSubPackage,
+          }
+        }
+        const body = {
+          groupId: form.groupId,
+          artifactId: form.artifactId,
+          name: form.name,
+          description: form.description,
+          packageName: form.packageName,
+          type: form.type,
+          language: form.language,
+          bootVersion: form.bootVersion,
+          packaging: form.packaging,
+          javaVersion: form.javaVersion,
+          dependencies: selected,
+          opts,
+          specByDep,
+          openApiOptions: openApiOptionsBody,
+        }
+        const res = await fetch('/starter-openapi.preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        data = await res.json() as PreviewResponse
+      } else if (hasSql) {
         const opts: Record<string, string[]> = {}
         for (const [depId, optIds] of Object.entries(selectedOptions)) {
           if (optIds.length > 0 && selected.includes(depId)) opts[depId] = optIds

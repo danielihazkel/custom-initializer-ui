@@ -731,6 +731,234 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
   },
 
   // ─────────────────────────────────────────────────────────────────
+  // 10b. OPENAPI → CONTROLLER/DTO WIZARD
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'openapi-wizard',
+    title: 'OpenAPI Wizard',
+    icon: 'integration_instructions',
+    topics: [
+      {
+        id: 'openapi-wizard-what',
+        title: 'What the Wizard Does',
+        description: 'Paste an OpenAPI 3.x spec and get @RestController classes + DTO records.',
+        content: `### Purpose
+When the developer selects a web stack dependency (\`web\` or \`webflux\`), an **"OpenAPI…"** button appears on that card in the selected-dependencies panel. Clicking it opens a drawer where the developer pastes an OpenAPI 3.x spec (YAML or JSON). When they hit Generate, the backend parses the spec and writes \`@RestController\` classes plus DTO \`record\`s — already wired up with Spring MVC annotations, parameter binding, and validation.
+
+This is the symmetrical twin of the SQL wizard for API-first teams. It removes the boilerplate of hand-writing controller signatures and request/response DTOs after generation.
+
+### Which Dependencies Are Eligible
+The UI calls \`GET /metadata/openapi-capable-deps\` at page load — the button only appears on dep cards present in the response (currently \`web\` and \`webflux\`, intersected with deps actually in the catalog).
+
+### Flow At a Glance
+1. Developer selects a web stack dep (e.g. \`web\`).
+2. Clicks **OpenAPI…** on the dep's card.
+3. Pastes or uploads an OpenAPI 3.x spec (\`.yaml\`, \`.yml\`, or \`.json\`).
+4. A live **Detected Operations** list appears (debounced 400ms) showing entries like \`GET /pets\`, \`POST /pets/{id}\`.
+5. Optional: change the sub-packages (default \`api\` for controllers, \`dto\` for records).
+6. Save → the dep card shows an attachment badge.
+7. Click **Generate** or **Explore** — the UI switches to POST \`/starter-openapi.zip\` / \`/starter-openapi.preview\` with a JSON body, and the generated controllers/records appear in the ZIP and the file tree.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'Method bodies always throw UnsupportedOperationException. The goal of v1 is a compiling skeleton — developers fill in the business logic after generation.'
+          },
+          {
+            type: 'warning',
+            text: 'The SQL wizard and OpenAPI wizard are mutually exclusive per generation request in v1. If both have content, OpenAPI takes precedence. Localstorage keeps both so switching never loses work.'
+          }
+        ]
+      },
+      {
+        id: 'openapi-wizard-mapping',
+        title: 'Schema → Java Type Mapping',
+        description: 'How OpenAPI schemas become Java records and types.',
+        content: `### Type Mapping
+The wizard maps OpenAPI types (and their \`format\` hints) to Java types directly on the generated record fields and controller signatures.
+
+| OpenAPI Schema | Java Type | Notes |
+|---|---|---|
+| \`string\` | \`String\` | |
+| \`string\`, \`format: date\` | \`LocalDate\` | |
+| \`string\`, \`format: date-time\` | \`LocalDateTime\` | |
+| \`string\`, \`format: uuid\` | \`UUID\` | |
+| \`string\`, \`format: binary\` | \`byte[]\` | |
+| \`integer\` | \`Integer\` | |
+| \`integer\`, \`format: int64\` | \`Long\` | |
+| \`number\` / \`number\`, \`format: float\` | \`Double\` / \`Float\` | |
+| \`number\`, \`format: double\` | \`Double\` | |
+| \`boolean\` | \`Boolean\` | |
+| \`array\` | \`List<T>\` | recurses on \`items\` |
+| \`object\` with \`$ref\` | referenced record name | |
+| \`allOf\` / \`oneOf\` / \`anyOf\` | \`Object\` | with \`// TODO\` comment |
+
+### Controllers
+Operations are grouped by their **first tag** (untagged operations go to \`DefaultController\`). One method is emitted per operation:
+
+- Class name: \`{Tag}Controller\` (e.g. \`PetsController\`)
+- Class-level annotation: \`@RestController\`, \`@Validated\`
+- Method annotation: \`@GetMapping\`, \`@PostMapping\`, \`@PutMapping\`, \`@DeleteMapping\`, \`@PatchMapping\`
+- Parameters: \`@PathVariable\`, \`@RequestParam\`, \`@RequestHeader\`, \`@RequestBody\` (with \`@Valid\`)
+- Body: \`throw new UnsupportedOperationException("TODO: implement ...")\`
+- Duplicate \`operationId\`s within a tag are disambiguated by appending \`_2\`, \`_3\`, …
+
+### Records
+Every entry under \`components.schemas.*\` becomes a Java \`record\` with one component per property. Required fields keep their raw Java type; optional fields do too (nullability is deferred to the developer — v1 does not wrap optionals in \`Optional<T>\`).
+
+### Packages
+- Controllers → \`{packageName}.{apiSubPackage}\` (default \`api\`)
+- Records → \`{packageName}.{dtoSubPackage}\` (default \`dto\`)`,
+      },
+      {
+        id: 'openapi-wizard-api',
+        title: 'REST API',
+        description: 'POST endpoints and companion metadata.',
+        content: `### Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| \`GET\` | \`/metadata/openapi-capable-deps\` | Dep IDs eligible for the wizard (intersected with deps in the catalog) |
+| \`POST\` | \`/starter-openapi.zip\` | Generate ZIP with controllers and DTO records |
+| \`POST\` | \`/starter-openapi.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
+| \`POST\` | \`/starter-openapi.paths\` | Server-side parse: \`{ spec }\` → \`["GET /pets", "POST /pets/{id}", ...]\` for the drawer's live preview |
+
+### Why a New POST Endpoint
+OpenAPI specs regularly exceed typical URL length limits (~2–8 KB) — even the Petstore example is ~2 KB of YAML. Using a sibling POST endpoint that accepts the same generation fields plus \`specByDep\` and \`openApiOptions\` keeps the wizard decoupled from the GET flow and side-steps URL size ceilings entirely.
+
+### Parse Errors
+If the spec is malformed, the backend returns HTTP 400 with a body like \`{ "error": "...", "messages": ["attribute info.version is missing", ...] }\`. The drawer surfaces those messages in a yellow banner and disables the Save button until the spec parses cleanly.`,
+        codeExamples: [
+          {
+            title: 'Generate a project from a tiny Petstore spec',
+            language: 'bash',
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-openapi.zip \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "groupId":"com.menora","artifactId":"demo","name":"demo",
+    "packageName":"com.menora.demo","type":"maven-project","language":"java",
+    "bootVersion":"3.2.1","packaging":"jar","javaVersion":"21",
+    "dependencies":["web"],
+    "specByDep":{"web":"openapi: 3.0.3\\ninfo: { title: Petstore, version: 1.0.0 }\\npaths:\\n  /pets/{id}:\\n    get:\\n      tags: [pets]\\n      operationId: getPetById\\n      parameters: [{ name: id, in: path, required: true, schema: { type: integer, format: int64 } }]\\n      responses: { 200: { content: { application/json: { schema: { $ref: \\"#/components/schemas/Pet\\" } } } } }\\ncomponents:\\n  schemas:\\n    Pet: { type: object, properties: { id: { type: integer, format: int64 }, name: { type: string } }, required: [id, name] }"},
+    "openApiOptions":{"web":{"apiSubPackage":"api","dtoSubPackage":"dto"}}
+  }'
+unzip -p demo.zip demo/src/main/java/com/menora/demo/api/PetsController.java`
+          },
+          {
+            title: 'Example Petstore OpenAPI spec (YAML)',
+            language: 'yaml',
+            code: `openapi: 3.0.3
+info:
+  title: Petstore
+  version: 1.0.0
+paths:
+  /pets:
+    get:
+      tags: [pets]
+      operationId: listPets
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Pet' }
+    post:
+      tags: [pets]
+      operationId: createPet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pet' }
+      responses:
+        '201': { description: Created }
+  /pets/{id}:
+    get:
+      tags: [pets]
+      operationId: getPetById
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pet' }
+components:
+  schemas:
+    Pet:
+      type: object
+      required: [id, name]
+      properties:
+        id:   { type: integer, format: int64 }
+        name: { type: string }
+        tag:  { type: string }`
+          },
+          {
+            title: 'Generated PetsController.java',
+            language: 'java',
+            code: `package com.menora.demo.api;
+
+import com.menora.demo.dto.Pet;
+import jakarta.validation.Valid;
+import java.util.List;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@Validated
+public class PetsController {
+
+    @GetMapping("/pets")
+    public List<Pet> listPets() {
+        throw new UnsupportedOperationException("TODO: implement listPets");
+    }
+
+    @PostMapping("/pets")
+    public void createPet(@Valid @RequestBody Pet body) {
+        throw new UnsupportedOperationException("TODO: implement createPet");
+    }
+
+    @GetMapping("/pets/{id}")
+    public Pet getPetById(@PathVariable Long id) {
+        throw new UnsupportedOperationException("TODO: implement getPetById");
+    }
+}`
+          }
+        ],
+        fields: [
+          { name: 'specByDep', type: 'object', required: false, description: 'Map of depId → raw OpenAPI 3.x spec text (YAML or JSON). swagger-parser detects the format automatically.', example: '{ "web": "openapi: 3.0.3\\n..." }' },
+          { name: 'openApiOptions', type: 'object', required: false, description: 'Map of depId → { apiSubPackage, dtoSubPackage }. Controllers go to apiSubPackage (default "api"); records go to dtoSubPackage (default "dto").', example: '{ "web": { "apiSubPackage": "api", "dtoSubPackage": "dto" } }' },
+          { name: 'dependencies', type: 'array', required: true, description: 'The usual dep-id array. Only deps listed in /metadata/openapi-capable-deps will have their entries in specByDep processed.', example: '[ "web" ]' }
+        ]
+      },
+      {
+        id: 'openapi-wizard-limits',
+        title: 'Notes & Limitations (v1)',
+        description: 'What this generation does, what it does not, and why.',
+        content: `### What v1 Produces
+- One \`{Tag}Controller\` class per tag (operations without a tag go to \`DefaultController\`).
+- One Java \`record\` per entry in \`components.schemas.*\`.
+- Method bodies always throw \`UnsupportedOperationException\` — the project compiles; the logic is yours to fill in.
+
+### What v1 Does Not Produce
+- **No client stubs** — Feign, WebClient, and RestTemplate-based clients are out of scope.
+- **No polymorphism** — \`allOf\`, \`oneOf\`, \`anyOf\` fall back to \`Object\` with a \`// TODO\` comment.
+- **No inline schemas** — only named schemas under \`components.schemas.*\` become records. Inline response/request schemas also fall back to \`Object\`.
+- **No OpenAPI annotation emission** — Springdoc / springfox annotations are not added. Add \`springdoc-openapi-starter-webmvc-ui\` as a dependency if you want a live Swagger UI.
+
+### Why These Choices
+The goal of v1 is to kill boilerplate without opinionating the implementation. Polymorphism, null semantics, and client generation are all design decisions that different teams handle differently — forcing a choice here creates more work for teams that wanted the other answer. Keep v1 tight, iterate on real feedback.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'If you want interactive API docs, add springdoc-openapi-starter-webmvc-ui as a regular dependency (not via the wizard). It scans your controllers at runtime and reconstructs a Swagger UI — no annotation work needed for simple cases.'
+          }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
   // 11. EXPORT / IMPORT
   // ─────────────────────────────────────────────────────────────────
   {

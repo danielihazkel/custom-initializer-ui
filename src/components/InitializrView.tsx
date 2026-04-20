@@ -4,7 +4,7 @@ import { OptionsPanel } from './OptionsPanel'
 import { ProjectForm } from './ProjectForm'
 import { ModuleSelector } from './ModuleSelector'
 import { DependencySelector } from './DependencySelector'
-import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry } from '../types'
 
 interface InitializrViewProps {
   metadata: InitializrMetadata | null
@@ -15,6 +15,9 @@ interface InitializrViewProps {
   sqlDialects: SqlDialects
   sqlByDep: SqlByDep
   onSqlByDepChange: (depId: string, entry: SqlWizardEntry | null) => void
+  openApiCapableDeps: string[]
+  openApiByDep: OpenApiByDep
+  onOpenApiByDepChange: (depId: string, entry: OpenApiWizardEntry | null) => void
 
   form: ProjectFormValues
   selectedDeps: string[]
@@ -49,6 +52,9 @@ export function InitializrView({
   sqlDialects,
   sqlByDep,
   onSqlByDepChange,
+  openApiCapableDeps,
+  openApiByDep,
+  onOpenApiByDepChange,
   form,
   selectedDeps,
   selectedOptions,
@@ -150,6 +156,9 @@ export function InitializrView({
             sqlDialects={sqlDialects}
             sqlByDep={sqlByDep}
             onSqlByDepChange={onSqlByDepChange}
+            openApiCapableDeps={openApiCapableDeps}
+            openApiByDep={openApiByDep}
+            onOpenApiByDepChange={onOpenApiByDepChange}
           />
         </section>
       </div>

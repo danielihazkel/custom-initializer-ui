@@ -731,6 +731,234 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
   },
 
   // ─────────────────────────────────────────────────────────────────
+  // 10b. אשף OpenAPI → Controller/DTO
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'openapi-wizard',
+    title: 'אשף OpenAPI',
+    icon: 'integration_instructions',
+    topics: [
+      {
+        id: 'openapi-wizard-what',
+        title: 'מה האשף עושה',
+        description: 'הדביקו ספק OpenAPI 3.x וקבלו מחלקות @RestController + DTO records.',
+        content: `### מטרה
+כאשר המפתח בוחר תלות של שכבת web (\`web\` או \`webflux\`), כפתור **"OpenAPI…"** מופיע על הכרטיסיה של אותה תלות בפאנל התלויות שנבחרו. לחיצה עליו פותחת מגירה בה המפתח מדביק ספק OpenAPI 3.x (YAML או JSON). כשלוחצים על Generate, ה-backend מנתח את הספק וכותב מחלקות \`@RestController\` ו-\`record\` של DTO — כבר מחוברים עם אנוטציות Spring MVC, binding של פרמטרים ו-validation.
+
+זה התאום הסימטרי של אשף ה-SQL עבור צוותים של API-first. זה מבטל את הבויילרפלייט של כתיבת חתימות controllers ו-DTO של request/response באופן ידני אחרי היצירה.
+
+### אילו תלויות זכאיות
+ה-UI קורא ל-\`GET /metadata/openapi-capable-deps\` בטעינת הדף — הכפתור מופיע רק על כרטיסיות תלות שנוכחות בתגובה (כרגע \`web\` ו-\`webflux\`, בחיתוך עם תלויות הקיימות בקטלוג).
+
+### הזרימה במבט כולל
+1. המפתח בוחר תלות שכבת web (למשל \`web\`).
+2. לוחץ על **OpenAPI…** בכרטיסיית התלות.
+3. מדביק או מעלה ספק OpenAPI 3.x (\`.yaml\`, \`.yml\`, או \`.json\`).
+4. רשימת **פעולות שזוהו** מופיעה בזמן אמת (debounced 400ms) ומציגה ערכים כמו \`GET /pets\`, \`POST /pets/{id}\`.
+5. אופציונלי: שנה את תתי-החבילות (ברירת מחדל \`api\` ל-controllers, \`dto\` ל-records).
+6. שמור → כרטיסיית התלות מציגה תווית של צירוף.
+7. לחץ על **Generate** או **Explore** — ה-UI עובר לשליחת POST ל-\`/starter-openapi.zip\` / \`/starter-openapi.preview\` עם גוף JSON, וה-controllers/records שנוצרו מופיעים ב-ZIP ובעץ הקבצים.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'גופי המתודות תמיד זורקים UnsupportedOperationException. המטרה של גרסה 1 היא שלד שמתקמפל — המפתחים ממלאים את הלוגיקה העסקית לאחר היצירה.'
+          },
+          {
+            type: 'warning',
+            text: 'אשף SQL ואשף OpenAPI הם הדדיים-בלעדיים לכל בקשת יצירה בגרסה 1. אם לשניהם יש תוכן, OpenAPI מקבל עדיפות. localStorage שומר את שניהם כך שמעבר ביניהם לא מאבד עבודה.'
+          }
+        ]
+      },
+      {
+        id: 'openapi-wizard-mapping',
+        title: 'מיפוי סכמה → טיפוסי Java',
+        description: 'כיצד סכמות OpenAPI הופכות ל-records ולטיפוסי Java.',
+        content: `### מיפוי טיפוסים
+האשף ממפה טיפוסי OpenAPI (ואת רמזי ה-\`format\` שלהם) לטיפוסי Java ישירות על שדות ה-records שנוצרו וחתימות ה-controllers.
+
+| סכמת OpenAPI | טיפוס Java | הערות |
+|---|---|---|
+| \`string\` | \`String\` | |
+| \`string\`, \`format: date\` | \`LocalDate\` | |
+| \`string\`, \`format: date-time\` | \`LocalDateTime\` | |
+| \`string\`, \`format: uuid\` | \`UUID\` | |
+| \`string\`, \`format: binary\` | \`byte[]\` | |
+| \`integer\` | \`Integer\` | |
+| \`integer\`, \`format: int64\` | \`Long\` | |
+| \`number\` / \`number\`, \`format: float\` | \`Double\` / \`Float\` | |
+| \`number\`, \`format: double\` | \`Double\` | |
+| \`boolean\` | \`Boolean\` | |
+| \`array\` | \`List<T>\` | רקורסיה על \`items\` |
+| \`object\` עם \`$ref\` | שם ה-record שמופנה אליו | |
+| \`allOf\` / \`oneOf\` / \`anyOf\` | \`Object\` | עם הערת \`// TODO\` |
+
+### Controllers
+פעולות מקובצות לפי ה-**תג הראשון** שלהן (פעולות ללא תג עוברות ל-\`DefaultController\`). מתודה אחת נפלטת לכל פעולה:
+
+- שם מחלקה: \`{Tag}Controller\` (למשל \`PetsController\`)
+- אנוטציה ברמת המחלקה: \`@RestController\`, \`@Validated\`
+- אנוטציית מתודה: \`@GetMapping\`, \`@PostMapping\`, \`@PutMapping\`, \`@DeleteMapping\`, \`@PatchMapping\`
+- פרמטרים: \`@PathVariable\`, \`@RequestParam\`, \`@RequestHeader\`, \`@RequestBody\` (עם \`@Valid\`)
+- גוף: \`throw new UnsupportedOperationException("TODO: implement ...")\`
+- \`operationId\`-ים כפולים בתוך תג מבודלים על ידי הוספת \`_2\`, \`_3\`, …
+
+### Records
+כל ערך תחת \`components.schemas.*\` הופך ל-\`record\` של Java עם רכיב אחד לכל property. שדות חובה שומרים על טיפוס ה-Java הגולמי שלהם; שדות אופציונליים גם כן (nullability נדחית למפתח — גרסה 1 לא עוטפת optionals ב-\`Optional<T>\`).
+
+### חבילות
+- Controllers → \`{packageName}.{apiSubPackage}\` (ברירת מחדל \`api\`)
+- Records → \`{packageName}.{dtoSubPackage}\` (ברירת מחדל \`dto\`)`,
+      },
+      {
+        id: 'openapi-wizard-api',
+        title: 'REST API',
+        description: 'נקודות קצה POST ומטא-דאטה נלווית.',
+        content: `### נקודות קצה
+
+| שיטה | נתיב | מטרה |
+|---|---|---|
+| \`GET\` | \`/metadata/openapi-capable-deps\` | מזהי תלות זכאים לאשף (בחיתוך עם תלויות בקטלוג) |
+| \`POST\` | \`/starter-openapi.zip\` | יצירת ZIP עם controllers ו-DTO records |
+| \`POST\` | \`/starter-openapi.preview\` | עץ קבצים + תוכן (אותה צורה כמו \`/starter.preview\`) |
+| \`POST\` | \`/starter-openapi.paths\` | ניתוח בצד שרת: \`{ spec }\` → \`["GET /pets", "POST /pets/{id}", ...]\` עבור התצוגה החיה של המגירה |
+
+### מדוע נקודת קצה POST חדשה
+ספקי OpenAPI חורגים באופן קבוע ממגבלות אורך URL טיפוסיות (~2–8 KB) — אפילו הדוגמה של Petstore היא ~2 KB של YAML. שימוש בנקודת קצה POST אחות המקבלת את אותם שדות יצירה בתוספת \`specByDep\` ו-\`openApiOptions\` שומר את האשף מפורק מזרימת GET ועוקף את תקרות גודל ה-URL לחלוטין.
+
+### שגיאות ניתוח
+אם הספק פגום, ה-backend מחזיר HTTP 400 עם גוף כמו \`{ "error": "...", "messages": ["attribute info.version is missing", ...] }\`. המגירה מציגה הודעות אלה בבאנר צהוב ומשביתה את כפתור השמירה עד שהספק מתנתח נקי.`,
+        codeExamples: [
+          {
+            title: 'יצירת פרויקט מספק Petstore קטן',
+            language: 'bash',
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-openapi.zip \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "groupId":"com.menora","artifactId":"demo","name":"demo",
+    "packageName":"com.menora.demo","type":"maven-project","language":"java",
+    "bootVersion":"3.2.1","packaging":"jar","javaVersion":"21",
+    "dependencies":["web"],
+    "specByDep":{"web":"openapi: 3.0.3\\ninfo: { title: Petstore, version: 1.0.0 }\\npaths:\\n  /pets/{id}:\\n    get:\\n      tags: [pets]\\n      operationId: getPetById\\n      parameters: [{ name: id, in: path, required: true, schema: { type: integer, format: int64 } }]\\n      responses: { 200: { content: { application/json: { schema: { $ref: \\"#/components/schemas/Pet\\" } } } } }\\ncomponents:\\n  schemas:\\n    Pet: { type: object, properties: { id: { type: integer, format: int64 }, name: { type: string } }, required: [id, name] }"},
+    "openApiOptions":{"web":{"apiSubPackage":"api","dtoSubPackage":"dto"}}
+  }'
+unzip -p demo.zip demo/src/main/java/com/menora/demo/api/PetsController.java`
+          },
+          {
+            title: 'ספק Petstore לדוגמה (YAML)',
+            language: 'yaml',
+            code: `openapi: 3.0.3
+info:
+  title: Petstore
+  version: 1.0.0
+paths:
+  /pets:
+    get:
+      tags: [pets]
+      operationId: listPets
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Pet' }
+    post:
+      tags: [pets]
+      operationId: createPet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pet' }
+      responses:
+        '201': { description: Created }
+  /pets/{id}:
+    get:
+      tags: [pets]
+      operationId: getPetById
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pet' }
+components:
+  schemas:
+    Pet:
+      type: object
+      required: [id, name]
+      properties:
+        id:   { type: integer, format: int64 }
+        name: { type: string }
+        tag:  { type: string }`
+          },
+          {
+            title: 'PetsController.java שנוצר',
+            language: 'java',
+            code: `package com.menora.demo.api;
+
+import com.menora.demo.dto.Pet;
+import jakarta.validation.Valid;
+import java.util.List;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@Validated
+public class PetsController {
+
+    @GetMapping("/pets")
+    public List<Pet> listPets() {
+        throw new UnsupportedOperationException("TODO: implement listPets");
+    }
+
+    @PostMapping("/pets")
+    public void createPet(@Valid @RequestBody Pet body) {
+        throw new UnsupportedOperationException("TODO: implement createPet");
+    }
+
+    @GetMapping("/pets/{id}")
+    public Pet getPetById(@PathVariable Long id) {
+        throw new UnsupportedOperationException("TODO: implement getPetById");
+    }
+}`
+          }
+        ],
+        fields: [
+          { name: 'specByDep', type: 'object', required: false, description: 'מפת depId → טקסט ספק OpenAPI 3.x גולמי (YAML או JSON). swagger-parser מזהה את הפורמט אוטומטית.', example: '{ "web": "openapi: 3.0.3\\n..." }' },
+          { name: 'openApiOptions', type: 'object', required: false, description: 'מפת depId → { apiSubPackage, dtoSubPackage }. Controllers עוברים ל-apiSubPackage (ברירת מחדל "api"); records עוברים ל-dtoSubPackage (ברירת מחדל "dto").', example: '{ "web": { "apiSubPackage": "api", "dtoSubPackage": "dto" } }' },
+          { name: 'dependencies', type: 'array', required: true, description: 'מערך dep-id הרגיל. רק תלויות הרשומות ב-/metadata/openapi-capable-deps יעובדו עם רשומותיהן ב-specByDep.', example: '[ "web" ]' }
+        ]
+      },
+      {
+        id: 'openapi-wizard-limits',
+        title: 'הערות ומגבלות (גרסה 1)',
+        description: 'מה היצירה הזו עושה, מה לא, ומדוע.',
+        content: `### מה גרסה 1 מפיקה
+- מחלקת \`{Tag}Controller\` אחת לכל תג (פעולות ללא תג עוברות ל-\`DefaultController\`).
+- \`record\` אחד של Java לכל ערך ב-\`components.schemas.*\`.
+- גופי מתודות תמיד זורקים \`UnsupportedOperationException\` — הפרויקט מתקמפל; הלוגיקה שלכם למלא.
+
+### מה גרסה 1 לא מפיקה
+- **ללא stubs של client** — Feign, WebClient, ו-clients מבוססי RestTemplate מחוץ לתחום.
+- **ללא פולימורפיזם** — \`allOf\`, \`oneOf\`, \`anyOf\` חוזרים ל-\`Object\` עם הערת \`// TODO\`.
+- **ללא סכמות inline** — רק סכמות בעלות שם תחת \`components.schemas.*\` הופכות ל-records. סכמות response/request inline גם חוזרות ל-\`Object\`.
+- **ללא פליטת אנוטציות OpenAPI** — אנוטציות Springdoc / springfox לא מתווספות. הוסיפו \`springdoc-openapi-starter-webmvc-ui\` כתלות אם אתם רוצים Swagger UI חי.
+
+### מדוע הבחירות האלה
+המטרה של גרסה 1 היא להרוג את הבויילרפלייט בלי להחיל דעה על המימוש. פולימורפיזם, סמנטיקת null, ויצירת client הן כולן החלטות עיצוב שצוותים שונים מטפלים בהן אחרת — כפיית בחירה כאן יוצרת יותר עבודה לצוותים שרצו את התשובה האחרת. שמרו על גרסה 1 הדוקה, איטרציה על משוב אמיתי.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'אם אתם רוצים תיעוד API אינטראקטיבי, הוסיפו את springdoc-openapi-starter-webmvc-ui כתלות רגילה (לא דרך האשף). הוא סורק את ה-controllers שלכם בזמן ריצה ומשחזר Swagger UI — ללא צורך בעבודת אנוטציות למקרים פשוטים.'
+          }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
   // 11. ייצוא / ייבוא
   // ─────────────────────────────────────────────────────────────────
   {
