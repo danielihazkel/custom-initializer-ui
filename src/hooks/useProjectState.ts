@@ -2,6 +2,23 @@ import { useState, useEffect, useCallback } from 'react'
 import { parseUrlParams, defaultForm } from '../utils/projectUtils'
 import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, StarterTemplate, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry } from '../types'
 
+function normalizeOpenApiByDep(raw: unknown): OpenApiByDep {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: OpenApiByDep = {}
+  for (const [depId, value] of Object.entries(raw as Record<string, Partial<OpenApiWizardEntry>>)) {
+    if (!value || typeof value !== 'object') continue
+    out[depId] = {
+      spec: value.spec ?? '',
+      apiSubPackage: value.apiSubPackage ?? 'api',
+      dtoSubPackage: value.dtoSubPackage ?? 'dto',
+      clientSubPackage: value.clientSubPackage ?? 'client',
+      mode: value.mode ?? 'CONTROLLERS',
+      baseUrlProperty: value.baseUrlProperty ?? 'openapi.client.base-url',
+    }
+  }
+  return out
+}
+
 export function useProjectState(metadata: InitializrMetadata | null) {
   const [form, setForm] = useState<ProjectFormValues>(() => {
     const url = parseUrlParams()
@@ -44,7 +61,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
 
   const [openApiByDep, setOpenApiByDep] = useState<OpenApiByDep>(() => {
     const saved = localStorage.getItem('openApiByDep')
-    return saved ? JSON.parse(saved) : {}
+    return saved ? normalizeOpenApiByDep(JSON.parse(saved)) : {}
   })
 
   // Persist form state to localStorage
@@ -196,7 +213,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     setSelected([...snapshot.selected])
     setSelectedOptions(JSON.parse(JSON.stringify(snapshot.selectedOptions)))
     setSqlByDep(JSON.parse(JSON.stringify(snapshot.sqlByDep)))
-    setOpenApiByDep(JSON.parse(JSON.stringify(snapshot.openApiByDep ?? {})))
+    setOpenApiByDep(normalizeOpenApiByDep(JSON.parse(JSON.stringify(snapshot.openApiByDep ?? {}))))
     setMultiModuleEnabled(snapshot.multiModuleEnabled)
     setSelectedModules([...snapshot.selectedModules])
     setActiveTemplate(null)

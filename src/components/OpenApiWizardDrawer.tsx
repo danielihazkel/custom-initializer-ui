@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AdminFormDrawer } from './admin/shared/AdminFormDrawer'
 import { CodeEditor } from './admin/file-contributions/CodeEditor'
-import type { OpenApiWizardEntry } from '../types'
+import type { OpenApiMode, OpenApiWizardEntry } from '../types'
 
 interface Props {
   isOpen: boolean
@@ -12,10 +12,19 @@ interface Props {
   onSave: (entry: OpenApiWizardEntry | null) => void
 }
 
+const MODES: { id: OpenApiMode; label: string; hint: string }[] = [
+  { id: 'CONTROLLERS', label: 'Controllers', hint: 'Server — @RestController classes' },
+  { id: 'CLIENT', label: 'Client', hint: 'Consumer — RestTemplate client' },
+  { id: 'BOTH', label: 'Both', hint: 'Controllers + client, shared DTOs' },
+]
+
 export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, onSave }: Props) {
   const [spec, setSpec] = useState<string>(initial?.spec ?? '')
   const [apiSubPackage, setApiSubPackage] = useState<string>(initial?.apiSubPackage ?? 'api')
   const [dtoSubPackage, setDtoSubPackage] = useState<string>(initial?.dtoSubPackage ?? 'dto')
+  const [clientSubPackage, setClientSubPackage] = useState<string>(initial?.clientSubPackage ?? 'client')
+  const [mode, setMode] = useState<OpenApiMode>(initial?.mode ?? 'CONTROLLERS')
+  const [baseUrlProperty, setBaseUrlProperty] = useState<string>(initial?.baseUrlProperty ?? 'openapi.client.base-url')
   const [paths, setPaths] = useState<string[]>([])
   const [parseError, setParseError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -26,6 +35,9 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
       setSpec(initial?.spec ?? '')
       setApiSubPackage(initial?.apiSubPackage ?? 'api')
       setDtoSubPackage(initial?.dtoSubPackage ?? 'dto')
+      setClientSubPackage(initial?.clientSubPackage ?? 'client')
+      setMode(initial?.mode ?? 'CONTROLLERS')
+      setBaseUrlProperty(initial?.baseUrlProperty ?? 'openapi.client.base-url')
       setParseError(null)
     }
   }, [isOpen, depId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -64,6 +76,9 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
     return () => clearTimeout(handle)
   }, [spec])
 
+  const emitControllers = mode === 'CONTROLLERS' || mode === 'BOTH'
+  const emitClient = mode === 'CLIENT' || mode === 'BOTH'
+
   async function handleSave(): Promise<void> {
     const trimmed = spec.trim()
     if (!trimmed) {
@@ -73,6 +88,9 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
         spec: trimmed,
         apiSubPackage: apiSubPackage.trim() || 'api',
         dtoSubPackage: dtoSubPackage.trim() || 'dto',
+        clientSubPackage: clientSubPackage.trim() || 'client',
+        mode,
+        baseUrlProperty: baseUrlProperty.trim() || 'openapi.client.base-url',
       })
     }
     onClose()
@@ -98,7 +116,7 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
 
   return (
     <AdminFormDrawer
-      title={`OpenAPI Controllers — ${depName}`}
+      title={`OpenAPI — ${depName}`}
       isOpen={isOpen}
       onClose={onClose}
       onSave={handleSave}
@@ -108,23 +126,54 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/30 text-xs text-primary">
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>integration_instructions</span>
           <span>
-            Paste an OpenAPI 3.x spec (YAML or JSON) to generate <span className="font-bold">@RestController</span> classes and DTO records.
+            Paste an OpenAPI 3.x spec (YAML or JSON). Pick a mode to generate
+            {' '}<span className="font-bold">controllers</span>, a
+            {' '}<span className="font-bold">client</span>, or both. DTO records are shared.
           </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
-              API sub-package
-            </label>
-            <input
-              type="text"
-              value={apiSubPackage}
-              onChange={e => setApiSubPackage(e.target.value)}
-              placeholder="api"
-              className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all"
-            />
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
+            Mode
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {MODES.map(m => {
+              const active = mode === m.id
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setMode(m.id)}
+                  className={
+                    'rounded-lg border px-3 py-2 text-left transition-all ' +
+                    (active
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-outline-variant bg-surface-container-highest text-on-surface hover:border-primary/60')
+                  }
+                >
+                  <div className="text-xs font-bold">{m.label}</div>
+                  <div className="text-[10px] text-on-surface-variant mt-0.5 leading-tight">{m.hint}</div>
+                </button>
+              )
+            })}
           </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {emitControllers && (
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
+                API sub-package
+              </label>
+              <input
+                type="text"
+                value={apiSubPackage}
+                onChange={e => setApiSubPackage(e.target.value)}
+                placeholder="api"
+                className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all"
+              />
+            </div>
+          )}
           <div>
             <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
               DTO sub-package
@@ -137,6 +186,34 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
               className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all"
             />
           </div>
+          {emitClient && (
+            <>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
+                  Client sub-package
+                </label>
+                <input
+                  type="text"
+                  value={clientSubPackage}
+                  onChange={e => setClientSubPackage(e.target.value)}
+                  placeholder="client"
+                  className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
+                  Base URL property
+                </label>
+                <input
+                  type="text"
+                  value={baseUrlProperty}
+                  onChange={e => setBaseUrlProperty(e.target.value)}
+                  placeholder="openapi.client.base-url"
+                  className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <div>
@@ -176,8 +253,14 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
             targetPath="openapi.yaml"
           />
           <p className="text-[10px] text-on-surface-variant mt-1.5 leading-relaxed">
-            Controllers go to <code className="text-primary">{apiSubPackage || 'api'}</code>, records to <code className="text-primary">{dtoSubPackage || 'dto'}</code>.
-            Method bodies throw <code className="text-primary">UnsupportedOperationException</code> so the project still compiles.
+            {emitControllers && (
+              <>Controllers go to <code className="text-primary">{apiSubPackage || 'api'}</code>. </>
+            )}
+            {emitClient && (
+              <>Client goes to <code className="text-primary">{clientSubPackage || 'client'}</code> with base URL at <code className="text-primary">{baseUrlProperty || 'openapi.client.base-url'}</code>. </>
+            )}
+            Records to <code className="text-primary">{dtoSubPackage || 'dto'}</code>.
+            {emitControllers && ' Controller methods throw UnsupportedOperationException until implemented.'}
           </p>
         </div>
 

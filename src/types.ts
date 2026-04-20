@@ -101,10 +101,15 @@ export interface SqlWizardEntry {
 export type SqlByDep = Record<string, SqlWizardEntry>
 
 // ── OpenAPI Wizard ────────────────────────────────────────────────────────────
+export type OpenApiMode = 'CONTROLLERS' | 'CLIENT' | 'BOTH'
+
 export interface OpenApiWizardEntry {
   spec: string
   apiSubPackage: string
   dtoSubPackage: string
+  clientSubPackage: string
+  mode: OpenApiMode
+  baseUrlProperty: string
 }
 
 export type OpenApiByDep = Record<string, OpenApiWizardEntry>

@@ -139,12 +139,21 @@ async function triggerOpenApiDownload(
     }
   }
   const specByDep: Record<string, string> = {}
-  const openApiOptions: Record<string, { apiSubPackage: string; dtoSubPackage: string }> = {}
+  const openApiOptions: Record<string, {
+    apiSubPackage: string
+    dtoSubPackage: string
+    clientSubPackage: string
+    mode: string
+    baseUrlProperty: string
+  }> = {}
   for (const [depId, entry] of Object.entries(openApiByDep)) {
     specByDep[depId] = entry.spec
     openApiOptions[depId] = {
       apiSubPackage: entry.apiSubPackage,
       dtoSubPackage: entry.dtoSubPackage,
+      clientSubPackage: entry.clientSubPackage,
+      mode: entry.mode,
+      baseUrlProperty: entry.baseUrlProperty,
     }
   }
   const body = {

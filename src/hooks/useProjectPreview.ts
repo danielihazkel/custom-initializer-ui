@@ -36,12 +36,21 @@ export function useProjectPreview() {
           if (optIds.length > 0 && selected.includes(depId)) opts[depId] = optIds
         }
         const specByDep: Record<string, string> = {}
-        const openApiOptionsBody: Record<string, { apiSubPackage: string; dtoSubPackage: string }> = {}
+        const openApiOptionsBody: Record<string, {
+          apiSubPackage: string
+          dtoSubPackage: string
+          clientSubPackage: string
+          mode: string
+          baseUrlProperty: string
+        }> = {}
         for (const [depId, entry] of Object.entries(activeOpenApi)) {
           specByDep[depId] = entry.spec
           openApiOptionsBody[depId] = {
             apiSubPackage: entry.apiSubPackage,
             dtoSubPackage: entry.dtoSubPackage,
+            clientSubPackage: entry.clientSubPackage,
+            mode: entry.mode,
+            baseUrlProperty: entry.baseUrlProperty,
           }
         }
         const body = {
