@@ -220,7 +220,7 @@ export const GUIDE_SECTIONS_HE: GuideSection[] = [
 **דוגמאות לשימוש:** מקטע bootstrap-servers של Kafka, מקטע datasource של JPA, קונפיגורציית נקודות הניהול.
 
 ### TEMPLATE
-מיישם תחלופת משתנים על התוכן, ואז כותב אותו לנתיב היעד. סוג התחלופה תלוי בשדה \`substitutionType\` (ראו להלן). סיומת הקובץ \`.mustache\` קוסמטית בלבד — לא נעשה שימוש במנוע Mustache אמיתי.
+מיישם תחלופת משתנים על התוכן, ואז כותב אותו לנתיב היעד. התוכן עובר רינדור דרך מנוע Mustache אמיתי (\`com.samskivert:jmustache\`) כאשר \`substitutionType\` הוא MUSTACHE, מה שמאפשר גם משתני תחלופה וגם מקטעים מותנים (ראו להלן).
 
 **דוגמאות לשימוש:** \`Dockerfile\` (צריך artifactId), \`KafkaConfig.java\` (צריך שם חבילה), \`k8s/values.yaml\` (צריך groupId).
 
@@ -237,44 +237,124 @@ export const GUIDE_SECTIONS_HE: GuideSection[] = [
       },
       {
         id: 'file-contrib-substitution',
-        title: 'תחלופת תבניות',
-        description: 'משתנים זמינים בתרומות קבצים מסוג TEMPLATE.',
+        title: 'תחלופת תבניות (Mustache)',
+        description: 'משתנים, מקטעים ותוכן מותנה בתרומות קבצים מסוג TEMPLATE.',
         content: `### סוגי תחלופה
 
-**NONE** — לא מתבצעת תחלופה. התוכן נכתב בדיוק כפי שנשמר.
+תרומות \`TEMPLATE\` עוברות רינדור דרך מנוע Mustache אמיתי (\`com.samskivert:jmustache\`, עם HTML escaping מושבת). לשדה \`substitutionType\` שני ערכים:
 
-**PROJECT** — מחליף את המשתנים הבאים עם מטה-דאטה הפרויקט:
-- \`{{artifactId}}\` — מזהה artifact הפרויקט
-- \`{{groupId}}\` — מזהה קבוצת הפרויקט
+- **NONE** — ללא תחלופה. התוכן נכתב כפי שהוא. מתאים לקבצים זהים בינארית (log4j2 XML, .editorconfig, entrypoint.sh).
+- **MUSTACHE** — התוכן עובר רינדור דרך jmustache עם ההקשר המאוחד למטה. זהו ברירת המחדל לכל תבנית עם משתנים או בלוקים מותנים.
+
+### ההקשר המאוחד
+כל תבנית MUSTACHE מקבלת את אותו ההקשר. **משתנים** מתרנדרים כטקסט; **מקטעים** (\`{{#name}}…{{/name}}\`) מתרנדרים רק כאשר השם אמת; **מקטעים הפוכים** (\`{{^name}}…{{/name}}\`) מתרנדרים רק כאשר השם שקר/חסר.
+
+**משתני פרויקט:**
+- \`{{artifactId}}\` — מזהה artifact של הפרויקט (למשל \`demo\`)
+- \`{{groupId}}\` — מזהה קבוצת הפרויקט (למשל \`com.menora\`)
 - \`{{version}}\` — גרסת הפרויקט (למשל \`0.0.1-SNAPSHOT\`)
+- \`{{packageName}}\` — חבילת הבסיס (למשל \`com.menora.demo\`)
+- \`{{packagePath}}\` — שם החבילה עם נקודות מוחלפות בסלשים (למשל \`com/menora/demo\`)
+- \`{{javaVersion}}\` — גרסת ה-JDK שהמשתמש בחר, למשל \`17\` או \`21\`
+- \`{{packaging}}\` — \`jar\` או \`war\`
 
-**PACKAGE** — מחליף:
-- \`{{packageName}}\` — שם החבילה הבסיסית (למשל \`com.menora.demo\`)
+**בוליאני תלויות** — \`has\` + PascalCase של depId. מקפים, קווים תחתונים ונקודות הם מפרידי מילים:
+- \`{{#hasKafka}}…{{/hasKafka}}\` — depId \`kafka\`
+- \`{{#hasSecurity}}…{{/hasSecurity}}\` — depId \`security\`
+- \`{{#hasMailSampler}}…{{/hasMailSampler}}\` — depId \`mail-sampler\`
+
+**בוליאני תת-אפשרויות** — \`opt\` + PascalCase(depId) + PascalCase(optionId):
+- \`{{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}\` — kafka + תת-אפשרות \`consumer-example\`
+- \`{{#optMailSamplerSendMail}}…{{/optMailSamplerSendMail}}\` — mail-sampler + תת-אפשרות \`send-mail\`
 
 ### משתני נתיב יעד
-ה**נתיב היעד** (לא רק התוכן) יכול גם להשתמש במשתנה \`{{packagePath}}\`, שהוא שם החבילה עם נקודות מוחלפות בסלשים. זה משמש למיקום קבצי קוד מקור Java בתיקייה הנכונה.
+ה**נתיב היעד** (לא רק התוכן) יכול להכיל \`{{packagePath}}\`, שהוא שם החבילה עם נקודות מוחלפות בסלשים. זה ממקם קבצי מקור Java בתיקייה הנכונה ללא קשר לחבילה שהמשתמש בחר.
 
-**דוגמה:** תבנית \`KafkaConfig.java\` עם נתיב יעד \`src/main/java/{{packagePath}}/config/KafkaConfig.java\` נכתבת ל-\`src/main/java/com/menora/demo/config/KafkaConfig.java\` עבור פרויקט עם חבילה \`com.menora.demo\`.`,
+**דוגמה:** נתיב יעד \`src/main/java/{{packagePath}}/config/KafkaConfig.java\` הופך ל-\`src/main/java/com/menora/demo/config/KafkaConfig.java\` עבור חבילה \`com.menora.demo\`.
+
+### למה מקטעים מותנים חשובים
+לפני מקטעי Mustache, כל וריאציה דרשה שורת תרומת קובץ משלה. מחלקה שפלטה \`@EnableAsync\` רק כאשר תת-אפשרות אסינכרונית נבחרה דרשה שתי שורות עם אותו \`targetPath\` — אחת עם ההערה, אחת בלי. מקטעי Mustache ממזגים את אלה לשורה אחת, ומפשטים את קטלוג ה-DB.`,
         codeExamples: [
           {
-            title: 'תחלופת PROJECT — דוגמת Dockerfile',
+            title: 'משתנים — דוגמת Dockerfile',
             language: 'dockerfile',
-            code: `FROM eclipse-temurin:17-jre-alpine
+            code: `FROM eclipse-temurin:{{javaVersion}}-jre-alpine
 WORKDIR /app
-COPY target/{{artifactId}}-*.jar app.jar
+COPY target/{{artifactId}}-{{version}}.jar app.jar
+LABEL org.opencontainers.image.vendor="{{groupId}}"
 ENTRYPOINT ["java", "-jar", "app.jar"]`
           },
           {
-            title: 'תחלופת PACKAGE — דוגמת מחלקת קונפיגורציה Java',
+            title: 'שער תלות — MessagingConfig.java',
             language: 'java',
             code: `package {{packageName}}.config;
 
 import org.springframework.context.annotation.Configuration;
+{{#hasKafka}}
+import org.springframework.kafka.annotation.EnableKafka;
+{{/hasKafka}}
 
 @Configuration
-public class KafkaConfig {
-    // Kafka configuration for {{packageName}}
+{{#hasKafka}}
+@EnableKafka
+{{/hasKafka}}
+public class MessagingConfig {
+    {{^hasKafka}}
+    // Kafka not selected — no messaging infrastructure wired.
+    {{/hasKafka}}
 }`
+          },
+          {
+            title: 'שער תת-אפשרות — דוגמת @KafkaListener מותנית',
+            language: 'java',
+            code: `package {{packageName}}.kafka;
+
+{{#optKafkaConsumerExample}}
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Component;
+
+@Component
+public class KafkaConsumerExample {
+    @KafkaListener(topics = "demo-topic", groupId = "{{artifactId}}")
+    public void listen(String message) {
+        System.out.println("Received: " + message);
+    }
+}
+{{/optKafkaConsumerExample}}
+{{^optKafkaConsumerExample}}
+// Enable the "Consumer Example" sub-option to generate a sample @KafkaListener.
+{{/optKafkaConsumerExample}}`
+          },
+          {
+            title: 'application.yaml — שילוב שערי תלות ומשתנים',
+            language: 'yaml',
+            code: `spring:
+  application:
+    name: {{artifactId}}
+{{#hasDataJpa}}
+  datasource:
+    url: jdbc:h2:mem:{{artifactId}}
+    username: sa
+{{/hasDataJpa}}
+{{#hasActuator}}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info{{#hasSecurity}},metrics{{/hasSecurity}}
+{{/hasActuator}}
+
+# Generated for {{packaging}} packaging on Java {{javaVersion}}.`
+          }
+        ],
+        callouts: [
+          {
+            type: 'tip',
+            text: 'משתנים לא ידועים מתרנדרים כמחרוזת ריקה — טעות הקלדה ב-{{hasKafak}} תפיק בשקט כלום. הריצו grep על התבניות כשמוסיפים תלות חדשה כדי לבדוק הפניות.'
+          },
+          {
+            type: 'info',
+            text: 'תגי מקטע עצמאיים ({{#name}} / {{/name}} בשורה משלהם) מקצצים רווח לבן מסביב לפי מפרט Mustache, ושומרים על Java נקי. שימו את התוכן באותה שורה של התג אם אתם צריכים שורה חדשה מפורשת.'
           }
         ]
       },
@@ -327,7 +407,7 @@ public class KafkaConfig {
           { name: 'fileType', type: 'FileType', required: true, description: 'כיצד התוכן מטופל: STATIC_COPY, YAML_MERGE, TEMPLATE, או DELETE.', example: 'YAML_MERGE' },
           { name: 'targetPath', type: 'string', required: true, description: 'נתיב פלט בתוך הפרויקט שנוצר. עשוי להכיל {{packagePath}} לקבצי קוד מקור Java.', example: 'src/main/java/{{packagePath}}/config/KafkaConfig.java' },
           { name: 'content', type: 'text', required: false, description: 'תוכן קובץ. לא נדרש לסוג DELETE. לסוג TEMPLATE, השתמשו במשתני תחלופה.', example: 'package {{packageName}}.config;' },
-          { name: 'substitutionType', type: 'SubstitutionType', required: false, description: 'מצב תחלופת משתנים: NONE (ברירת מחדל), PROJECT (artifactId/groupId/version), PACKAGE (packageName).', example: 'PACKAGE' },
+          { name: 'substitutionType', type: 'SubstitutionType', required: false, description: 'מצב תחלופת משתנים: NONE (תוכן נכתב כפי שהוא) או MUSTACHE (מעבד בעזרת jmustache — משתנים {{artifactId}}, {{groupId}}, {{version}}, {{packageName}}, {{packagePath}}, {{javaVersion}}, {{packaging}}, וסקציות בוליאניות כגון {{#hasKafka}}…{{/hasKafka}} או {{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}).', example: 'MUSTACHE' },
           { name: 'javaVersion', type: 'string', required: false, description: 'אם מוגדר, תרומה זו חלה רק כאשר גרסת Java של הפרויקט תואמת. השאירו ריק לכל הגרסאות.', example: '21' },
           { name: 'subOptionId', type: 'string', required: false, description: 'אם מוגדר, תרומה זו חלה רק כאשר המשתמש בוחר את האפשרות המשנית הזו תחת התלות האב.', example: 'consumer-example' },
           { name: 'sortOrder', type: 'integer', required: false, description: 'סדר עיבוד. חשוב כאשר תרומות מרובות מכוונות לאותו קובץ (למשל YAML_MERGE מרובים לאותו application.yaml).', example: '0' }
@@ -1108,7 +1188,7 @@ menora:
           },
           {
             title: 'הוסיפו תרומות קבצים',
-            description: 'לכו ל-Config → File Contributions. עבור כל קובץ להזרקה (למשל application-mylib.yml לקונפיגורציית YAML, MyLibConfig.java למחלקת קונפיגורציה Java), לחצו + Add. הגדירו dependencyId ל-depId החדש שלכם, fileType (YAML_MERGE ל-YAML, TEMPLATE ל-Java), targetPath, content, substitutionType (PACKAGE לקבצי Java), ו-sortOrder.'
+            description: 'לכו ל-Config → File Contributions. עבור כל קובץ להזרקה (למשל application-mylib.yml לקונפיגורציית YAML, MyLibConfig.java למחלקת קונפיגורציה Java), לחצו + Add. הגדירו dependencyId ל-depId החדש שלכם, fileType (YAML_MERGE ל-YAML, TEMPLATE ל-Java), targetPath, content, substitutionType (MUSTACHE לקבצי Java), ו-sortOrder.'
           },
           {
             title: 'הוסיפו תצורות Build (במידת הצורך)',
@@ -1152,7 +1232,7 @@ menora:
           },
           {
             title: 'הגדירו נתיב יעד ותוכן',
-            description: 'הזינו את נתיב היעד בתוך הפרויקט שנוצר (למשל scripts/setup.sh). לסוג TEMPLATE, השתמשו במשתני תחלופה כמו {{artifactId}} והגדירו substitutionType ל-PROJECT.'
+            description: 'הזינו את נתיב היעד בתוך הפרויקט שנוצר (למשל scripts/setup.sh). לסוג TEMPLATE, השתמשו במשתני תחלופה כמו {{artifactId}} והגדירו substitutionType ל-MUSTACHE.'
           },
           {
             title: 'שמרו ובדקו',
@@ -1168,7 +1248,7 @@ menora:
         workflowSteps: [
           {
             title: 'צרו את תרומת Dockerfile עבור Java 17',
-            description: 'לכו לתרומות קבצים → + Add. הגדירו: dependencyId = __common__, fileType = TEMPLATE, targetPath = Dockerfile, substitutionType = PROJECT, javaVersion = 17. כתבו את תוכן Dockerfile באמצעות image בסיס eclipse-temurin:17-jre-alpine. כללו {{artifactId}} בפקודת COPY.'
+            description: 'לכו לתרומות קבצים → + Add. הגדירו: dependencyId = __common__, fileType = TEMPLATE, targetPath = Dockerfile, substitutionType = MUSTACHE, javaVersion = 17. כתבו את תוכן Dockerfile באמצעות image בסיס eclipse-temurin:17-jre-alpine. כללו {{artifactId}} בפקודת COPY.'
           },
           {
             title: 'צרו את תרומת Dockerfile עבור Java 21',

@@ -220,7 +220,7 @@ This is the primary way multiple dependencies each contribute their section to \
 **Example use cases:** Kafka bootstrap-servers section, JPA datasource section, management endpoints config.
 
 ### TEMPLATE
-Applies variable substitution to the content, then writes it to the target path. The type of substitution depends on the \`substitutionType\` field (see below). The file extension \`.mustache\` is cosmetic only — no real Mustache engine is used.
+Applies variable substitution to the content, then writes it to the target path. When \`substitutionType\` is MUSTACHE, the content is rendered through a real Mustache engine (\`com.samskivert:jmustache\`), giving you both variable substitution and conditional sections (see below).
 
 **Example use cases:** \`Dockerfile\` (needs artifactId), \`KafkaConfig.java\` (needs package name), \`k8s/values.yaml\` (needs groupId).
 
@@ -237,44 +237,124 @@ Marks a file for deletion. The delete contributor runs at the lowest priority (a
       },
       {
         id: 'file-contrib-substitution',
-        title: 'Template Substitution',
-        description: 'Variables available in TEMPLATE file contributions.',
+        title: 'Template Substitution (Mustache)',
+        description: 'Variables, sections, and conditional content available in TEMPLATE file contributions.',
         content: `### Substitution Types
 
-**NONE** — no substitution is performed. The content is written exactly as stored.
+\`TEMPLATE\` contributions are rendered through a real Mustache engine (\`com.samskivert:jmustache\`, with HTML escaping disabled). The \`substitutionType\` field has two values:
 
-**PROJECT** — replaces the following variables with project metadata:
-- \`{{artifactId}}\` — the project artifact ID
-- \`{{groupId}}\` — the project group ID
-- \`{{version}}\` — the project version (e.g. \`0.0.1-SNAPSHOT\`)
+- **NONE** — no substitution. Content is written verbatim. Use for binary-identical files (log4j2 XML, .editorconfig, entrypoint.sh).
+- **MUSTACHE** — content is rendered through jmustache with the unified context below. This is the default for any template with variables or conditional blocks.
 
-**PACKAGE** — replaces:
-- \`{{packageName}}\` — the base package name (e.g. \`com.menora.demo\`)
+### The Unified Context
+Every MUSTACHE template receives the same context. **Variables** render as text; **sections** (\`{{#name}}…{{/name}}\`) render their body only when the named value is truthy; **inverted sections** (\`{{^name}}…{{/name}}\`) render only when it is falsy/absent.
+
+**Project variables:**
+- \`{{artifactId}}\` — project artifact ID (e.g. \`demo\`)
+- \`{{groupId}}\` — project group ID (e.g. \`com.menora\`)
+- \`{{version}}\` — project version (e.g. \`0.0.1-SNAPSHOT\`)
+- \`{{packageName}}\` — base package (e.g. \`com.menora.demo\`)
+- \`{{packagePath}}\` — package name with dots replaced by slashes (e.g. \`com/menora/demo\`)
+- \`{{javaVersion}}\` — the JDK the user picked, e.g. \`17\` or \`21\`
+- \`{{packaging}}\` — \`jar\` or \`war\`
+
+**Dependency booleans** — \`has\` + PascalCase(depId). Hyphens, underscores, and dots are word separators:
+- \`{{#hasKafka}}…{{/hasKafka}}\` — dep id \`kafka\`
+- \`{{#hasSecurity}}…{{/hasSecurity}}\` — dep id \`security\`
+- \`{{#hasMailSampler}}…{{/hasMailSampler}}\` — dep id \`mail-sampler\`
+
+**Sub-option booleans** — \`opt\` + PascalCase(depId) + PascalCase(optionId):
+- \`{{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}\` — kafka + \`consumer-example\` sub-option
+- \`{{#optMailSamplerSendMail}}…{{/optMailSamplerSendMail}}\` — mail-sampler + \`send-mail\` sub-option
 
 ### Target Path Variables
-The **target path** (not just the content) can also use the variable \`{{packagePath}}\`, which is the package name with dots replaced by slashes. This is used to place Java source files in the correct directory.
+The **target path** (not just the content) may contain \`{{packagePath}}\`, which is the package name with dots replaced by slashes. This places Java source files in the correct directory regardless of the user's package choice.
 
-**Example:** A \`KafkaConfig.java\` template with target path \`src/main/java/{{packagePath}}/config/KafkaConfig.java\` gets written to \`src/main/java/com/menora/demo/config/KafkaConfig.java\` for a project with package \`com.menora.demo\`.`,
+**Example:** target path \`src/main/java/{{packagePath}}/config/KafkaConfig.java\` becomes \`src/main/java/com/menora/demo/config/KafkaConfig.java\` for package \`com.menora.demo\`.
+
+### Why Conditional Sections Matter
+Before Mustache sections, each variation needed its own file contribution row. A class that emits \`@EnableAsync\` only when the async sub-option was selected required two rows with the same \`targetPath\` — one with the annotation, one without. Mustache sections collapse these into one row, keeping the DB catalog simpler and easier to maintain.`,
         codeExamples: [
           {
-            title: 'PROJECT substitution — Dockerfile example',
+            title: 'Variables — Dockerfile example',
             language: 'dockerfile',
-            code: `FROM eclipse-temurin:17-jre-alpine
+            code: `FROM eclipse-temurin:{{javaVersion}}-jre-alpine
 WORKDIR /app
-COPY target/{{artifactId}}-*.jar app.jar
+COPY target/{{artifactId}}-{{version}}.jar app.jar
+LABEL org.opencontainers.image.vendor="{{groupId}}"
 ENTRYPOINT ["java", "-jar", "app.jar"]`
           },
           {
-            title: 'PACKAGE substitution — Java config class example',
+            title: 'Dependency gate — MessagingConfig.java',
             language: 'java',
             code: `package {{packageName}}.config;
 
 import org.springframework.context.annotation.Configuration;
+{{#hasKafka}}
+import org.springframework.kafka.annotation.EnableKafka;
+{{/hasKafka}}
 
 @Configuration
-public class KafkaConfig {
-    // Kafka configuration for {{packageName}}
+{{#hasKafka}}
+@EnableKafka
+{{/hasKafka}}
+public class MessagingConfig {
+    {{^hasKafka}}
+    // Kafka not selected — no messaging infrastructure wired.
+    {{/hasKafka}}
 }`
+          },
+          {
+            title: 'Sub-option gate — conditional @KafkaListener example',
+            language: 'java',
+            code: `package {{packageName}}.kafka;
+
+{{#optKafkaConsumerExample}}
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Component;
+
+@Component
+public class KafkaConsumerExample {
+    @KafkaListener(topics = "demo-topic", groupId = "{{artifactId}}")
+    public void listen(String message) {
+        System.out.println("Received: " + message);
+    }
+}
+{{/optKafkaConsumerExample}}
+{{^optKafkaConsumerExample}}
+// Enable the "Consumer Example" sub-option to generate a sample @KafkaListener.
+{{/optKafkaConsumerExample}}`
+          },
+          {
+            title: 'application.yaml — combine dep gates + variables',
+            language: 'yaml',
+            code: `spring:
+  application:
+    name: {{artifactId}}
+{{#hasDataJpa}}
+  datasource:
+    url: jdbc:h2:mem:{{artifactId}}
+    username: sa
+{{/hasDataJpa}}
+{{#hasActuator}}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info{{#hasSecurity}},metrics{{/hasSecurity}}
+{{/hasActuator}}
+
+# Generated for {{packaging}} packaging on Java {{javaVersion}}.`
+          }
+        ],
+        callouts: [
+          {
+            type: 'tip',
+            text: 'Unknown variables render as empty strings — a typo in {{hasKafak}} silently produces nothing. Grep your templates when onboarding a new dep to sanity-check references.'
+          },
+          {
+            type: 'info',
+            text: 'Standalone section tags ({{#name}} / {{/name}} on their own line) strip surrounding whitespace by Mustache spec, keeping generated Java clean. Put content on the same line as the tag if you need a literal newline preserved.'
           }
         ]
       },
@@ -327,7 +407,7 @@ If a file contribution has a non-blank \`subOptionId\`, it will only be included
           { name: 'fileType', type: 'FileType', required: true, description: 'How the content is handled: STATIC_COPY, YAML_MERGE, TEMPLATE, or DELETE.', example: 'YAML_MERGE' },
           { name: 'targetPath', type: 'string', required: true, description: 'Output path within the generated project. May contain {{packagePath}} for Java source files.', example: 'src/main/java/{{packagePath}}/config/KafkaConfig.java' },
           { name: 'content', type: 'text', required: false, description: 'File content. Not needed for DELETE type. For TEMPLATE type, use substitution variables.', example: 'package {{packageName}}.config;' },
-          { name: 'substitutionType', type: 'SubstitutionType', required: false, description: 'Variable substitution mode: NONE (default), PROJECT (artifactId/groupId/version), PACKAGE (packageName).', example: 'PACKAGE' },
+          { name: 'substitutionType', type: 'SubstitutionType', required: false, description: 'Variable substitution mode: NONE (content written verbatim) or MUSTACHE (renders with jmustache — variables {{artifactId}}, {{groupId}}, {{version}}, {{packageName}}, {{packagePath}}, {{javaVersion}}, {{packaging}}, and boolean sections such as {{#hasKafka}}…{{/hasKafka}} or {{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}).', example: 'MUSTACHE' },
           { name: 'javaVersion', type: 'string', required: false, description: 'If set, this contribution only applies when the project Java version matches. Leave blank for all versions.', example: '21' },
           { name: 'subOptionId', type: 'string', required: false, description: 'If set, this contribution only applies when the user selects this sub-option under the parent dependency.', example: 'consumer-example' },
           { name: 'sortOrder', type: 'integer', required: false, description: 'Processing order. Matters when multiple contributions target the same file (e.g. multiple YAML_MERGE into the same application.yaml).', example: '0' }
@@ -1108,7 +1188,7 @@ Existing rows are unaffected; only new events skip the field.`,
           },
           {
             title: 'Add File Contributions',
-            description: 'Go to Config → File Contributions. For each file to inject (e.g. application-mylib.yml for YAML config, MyLibConfig.java for a Java config class), click + Add. Set dependencyId to your new depId, fileType (YAML_MERGE for YAML, TEMPLATE for Java), targetPath, content, substitutionType (PACKAGE for Java files), and sortOrder.'
+            description: 'Go to Config → File Contributions. For each file to inject (e.g. application-mylib.yml for YAML config, MyLibConfig.java for a Java config class), click + Add. Set dependencyId to your new depId, fileType (YAML_MERGE for YAML, TEMPLATE for Java), targetPath, content, substitutionType (MUSTACHE for Java files), and sortOrder.'
           },
           {
             title: 'Add Build Customizations (if needed)',
@@ -1152,7 +1232,7 @@ Existing rows are unaffected; only new events skip the field.`,
           },
           {
             title: 'Set Target Path and Content',
-            description: 'Enter the target path within the generated project (e.g. scripts/setup.sh). For TEMPLATE type, use substitution variables like {{artifactId}} and set substitutionType to PROJECT.'
+            description: 'Enter the target path within the generated project (e.g. scripts/setup.sh). For TEMPLATE type, use substitution variables like {{artifactId}} and set substitutionType to MUSTACHE.'
           },
           {
             title: 'Save and Test',
@@ -1168,7 +1248,7 @@ Existing rows are unaffected; only new events skip the field.`,
         workflowSteps: [
           {
             title: 'Create the Java 17 Dockerfile Contribution',
-            description: 'Go to File Contributions → + Add. Set: dependencyId = __common__, fileType = TEMPLATE, targetPath = Dockerfile, substitutionType = PROJECT, javaVersion = 17. Write the Dockerfile content using eclipse-temurin:17-jre-alpine base image. Include {{artifactId}} in the COPY command.'
+            description: 'Go to File Contributions → + Add. Set: dependencyId = __common__, fileType = TEMPLATE, targetPath = Dockerfile, substitutionType = MUSTACHE, javaVersion = 17. Write the Dockerfile content using eclipse-temurin:17-jre-alpine base image. Include {{artifactId}} in the COPY command.'
           },
           {
             title: 'Create the Java 21 Dockerfile Contribution',

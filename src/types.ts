@@ -162,7 +162,7 @@ export interface AdminDependencyEntry {
 }
 
 export type FileType = 'STATIC_COPY' | 'YAML_MERGE' | 'TEMPLATE' | 'DELETE'
-export type SubstitutionType = 'PROJECT' | 'PACKAGE' | 'NONE'
+export type SubstitutionType = 'MUSTACHE' | 'NONE'
 
 export interface AdminFileContribution {
   id: number
