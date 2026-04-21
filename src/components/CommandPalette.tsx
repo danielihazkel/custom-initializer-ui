@@ -24,6 +24,8 @@ interface PaletteItem {
   icon: string
   active?: boolean
   payload?: any
+  _searchTitle?: string
+  _searchDesc?: string
 }
 
 export function CommandPalette({
@@ -64,7 +66,9 @@ export function CommandPalette({
         title: t.name,
         description: t.description,
         icon: t.icon && t.icon !== '' ? t.icon : 'rocket_launch',
-        payload: t
+        payload: t,
+        _searchTitle: t.name.toLowerCase(),
+        _searchDesc: t.description?.toLowerCase() || ''
       })
     })
 
@@ -80,7 +84,9 @@ export function CommandPalette({
             description: dep.description,
             icon: 'extension',
             active: selectedDeps.includes(dep.id),
-            payload: dep.id
+            payload: dep.id,
+            _searchTitle: dep.name.toLowerCase(),
+            _searchDesc: dep.description?.toLowerCase() || ''
           })
         })
       })
@@ -98,7 +104,9 @@ export function CommandPalette({
             title: `Set ${groupName} to ${val.name}`,
             icon,
             active: form[formKey] === val.id,
-            payload: { [formKey]: val.id }
+            payload: { [formKey]: val.id },
+            _searchTitle: `set ${groupName.toLowerCase()} to ${val.name.toLowerCase()}`,
+            _searchDesc: ''
           })
         })
       }
@@ -114,16 +122,15 @@ export function CommandPalette({
 
   // Filter items
   const filteredItems = useMemo(() => {
-    if (!query.trim()) return allItems
-
-    const q = query.toLowerCase()
+    const q = query.trim().toLowerCase()
+    if (!q) return allItems
     
     // Sort and score
     return allItems
       .map(item => {
         let score = -1
-        const title = item.title.toLowerCase()
-        const desc = item.description?.toLowerCase() || ''
+        const title = item._searchTitle!
+        const desc = item._searchDesc!
         
         if (title === q) score = 100
         else if (title.startsWith(q)) score = 50

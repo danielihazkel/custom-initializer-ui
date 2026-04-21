@@ -10,13 +10,13 @@ export function captureSnapshot(args: {
   selectedModules: string[]
 }): ProjectSnapshot {
   return {
-    form: { ...args.form },
-    selected: [...args.selected],
-    selectedOptions: JSON.parse(JSON.stringify(args.selectedOptions)),
-    sqlByDep: JSON.parse(JSON.stringify(args.sqlByDep)),
-    openApiByDep: JSON.parse(JSON.stringify(args.openApiByDep)),
+    form: structuredClone(args.form),
+    selected: structuredClone(args.selected),
+    selectedOptions: structuredClone(args.selectedOptions),
+    sqlByDep: structuredClone(args.sqlByDep),
+    openApiByDep: structuredClone(args.openApiByDep),
     multiModuleEnabled: args.multiModuleEnabled,
-    selectedModules: [...args.selectedModules],
+    selectedModules: structuredClone(args.selectedModules),
   }
 }
 

@@ -2,6 +2,16 @@ import { useState, useEffect, useCallback } from 'react'
 import { parseUrlParams, defaultForm } from '../utils/projectUtils'
 import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, StarterTemplate, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry } from '../types'
 
+export const STORAGE_KEYS = {
+  FORM_VALUES: 'formValues',
+  SELECTED_DEPS: 'selectedDeps',
+  SELECTED_OPTIONS: 'selectedOptions',
+  MULTI_MODULE: 'multiModuleEnabled',
+  SELECTED_MODULES: 'selectedModules',
+  SQL_BY_DEP: 'sqlByDep',
+  OPENAPI_BY_DEP: 'openApiByDep',
+} as const
+
 function normalizeOpenApiByDep(raw: unknown): OpenApiByDep {
   if (!raw || typeof raw !== 'object') return {}
   const out: OpenApiByDep = {}
@@ -20,24 +30,23 @@ function normalizeOpenApiByDep(raw: unknown): OpenApiByDep {
 }
 
 export function useProjectState(metadata: InitializrMetadata | null) {
+  const [initialUrlParams] = useState(() => parseUrlParams())
+
   const [form, setForm] = useState<ProjectFormValues>(() => {
-    const url = parseUrlParams()
-    if (url) return { ...defaultForm(null), ...url.form }
-    const saved = localStorage.getItem('formValues')
+    if (initialUrlParams) return { ...defaultForm(null), ...initialUrlParams.form }
+    const saved = localStorage.getItem(STORAGE_KEYS.FORM_VALUES)
     return saved ? JSON.parse(saved) : defaultForm(null)
   })
 
   const [selected, setSelected] = useState<string[]>(() => {
-    const url = parseUrlParams()
-    if (url) return url.selected
-    const saved = localStorage.getItem('selectedDeps')
+    if (initialUrlParams) return initialUrlParams.selected
+    const saved = localStorage.getItem(STORAGE_KEYS.SELECTED_DEPS)
     return saved ? JSON.parse(saved) : []
   })
 
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>(() => {
-    const url = parseUrlParams()
-    if (url) return url.selectedOptions
-    const saved = localStorage.getItem('selectedOptions')
+    if (initialUrlParams) return initialUrlParams.selectedOptions
+    const saved = localStorage.getItem(STORAGE_KEYS.SELECTED_OPTIONS)
     return saved ? JSON.parse(saved) : {}
   })
 
@@ -45,33 +54,33 @@ export function useProjectState(metadata: InitializrMetadata | null) {
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null)
 
   const [multiModuleEnabled, setMultiModuleEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('multiModuleEnabled')
+    const saved = localStorage.getItem(STORAGE_KEYS.MULTI_MODULE)
     return saved === 'true'
   })
 
   const [selectedModules, setSelectedModules] = useState<string[]>(() => {
-    const saved = localStorage.getItem('selectedModules')
+    const saved = localStorage.getItem(STORAGE_KEYS.SELECTED_MODULES)
     return saved ? JSON.parse(saved) : []
   })
 
   const [sqlByDep, setSqlByDep] = useState<SqlByDep>(() => {
-    const saved = localStorage.getItem('sqlByDep')
+    const saved = localStorage.getItem(STORAGE_KEYS.SQL_BY_DEP)
     return saved ? JSON.parse(saved) : {}
   })
 
   const [openApiByDep, setOpenApiByDep] = useState<OpenApiByDep>(() => {
-    const saved = localStorage.getItem('openApiByDep')
+    const saved = localStorage.getItem(STORAGE_KEYS.OPENAPI_BY_DEP)
     return saved ? normalizeOpenApiByDep(JSON.parse(saved)) : {}
   })
 
   // Persist form state to localStorage
-  useEffect(() => { localStorage.setItem('formValues', JSON.stringify(form)) }, [form])
-  useEffect(() => { localStorage.setItem('selectedDeps', JSON.stringify(selected)) }, [selected])
-  useEffect(() => { localStorage.setItem('selectedOptions', JSON.stringify(selectedOptions)) }, [selectedOptions])
-  useEffect(() => { localStorage.setItem('multiModuleEnabled', String(multiModuleEnabled)) }, [multiModuleEnabled])
-  useEffect(() => { localStorage.setItem('selectedModules', JSON.stringify(selectedModules)) }, [selectedModules])
-  useEffect(() => { localStorage.setItem('sqlByDep', JSON.stringify(sqlByDep)) }, [sqlByDep])
-  useEffect(() => { localStorage.setItem('openApiByDep', JSON.stringify(openApiByDep)) }, [openApiByDep])
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.FORM_VALUES, JSON.stringify(form)) }, [form])
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.SELECTED_DEPS, JSON.stringify(selected)) }, [selected])
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.SELECTED_OPTIONS, JSON.stringify(selectedOptions)) }, [selectedOptions])
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.MULTI_MODULE, String(multiModuleEnabled)) }, [multiModuleEnabled])
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.SELECTED_MODULES, JSON.stringify(selectedModules)) }, [selectedModules])
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.SQL_BY_DEP, JSON.stringify(sqlByDep)) }, [sqlByDep])
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.OPENAPI_BY_DEP, JSON.stringify(openApiByDep)) }, [openApiByDep])
 
   // Sync form state into the URL so the page is shareable
   useEffect(() => {
@@ -101,7 +110,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     if (metadata && !initialized) {
       const p = new URLSearchParams(window.location.search)
       const hasUrl = p.has('groupId') || p.has('dependencies')
-      if (!localStorage.getItem('formValues') && !hasUrl) {
+      if (!localStorage.getItem(STORAGE_KEYS.FORM_VALUES) && !hasUrl) {
         setForm(defaultForm(metadata))
       } else {
         setForm(prev => ({
@@ -209,13 +218,13 @@ export function useProjectState(metadata: InitializrMetadata | null) {
   }, [])
 
   const applySnapshot = useCallback((snapshot: ProjectSnapshot) => {
-    setForm({ ...snapshot.form })
-    setSelected([...snapshot.selected])
-    setSelectedOptions(JSON.parse(JSON.stringify(snapshot.selectedOptions)))
-    setSqlByDep(JSON.parse(JSON.stringify(snapshot.sqlByDep)))
-    setOpenApiByDep(normalizeOpenApiByDep(JSON.parse(JSON.stringify(snapshot.openApiByDep ?? {}))))
+    setForm(structuredClone(snapshot.form))
+    setSelected(structuredClone(snapshot.selected))
+    setSelectedOptions(structuredClone(snapshot.selectedOptions))
+    setSqlByDep(structuredClone(snapshot.sqlByDep))
+    setOpenApiByDep(normalizeOpenApiByDep(structuredClone(snapshot.openApiByDep ?? {})))
     setMultiModuleEnabled(snapshot.multiModuleEnabled)
-    setSelectedModules([...snapshot.selectedModules])
+    setSelectedModules(structuredClone(snapshot.selectedModules))
     setActiveTemplate(null)
   }, [])
 

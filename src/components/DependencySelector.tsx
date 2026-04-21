@@ -72,19 +72,27 @@ export function DependencySelector({
 
   const groups = useMemo<DependencyGroup[]>(() => {
     if (!metadata?.dependencies?.values) return []
-    return metadata.dependencies.values
+    return metadata.dependencies.values.map(group => ({
+      ...group,
+      values: group.values.map(dep => ({
+        ...dep,
+        _searchName: dep.name.toLowerCase(),
+        _searchDesc: (dep.description ?? '').toLowerCase()
+      }))
+    })) as DependencyGroup[]
   }, [metadata])
 
   const allDeps = useMemo<MetadataOption[]>(() => groups.flatMap(g => g.values ?? []), [groups])
 
   const filtered = useMemo<DependencyGroup[]>(() => {
-    if (!search.trim()) return groups
-    const q = search.toLowerCase()
+    const qTrimmed = search.trim()
+    if (!qTrimmed) return groups
+    const q = qTrimmed.toLowerCase()
     return groups
       .map(group => ({
         ...group,
         values: (group.values ?? []).filter(
-          d => d.name.toLowerCase().includes(q) || (d.description ?? '').toLowerCase().includes(q)
+          (d: any) => d._searchName.includes(q) || d._searchDesc.includes(q)
         )
       }))
       .filter(g => g.values.length > 0)
@@ -129,9 +137,19 @@ export function DependencySelector({
     .map(([k, d]) => `${k}:${d.join(',')}`)
     .join('|')
 
-  // Auto-set primary/secondary per kind. A kind with only one selected driver
-  // still gets its `*-primary` sub-option silently — @Primary on its beans is
-  // harmless because no other driver of that kind competes.
+  /*
+   * ── AUTO-MANAGEMENT OF @PRIMARY DATABASES ──
+   * Why this exists:
+   * When generating a Spring Boot application with multiple DataSources of the same kind (e.g. Postgres and SQL Server),
+   * Spring requires exactly one of those DataSources to be annotated with @Primary to resolve injection ambiguities.
+   * This effect automatically monitors the selected DB drivers. If a user selects multiple JDBC drivers, 
+   * it enforces exactly one `*-primary` option and assigns `*-secondary` to the rest.
+   * It is run whenever the subset of selected database drivers (`driversByKindKey`) changes. 
+   * 
+   * Note: The exhaustive-deps lint is intentionally disabled because depending on `selectedOptions` 
+   * would cause infinite update loops since it mutates `selectedOptions`.
+   */
+  // Auto-set primary/secondary per kind. A kind with only one selected driver gets its `*-primary` sub-option silently.
   useEffect(() => {
     for (const [, drivers] of Object.entries(driversByKind)) {
       if (drivers.length === 0) continue
