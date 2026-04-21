@@ -51,7 +51,7 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
       return
     }
     const handle = setTimeout(() => {
-      fetch('/starter-openapi.paths', {
+      fetch('/starter-wizard.detect-paths', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spec: trimmed }),

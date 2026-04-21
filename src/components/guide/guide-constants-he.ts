@@ -643,7 +643,7 @@ MongoDB אינו כלול מכיוון שאין לו חוזה DDL.
 4. טבלאות שזוהו מופיעות כרשימה עם תיבת סימון **Generate repository** בכל שורה (ברירת מחדל דלוקה).
 5. אופציונלי: שנה את תת-החבילה (ברירת מחדל \`entity\`).
 6. שמור → המגירה נסגרת וכרטיסיית התלות מציגה תווית קטנה (✓ N טבלאות).
-7. לחץ על **Generate** או **Explore** — ה-UI עובר לשליחת POST ל-\`/starter-sql.zip\` / \`/starter-sql.preview\` עם גוף JSON, והישויות/repositories מופיעים בפרויקט שהורד ובעץ הקבצים.`,
+7. לחץ על **Generate** או **Explore** — ה-UI עובר לשליחת POST ל-\`/starter-wizard.zip\` / \`/starter-wizard.preview\` עם גוף JSON מאוחד, והישויות/repositories מופיעים בפרויקט שהורד ובעץ הקבצים.`,
         callouts: [
           {
             type: 'info',
@@ -698,17 +698,16 @@ MongoDB אינו כלול מכיוון שאין לו חוזה DDL.
 | שיטה | נתיב | מטרה |
 |---|---|---|
 | \`GET\` | \`/metadata/sql-dialects\` | מפת dep-id → שם דיאלקט (רק תלויות הנמצאות בקטלוג) |
-| \`POST\` | \`/starter-sql.zip\` | יצירת ZIP עם ישויות/repositories |
-| \`POST\` | \`/starter-sql.preview\` | עץ קבצים + תוכן (אותה צורה כמו \`/starter.preview\`) |
-| \`POST\` | \`/starter-sql.tables\` | ניתוח בצד שרת: \`{ sql }\` → \`["users", "orders", ...]\` |
+| \`POST\` | \`/starter-wizard.zip\` | יצירת ZIP מאוחד עם ישויות/repositories (וגם artifacts של OpenAPI אם \`specByDep\` מאוכלס) |
+| \`POST\` | \`/starter-wizard.preview\` | עץ קבצים + תוכן (אותה צורה כמו \`/starter.preview\`) |
 
 ### מדוע נקודת קצה POST חדשה
-\`/starter.zip\` היא GET ששורת השאילתה שלה נושאת את כל קלטי היצירה. כמה משפטי \`CREATE TABLE\` חורגים בקלות ממגבלות אורך URL טיפוסיות (~2–8 KB). נקודת קצה POST אחות המקבלת את אותם שדות בתוספת \`sqlByDep\` / \`sqlOptions\` היא התשובה הנקייה ביותר — ללא מצב session בצד שרת, וזרימת GET נשארת ללא שינוי עבור משתמשים שאינם צריכים את האשף.`,
+\`/starter.zip\` היא GET ששורת השאילתה שלה נושאת את כל קלטי היצירה. כמה משפטי \`CREATE TABLE\` חורגים בקלות ממגבלות אורך URL טיפוסיות (~2–8 KB). נקודת קצה POST אחות בשם \`/starter-wizard.zip\` המקבלת את אותם שדות בתוספת \`sqlByDep\` / \`sqlOptions\` (ו-\`specByDep\` / \`openApiOptions\` עבור אשף OpenAPI) היא התשובה הנקייה ביותר — ללא מצב session בצד שרת, וזרימת GET נשארת ללא שינוי עבור משתמשים שאינם צריכים את האשפים.`,
         codeExamples: [
           {
             title: 'יצירת פרויקט עם ישות users וה-repository שלה',
             language: 'bash',
-            code: `curl -o demo.zip -X POST http://localhost:8080/starter-sql.zip \\
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
   -H "Content-Type: application/json" \\
   -d '{
     "groupId":"com.menora","artifactId":"demo","name":"demo",
@@ -757,15 +756,15 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
 4. רשימת **פעולות שזוהו** מופיעה בזמן אמת (debounced 400ms) ומציגה ערכים כמו \`GET /pets\`, \`POST /pets/{id}\`.
 5. אופציונלי: שנה את תתי-החבילות (ברירת מחדל \`api\` ל-controllers, \`dto\` ל-records).
 6. שמור → כרטיסיית התלות מציגה תווית של צירוף.
-7. לחץ על **Generate** או **Explore** — ה-UI עובר לשליחת POST ל-\`/starter-openapi.zip\` / \`/starter-openapi.preview\` עם גוף JSON, וה-controllers/records שנוצרו מופיעים ב-ZIP ובעץ הקבצים.`,
+7. לחץ על **Generate** או **Explore** — ה-UI עובר לשליחת POST ל-\`/starter-wizard.zip\` / \`/starter-wizard.preview\` עם גוף JSON מאוחד, וה-controllers/records שנוצרו מופיעים ב-ZIP ובעץ הקבצים.`,
         callouts: [
           {
             type: 'info',
             text: 'גופי המתודות תמיד זורקים UnsupportedOperationException. המטרה של גרסה 1 היא שלד שמתקמפל — המפתחים ממלאים את הלוגיקה העסקית לאחר היצירה.'
           },
           {
-            type: 'warning',
-            text: 'אשף SQL ואשף OpenAPI הם הדדיים-בלעדיים לכל בקשת יצירה בגרסה 1. אם לשניהם יש תוכן, OpenAPI מקבל עדיפות. localStorage שומר את שניהם כך שמעבר ביניהם לא מאבד עבודה.'
+            type: 'info',
+            text: 'אשף SQL ואשף OpenAPI יכולים לפעול יחד באותה בקשת יצירה — כל אחד על תלות שונה. גוף ה-\`/starter-wizard.zip\` נושא גם את \`sqlByDep\` וגם את \`specByDep\`, וה-backend שולב את פלטי שניהם לתוך פרויקט אחד.'
           }
         ]
       },
@@ -818,12 +817,12 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
 | שיטה | נתיב | מטרה |
 |---|---|---|
 | \`GET\` | \`/metadata/openapi-capable-deps\` | מזהי תלות זכאים לאשף (בחיתוך עם תלויות בקטלוג) |
-| \`POST\` | \`/starter-openapi.zip\` | יצירת ZIP עם controllers ו-DTO records |
-| \`POST\` | \`/starter-openapi.preview\` | עץ קבצים + תוכן (אותה צורה כמו \`/starter.preview\`) |
-| \`POST\` | \`/starter-openapi.paths\` | ניתוח בצד שרת: \`{ spec }\` → \`["GET /pets", "POST /pets/{id}", ...]\` עבור התצוגה החיה של המגירה |
+| \`POST\` | \`/starter-wizard.zip\` | יצירת ZIP מאוחד עם controllers ו-DTO records (וגם artifacts של SQL אם \`sqlByDep\` מאוכלס) |
+| \`POST\` | \`/starter-wizard.preview\` | עץ קבצים + תוכן (אותה צורה כמו \`/starter.preview\`) |
+| \`POST\` | \`/starter-wizard.detect-paths\` | ניתוח בצד שרת: \`{ spec }\` → \`["GET /pets", "POST /pets/{id}", ...]\` עבור התצוגה החיה של המגירה |
 
 ### מדוע נקודת קצה POST חדשה
-ספקי OpenAPI חורגים באופן קבוע ממגבלות אורך URL טיפוסיות (~2–8 KB) — אפילו הדוגמה של Petstore היא ~2 KB של YAML. שימוש בנקודת קצה POST אחות המקבלת את אותם שדות יצירה בתוספת \`specByDep\` ו-\`openApiOptions\` שומר את האשף מפורק מזרימת GET ועוקף את תקרות גודל ה-URL לחלוטין.
+ספקי OpenAPI חורגים באופן קבוע ממגבלות אורך URL טיפוסיות (~2–8 KB) — אפילו הדוגמה של Petstore היא ~2 KB של YAML. שימוש בנקודת קצה POST אחות בשם \`/starter-wizard.zip\` המקבלת את אותם שדות יצירה בתוספת \`specByDep\` ו-\`openApiOptions\` (וגם \`sqlByDep\` / \`sqlOptions\` עבור אשף SQL) שומר את האשפים מפורקים מזרימת GET ועוקף את תקרות גודל ה-URL לחלוטין.
 
 ### שגיאות ניתוח
 אם הספק פגום, ה-backend מחזיר HTTP 400 עם גוף כמו \`{ "error": "...", "messages": ["attribute info.version is missing", ...] }\`. המגירה מציגה הודעות אלה בבאנר צהוב ומשביתה את כפתור השמירה עד שהספק מתנתח נקי.`,
@@ -831,7 +830,7 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
           {
             title: 'יצירת פרויקט מספק Petstore קטן',
             language: 'bash',
-            code: `curl -o demo.zip -X POST http://localhost:8080/starter-openapi.zip \\
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
   -H "Content-Type: application/json" \\
   -d '{
     "groupId":"com.menora","artifactId":"demo","name":"demo",
@@ -1029,7 +1028,7 @@ public class PetsController {
         callouts: [
           {
             type: 'info',
-            text: 'ה-endpoint של `POST /starter-sql.zip` משתמש בגוף JSON, ולכן רשומת הביקורת שלו לוכדת endpoint/סטטוס/משך/IP אבל לא את פרמטרי אשף ה-SQL. זו פשרה מכוונת — לכידה מפרמטרי שאילתה הייתה מחמיצה את האשף לחלוטין.'
+            text: 'ה-endpoint של `POST /starter-wizard.zip` משתמש בגוף JSON, ולכן רשומת הביקורת שלו לוכדת endpoint/סטטוס/משך/IP אבל לא את פרמטרי אשף ה-SQL/OpenAPI. זו פשרה מכוונת — לכידה מפרמטרי שאילתה הייתה מחמיצה את האשפים לחלוטין.'
           }
         ]
       },

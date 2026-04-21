@@ -643,7 +643,7 @@ MongoDB is excluded because it has no DDL contract.
 4. Detected tables appear as a list with a **Generate repository** checkbox per row (default on).
 5. Optional: change the sub-package (default \`entity\`).
 6. Save → the drawer closes and the dep card shows a small badge (✓ N tables).
-7. Click **Generate** or **Explore** — the UI switches to POST \`/starter-sql.zip\` / \`/starter-sql.preview\` with a JSON body, and entities/repositories appear in the downloaded project and file tree.`,
+7. Click **Generate** or **Explore** — the UI switches to POST \`/starter-wizard.zip\` / \`/starter-wizard.preview\` with a JSON body, and entities/repositories appear in the downloaded project and file tree.`,
         callouts: [
           {
             type: 'info',
@@ -698,17 +698,16 @@ Generated entities use \`@Data\`, \`@NoArgsConstructor\`, and \`@AllArgsConstruc
 | Method | Path | Purpose |
 |---|---|---|
 | \`GET\` | \`/metadata/sql-dialects\` | Dep-id → dialect name map (only catalog-present deps) |
-| \`POST\` | \`/starter-sql.zip\` | Generate ZIP with entities/repositories |
-| \`POST\` | \`/starter-sql.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
-| \`POST\` | \`/starter-sql.tables\` | Server-side parse: \`{ sql }\` → \`["users", "orders", ...]\` |
+| \`POST\` | \`/starter-wizard.zip\` | Generate ZIP with entities/repositories (shared with the OpenAPI wizard; both payloads can coexist) |
+| \`POST\` | \`/starter-wizard.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
 
 ### Why a New POST Endpoint
-\`/starter.zip\` is a GET whose query string carries all generation inputs. A few \`CREATE TABLE\` statements easily exceed typical URL length limits (~2–8 KB). A sibling POST endpoint that accepts the same fields plus \`sqlByDep\` / \`sqlOptions\` is the cleanest answer — no server-side session state, and the GET flow stays untouched for users who don't need the wizard.`,
+\`/starter.zip\` is a GET whose query string carries all generation inputs. A few \`CREATE TABLE\` statements easily exceed typical URL length limits (~2–8 KB). A sibling POST endpoint that accepts the same fields plus \`sqlByDep\` / \`sqlOptions\` (and \`specByDep\` / \`openApiOptions\` for the OpenAPI wizard) is the cleanest answer — no server-side session state, and the GET flow stays untouched for users who don't need the wizard.`,
         codeExamples: [
           {
             title: 'Generate a project with a users entity and its repository',
             language: 'bash',
-            code: `curl -o demo.zip -X POST http://localhost:8080/starter-sql.zip \\
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
   -H "Content-Type: application/json" \\
   -d '{
     "groupId":"com.menora","artifactId":"demo","name":"demo",
@@ -757,15 +756,15 @@ The UI calls \`GET /metadata/openapi-capable-deps\` at page load — the button 
 4. A live **Detected Operations** list appears (debounced 400ms) showing entries like \`GET /pets\`, \`POST /pets/{id}\`.
 5. Optional: change the sub-packages (default \`api\` for controllers, \`dto\` for records).
 6. Save → the dep card shows an attachment badge.
-7. Click **Generate** or **Explore** — the UI switches to POST \`/starter-openapi.zip\` / \`/starter-openapi.preview\` with a JSON body, and the generated controllers/records appear in the ZIP and the file tree.`,
+7. Click **Generate** or **Explore** — the UI sends POST \`/starter-wizard.zip\` / \`/starter-wizard.preview\` with a JSON body, and the generated controllers/records appear in the ZIP and the file tree. The endpoint is shared with the SQL wizard — a single request can carry both \`specByDep\` and \`sqlByDep\`.`,
         callouts: [
           {
             type: 'info',
             text: 'Method bodies always throw UnsupportedOperationException. The goal of v1 is a compiling skeleton — developers fill in the business logic after generation.'
           },
           {
-            type: 'warning',
-            text: 'The SQL wizard and OpenAPI wizard are mutually exclusive per generation request in v1. If both have content, OpenAPI takes precedence. Localstorage keeps both so switching never loses work.'
+            type: 'info',
+            text: 'The SQL and OpenAPI wizards are composable — both share POST /starter-wizard.zip, so a single request can carry sqlByDep (attached to a JPA dep) and specByDep (attached to a web dep) together. Empty maps are a no-op.'
           }
         ]
       },
@@ -818,9 +817,9 @@ Every entry under \`components.schemas.*\` becomes a Java \`record\` with one co
 | Method | Path | Purpose |
 |---|---|---|
 | \`GET\` | \`/metadata/openapi-capable-deps\` | Dep IDs eligible for the wizard (intersected with deps in the catalog) |
-| \`POST\` | \`/starter-openapi.zip\` | Generate ZIP with controllers and DTO records |
-| \`POST\` | \`/starter-openapi.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
-| \`POST\` | \`/starter-openapi.paths\` | Server-side parse: \`{ spec }\` → \`["GET /pets", "POST /pets/{id}", ...]\` for the drawer's live preview |
+| \`POST\` | \`/starter-wizard.zip\` | Generate ZIP with controllers and DTO records (shared with the SQL wizard) |
+| \`POST\` | \`/starter-wizard.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
+| \`POST\` | \`/starter-wizard.detect-paths\` | Server-side parse: \`{ spec }\` → \`["GET /pets", "POST /pets/{id}", ...]\` for the drawer's live preview |
 
 ### Why a New POST Endpoint
 OpenAPI specs regularly exceed typical URL length limits (~2–8 KB) — even the Petstore example is ~2 KB of YAML. Using a sibling POST endpoint that accepts the same generation fields plus \`specByDep\` and \`openApiOptions\` keeps the wizard decoupled from the GET flow and side-steps URL size ceilings entirely.
@@ -831,7 +830,7 @@ If the spec is malformed, the backend returns HTTP 400 with a body like \`{ "err
           {
             title: 'Generate a project from a tiny Petstore spec',
             language: 'bash',
-            code: `curl -o demo.zip -X POST http://localhost:8080/starter-openapi.zip \\
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
   -H "Content-Type: application/json" \\
   -d '{
     "groupId":"com.menora","artifactId":"demo","name":"demo",
@@ -1029,7 +1028,7 @@ The toggle at the top right switches the rollup between **1 day**, **7 days**, *
         callouts: [
           {
             type: 'info',
-            text: 'The `POST /starter-sql.zip` endpoint uses a JSON body, so its audit record captures endpoint/status/duration/remote-addr but not the SQL wizard parameters. That is a deliberate trade-off — query-param capture would miss the wizard entirely.'
+            text: 'The `POST /starter-wizard.zip` endpoint uses a JSON body, so its audit record captures endpoint/status/duration/remote-addr but not the SQL/OpenAPI wizard parameters. That is a deliberate trade-off — query-param capture would miss the wizards entirely.'
           }
         ]
       },
