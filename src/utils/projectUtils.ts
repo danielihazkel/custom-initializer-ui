@@ -1,4 +1,24 @@
-import type { InitializrMetadata, ProjectFormValues, SqlByDep } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlByDep, OpenApiByDep } from '../types'
+
+export function captureSnapshot(args: {
+  form: ProjectFormValues
+  selected: string[]
+  selectedOptions: Record<string, string[]>
+  sqlByDep: SqlByDep
+  openApiByDep: OpenApiByDep
+  multiModuleEnabled: boolean
+  selectedModules: string[]
+}): ProjectSnapshot {
+  return {
+    form: { ...args.form },
+    selected: [...args.selected],
+    selectedOptions: JSON.parse(JSON.stringify(args.selectedOptions)),
+    sqlByDep: JSON.parse(JSON.stringify(args.sqlByDep)),
+    openApiByDep: JSON.parse(JSON.stringify(args.openApiByDep)),
+    multiModuleEnabled: args.multiModuleEnabled,
+    selectedModules: [...args.selectedModules],
+  }
+}
 
 export function parseUrlParams(): {
   form: Partial<ProjectFormValues>
@@ -51,13 +71,19 @@ export function triggerDownload(
   selectedOptions: Record<string, string[]>,
   multiModule?: { enabled: boolean; modules: string[] },
   sqlByDep?: SqlByDep,
+  openApiByDep?: OpenApiByDep,
 ): void {
-  // Branch: SQL wizard requires POST (JSON body carrying CREATE TABLE scripts)
   const activeSql = sqlByDep
     ? Object.fromEntries(Object.entries(sqlByDep).filter(([id]) => selected.includes(id)))
     : {}
-  if (Object.keys(activeSql).length > 0) {
-    triggerSqlDownload(form, selected, selectedOptions, activeSql)
+  const activeOpenApi = openApiByDep
+    ? Object.fromEntries(Object.entries(openApiByDep).filter(([id]) => selected.includes(id)))
+    : {}
+  const hasWizard = Object.keys(activeSql).length > 0 || Object.keys(activeOpenApi).length > 0
+
+  // Branch: any wizard active → single POST carrying both payloads.
+  if (hasWizard) {
+    void triggerWizardDownload(form, selected, selectedOptions, activeSql, activeOpenApi)
     return
   }
 
@@ -95,28 +121,77 @@ export function triggerDownload(
   document.body.removeChild(a)
 }
 
-async function triggerSqlDownload(
+async function triggerWizardDownload(
   form: ProjectFormValues,
   selected: string[],
   selectedOptions: Record<string, string[]>,
-  sqlByDep: SqlByDep,
+  activeSql: SqlByDep,
+  activeOpenApi: OpenApiByDep,
 ): Promise<void> {
+  const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi)
+  const res = await fetch('/starter-wizard.zip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    throw new Error(`Wizard generation failed: HTTP ${res.status}`)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${form.artifactId}.zip`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+export function buildWizardBody(
+  form: ProjectFormValues,
+  selected: string[],
+  selectedOptions: Record<string, string[]>,
+  activeSql: SqlByDep,
+  activeOpenApi: OpenApiByDep,
+): Record<string, unknown> {
   const opts: Record<string, string[]> = {}
   for (const [depId, optIds] of Object.entries(selectedOptions)) {
     if (optIds.length > 0 && selected.includes(depId)) {
       opts[depId] = optIds
     }
   }
+
   const sqlByDepBody: Record<string, string> = {}
   const sqlOptionsBody: Record<string, { subPackage: string; tables: { name: string; generateRepository: boolean }[] }> = {}
-  for (const [depId, entry] of Object.entries(sqlByDep)) {
+  for (const [depId, entry] of Object.entries(activeSql)) {
     sqlByDepBody[depId] = entry.sql
     sqlOptionsBody[depId] = {
       subPackage: entry.subPackage,
       tables: entry.tables.map(t => ({ name: t.name, generateRepository: t.generateRepository })),
     }
   }
-  const body = {
+
+  const specByDep: Record<string, string> = {}
+  const openApiOptionsBody: Record<string, {
+    apiSubPackage: string
+    dtoSubPackage: string
+    clientSubPackage: string
+    mode: string
+    baseUrlProperty: string
+  }> = {}
+  for (const [depId, entry] of Object.entries(activeOpenApi)) {
+    specByDep[depId] = entry.spec
+    openApiOptionsBody[depId] = {
+      apiSubPackage: entry.apiSubPackage,
+      dtoSubPackage: entry.dtoSubPackage,
+      clientSubPackage: entry.clientSubPackage,
+      mode: entry.mode,
+      baseUrlProperty: entry.baseUrlProperty,
+    }
+  }
+
+  return {
     groupId: form.groupId,
     artifactId: form.artifactId,
     name: form.name,
@@ -131,22 +206,7 @@ async function triggerSqlDownload(
     opts,
     sqlByDep: sqlByDepBody,
     sqlOptions: sqlOptionsBody,
+    specByDep,
+    openApiOptions: openApiOptionsBody,
   }
-  const res = await fetch('/starter-sql.zip', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    throw new Error(`SQL generation failed: HTTP ${res.status}`)
-  }
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${form.artifactId}.zip`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
 }

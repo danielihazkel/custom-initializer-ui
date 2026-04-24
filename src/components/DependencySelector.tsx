@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
 import { SqlWizardDrawer } from './SqlWizardDrawer'
+import { OpenApiWizardDrawer } from './OpenApiWizardDrawer'
+import { SuggestionStrip, type Suggestion } from './SuggestionStrip'
 
 const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle', 'mongodb', 'h2'] as const
 const DB_PRIMARY_OPTIONS: Record<string, string> = {
@@ -48,10 +50,14 @@ export function DependencySelector({
   sqlDialects,
   sqlByDep,
   onSqlByDepChange,
+  openApiCapableDeps,
+  openApiByDep,
+  onOpenApiByDepChange,
 }: DependencySelectorProps) {
   const [search, setSearch] = useState<string>('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [wizardDepId, setWizardDepId] = useState<string | null>(null)
+  const [openApiWizardDepId, setOpenApiWizardDepId] = useState<string | null>(null)
 
   const toggleGroup = useCallback((name: string) => {
     setCollapsedGroups(prev => {
@@ -168,7 +174,6 @@ export function DependencySelector({
   const warnings = useMemo(() => {
     const conflicts: { source: string; target: string; desc: string }[] = []
     const requires: { source: string; target: string; desc: string }[] = []
-    const recommends: { source: string; target: string; desc: string }[] = []
     const depName = (id: string) => allDeps.find(d => d.id === id)?.name ?? id
     for (const rule of compatibilityRules) {
       if (!selected.includes(rule.sourceDepId)) continue
@@ -178,14 +183,42 @@ export function DependencySelector({
       if (rule.relationType === 'REQUIRES' && !selected.includes(rule.targetDepId)) {
         requires.push({ source: rule.sourceDepId, target: rule.targetDepId, desc: rule.description ?? `${depName(rule.sourceDepId)} requires ${depName(rule.targetDepId)}` })
       }
-      if (rule.relationType === 'RECOMMENDS' && !selected.includes(rule.targetDepId)) {
-        recommends.push({ source: rule.sourceDepId, target: rule.targetDepId, desc: rule.description ?? `${depName(rule.sourceDepId)} recommends ${depName(rule.targetDepId)}` })
+    }
+    return { conflicts, requires }
+  }, [selected, compatibilityRules, allDeps])
+
+  const suggestions = useMemo<Suggestion[]>(() => {
+    const depName = (id: string) => allDeps.find(d => d.id === id)?.name ?? id
+    const byTarget = new Map<string, Suggestion>()
+    for (const rule of compatibilityRules) {
+      if (rule.relationType !== 'RECOMMENDS') continue
+      if (!selected.includes(rule.sourceDepId)) continue
+      if (selected.includes(rule.targetDepId)) continue
+      if (!allDeps.some(d => d.id === rule.targetDepId)) continue
+      const existing = byTarget.get(rule.targetDepId)
+      const sourceName = depName(rule.sourceDepId)
+      const reason = rule.description ?? `${sourceName} recommends ${depName(rule.targetDepId)}`
+      if (existing) {
+        if (!existing.sourceNames.includes(sourceName)) {
+          existing.sourceNames.push(sourceName)
+          existing.score += 1
+        }
+        if (!existing.reasons.includes(reason)) existing.reasons.push(reason)
+      } else {
+        byTarget.set(rule.targetDepId, {
+          targetDepId: rule.targetDepId,
+          targetName: depName(rule.targetDepId),
+          score: 1,
+          sourceNames: [sourceName],
+          reasons: [reason],
+        })
       }
     }
-    return { conflicts, requires, recommends }
+    return Array.from(byTarget.values()).sort((a, b) => b.score - a.score || a.targetName.localeCompare(b.targetName))
   }, [selected, compatibilityRules, allDeps])
 
   const wizardDep = wizardDepId ? allDeps.find(d => d.id === wizardDepId) : null
+  const openApiWizardDep = openApiWizardDepId ? allDeps.find(d => d.id === openApiWizardDepId) : null
 
   return (
     <>
@@ -204,9 +237,9 @@ export function DependencySelector({
         {/* Single scroll container — warnings + primary DB selector + deps list */}
         <div className="flex flex-col gap-3 flex-grow overflow-y-auto pr-2 tutorial-scroll">
 
-          {/* Compatibility warnings */}
+          {/* Compatibility warnings (conflicts + requires only; recommends live above search) */}
           <AnimatePresence>
-            {(warnings.conflicts.length > 0 || warnings.requires.length > 0 || warnings.recommends.length > 0) && (
+            {(warnings.conflicts.length > 0 || warnings.requires.length > 0) && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -227,19 +260,6 @@ export function DependencySelector({
                       type="button"
                       onClick={() => onChange([...selected, w.target])}
                       className="flex-shrink-0 text-[10px] font-bold px-3 py-1 rounded bg-yellow-500 text-white dark:text-gray-900 shadow-sm transition-transform active:scale-95 hover:brightness-110"
-                    >
-                      ADD IT
-                    </button>
-                  </div>
-                ))}
-                {warnings.recommends.map((w, i) => (
-                  <div key={`rec-${i}`} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-primary/20 bg-primary/10 text-xs text-primary shadow-sm">
-                    <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: '16px' }}>info</span>
-                    <span className="flex-1 leading-relaxed font-medium">{w.desc}</span>
-                    <button
-                      type="button"
-                      onClick={() => onChange([...selected, w.target])}
-                      className="flex-shrink-0 text-[10px] font-bold px-3 py-1 rounded bg-primary text-white shadow-sm transition-transform active:scale-95 hover:brightness-110"
                     >
                       ADD IT
                     </button>
@@ -360,6 +380,23 @@ export function DependencySelector({
                     )}
                   </div>
                 )}
+                {openApiCapableDeps.includes(dep.id) && (
+                  <div className="mt-3 pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOpenApiWizardDepId(dep.id)}
+                      className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>integration_instructions</span>
+                      {openApiByDep[dep.id] ? 'Edit OpenAPI controllers…' : 'Generate from OpenAPI spec…'}
+                    </button>
+                    {openApiByDep[dep.id] && (
+                      <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
+                        ✓ spec attached
+                      </span>
+                    )}
+                  </div>
+                )}
               </motion.div>
             )) : (
               <motion.div
@@ -384,6 +421,12 @@ export function DependencySelector({
           <span className="material-symbols-outlined text-tertiary" style={{ fontSize: '20px' }}>explore</span>
           <h3 className="text-xs font-bold uppercase tracking-widest">Explore Dependencies</h3>
         </div>
+
+        {/* Aggregated recommendations */}
+        <SuggestionStrip
+          suggestions={suggestions}
+          onAdd={(depId) => onChange([...selected, depId])}
+        />
 
         {/* Search */}
         <div className="relative mb-6 group">
@@ -527,6 +570,16 @@ export function DependencySelector({
         dialectName={sqlDialects[wizardDep.id] ?? ''}
         initial={sqlByDep[wizardDep.id] ?? null}
         onSave={entry => onSqlByDepChange(wizardDep.id, entry)}
+      />
+    )}
+    {openApiWizardDep && (
+      <OpenApiWizardDrawer
+        isOpen={openApiWizardDepId !== null}
+        onClose={() => setOpenApiWizardDepId(null)}
+        depId={openApiWizardDep.id}
+        depName={openApiWizardDep.name}
+        initial={openApiByDep[openApiWizardDep.id] ?? null}
+        onSave={entry => onOpenApiByDepChange(openApiWizardDep.id, entry)}
       />
     )}
     </>

@@ -69,16 +69,19 @@ export interface OptionsPanelProps {
   section:  'upper' | 'lower'
 }
 export interface DependencySelectorProps {
-  metadata:           InitializrMetadata | null
-  selected:           string[]
-  onChange:           (selected: string[]) => void
-  extensions:         DependencyExtensions
-  selectedOptions:    Record<string, string[]>
-  onOptionsChange:    (depId: string, optIds: string[]) => void
-  compatibilityRules: CompatibilityRule[]
-  sqlDialects:        SqlDialects
-  sqlByDep:           SqlByDep
-  onSqlByDepChange:   (depId: string, entry: SqlWizardEntry | null) => void
+  metadata:            InitializrMetadata | null
+  selected:            string[]
+  onChange:            (selected: string[]) => void
+  extensions:          DependencyExtensions
+  selectedOptions:     Record<string, string[]>
+  onOptionsChange:     (depId: string, optIds: string[]) => void
+  compatibilityRules:  CompatibilityRule[]
+  sqlDialects:         SqlDialects
+  sqlByDep:            SqlByDep
+  onSqlByDepChange:    (depId: string, entry: SqlWizardEntry | null) => void
+  openApiCapableDeps:  string[]
+  openApiByDep:        OpenApiByDep
+  onOpenApiByDepChange: (depId: string, entry: OpenApiWizardEntry | null) => void
 }
 
 // ── SQL Entity Wizard ─────────────────────────────────────────────────────────
@@ -96,9 +99,42 @@ export interface SqlWizardEntry {
 }
 
 export type SqlByDep = Record<string, SqlWizardEntry>
+
+// ── OpenAPI Wizard ────────────────────────────────────────────────────────────
+export type OpenApiMode = 'CONTROLLERS' | 'CLIENT' | 'BOTH'
+
+export interface OpenApiWizardEntry {
+  spec: string
+  apiSubPackage: string
+  dtoSubPackage: string
+  clientSubPackage: string
+  mode: OpenApiMode
+  baseUrlProperty: string
+}
+
+export type OpenApiByDep = Record<string, OpenApiWizardEntry>
+
 export interface GenerateButtonProps {
   form:     ProjectFormValues
   selected: string[]
+}
+
+// ── Project presets ───────────────────────────────────────────────────────────
+export interface ProjectSnapshot {
+  form: ProjectFormValues
+  selected: string[]
+  selectedOptions: Record<string, string[]>
+  sqlByDep: SqlByDep
+  openApiByDep: OpenApiByDep
+  multiModuleEnabled: boolean
+  selectedModules: string[]
+}
+
+export interface ProjectPreset {
+  id: string
+  name: string
+  createdAt: number
+  snapshot: ProjectSnapshot
 }
 
 // ── Admin entity types ────────────────────────────────────────────────────────
@@ -126,7 +162,7 @@ export interface AdminDependencyEntry {
 }
 
 export type FileType = 'STATIC_COPY' | 'YAML_MERGE' | 'TEMPLATE' | 'DELETE'
-export type SubstitutionType = 'PROJECT' | 'PACKAGE' | 'NONE'
+export type SubstitutionType = 'MUSTACHE' | 'NONE'
 
 export interface AdminFileContribution {
   id: number
@@ -186,7 +222,40 @@ export interface AdminDependencyCompatibility {
   sortOrder: number
 }
 
-export type AdminTab = 'overview' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules'
+export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules'
+
+// Activity / Audit
+export type GenerationEventStatus = 'SUCCESS' | 'FAILURE'
+
+export interface GenerationEvent {
+  id: number
+  eventTimestamp: string
+  endpoint: string
+  artifactId: string | null
+  groupId: string | null
+  bootVersion: string | null
+  javaVersion: string | null
+  packaging: string | null
+  language: string | null
+  dependencyIds: string | null
+  durationMs: number
+  status: GenerationEventStatus
+  errorMessage: string | null
+  remoteAddr: string | null
+}
+
+export interface ActivitySummary {
+  days: number
+  totalCount: number
+  successCount: number
+  failureCount: number
+  successRate: number
+  p50Ms: number
+  p95Ms: number
+  p99Ms: number
+  topDependencies: { depId: string; count: number }[]
+  topBootVersions: { bootVersion: string; count: number }[]
+}
 
 export interface Toast {
   message: string

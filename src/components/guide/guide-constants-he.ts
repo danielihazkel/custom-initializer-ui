@@ -220,7 +220,7 @@ export const GUIDE_SECTIONS_HE: GuideSection[] = [
 **דוגמאות לשימוש:** מקטע bootstrap-servers של Kafka, מקטע datasource של JPA, קונפיגורציית נקודות הניהול.
 
 ### TEMPLATE
-מיישם תחלופת משתנים על התוכן, ואז כותב אותו לנתיב היעד. סוג התחלופה תלוי בשדה \`substitutionType\` (ראו להלן). סיומת הקובץ \`.mustache\` קוסמטית בלבד — לא נעשה שימוש במנוע Mustache אמיתי.
+מיישם תחלופת משתנים על התוכן, ואז כותב אותו לנתיב היעד. התוכן עובר רינדור דרך מנוע Mustache אמיתי (\`com.samskivert:jmustache\`) כאשר \`substitutionType\` הוא MUSTACHE, מה שמאפשר גם משתני תחלופה וגם מקטעים מותנים (ראו להלן).
 
 **דוגמאות לשימוש:** \`Dockerfile\` (צריך artifactId), \`KafkaConfig.java\` (צריך שם חבילה), \`k8s/values.yaml\` (צריך groupId).
 
@@ -237,44 +237,124 @@ export const GUIDE_SECTIONS_HE: GuideSection[] = [
       },
       {
         id: 'file-contrib-substitution',
-        title: 'תחלופת תבניות',
-        description: 'משתנים זמינים בתרומות קבצים מסוג TEMPLATE.',
+        title: 'תחלופת תבניות (Mustache)',
+        description: 'משתנים, מקטעים ותוכן מותנה בתרומות קבצים מסוג TEMPLATE.',
         content: `### סוגי תחלופה
 
-**NONE** — לא מתבצעת תחלופה. התוכן נכתב בדיוק כפי שנשמר.
+תרומות \`TEMPLATE\` עוברות רינדור דרך מנוע Mustache אמיתי (\`com.samskivert:jmustache\`, עם HTML escaping מושבת). לשדה \`substitutionType\` שני ערכים:
 
-**PROJECT** — מחליף את המשתנים הבאים עם מטה-דאטה הפרויקט:
-- \`{{artifactId}}\` — מזהה artifact הפרויקט
-- \`{{groupId}}\` — מזהה קבוצת הפרויקט
+- **NONE** — ללא תחלופה. התוכן נכתב כפי שהוא. מתאים לקבצים זהים בינארית (log4j2 XML, .editorconfig, entrypoint.sh).
+- **MUSTACHE** — התוכן עובר רינדור דרך jmustache עם ההקשר המאוחד למטה. זהו ברירת המחדל לכל תבנית עם משתנים או בלוקים מותנים.
+
+### ההקשר המאוחד
+כל תבנית MUSTACHE מקבלת את אותו ההקשר. **משתנים** מתרנדרים כטקסט; **מקטעים** (\`{{#name}}…{{/name}}\`) מתרנדרים רק כאשר השם אמת; **מקטעים הפוכים** (\`{{^name}}…{{/name}}\`) מתרנדרים רק כאשר השם שקר/חסר.
+
+**משתני פרויקט:**
+- \`{{artifactId}}\` — מזהה artifact של הפרויקט (למשל \`demo\`)
+- \`{{groupId}}\` — מזהה קבוצת הפרויקט (למשל \`com.menora\`)
 - \`{{version}}\` — גרסת הפרויקט (למשל \`0.0.1-SNAPSHOT\`)
+- \`{{packageName}}\` — חבילת הבסיס (למשל \`com.menora.demo\`)
+- \`{{packagePath}}\` — שם החבילה עם נקודות מוחלפות בסלשים (למשל \`com/menora/demo\`)
+- \`{{javaVersion}}\` — גרסת ה-JDK שהמשתמש בחר, למשל \`17\` או \`21\`
+- \`{{packaging}}\` — \`jar\` או \`war\`
 
-**PACKAGE** — מחליף:
-- \`{{packageName}}\` — שם החבילה הבסיסית (למשל \`com.menora.demo\`)
+**בוליאני תלויות** — \`has\` + PascalCase של depId. מקפים, קווים תחתונים ונקודות הם מפרידי מילים:
+- \`{{#hasKafka}}…{{/hasKafka}}\` — depId \`kafka\`
+- \`{{#hasSecurity}}…{{/hasSecurity}}\` — depId \`security\`
+- \`{{#hasMailSampler}}…{{/hasMailSampler}}\` — depId \`mail-sampler\`
+
+**בוליאני תת-אפשרויות** — \`opt\` + PascalCase(depId) + PascalCase(optionId):
+- \`{{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}\` — kafka + תת-אפשרות \`consumer-example\`
+- \`{{#optMailSamplerSendMail}}…{{/optMailSamplerSendMail}}\` — mail-sampler + תת-אפשרות \`send-mail\`
 
 ### משתני נתיב יעד
-ה**נתיב היעד** (לא רק התוכן) יכול גם להשתמש במשתנה \`{{packagePath}}\`, שהוא שם החבילה עם נקודות מוחלפות בסלשים. זה משמש למיקום קבצי קוד מקור Java בתיקייה הנכונה.
+ה**נתיב היעד** (לא רק התוכן) יכול להכיל \`{{packagePath}}\`, שהוא שם החבילה עם נקודות מוחלפות בסלשים. זה ממקם קבצי מקור Java בתיקייה הנכונה ללא קשר לחבילה שהמשתמש בחר.
 
-**דוגמה:** תבנית \`KafkaConfig.java\` עם נתיב יעד \`src/main/java/{{packagePath}}/config/KafkaConfig.java\` נכתבת ל-\`src/main/java/com/menora/demo/config/KafkaConfig.java\` עבור פרויקט עם חבילה \`com.menora.demo\`.`,
+**דוגמה:** נתיב יעד \`src/main/java/{{packagePath}}/config/KafkaConfig.java\` הופך ל-\`src/main/java/com/menora/demo/config/KafkaConfig.java\` עבור חבילה \`com.menora.demo\`.
+
+### למה מקטעים מותנים חשובים
+לפני מקטעי Mustache, כל וריאציה דרשה שורת תרומת קובץ משלה. מחלקה שפלטה \`@EnableAsync\` רק כאשר תת-אפשרות אסינכרונית נבחרה דרשה שתי שורות עם אותו \`targetPath\` — אחת עם ההערה, אחת בלי. מקטעי Mustache ממזגים את אלה לשורה אחת, ומפשטים את קטלוג ה-DB.`,
         codeExamples: [
           {
-            title: 'תחלופת PROJECT — דוגמת Dockerfile',
+            title: 'משתנים — דוגמת Dockerfile',
             language: 'dockerfile',
-            code: `FROM eclipse-temurin:17-jre-alpine
+            code: `FROM eclipse-temurin:{{javaVersion}}-jre-alpine
 WORKDIR /app
-COPY target/{{artifactId}}-*.jar app.jar
+COPY target/{{artifactId}}-{{version}}.jar app.jar
+LABEL org.opencontainers.image.vendor="{{groupId}}"
 ENTRYPOINT ["java", "-jar", "app.jar"]`
           },
           {
-            title: 'תחלופת PACKAGE — דוגמת מחלקת קונפיגורציה Java',
+            title: 'שער תלות — MessagingConfig.java',
             language: 'java',
             code: `package {{packageName}}.config;
 
 import org.springframework.context.annotation.Configuration;
+{{#hasKafka}}
+import org.springframework.kafka.annotation.EnableKafka;
+{{/hasKafka}}
 
 @Configuration
-public class KafkaConfig {
-    // Kafka configuration for {{packageName}}
+{{#hasKafka}}
+@EnableKafka
+{{/hasKafka}}
+public class MessagingConfig {
+    {{^hasKafka}}
+    // Kafka not selected — no messaging infrastructure wired.
+    {{/hasKafka}}
 }`
+          },
+          {
+            title: 'שער תת-אפשרות — דוגמת @KafkaListener מותנית',
+            language: 'java',
+            code: `package {{packageName}}.kafka;
+
+{{#optKafkaConsumerExample}}
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Component;
+
+@Component
+public class KafkaConsumerExample {
+    @KafkaListener(topics = "demo-topic", groupId = "{{artifactId}}")
+    public void listen(String message) {
+        System.out.println("Received: " + message);
+    }
+}
+{{/optKafkaConsumerExample}}
+{{^optKafkaConsumerExample}}
+// Enable the "Consumer Example" sub-option to generate a sample @KafkaListener.
+{{/optKafkaConsumerExample}}`
+          },
+          {
+            title: 'application.yaml — שילוב שערי תלות ומשתנים',
+            language: 'yaml',
+            code: `spring:
+  application:
+    name: {{artifactId}}
+{{#hasDataJpa}}
+  datasource:
+    url: jdbc:h2:mem:{{artifactId}}
+    username: sa
+{{/hasDataJpa}}
+{{#hasActuator}}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info{{#hasSecurity}},metrics{{/hasSecurity}}
+{{/hasActuator}}
+
+# Generated for {{packaging}} packaging on Java {{javaVersion}}.`
+          }
+        ],
+        callouts: [
+          {
+            type: 'tip',
+            text: 'משתנים לא ידועים מתרנדרים כמחרוזת ריקה — טעות הקלדה ב-{{hasKafak}} תפיק בשקט כלום. הריצו grep על התבניות כשמוסיפים תלות חדשה כדי לבדוק הפניות.'
+          },
+          {
+            type: 'info',
+            text: 'תגי מקטע עצמאיים ({{#name}} / {{/name}} בשורה משלהם) מקצצים רווח לבן מסביב לפי מפרט Mustache, ושומרים על Java נקי. שימו את התוכן באותה שורה של התג אם אתם צריכים שורה חדשה מפורשת.'
           }
         ]
       },
@@ -327,7 +407,7 @@ public class KafkaConfig {
           { name: 'fileType', type: 'FileType', required: true, description: 'כיצד התוכן מטופל: STATIC_COPY, YAML_MERGE, TEMPLATE, או DELETE.', example: 'YAML_MERGE' },
           { name: 'targetPath', type: 'string', required: true, description: 'נתיב פלט בתוך הפרויקט שנוצר. עשוי להכיל {{packagePath}} לקבצי קוד מקור Java.', example: 'src/main/java/{{packagePath}}/config/KafkaConfig.java' },
           { name: 'content', type: 'text', required: false, description: 'תוכן קובץ. לא נדרש לסוג DELETE. לסוג TEMPLATE, השתמשו במשתני תחלופה.', example: 'package {{packageName}}.config;' },
-          { name: 'substitutionType', type: 'SubstitutionType', required: false, description: 'מצב תחלופת משתנים: NONE (ברירת מחדל), PROJECT (artifactId/groupId/version), PACKAGE (packageName).', example: 'PACKAGE' },
+          { name: 'substitutionType', type: 'SubstitutionType', required: false, description: 'מצב תחלופת משתנים: NONE (תוכן נכתב כפי שהוא) או MUSTACHE (מעבד בעזרת jmustache — משתנים {{artifactId}}, {{groupId}}, {{version}}, {{packageName}}, {{packagePath}}, {{javaVersion}}, {{packaging}}, וסקציות בוליאניות כגון {{#hasKafka}}…{{/hasKafka}} או {{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}).', example: 'MUSTACHE' },
           { name: 'javaVersion', type: 'string', required: false, description: 'אם מוגדר, תרומה זו חלה רק כאשר גרסת Java של הפרויקט תואמת. השאירו ריק לכל הגרסאות.', example: '21' },
           { name: 'subOptionId', type: 'string', required: false, description: 'אם מוגדר, תרומה זו חלה רק כאשר המשתמש בוחר את האפשרות המשנית הזו תחת התלות האב.', example: 'consumer-example' },
           { name: 'sortOrder', type: 'integer', required: false, description: 'סדר עיבוד. חשוב כאשר תרומות מרובות מכוונות לאותו קובץ (למשל YAML_MERGE מרובים לאותו application.yaml).', example: '0' }
@@ -643,7 +723,7 @@ MongoDB אינו כלול מכיוון שאין לו חוזה DDL.
 4. טבלאות שזוהו מופיעות כרשימה עם תיבת סימון **Generate repository** בכל שורה (ברירת מחדל דלוקה).
 5. אופציונלי: שנה את תת-החבילה (ברירת מחדל \`entity\`).
 6. שמור → המגירה נסגרת וכרטיסיית התלות מציגה תווית קטנה (✓ N טבלאות).
-7. לחץ על **Generate** או **Explore** — ה-UI עובר לשליחת POST ל-\`/starter-sql.zip\` / \`/starter-sql.preview\` עם גוף JSON, והישויות/repositories מופיעים בפרויקט שהורד ובעץ הקבצים.`,
+7. לחץ על **Generate** או **Explore** — ה-UI עובר לשליחת POST ל-\`/starter-wizard.zip\` / \`/starter-wizard.preview\` עם גוף JSON מאוחד, והישויות/repositories מופיעים בפרויקט שהורד ובעץ הקבצים.`,
         callouts: [
           {
             type: 'info',
@@ -698,17 +778,16 @@ MongoDB אינו כלול מכיוון שאין לו חוזה DDL.
 | שיטה | נתיב | מטרה |
 |---|---|---|
 | \`GET\` | \`/metadata/sql-dialects\` | מפת dep-id → שם דיאלקט (רק תלויות הנמצאות בקטלוג) |
-| \`POST\` | \`/starter-sql.zip\` | יצירת ZIP עם ישויות/repositories |
-| \`POST\` | \`/starter-sql.preview\` | עץ קבצים + תוכן (אותה צורה כמו \`/starter.preview\`) |
-| \`POST\` | \`/starter-sql.tables\` | ניתוח בצד שרת: \`{ sql }\` → \`["users", "orders", ...]\` |
+| \`POST\` | \`/starter-wizard.zip\` | יצירת ZIP מאוחד עם ישויות/repositories (וגם artifacts של OpenAPI אם \`specByDep\` מאוכלס) |
+| \`POST\` | \`/starter-wizard.preview\` | עץ קבצים + תוכן (אותה צורה כמו \`/starter.preview\`) |
 
 ### מדוע נקודת קצה POST חדשה
-\`/starter.zip\` היא GET ששורת השאילתה שלה נושאת את כל קלטי היצירה. כמה משפטי \`CREATE TABLE\` חורגים בקלות ממגבלות אורך URL טיפוסיות (~2–8 KB). נקודת קצה POST אחות המקבלת את אותם שדות בתוספת \`sqlByDep\` / \`sqlOptions\` היא התשובה הנקייה ביותר — ללא מצב session בצד שרת, וזרימת GET נשארת ללא שינוי עבור משתמשים שאינם צריכים את האשף.`,
+\`/starter.zip\` היא GET ששורת השאילתה שלה נושאת את כל קלטי היצירה. כמה משפטי \`CREATE TABLE\` חורגים בקלות ממגבלות אורך URL טיפוסיות (~2–8 KB). נקודת קצה POST אחות בשם \`/starter-wizard.zip\` המקבלת את אותם שדות בתוספת \`sqlByDep\` / \`sqlOptions\` (ו-\`specByDep\` / \`openApiOptions\` עבור אשף OpenAPI) היא התשובה הנקייה ביותר — ללא מצב session בצד שרת, וזרימת GET נשארת ללא שינוי עבור משתמשים שאינם צריכים את האשפים.`,
         codeExamples: [
           {
             title: 'יצירת פרויקט עם ישות users וה-repository שלה',
             language: 'bash',
-            code: `curl -o demo.zip -X POST http://localhost:8080/starter-sql.zip \\
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
   -H "Content-Type: application/json" \\
   -d '{
     "groupId":"com.menora","artifactId":"demo","name":"demo",
@@ -725,6 +804,234 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
           { name: 'sqlByDep', type: 'object', required: false, description: 'מפת depId → סקריפט SQL גולמי המכיל משפט CREATE TABLE אחד או יותר.', example: '{ "postgresql": "CREATE TABLE users (...);" }' },
           { name: 'sqlOptions', type: 'object', required: false, description: 'מפת depId → { subPackage, tables[] }. tables[].generateRepository שולט בפליטת repository לכל טבלה; subPackage ברירת מחדל "entity".', example: '{ "postgresql": { "subPackage": "entity", "tables": [ { "name": "users", "generateRepository": true } ] } }' },
           { name: 'opts', type: 'object', required: false, description: 'אותה מפת תת-אפשרויות המשמשת עם פרמטרי שאילתה opts-{depId} של /starter.zip — למשל בחירת DB ראשי/משני.', example: '{ "postgresql": ["pg-primary"] }' }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 10b. אשף OpenAPI → Controller/DTO
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'openapi-wizard',
+    title: 'אשף OpenAPI',
+    icon: 'integration_instructions',
+    topics: [
+      {
+        id: 'openapi-wizard-what',
+        title: 'מה האשף עושה',
+        description: 'הדביקו ספק OpenAPI 3.x וקבלו מחלקות @RestController + DTO records.',
+        content: `### מטרה
+כאשר המפתח בוחר תלות של שכבת web (\`web\` או \`webflux\`), כפתור **"OpenAPI…"** מופיע על הכרטיסיה של אותה תלות בפאנל התלויות שנבחרו. לחיצה עליו פותחת מגירה בה המפתח מדביק ספק OpenAPI 3.x (YAML או JSON). כשלוחצים על Generate, ה-backend מנתח את הספק וכותב מחלקות \`@RestController\` ו-\`record\` של DTO — כבר מחוברים עם אנוטציות Spring MVC, binding של פרמטרים ו-validation.
+
+זה התאום הסימטרי של אשף ה-SQL עבור צוותים של API-first. זה מבטל את הבויילרפלייט של כתיבת חתימות controllers ו-DTO של request/response באופן ידני אחרי היצירה.
+
+### אילו תלויות זכאיות
+ה-UI קורא ל-\`GET /metadata/openapi-capable-deps\` בטעינת הדף — הכפתור מופיע רק על כרטיסיות תלות שנוכחות בתגובה (כרגע \`web\` ו-\`webflux\`, בחיתוך עם תלויות הקיימות בקטלוג).
+
+### הזרימה במבט כולל
+1. המפתח בוחר תלות שכבת web (למשל \`web\`).
+2. לוחץ על **OpenAPI…** בכרטיסיית התלות.
+3. מדביק או מעלה ספק OpenAPI 3.x (\`.yaml\`, \`.yml\`, או \`.json\`).
+4. רשימת **פעולות שזוהו** מופיעה בזמן אמת (debounced 400ms) ומציגה ערכים כמו \`GET /pets\`, \`POST /pets/{id}\`.
+5. אופציונלי: שנה את תתי-החבילות (ברירת מחדל \`api\` ל-controllers, \`dto\` ל-records).
+6. שמור → כרטיסיית התלות מציגה תווית של צירוף.
+7. לחץ על **Generate** או **Explore** — ה-UI עובר לשליחת POST ל-\`/starter-wizard.zip\` / \`/starter-wizard.preview\` עם גוף JSON מאוחד, וה-controllers/records שנוצרו מופיעים ב-ZIP ובעץ הקבצים.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'גופי המתודות תמיד זורקים UnsupportedOperationException. המטרה של גרסה 1 היא שלד שמתקמפל — המפתחים ממלאים את הלוגיקה העסקית לאחר היצירה.'
+          },
+          {
+            type: 'info',
+            text: 'אשף SQL ואשף OpenAPI יכולים לפעול יחד באותה בקשת יצירה — כל אחד על תלות שונה. גוף ה-\`/starter-wizard.zip\` נושא גם את \`sqlByDep\` וגם את \`specByDep\`, וה-backend שולב את פלטי שניהם לתוך פרויקט אחד.'
+          }
+        ]
+      },
+      {
+        id: 'openapi-wizard-mapping',
+        title: 'מיפוי סכמה → טיפוסי Java',
+        description: 'כיצד סכמות OpenAPI הופכות ל-records ולטיפוסי Java.',
+        content: `### מיפוי טיפוסים
+האשף ממפה טיפוסי OpenAPI (ואת רמזי ה-\`format\` שלהם) לטיפוסי Java ישירות על שדות ה-records שנוצרו וחתימות ה-controllers.
+
+| סכמת OpenAPI | טיפוס Java | הערות |
+|---|---|---|
+| \`string\` | \`String\` | |
+| \`string\`, \`format: date\` | \`LocalDate\` | |
+| \`string\`, \`format: date-time\` | \`LocalDateTime\` | |
+| \`string\`, \`format: uuid\` | \`UUID\` | |
+| \`string\`, \`format: binary\` | \`byte[]\` | |
+| \`integer\` | \`Integer\` | |
+| \`integer\`, \`format: int64\` | \`Long\` | |
+| \`number\` / \`number\`, \`format: float\` | \`Double\` / \`Float\` | |
+| \`number\`, \`format: double\` | \`Double\` | |
+| \`boolean\` | \`Boolean\` | |
+| \`array\` | \`List<T>\` | רקורסיה על \`items\` |
+| \`object\` עם \`$ref\` | שם ה-record שמופנה אליו | |
+| \`allOf\` / \`oneOf\` / \`anyOf\` | \`Object\` | עם הערת \`// TODO\` |
+
+### Controllers
+פעולות מקובצות לפי ה-**תג הראשון** שלהן (פעולות ללא תג עוברות ל-\`DefaultController\`). מתודה אחת נפלטת לכל פעולה:
+
+- שם מחלקה: \`{Tag}Controller\` (למשל \`PetsController\`)
+- אנוטציה ברמת המחלקה: \`@RestController\`, \`@Validated\`
+- אנוטציית מתודה: \`@GetMapping\`, \`@PostMapping\`, \`@PutMapping\`, \`@DeleteMapping\`, \`@PatchMapping\`
+- פרמטרים: \`@PathVariable\`, \`@RequestParam\`, \`@RequestHeader\`, \`@RequestBody\` (עם \`@Valid\`)
+- גוף: \`throw new UnsupportedOperationException("TODO: implement ...")\`
+- \`operationId\`-ים כפולים בתוך תג מבודלים על ידי הוספת \`_2\`, \`_3\`, …
+
+### Records
+כל ערך תחת \`components.schemas.*\` הופך ל-\`record\` של Java עם רכיב אחד לכל property. שדות חובה שומרים על טיפוס ה-Java הגולמי שלהם; שדות אופציונליים גם כן (nullability נדחית למפתח — גרסה 1 לא עוטפת optionals ב-\`Optional<T>\`).
+
+### חבילות
+- Controllers → \`{packageName}.{apiSubPackage}\` (ברירת מחדל \`api\`)
+- Records → \`{packageName}.{dtoSubPackage}\` (ברירת מחדל \`dto\`)`,
+      },
+      {
+        id: 'openapi-wizard-api',
+        title: 'REST API',
+        description: 'נקודות קצה POST ומטא-דאטה נלווית.',
+        content: `### נקודות קצה
+
+| שיטה | נתיב | מטרה |
+|---|---|---|
+| \`GET\` | \`/metadata/openapi-capable-deps\` | מזהי תלות זכאים לאשף (בחיתוך עם תלויות בקטלוג) |
+| \`POST\` | \`/starter-wizard.zip\` | יצירת ZIP מאוחד עם controllers ו-DTO records (וגם artifacts של SQL אם \`sqlByDep\` מאוכלס) |
+| \`POST\` | \`/starter-wizard.preview\` | עץ קבצים + תוכן (אותה צורה כמו \`/starter.preview\`) |
+| \`POST\` | \`/starter-wizard.detect-paths\` | ניתוח בצד שרת: \`{ spec }\` → \`["GET /pets", "POST /pets/{id}", ...]\` עבור התצוגה החיה של המגירה |
+
+### מדוע נקודת קצה POST חדשה
+ספקי OpenAPI חורגים באופן קבוע ממגבלות אורך URL טיפוסיות (~2–8 KB) — אפילו הדוגמה של Petstore היא ~2 KB של YAML. שימוש בנקודת קצה POST אחות בשם \`/starter-wizard.zip\` המקבלת את אותם שדות יצירה בתוספת \`specByDep\` ו-\`openApiOptions\` (וגם \`sqlByDep\` / \`sqlOptions\` עבור אשף SQL) שומר את האשפים מפורקים מזרימת GET ועוקף את תקרות גודל ה-URL לחלוטין.
+
+### שגיאות ניתוח
+אם הספק פגום, ה-backend מחזיר HTTP 400 עם גוף כמו \`{ "error": "...", "messages": ["attribute info.version is missing", ...] }\`. המגירה מציגה הודעות אלה בבאנר צהוב ומשביתה את כפתור השמירה עד שהספק מתנתח נקי.`,
+        codeExamples: [
+          {
+            title: 'יצירת פרויקט מספק Petstore קטן',
+            language: 'bash',
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "groupId":"com.menora","artifactId":"demo","name":"demo",
+    "packageName":"com.menora.demo","type":"maven-project","language":"java",
+    "bootVersion":"3.2.1","packaging":"jar","javaVersion":"21",
+    "dependencies":["web"],
+    "specByDep":{"web":"openapi: 3.0.3\\ninfo: { title: Petstore, version: 1.0.0 }\\npaths:\\n  /pets/{id}:\\n    get:\\n      tags: [pets]\\n      operationId: getPetById\\n      parameters: [{ name: id, in: path, required: true, schema: { type: integer, format: int64 } }]\\n      responses: { 200: { content: { application/json: { schema: { $ref: \\"#/components/schemas/Pet\\" } } } } }\\ncomponents:\\n  schemas:\\n    Pet: { type: object, properties: { id: { type: integer, format: int64 }, name: { type: string } }, required: [id, name] }"},
+    "openApiOptions":{"web":{"apiSubPackage":"api","dtoSubPackage":"dto"}}
+  }'
+unzip -p demo.zip demo/src/main/java/com/menora/demo/api/PetsController.java`
+          },
+          {
+            title: 'ספק Petstore לדוגמה (YAML)',
+            language: 'yaml',
+            code: `openapi: 3.0.3
+info:
+  title: Petstore
+  version: 1.0.0
+paths:
+  /pets:
+    get:
+      tags: [pets]
+      operationId: listPets
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Pet' }
+    post:
+      tags: [pets]
+      operationId: createPet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pet' }
+      responses:
+        '201': { description: Created }
+  /pets/{id}:
+    get:
+      tags: [pets]
+      operationId: getPetById
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pet' }
+components:
+  schemas:
+    Pet:
+      type: object
+      required: [id, name]
+      properties:
+        id:   { type: integer, format: int64 }
+        name: { type: string }
+        tag:  { type: string }`
+          },
+          {
+            title: 'PetsController.java שנוצר',
+            language: 'java',
+            code: `package com.menora.demo.api;
+
+import com.menora.demo.dto.Pet;
+import jakarta.validation.Valid;
+import java.util.List;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@Validated
+public class PetsController {
+
+    @GetMapping("/pets")
+    public List<Pet> listPets() {
+        throw new UnsupportedOperationException("TODO: implement listPets");
+    }
+
+    @PostMapping("/pets")
+    public void createPet(@Valid @RequestBody Pet body) {
+        throw new UnsupportedOperationException("TODO: implement createPet");
+    }
+
+    @GetMapping("/pets/{id}")
+    public Pet getPetById(@PathVariable Long id) {
+        throw new UnsupportedOperationException("TODO: implement getPetById");
+    }
+}`
+          }
+        ],
+        fields: [
+          { name: 'specByDep', type: 'object', required: false, description: 'מפת depId → טקסט ספק OpenAPI 3.x גולמי (YAML או JSON). swagger-parser מזהה את הפורמט אוטומטית.', example: '{ "web": "openapi: 3.0.3\\n..." }' },
+          { name: 'openApiOptions', type: 'object', required: false, description: 'מפת depId → { apiSubPackage, dtoSubPackage }. Controllers עוברים ל-apiSubPackage (ברירת מחדל "api"); records עוברים ל-dtoSubPackage (ברירת מחדל "dto").', example: '{ "web": { "apiSubPackage": "api", "dtoSubPackage": "dto" } }' },
+          { name: 'dependencies', type: 'array', required: true, description: 'מערך dep-id הרגיל. רק תלויות הרשומות ב-/metadata/openapi-capable-deps יעובדו עם רשומותיהן ב-specByDep.', example: '[ "web" ]' }
+        ]
+      },
+      {
+        id: 'openapi-wizard-limits',
+        title: 'הערות ומגבלות (גרסה 1)',
+        description: 'מה היצירה הזו עושה, מה לא, ומדוע.',
+        content: `### מה גרסה 1 מפיקה
+- מחלקת \`{Tag}Controller\` אחת לכל תג (פעולות ללא תג עוברות ל-\`DefaultController\`).
+- \`record\` אחד של Java לכל ערך ב-\`components.schemas.*\`.
+- גופי מתודות תמיד זורקים \`UnsupportedOperationException\` — הפרויקט מתקמפל; הלוגיקה שלכם למלא.
+
+### מה גרסה 1 לא מפיקה
+- **ללא stubs של client** — Feign, WebClient, ו-clients מבוססי RestTemplate מחוץ לתחום.
+- **ללא פולימורפיזם** — \`allOf\`, \`oneOf\`, \`anyOf\` חוזרים ל-\`Object\` עם הערת \`// TODO\`.
+- **ללא סכמות inline** — רק סכמות בעלות שם תחת \`components.schemas.*\` הופכות ל-records. סכמות response/request inline גם חוזרות ל-\`Object\`.
+- **ללא פליטת אנוטציות OpenAPI** — אנוטציות Springdoc / springfox לא מתווספות. הוסיפו \`springdoc-openapi-starter-webmvc-ui\` כתלות אם אתם רוצים Swagger UI חי.
+
+### מדוע הבחירות האלה
+המטרה של גרסה 1 היא להרוג את הבויילרפלייט בלי להחיל דעה על המימוש. פולימורפיזם, סמנטיקת null, ויצירת client הן כולן החלטות עיצוב שצוותים שונים מטפלים בהן אחרת — כפיית בחירה כאן יוצרת יותר עבודה לצוותים שרצו את התשובה האחרת. שמרו על גרסה 1 הדוקה, איטרציה על משוב אמיתי.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'אם אתם רוצים תיעוד API אינטראקטיבי, הוסיפו את springdoc-openapi-starter-webmvc-ui כתלות רגילה (לא דרך האשף). הוא סורק את ה-controllers שלכם בזמן ריצה ומשחזר Swagger UI — ללא צורך בעבודת אנוטציות למקרים פשוטים.'
+          }
         ]
       }
     ]
@@ -768,7 +1075,97 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // 11. תהליכי עבודה נפוצים
+  // 11. פעילות וביקורת
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'activity',
+    title: 'פעילות וביקורת',
+    icon: 'monitoring',
+    topics: [
+      {
+        id: 'activity-what',
+        title: 'יומן ביקורת של יצירה',
+        description: 'ראו מה צוותים באמת יוצרים, באיזו מהירות ובאיזו תדירות יצירה נכשלת.',
+        content: `### מה נרשם
+כל קריאה ל-endpoint מסוג \`/starter*\` (הורדת ZIP, תצוגה מקדימה, אשף SQL, רב-מודולים) נרשמת עם: חותמת זמן, endpoint, מזהי artifact/group, גרסת Boot, גרסת Java, packaging, שפה, תלויות שנבחרו, משך בזמן מילישניות, תוצאה (SUCCESS/FAILURE), וכתובת IP אופציונלית של הלקוח.
+
+מסנן הביקורת רץ במסלול התשובה — שגיאת מסד נתונים לעולם לא תשבור יצירת פרויקט.
+
+### איפה למצוא
+פתחו את האדמין ולחצו על טאב **Activity** בסרגל הצד. תראו:
+- **ארבע כרטיסיות סיכום** — סך הפעולות, שיעור הצלחה, משך p50, משך p95.
+- **תלויות מובילות** — אילו תלויות נבחרות בפועל הכי הרבה, עם גרף עמודות אופקי.
+- **גרסאות Boot** — התפלגות גרסאות ה-Boot בשימוש.
+- **טבלת אירועים אחרונים** — 50 היצירות האחרונות עם פרטים מלאים (מזהה artifact, תלויות שנבחרו, משך, סטטוס).
+
+### חלון זמן
+המתג בפינה הימנית-עליונה מחליף את הסיכום בין **יום אחד**, **7 ימים**, **30 יום** (ברירת מחדל), ו-**90 יום**. כל הכרטיסים, הרשימות המובילות וטבלת האירועים האחרונים נטענים מחדש עם השינוי.
+
+### למה זה חשוב
+- **זיהוי סטייה** — אם צוותים כל הזמן יוצרים את אותן 10 תלויות יחד, כדאי להכין עבורם Starter Template.
+- **איתור כשלים** — טבלת האירועים האחרונים מסמנת יצירות שנכשלו עם הודעת השגיאה, בלי צורך לחטט בלוגי שרת.
+- **תכנון קיבולת** — טיימרי p95/p99 מראים אם יצירה האטה אחרי שינוי בקטלוג.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'ה-endpoint של `POST /starter-wizard.zip` משתמש בגוף JSON, ולכן רשומת הביקורת שלו לוכדת endpoint/סטטוס/משך/IP אבל לא את פרמטרי אשף ה-SQL/OpenAPI. זו פשרה מכוונת — לכידה מפרמטרי שאילתה הייתה מחמיצה את האשפים לחלוטין.'
+          }
+        ]
+      },
+      {
+        id: 'activity-api',
+        title: 'REST API ומדדים',
+        description: 'קריאה ישירה ל-endpoints עבור דשבורדים, סקריפטים, או scrape של Prometheus.',
+        content: `### Endpoints
+שני ה-endpoints דורשים אימות אדמין (\`Authorization: Bearer <token>\`).
+
+\`GET /admin/activity/recent?limit=50\` — האירועים האחרונים, חדש קודם.
+
+\`GET /admin/activity/summary?days=30\` — סיכום עבור חלון הזמן, מחזיר סך הפעולות, שיעור הצלחה, משכי p50/p95/p99, 10 תלויות מובילות והתפלגות גרסאות Boot.
+
+### מדדי Micrometer
+המסנן גם מפרסם ל-Micrometer, חשוף ב-\`/actuator/metrics\`:
+
+- \`menora.generation.count\` — מונה עם תג \`status=success|failure\`
+- \`menora.generation.duration\` — טיימר עם תג סטטוס, כולל היסטוגרמות של אחוזונים p50/p95/p99
+
+כוונו scraper של Prometheus ל-\`/actuator/prometheus\` (הוסיפו תחילה \`prometheus\` לרשימת החשיפה) אם רוצים לשלוח את זה לדשבורד.
+
+### מתג פרטיות
+כתובות IP של לקוחות נרשמות כברירת מחדל. להשבתה (למשל לציות GDPR), הגדירו ב-\`application.yml\`:
+
+\`\`\`
+menora:
+  audit:
+    log-remote-addr: false
+\`\`\`
+
+שורות קיימות לא מושפעות; רק אירועים חדשים מדלגים על השדה.`,
+        codeExamples: [
+          {
+            title: 'משיכת 50 האירועים האחרונים',
+            language: 'bash',
+            code: `curl -H "Authorization: Bearer $TOKEN" \\
+  http://localhost:8080/admin/activity/recent?limit=50`
+          },
+          {
+            title: 'סיכום של 7 ימים',
+            language: 'bash',
+            code: `curl -H "Authorization: Bearer $TOKEN" \\
+  http://localhost:8080/admin/activity/summary?days=7`
+          },
+          {
+            title: 'בדיקת מונה Micrometer',
+            language: 'bash',
+            code: `curl http://localhost:8080/actuator/metrics/menora.generation.count`
+          }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 12. תהליכי עבודה נפוצים
   // ─────────────────────────────────────────────────────────────────
   {
     id: 'workflows',
@@ -791,7 +1188,7 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
           },
           {
             title: 'הוסיפו תרומות קבצים',
-            description: 'לכו ל-Config → File Contributions. עבור כל קובץ להזרקה (למשל application-mylib.yml לקונפיגורציית YAML, MyLibConfig.java למחלקת קונפיגורציה Java), לחצו + Add. הגדירו dependencyId ל-depId החדש שלכם, fileType (YAML_MERGE ל-YAML, TEMPLATE ל-Java), targetPath, content, substitutionType (PACKAGE לקבצי Java), ו-sortOrder.'
+            description: 'לכו ל-Config → File Contributions. עבור כל קובץ להזרקה (למשל application-mylib.yml לקונפיגורציית YAML, MyLibConfig.java למחלקת קונפיגורציה Java), לחצו + Add. הגדירו dependencyId ל-depId החדש שלכם, fileType (YAML_MERGE ל-YAML, TEMPLATE ל-Java), targetPath, content, substitutionType (MUSTACHE לקבצי Java), ו-sortOrder.'
           },
           {
             title: 'הוסיפו תצורות Build (במידת הצורך)',
@@ -835,7 +1232,7 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
           },
           {
             title: 'הגדירו נתיב יעד ותוכן',
-            description: 'הזינו את נתיב היעד בתוך הפרויקט שנוצר (למשל scripts/setup.sh). לסוג TEMPLATE, השתמשו במשתני תחלופה כמו {{artifactId}} והגדירו substitutionType ל-PROJECT.'
+            description: 'הזינו את נתיב היעד בתוך הפרויקט שנוצר (למשל scripts/setup.sh). לסוג TEMPLATE, השתמשו במשתני תחלופה כמו {{artifactId}} והגדירו substitutionType ל-MUSTACHE.'
           },
           {
             title: 'שמרו ובדקו',
@@ -851,7 +1248,7 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
         workflowSteps: [
           {
             title: 'צרו את תרומת Dockerfile עבור Java 17',
-            description: 'לכו לתרומות קבצים → + Add. הגדירו: dependencyId = __common__, fileType = TEMPLATE, targetPath = Dockerfile, substitutionType = PROJECT, javaVersion = 17. כתבו את תוכן Dockerfile באמצעות image בסיס eclipse-temurin:17-jre-alpine. כללו {{artifactId}} בפקודת COPY.'
+            description: 'לכו לתרומות קבצים → + Add. הגדירו: dependencyId = __common__, fileType = TEMPLATE, targetPath = Dockerfile, substitutionType = MUSTACHE, javaVersion = 17. כתבו את תוכן Dockerfile באמצעות image בסיס eclipse-temurin:17-jre-alpine. כללו {{artifactId}} בפקודת COPY.'
           },
           {
             title: 'צרו את תרומת Dockerfile עבור Java 21',

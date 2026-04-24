@@ -220,7 +220,7 @@ This is the primary way multiple dependencies each contribute their section to \
 **Example use cases:** Kafka bootstrap-servers section, JPA datasource section, management endpoints config.
 
 ### TEMPLATE
-Applies variable substitution to the content, then writes it to the target path. The type of substitution depends on the \`substitutionType\` field (see below). The file extension \`.mustache\` is cosmetic only — no real Mustache engine is used.
+Applies variable substitution to the content, then writes it to the target path. When \`substitutionType\` is MUSTACHE, the content is rendered through a real Mustache engine (\`com.samskivert:jmustache\`), giving you both variable substitution and conditional sections (see below).
 
 **Example use cases:** \`Dockerfile\` (needs artifactId), \`KafkaConfig.java\` (needs package name), \`k8s/values.yaml\` (needs groupId).
 
@@ -237,44 +237,124 @@ Marks a file for deletion. The delete contributor runs at the lowest priority (a
       },
       {
         id: 'file-contrib-substitution',
-        title: 'Template Substitution',
-        description: 'Variables available in TEMPLATE file contributions.',
+        title: 'Template Substitution (Mustache)',
+        description: 'Variables, sections, and conditional content available in TEMPLATE file contributions.',
         content: `### Substitution Types
 
-**NONE** — no substitution is performed. The content is written exactly as stored.
+\`TEMPLATE\` contributions are rendered through a real Mustache engine (\`com.samskivert:jmustache\`, with HTML escaping disabled). The \`substitutionType\` field has two values:
 
-**PROJECT** — replaces the following variables with project metadata:
-- \`{{artifactId}}\` — the project artifact ID
-- \`{{groupId}}\` — the project group ID
-- \`{{version}}\` — the project version (e.g. \`0.0.1-SNAPSHOT\`)
+- **NONE** — no substitution. Content is written verbatim. Use for binary-identical files (log4j2 XML, .editorconfig, entrypoint.sh).
+- **MUSTACHE** — content is rendered through jmustache with the unified context below. This is the default for any template with variables or conditional blocks.
 
-**PACKAGE** — replaces:
-- \`{{packageName}}\` — the base package name (e.g. \`com.menora.demo\`)
+### The Unified Context
+Every MUSTACHE template receives the same context. **Variables** render as text; **sections** (\`{{#name}}…{{/name}}\`) render their body only when the named value is truthy; **inverted sections** (\`{{^name}}…{{/name}}\`) render only when it is falsy/absent.
+
+**Project variables:**
+- \`{{artifactId}}\` — project artifact ID (e.g. \`demo\`)
+- \`{{groupId}}\` — project group ID (e.g. \`com.menora\`)
+- \`{{version}}\` — project version (e.g. \`0.0.1-SNAPSHOT\`)
+- \`{{packageName}}\` — base package (e.g. \`com.menora.demo\`)
+- \`{{packagePath}}\` — package name with dots replaced by slashes (e.g. \`com/menora/demo\`)
+- \`{{javaVersion}}\` — the JDK the user picked, e.g. \`17\` or \`21\`
+- \`{{packaging}}\` — \`jar\` or \`war\`
+
+**Dependency booleans** — \`has\` + PascalCase(depId). Hyphens, underscores, and dots are word separators:
+- \`{{#hasKafka}}…{{/hasKafka}}\` — dep id \`kafka\`
+- \`{{#hasSecurity}}…{{/hasSecurity}}\` — dep id \`security\`
+- \`{{#hasMailSampler}}…{{/hasMailSampler}}\` — dep id \`mail-sampler\`
+
+**Sub-option booleans** — \`opt\` + PascalCase(depId) + PascalCase(optionId):
+- \`{{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}\` — kafka + \`consumer-example\` sub-option
+- \`{{#optMailSamplerSendMail}}…{{/optMailSamplerSendMail}}\` — mail-sampler + \`send-mail\` sub-option
 
 ### Target Path Variables
-The **target path** (not just the content) can also use the variable \`{{packagePath}}\`, which is the package name with dots replaced by slashes. This is used to place Java source files in the correct directory.
+The **target path** (not just the content) may contain \`{{packagePath}}\`, which is the package name with dots replaced by slashes. This places Java source files in the correct directory regardless of the user's package choice.
 
-**Example:** A \`KafkaConfig.java\` template with target path \`src/main/java/{{packagePath}}/config/KafkaConfig.java\` gets written to \`src/main/java/com/menora/demo/config/KafkaConfig.java\` for a project with package \`com.menora.demo\`.`,
+**Example:** target path \`src/main/java/{{packagePath}}/config/KafkaConfig.java\` becomes \`src/main/java/com/menora/demo/config/KafkaConfig.java\` for package \`com.menora.demo\`.
+
+### Why Conditional Sections Matter
+Before Mustache sections, each variation needed its own file contribution row. A class that emits \`@EnableAsync\` only when the async sub-option was selected required two rows with the same \`targetPath\` — one with the annotation, one without. Mustache sections collapse these into one row, keeping the DB catalog simpler and easier to maintain.`,
         codeExamples: [
           {
-            title: 'PROJECT substitution — Dockerfile example',
+            title: 'Variables — Dockerfile example',
             language: 'dockerfile',
-            code: `FROM eclipse-temurin:17-jre-alpine
+            code: `FROM eclipse-temurin:{{javaVersion}}-jre-alpine
 WORKDIR /app
-COPY target/{{artifactId}}-*.jar app.jar
+COPY target/{{artifactId}}-{{version}}.jar app.jar
+LABEL org.opencontainers.image.vendor="{{groupId}}"
 ENTRYPOINT ["java", "-jar", "app.jar"]`
           },
           {
-            title: 'PACKAGE substitution — Java config class example',
+            title: 'Dependency gate — MessagingConfig.java',
             language: 'java',
             code: `package {{packageName}}.config;
 
 import org.springframework.context.annotation.Configuration;
+{{#hasKafka}}
+import org.springframework.kafka.annotation.EnableKafka;
+{{/hasKafka}}
 
 @Configuration
-public class KafkaConfig {
-    // Kafka configuration for {{packageName}}
+{{#hasKafka}}
+@EnableKafka
+{{/hasKafka}}
+public class MessagingConfig {
+    {{^hasKafka}}
+    // Kafka not selected — no messaging infrastructure wired.
+    {{/hasKafka}}
 }`
+          },
+          {
+            title: 'Sub-option gate — conditional @KafkaListener example',
+            language: 'java',
+            code: `package {{packageName}}.kafka;
+
+{{#optKafkaConsumerExample}}
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Component;
+
+@Component
+public class KafkaConsumerExample {
+    @KafkaListener(topics = "demo-topic", groupId = "{{artifactId}}")
+    public void listen(String message) {
+        System.out.println("Received: " + message);
+    }
+}
+{{/optKafkaConsumerExample}}
+{{^optKafkaConsumerExample}}
+// Enable the "Consumer Example" sub-option to generate a sample @KafkaListener.
+{{/optKafkaConsumerExample}}`
+          },
+          {
+            title: 'application.yaml — combine dep gates + variables',
+            language: 'yaml',
+            code: `spring:
+  application:
+    name: {{artifactId}}
+{{#hasDataJpa}}
+  datasource:
+    url: jdbc:h2:mem:{{artifactId}}
+    username: sa
+{{/hasDataJpa}}
+{{#hasActuator}}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info{{#hasSecurity}},metrics{{/hasSecurity}}
+{{/hasActuator}}
+
+# Generated for {{packaging}} packaging on Java {{javaVersion}}.`
+          }
+        ],
+        callouts: [
+          {
+            type: 'tip',
+            text: 'Unknown variables render as empty strings — a typo in {{hasKafak}} silently produces nothing. Grep your templates when onboarding a new dep to sanity-check references.'
+          },
+          {
+            type: 'info',
+            text: 'Standalone section tags ({{#name}} / {{/name}} on their own line) strip surrounding whitespace by Mustache spec, keeping generated Java clean. Put content on the same line as the tag if you need a literal newline preserved.'
           }
         ]
       },
@@ -327,7 +407,7 @@ If a file contribution has a non-blank \`subOptionId\`, it will only be included
           { name: 'fileType', type: 'FileType', required: true, description: 'How the content is handled: STATIC_COPY, YAML_MERGE, TEMPLATE, or DELETE.', example: 'YAML_MERGE' },
           { name: 'targetPath', type: 'string', required: true, description: 'Output path within the generated project. May contain {{packagePath}} for Java source files.', example: 'src/main/java/{{packagePath}}/config/KafkaConfig.java' },
           { name: 'content', type: 'text', required: false, description: 'File content. Not needed for DELETE type. For TEMPLATE type, use substitution variables.', example: 'package {{packageName}}.config;' },
-          { name: 'substitutionType', type: 'SubstitutionType', required: false, description: 'Variable substitution mode: NONE (default), PROJECT (artifactId/groupId/version), PACKAGE (packageName).', example: 'PACKAGE' },
+          { name: 'substitutionType', type: 'SubstitutionType', required: false, description: 'Variable substitution mode: NONE (content written verbatim) or MUSTACHE (renders with jmustache — variables {{artifactId}}, {{groupId}}, {{version}}, {{packageName}}, {{packagePath}}, {{javaVersion}}, {{packaging}}, and boolean sections such as {{#hasKafka}}…{{/hasKafka}} or {{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}).', example: 'MUSTACHE' },
           { name: 'javaVersion', type: 'string', required: false, description: 'If set, this contribution only applies when the project Java version matches. Leave blank for all versions.', example: '21' },
           { name: 'subOptionId', type: 'string', required: false, description: 'If set, this contribution only applies when the user selects this sub-option under the parent dependency.', example: 'consumer-example' },
           { name: 'sortOrder', type: 'integer', required: false, description: 'Processing order. Matters when multiple contributions target the same file (e.g. multiple YAML_MERGE into the same application.yaml).', example: '0' }
@@ -643,7 +723,7 @@ MongoDB is excluded because it has no DDL contract.
 4. Detected tables appear as a list with a **Generate repository** checkbox per row (default on).
 5. Optional: change the sub-package (default \`entity\`).
 6. Save → the drawer closes and the dep card shows a small badge (✓ N tables).
-7. Click **Generate** or **Explore** — the UI switches to POST \`/starter-sql.zip\` / \`/starter-sql.preview\` with a JSON body, and entities/repositories appear in the downloaded project and file tree.`,
+7. Click **Generate** or **Explore** — the UI switches to POST \`/starter-wizard.zip\` / \`/starter-wizard.preview\` with a JSON body, and entities/repositories appear in the downloaded project and file tree.`,
         callouts: [
           {
             type: 'info',
@@ -698,17 +778,16 @@ Generated entities use \`@Data\`, \`@NoArgsConstructor\`, and \`@AllArgsConstruc
 | Method | Path | Purpose |
 |---|---|---|
 | \`GET\` | \`/metadata/sql-dialects\` | Dep-id → dialect name map (only catalog-present deps) |
-| \`POST\` | \`/starter-sql.zip\` | Generate ZIP with entities/repositories |
-| \`POST\` | \`/starter-sql.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
-| \`POST\` | \`/starter-sql.tables\` | Server-side parse: \`{ sql }\` → \`["users", "orders", ...]\` |
+| \`POST\` | \`/starter-wizard.zip\` | Generate ZIP with entities/repositories (shared with the OpenAPI wizard; both payloads can coexist) |
+| \`POST\` | \`/starter-wizard.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
 
 ### Why a New POST Endpoint
-\`/starter.zip\` is a GET whose query string carries all generation inputs. A few \`CREATE TABLE\` statements easily exceed typical URL length limits (~2–8 KB). A sibling POST endpoint that accepts the same fields plus \`sqlByDep\` / \`sqlOptions\` is the cleanest answer — no server-side session state, and the GET flow stays untouched for users who don't need the wizard.`,
+\`/starter.zip\` is a GET whose query string carries all generation inputs. A few \`CREATE TABLE\` statements easily exceed typical URL length limits (~2–8 KB). A sibling POST endpoint that accepts the same fields plus \`sqlByDep\` / \`sqlOptions\` (and \`specByDep\` / \`openApiOptions\` for the OpenAPI wizard) is the cleanest answer — no server-side session state, and the GET flow stays untouched for users who don't need the wizard.`,
         codeExamples: [
           {
             title: 'Generate a project with a users entity and its repository',
             language: 'bash',
-            code: `curl -o demo.zip -X POST http://localhost:8080/starter-sql.zip \\
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
   -H "Content-Type: application/json" \\
   -d '{
     "groupId":"com.menora","artifactId":"demo","name":"demo",
@@ -725,6 +804,234 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
           { name: 'sqlByDep', type: 'object', required: false, description: 'Map of depId → raw SQL script containing one or more CREATE TABLE statements.', example: '{ "postgresql": "CREATE TABLE users (...);" }' },
           { name: 'sqlOptions', type: 'object', required: false, description: 'Map of depId → { subPackage, tables[] }. tables[].generateRepository toggles repository emission per table; subPackage defaults to "entity".', example: '{ "postgresql": { "subPackage": "entity", "tables": [ { "name": "users", "generateRepository": true } ] } }' },
           { name: 'opts', type: 'object', required: false, description: 'Same sub-option map as used with /starter.zip\'s opts-{depId} query params — e.g. primary/secondary DB selection.', example: '{ "postgresql": ["pg-primary"] }' }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 10b. OPENAPI → CONTROLLER/DTO WIZARD
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'openapi-wizard',
+    title: 'OpenAPI Wizard',
+    icon: 'integration_instructions',
+    topics: [
+      {
+        id: 'openapi-wizard-what',
+        title: 'What the Wizard Does',
+        description: 'Paste an OpenAPI 3.x spec and get @RestController classes + DTO records.',
+        content: `### Purpose
+When the developer selects a web stack dependency (\`web\` or \`webflux\`), an **"OpenAPI…"** button appears on that card in the selected-dependencies panel. Clicking it opens a drawer where the developer pastes an OpenAPI 3.x spec (YAML or JSON). When they hit Generate, the backend parses the spec and writes \`@RestController\` classes plus DTO \`record\`s — already wired up with Spring MVC annotations, parameter binding, and validation.
+
+This is the symmetrical twin of the SQL wizard for API-first teams. It removes the boilerplate of hand-writing controller signatures and request/response DTOs after generation.
+
+### Which Dependencies Are Eligible
+The UI calls \`GET /metadata/openapi-capable-deps\` at page load — the button only appears on dep cards present in the response (currently \`web\` and \`webflux\`, intersected with deps actually in the catalog).
+
+### Flow At a Glance
+1. Developer selects a web stack dep (e.g. \`web\`).
+2. Clicks **OpenAPI…** on the dep's card.
+3. Pastes or uploads an OpenAPI 3.x spec (\`.yaml\`, \`.yml\`, or \`.json\`).
+4. A live **Detected Operations** list appears (debounced 400ms) showing entries like \`GET /pets\`, \`POST /pets/{id}\`.
+5. Optional: change the sub-packages (default \`api\` for controllers, \`dto\` for records).
+6. Save → the dep card shows an attachment badge.
+7. Click **Generate** or **Explore** — the UI sends POST \`/starter-wizard.zip\` / \`/starter-wizard.preview\` with a JSON body, and the generated controllers/records appear in the ZIP and the file tree. The endpoint is shared with the SQL wizard — a single request can carry both \`specByDep\` and \`sqlByDep\`.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'Method bodies always throw UnsupportedOperationException. The goal of v1 is a compiling skeleton — developers fill in the business logic after generation.'
+          },
+          {
+            type: 'info',
+            text: 'The SQL and OpenAPI wizards are composable — both share POST /starter-wizard.zip, so a single request can carry sqlByDep (attached to a JPA dep) and specByDep (attached to a web dep) together. Empty maps are a no-op.'
+          }
+        ]
+      },
+      {
+        id: 'openapi-wizard-mapping',
+        title: 'Schema → Java Type Mapping',
+        description: 'How OpenAPI schemas become Java records and types.',
+        content: `### Type Mapping
+The wizard maps OpenAPI types (and their \`format\` hints) to Java types directly on the generated record fields and controller signatures.
+
+| OpenAPI Schema | Java Type | Notes |
+|---|---|---|
+| \`string\` | \`String\` | |
+| \`string\`, \`format: date\` | \`LocalDate\` | |
+| \`string\`, \`format: date-time\` | \`LocalDateTime\` | |
+| \`string\`, \`format: uuid\` | \`UUID\` | |
+| \`string\`, \`format: binary\` | \`byte[]\` | |
+| \`integer\` | \`Integer\` | |
+| \`integer\`, \`format: int64\` | \`Long\` | |
+| \`number\` / \`number\`, \`format: float\` | \`Double\` / \`Float\` | |
+| \`number\`, \`format: double\` | \`Double\` | |
+| \`boolean\` | \`Boolean\` | |
+| \`array\` | \`List<T>\` | recurses on \`items\` |
+| \`object\` with \`$ref\` | referenced record name | |
+| \`allOf\` / \`oneOf\` / \`anyOf\` | \`Object\` | with \`// TODO\` comment |
+
+### Controllers
+Operations are grouped by their **first tag** (untagged operations go to \`DefaultController\`). One method is emitted per operation:
+
+- Class name: \`{Tag}Controller\` (e.g. \`PetsController\`)
+- Class-level annotation: \`@RestController\`, \`@Validated\`
+- Method annotation: \`@GetMapping\`, \`@PostMapping\`, \`@PutMapping\`, \`@DeleteMapping\`, \`@PatchMapping\`
+- Parameters: \`@PathVariable\`, \`@RequestParam\`, \`@RequestHeader\`, \`@RequestBody\` (with \`@Valid\`)
+- Body: \`throw new UnsupportedOperationException("TODO: implement ...")\`
+- Duplicate \`operationId\`s within a tag are disambiguated by appending \`_2\`, \`_3\`, …
+
+### Records
+Every entry under \`components.schemas.*\` becomes a Java \`record\` with one component per property. Required fields keep their raw Java type; optional fields do too (nullability is deferred to the developer — v1 does not wrap optionals in \`Optional<T>\`).
+
+### Packages
+- Controllers → \`{packageName}.{apiSubPackage}\` (default \`api\`)
+- Records → \`{packageName}.{dtoSubPackage}\` (default \`dto\`)`,
+      },
+      {
+        id: 'openapi-wizard-api',
+        title: 'REST API',
+        description: 'POST endpoints and companion metadata.',
+        content: `### Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| \`GET\` | \`/metadata/openapi-capable-deps\` | Dep IDs eligible for the wizard (intersected with deps in the catalog) |
+| \`POST\` | \`/starter-wizard.zip\` | Generate ZIP with controllers and DTO records (shared with the SQL wizard) |
+| \`POST\` | \`/starter-wizard.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
+| \`POST\` | \`/starter-wizard.detect-paths\` | Server-side parse: \`{ spec }\` → \`["GET /pets", "POST /pets/{id}", ...]\` for the drawer's live preview |
+
+### Why a New POST Endpoint
+OpenAPI specs regularly exceed typical URL length limits (~2–8 KB) — even the Petstore example is ~2 KB of YAML. Using a sibling POST endpoint that accepts the same generation fields plus \`specByDep\` and \`openApiOptions\` keeps the wizard decoupled from the GET flow and side-steps URL size ceilings entirely.
+
+### Parse Errors
+If the spec is malformed, the backend returns HTTP 400 with a body like \`{ "error": "...", "messages": ["attribute info.version is missing", ...] }\`. The drawer surfaces those messages in a yellow banner and disables the Save button until the spec parses cleanly.`,
+        codeExamples: [
+          {
+            title: 'Generate a project from a tiny Petstore spec',
+            language: 'bash',
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "groupId":"com.menora","artifactId":"demo","name":"demo",
+    "packageName":"com.menora.demo","type":"maven-project","language":"java",
+    "bootVersion":"3.2.1","packaging":"jar","javaVersion":"21",
+    "dependencies":["web"],
+    "specByDep":{"web":"openapi: 3.0.3\\ninfo: { title: Petstore, version: 1.0.0 }\\npaths:\\n  /pets/{id}:\\n    get:\\n      tags: [pets]\\n      operationId: getPetById\\n      parameters: [{ name: id, in: path, required: true, schema: { type: integer, format: int64 } }]\\n      responses: { 200: { content: { application/json: { schema: { $ref: \\"#/components/schemas/Pet\\" } } } } }\\ncomponents:\\n  schemas:\\n    Pet: { type: object, properties: { id: { type: integer, format: int64 }, name: { type: string } }, required: [id, name] }"},
+    "openApiOptions":{"web":{"apiSubPackage":"api","dtoSubPackage":"dto"}}
+  }'
+unzip -p demo.zip demo/src/main/java/com/menora/demo/api/PetsController.java`
+          },
+          {
+            title: 'Example Petstore OpenAPI spec (YAML)',
+            language: 'yaml',
+            code: `openapi: 3.0.3
+info:
+  title: Petstore
+  version: 1.0.0
+paths:
+  /pets:
+    get:
+      tags: [pets]
+      operationId: listPets
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Pet' }
+    post:
+      tags: [pets]
+      operationId: createPet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pet' }
+      responses:
+        '201': { description: Created }
+  /pets/{id}:
+    get:
+      tags: [pets]
+      operationId: getPetById
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pet' }
+components:
+  schemas:
+    Pet:
+      type: object
+      required: [id, name]
+      properties:
+        id:   { type: integer, format: int64 }
+        name: { type: string }
+        tag:  { type: string }`
+          },
+          {
+            title: 'Generated PetsController.java',
+            language: 'java',
+            code: `package com.menora.demo.api;
+
+import com.menora.demo.dto.Pet;
+import jakarta.validation.Valid;
+import java.util.List;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@Validated
+public class PetsController {
+
+    @GetMapping("/pets")
+    public List<Pet> listPets() {
+        throw new UnsupportedOperationException("TODO: implement listPets");
+    }
+
+    @PostMapping("/pets")
+    public void createPet(@Valid @RequestBody Pet body) {
+        throw new UnsupportedOperationException("TODO: implement createPet");
+    }
+
+    @GetMapping("/pets/{id}")
+    public Pet getPetById(@PathVariable Long id) {
+        throw new UnsupportedOperationException("TODO: implement getPetById");
+    }
+}`
+          }
+        ],
+        fields: [
+          { name: 'specByDep', type: 'object', required: false, description: 'Map of depId → raw OpenAPI 3.x spec text (YAML or JSON). swagger-parser detects the format automatically.', example: '{ "web": "openapi: 3.0.3\\n..." }' },
+          { name: 'openApiOptions', type: 'object', required: false, description: 'Map of depId → { apiSubPackage, dtoSubPackage }. Controllers go to apiSubPackage (default "api"); records go to dtoSubPackage (default "dto").', example: '{ "web": { "apiSubPackage": "api", "dtoSubPackage": "dto" } }' },
+          { name: 'dependencies', type: 'array', required: true, description: 'The usual dep-id array. Only deps listed in /metadata/openapi-capable-deps will have their entries in specByDep processed.', example: '[ "web" ]' }
+        ]
+      },
+      {
+        id: 'openapi-wizard-limits',
+        title: 'Notes & Limitations (v1)',
+        description: 'What this generation does, what it does not, and why.',
+        content: `### What v1 Produces
+- One \`{Tag}Controller\` class per tag (operations without a tag go to \`DefaultController\`).
+- One Java \`record\` per entry in \`components.schemas.*\`.
+- Method bodies always throw \`UnsupportedOperationException\` — the project compiles; the logic is yours to fill in.
+
+### What v1 Does Not Produce
+- **No client stubs** — Feign, WebClient, and RestTemplate-based clients are out of scope.
+- **No polymorphism** — \`allOf\`, \`oneOf\`, \`anyOf\` fall back to \`Object\` with a \`// TODO\` comment.
+- **No inline schemas** — only named schemas under \`components.schemas.*\` become records. Inline response/request schemas also fall back to \`Object\`.
+- **No OpenAPI annotation emission** — Springdoc / springfox annotations are not added. Add \`springdoc-openapi-starter-webmvc-ui\` as a dependency if you want a live Swagger UI.
+
+### Why These Choices
+The goal of v1 is to kill boilerplate without opinionating the implementation. Polymorphism, null semantics, and client generation are all design decisions that different teams handle differently — forcing a choice here creates more work for teams that wanted the other answer. Keep v1 tight, iterate on real feedback.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'If you want interactive API docs, add springdoc-openapi-starter-webmvc-ui as a regular dependency (not via the wizard). It scans your controllers at runtime and reconstructs a Swagger UI — no annotation work needed for simple cases.'
+          }
         ]
       }
     ]
@@ -768,7 +1075,97 @@ Export the full configuration to \`data/config-backup-YYYY-MM-DD.json\` before a
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // 11. COMMON WORKFLOWS
+  // 11. ACTIVITY & AUDIT
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'activity',
+    title: 'Activity & Audit',
+    icon: 'monitoring',
+    topics: [
+      {
+        id: 'activity-what',
+        title: 'Generation Audit Log',
+        description: 'See what teams actually generate, how fast, and how often generation fails.',
+        content: `### What It Records
+Every call to a \`/starter*\` endpoint (ZIP download, preview, SQL wizard, multi-module) is recorded with: timestamp, endpoint, artifact/group IDs, Boot version, Java version, packaging, language, selected dependencies, duration in milliseconds, outcome (SUCCESS/FAILURE), and optional client IP.
+
+The audit filter runs asynchronously on the response path — a database hiccup never breaks project generation.
+
+### Where to Find It
+Open the admin and click the **Activity** tab in the sidebar. You'll see:
+- **Four summary cards** — total generations, success rate, p50 duration, p95 duration.
+- **Top Dependencies** — which deps are actually selected most, with a horizontal bar chart.
+- **Boot Versions** — distribution of Boot versions in use.
+- **Recent Events table** — the last 50 generations with full detail (artifact ID, deps selected, duration, status).
+
+### Time Window
+The toggle at the top right switches the rollup between **1 day**, **7 days**, **30 days** (default), and **90 days**. Summary cards, top lists, and the recent-events table all re-fetch when you change it.
+
+### Why This Matters
+- **Spot drift** — if teams keep generating the same 10 deps together, make a starter template for them.
+- **Debug failures** — the recent events table flags failed generations with the error message, so you don't need to tail server logs.
+- **Capacity planning** — the p95/p99 timers tell you whether generation has slowed after a catalog change.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'The `POST /starter-wizard.zip` endpoint uses a JSON body, so its audit record captures endpoint/status/duration/remote-addr but not the SQL/OpenAPI wizard parameters. That is a deliberate trade-off — query-param capture would miss the wizards entirely.'
+          }
+        ]
+      },
+      {
+        id: 'activity-api',
+        title: 'REST API & Metrics',
+        description: 'Hit the endpoints directly for dashboards, scripts, or Prometheus scrapes.',
+        content: `### REST Endpoints
+Both endpoints require admin auth (\`Authorization: Bearer <token>\`).
+
+\`GET /admin/activity/recent?limit=50\` — most recent events, newest first.
+
+\`GET /admin/activity/summary?days=30\` — rollup for the given window, returning total count, success rate, p50/p95/p99 durations, top 10 dependencies, and Boot-version distribution.
+
+### Micrometer Metrics
+The filter also publishes to Micrometer, exposed on \`/actuator/metrics\`:
+
+- \`menora.generation.count\` — counter tagged by \`status=success|failure\`
+- \`menora.generation.duration\` — timer tagged by status, with p50/p95/p99 percentile histograms
+
+Point a Prometheus scraper at \`/actuator/prometheus\` (add \`prometheus\` to the exposure list first) if you want to ship these to a dashboard.
+
+### Privacy Toggle
+Client IPs are recorded by default. To disable (e.g. for GDPR compliance), set in \`application.yml\`:
+
+\`\`\`
+menora:
+  audit:
+    log-remote-addr: false
+\`\`\`
+
+Existing rows are unaffected; only new events skip the field.`,
+        codeExamples: [
+          {
+            title: 'Pull the last 50 events',
+            language: 'bash',
+            code: `curl -H "Authorization: Bearer $TOKEN" \\
+  http://localhost:8080/admin/activity/recent?limit=50`
+          },
+          {
+            title: 'Get a 7-day summary',
+            language: 'bash',
+            code: `curl -H "Authorization: Bearer $TOKEN" \\
+  http://localhost:8080/admin/activity/summary?days=7`
+          },
+          {
+            title: 'Check the Micrometer counter',
+            language: 'bash',
+            code: `curl http://localhost:8080/actuator/metrics/menora.generation.count`
+          }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 12. COMMON WORKFLOWS
   // ─────────────────────────────────────────────────────────────────
   {
     id: 'workflows',
@@ -791,7 +1188,7 @@ Export the full configuration to \`data/config-backup-YYYY-MM-DD.json\` before a
           },
           {
             title: 'Add File Contributions',
-            description: 'Go to Config → File Contributions. For each file to inject (e.g. application-mylib.yml for YAML config, MyLibConfig.java for a Java config class), click + Add. Set dependencyId to your new depId, fileType (YAML_MERGE for YAML, TEMPLATE for Java), targetPath, content, substitutionType (PACKAGE for Java files), and sortOrder.'
+            description: 'Go to Config → File Contributions. For each file to inject (e.g. application-mylib.yml for YAML config, MyLibConfig.java for a Java config class), click + Add. Set dependencyId to your new depId, fileType (YAML_MERGE for YAML, TEMPLATE for Java), targetPath, content, substitutionType (MUSTACHE for Java files), and sortOrder.'
           },
           {
             title: 'Add Build Customizations (if needed)',
@@ -835,7 +1232,7 @@ Export the full configuration to \`data/config-backup-YYYY-MM-DD.json\` before a
           },
           {
             title: 'Set Target Path and Content',
-            description: 'Enter the target path within the generated project (e.g. scripts/setup.sh). For TEMPLATE type, use substitution variables like {{artifactId}} and set substitutionType to PROJECT.'
+            description: 'Enter the target path within the generated project (e.g. scripts/setup.sh). For TEMPLATE type, use substitution variables like {{artifactId}} and set substitutionType to MUSTACHE.'
           },
           {
             title: 'Save and Test',
@@ -851,7 +1248,7 @@ Export the full configuration to \`data/config-backup-YYYY-MM-DD.json\` before a
         workflowSteps: [
           {
             title: 'Create the Java 17 Dockerfile Contribution',
-            description: 'Go to File Contributions → + Add. Set: dependencyId = __common__, fileType = TEMPLATE, targetPath = Dockerfile, substitutionType = PROJECT, javaVersion = 17. Write the Dockerfile content using eclipse-temurin:17-jre-alpine base image. Include {{artifactId}} in the COPY command.'
+            description: 'Go to File Contributions → + Add. Set: dependencyId = __common__, fileType = TEMPLATE, targetPath = Dockerfile, substitutionType = MUSTACHE, javaVersion = 17. Write the Dockerfile content using eclipse-temurin:17-jre-alpine base image. Include {{artifactId}} in the COPY command.'
           },
           {
             title: 'Create the Java 21 Dockerfile Contribution',

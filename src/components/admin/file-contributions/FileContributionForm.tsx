@@ -4,11 +4,10 @@ import { COMMON_DEP_ID } from '../shared/adminConstants'
 import { CodeEditor } from './CodeEditor'
 
 const FILE_TYPES: FileType[] = ['STATIC_COPY', 'YAML_MERGE', 'TEMPLATE', 'DELETE']
-const SUB_TYPES: SubstitutionType[] = ['NONE', 'PROJECT', 'PACKAGE']
+const SUB_TYPES: SubstitutionType[] = ['NONE', 'MUSTACHE']
 const SUB_TYPE_HINTS: Record<SubstitutionType, string> = {
   NONE: 'No substitution — content is written verbatim.',
-  PROJECT: 'Available variables: {{artifactId}}, {{groupId}}, {{version}}',
-  PACKAGE: 'Available variable: {{packageName}} — use {{packagePath}} in Target Path',
+  MUSTACHE: 'Variables: {{artifactId}}, {{groupId}}, {{version}}, {{packageName}}, {{packagePath}}, {{javaVersion}}, {{packaging}}. Sections: {{#hasKafka}}…{{/hasKafka}}, {{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}. Use {{packagePath}} in Target Path too.',
 }
 
 interface Props {

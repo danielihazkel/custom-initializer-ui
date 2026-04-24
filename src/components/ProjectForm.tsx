@@ -11,11 +11,14 @@ function FloatingInput({
   value: string,
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void,
 }) {
+  const isRequired = ['groupId', 'artifactId', 'name', 'packageName'].includes(id);
+  const showError = isRequired && value.trim() === '';
+
   return (
     <div className="relative group">
       <input
         id={id}
-        className="peer w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 pt-6 pb-2 text-sm text-on-surface focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all placeholder-transparent shadow-sm"
+        className={`peer w-full bg-surface-container-high border rounded-xl px-4 pt-6 pb-2 text-sm text-on-surface outline-none transition-all placeholder-transparent shadow-sm ${showError ? 'border-error/50 focus:ring-2 focus:ring-error/30 focus:border-error' : 'border-outline-variant focus:ring-2 focus:ring-primary/30 focus:border-primary'}`}
         type="text"
         placeholder={label}
         value={value}
@@ -23,10 +26,16 @@ function FloatingInput({
       />
       <label
         htmlFor={id}
-        className="absolute left-4 top-2 text-[10px] uppercase font-bold text-primary transition-all peer-placeholder-shown:top-4 peer-placeholder-shown:text-sm peer-placeholder-shown:text-on-surface-variant peer-placeholder-shown:normal-case peer-placeholder-shown:font-medium peer-focus:top-2 peer-focus:text-[10px] peer-focus:uppercase peer-focus:font-bold peer-focus:text-primary cursor-text pointer-events-none"
+        className={`absolute left-4 top-2 text-[10px] uppercase font-bold transition-all peer-placeholder-shown:top-4 peer-placeholder-shown:text-sm peer-placeholder-shown:normal-case peer-placeholder-shown:font-medium peer-focus:top-2 peer-focus:text-[10px] peer-focus:uppercase peer-focus:font-bold cursor-text pointer-events-none ${showError ? 'text-error peer-placeholder-shown:text-error/70 peer-focus:text-error' : 'text-primary peer-placeholder-shown:text-on-surface-variant peer-focus:text-primary'}`}
       >
         {label}
+        {showError && <span className="ml-1 text-error">*</span>}
       </label>
+      {showError && (
+        <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-error" style={{ fontSize: '18px' }}>
+          error
+        </span>
+      )}
     </div>
   )
 }

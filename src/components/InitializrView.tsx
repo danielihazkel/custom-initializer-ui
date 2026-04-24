@@ -1,9 +1,10 @@
 import { TemplatePicker } from './TemplatePicker'
+import { PresetPicker } from './PresetPicker'
 import { OptionsPanel } from './OptionsPanel'
 import { ProjectForm } from './ProjectForm'
 import { ModuleSelector } from './ModuleSelector'
 import { DependencySelector } from './DependencySelector'
-import type { InitializrMetadata, ProjectFormValues, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry } from '../types'
 
 interface InitializrViewProps {
   metadata: InitializrMetadata | null
@@ -14,6 +15,9 @@ interface InitializrViewProps {
   sqlDialects: SqlDialects
   sqlByDep: SqlByDep
   onSqlByDepChange: (depId: string, entry: SqlWizardEntry | null) => void
+  openApiCapableDeps: string[]
+  openApiByDep: OpenApiByDep
+  onOpenApiByDepChange: (depId: string, entry: OpenApiWizardEntry | null) => void
 
   form: ProjectFormValues
   selectedDeps: string[]
@@ -29,6 +33,14 @@ interface InitializrViewProps {
   onMultiModuleToggle: () => void
   onModulesChange: (modules: string[]) => void
   onCompareOpen: () => void
+
+  presets: ProjectPreset[]
+  recents: ProjectPreset[]
+  currentSnapshot: ProjectSnapshot
+  onPresetLoad: (snapshot: ProjectSnapshot) => void
+  onPresetSave: (name: string, snapshot: ProjectSnapshot) => void
+  onPresetDelete: (id: string) => void
+  onRecentDelete: (id: string) => void
 }
 
 export function InitializrView({
@@ -40,6 +52,9 @@ export function InitializrView({
   sqlDialects,
   sqlByDep,
   onSqlByDepChange,
+  openApiCapableDeps,
+  openApiByDep,
+  onOpenApiByDepChange,
   form,
   selectedDeps,
   selectedOptions,
@@ -52,7 +67,14 @@ export function InitializrView({
   onTemplateSelect,
   onMultiModuleToggle,
   onModulesChange,
-  onCompareOpen
+  onCompareOpen,
+  presets,
+  recents,
+  currentSnapshot,
+  onPresetLoad,
+  onPresetSave,
+  onPresetDelete,
+  onRecentDelete,
 }: InitializrViewProps) {
   return (
     <>
@@ -62,6 +84,15 @@ export function InitializrView({
           activeTemplateId={activeTemplate}
           onSelect={onTemplateSelect}
           onCompare={onCompareOpen}
+        />
+        <PresetPicker
+          presets={presets}
+          recents={recents}
+          currentSnapshot={currentSnapshot}
+          onLoad={onPresetLoad}
+          onSave={onPresetSave}
+          onDeletePreset={onPresetDelete}
+          onDeleteRecent={onRecentDelete}
         />
       </div>
       <div className="max-w-7xl mx-auto px-8 grid grid-cols-12 gap-10 relative z-10 animate-fade-in-up">
@@ -84,7 +115,7 @@ export function InitializrView({
             <div className="glass-panel rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1.5">
+                  <h3 id="multi-module-label" className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1.5">
                     <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
                     Multi-Module Project
                   </h3>
@@ -93,6 +124,7 @@ export function InitializrView({
                 <button
                   role="switch"
                   aria-checked={multiModuleEnabled}
+                  aria-labelledby="multi-module-label"
                   onClick={onMultiModuleToggle}
                   className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${multiModuleEnabled ? 'bg-primary' : 'bg-surface-container-high'}`}
                   aria-label="Toggle multi-module"
@@ -124,6 +156,9 @@ export function InitializrView({
             sqlDialects={sqlDialects}
             sqlByDep={sqlByDep}
             onSqlByDepChange={onSqlByDepChange}
+            openApiCapableDeps={openApiCapableDeps}
+            openApiByDep={openApiByDep}
+            onOpenApiByDepChange={onOpenApiByDepChange}
           />
         </section>
       </div>

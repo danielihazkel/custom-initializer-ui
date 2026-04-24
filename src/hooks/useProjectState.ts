@@ -1,6 +1,23 @@
 import { useState, useEffect, useCallback } from 'react'
 import { parseUrlParams, defaultForm } from '../utils/projectUtils'
-import type { InitializrMetadata, ProjectFormValues, StarterTemplate, SqlByDep, SqlWizardEntry } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, StarterTemplate, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry } from '../types'
+
+function normalizeOpenApiByDep(raw: unknown): OpenApiByDep {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: OpenApiByDep = {}
+  for (const [depId, value] of Object.entries(raw as Record<string, Partial<OpenApiWizardEntry>>)) {
+    if (!value || typeof value !== 'object') continue
+    out[depId] = {
+      spec: value.spec ?? '',
+      apiSubPackage: value.apiSubPackage ?? 'api',
+      dtoSubPackage: value.dtoSubPackage ?? 'dto',
+      clientSubPackage: value.clientSubPackage ?? 'client',
+      mode: value.mode ?? 'CONTROLLERS',
+      baseUrlProperty: value.baseUrlProperty ?? 'openapi.client.base-url',
+    }
+  }
+  return out
+}
 
 export function useProjectState(metadata: InitializrMetadata | null) {
   const [form, setForm] = useState<ProjectFormValues>(() => {
@@ -42,6 +59,11 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     return saved ? JSON.parse(saved) : {}
   })
 
+  const [openApiByDep, setOpenApiByDep] = useState<OpenApiByDep>(() => {
+    const saved = localStorage.getItem('openApiByDep')
+    return saved ? normalizeOpenApiByDep(JSON.parse(saved)) : {}
+  })
+
   // Persist form state to localStorage
   useEffect(() => { localStorage.setItem('formValues', JSON.stringify(form)) }, [form])
   useEffect(() => { localStorage.setItem('selectedDeps', JSON.stringify(selected)) }, [selected])
@@ -49,6 +71,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
   useEffect(() => { localStorage.setItem('multiModuleEnabled', String(multiModuleEnabled)) }, [multiModuleEnabled])
   useEffect(() => { localStorage.setItem('selectedModules', JSON.stringify(selectedModules)) }, [selectedModules])
   useEffect(() => { localStorage.setItem('sqlByDep', JSON.stringify(sqlByDep)) }, [sqlByDep])
+  useEffect(() => { localStorage.setItem('openApiByDep', JSON.stringify(openApiByDep)) }, [openApiByDep])
 
   // Sync form state into the URL so the page is shareable
   useEffect(() => {
@@ -122,6 +145,11 @@ export function useProjectState(metadata: InitializrMetadata | null) {
           for (const id of removed) delete next[id]
           return next
         })
+        setOpenApiByDep(prev => {
+          const next = { ...prev }
+          for (const id of removed) delete next[id]
+          return next
+        })
       }
       return newSelected
     })
@@ -130,6 +158,15 @@ export function useProjectState(metadata: InitializrMetadata | null) {
 
   const handleSqlByDepChange = useCallback((depId: string, entry: SqlWizardEntry | null) => {
     setSqlByDep(prev => {
+      const next = { ...prev }
+      if (entry === null) delete next[depId]
+      else next[depId] = entry
+      return next
+    })
+  }, [])
+
+  const handleOpenApiByDepChange = useCallback((depId: string, entry: OpenApiWizardEntry | null) => {
+    setOpenApiByDep(prev => {
       const next = { ...prev }
       if (entry === null) delete next[depId]
       else next[depId] = entry
@@ -148,9 +185,11 @@ export function useProjectState(metadata: InitializrMetadata | null) {
       setSelected([])
       setSelectedOptions({})
       setSqlByDep({})
+      setOpenApiByDep({})
       return
     }
     setSqlByDep({})
+    setOpenApiByDep({})
     setActiveTemplate(template.id)
     setSelected(template.dependencies.map(d => d.depId))
     const opts: Record<string, string[]> = {}
@@ -169,11 +208,23 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     }
   }, [])
 
+  const applySnapshot = useCallback((snapshot: ProjectSnapshot) => {
+    setForm({ ...snapshot.form })
+    setSelected([...snapshot.selected])
+    setSelectedOptions(JSON.parse(JSON.stringify(snapshot.selectedOptions)))
+    setSqlByDep(JSON.parse(JSON.stringify(snapshot.sqlByDep)))
+    setOpenApiByDep(normalizeOpenApiByDep(JSON.parse(JSON.stringify(snapshot.openApiByDep ?? {}))))
+    setMultiModuleEnabled(snapshot.multiModuleEnabled)
+    setSelectedModules([...snapshot.selectedModules])
+    setActiveTemplate(null)
+  }, [])
+
   return {
     form,
     selected,
     selectedOptions,
     sqlByDep,
+    openApiByDep,
     multiModuleEnabled,
     selectedModules,
     activeTemplate,
@@ -183,7 +234,9 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     handleDepsChange,
     handleOptionsChange,
     handleSqlByDepChange,
+    handleOpenApiByDepChange,
     handleTemplateSelect,
+    applySnapshot,
     setActiveTemplate,
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import type { Toast } from '../../../types'
 
 interface StatusToastProps {
@@ -15,18 +16,21 @@ export function StatusToast({ toast, onClear }: StatusToastProps) {
 
   if (!toast) return null
 
-  return (
+  return createPortal(
     <div
-      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-sm shadow-lg flex items-center gap-2 transition-all ${
+      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-5 py-3 rounded-xl text-sm shadow-lg flex items-center gap-2 transition-all max-w-[90vw] ${
         toast.type === 'success'
           ? 'bg-tertiary-container text-on-tertiary-container'
           : 'bg-error-container text-on-error-container'
       }`}
+      role="status"
+      aria-live="polite"
     >
-      <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
+      <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: '16px' }}>
         {toast.type === 'success' ? 'check_circle' : 'error'}
       </span>
-      {toast.message}
-    </div>
+      <span className="break-words">{toast.message}</span>
+    </div>,
+    document.body
   )
 }

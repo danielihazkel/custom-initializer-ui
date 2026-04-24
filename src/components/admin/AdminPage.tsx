@@ -6,6 +6,7 @@ import { AdminSidebar } from './AdminSidebar'
 import { AdminGlobalActions } from './AdminGlobalActions'
 
 import { OverviewTab } from './overview/OverviewTab'
+import { ActivityTab } from './activity/ActivityTab'
 import { DependencyGroupsTab } from './dependency-groups/DependencyGroupsTab'
 import { DependencyEntriesTab } from './dependency-entries/DependencyEntriesTab'
 import { FileContributionsTab } from './file-contributions/FileContributionsTab'
@@ -67,6 +68,7 @@ export function AdminPage() {
               transition={{ duration: 0.2 }}
             >
               {activeTab === 'overview'   && <OverviewTab />}
+              {activeTab === 'activity'   && <ActivityTab />}
               {activeTab === 'groups'     && <DependencyGroupsTab />}
               {activeTab === 'entries'    && <DependencyEntriesTab />}
               {activeTab === 'files'      && <FileContributionsTab />}

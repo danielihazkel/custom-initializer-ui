@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import type { AdminFileContribution, AdminDependencyEntry, AdminSubOption, Toast } from '../../../types'
-import { useAdminResource, adminFetch } from '../../../hooks/useAdminResource'
+import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
 import { useAdminMetadata } from '../../../hooks/useAdminMetadata'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -15,6 +15,21 @@ const EMPTY: Partial<AdminFileContribution> = {
 
 function truncate(s: string, n: number) {
   return s.length > n ? s.slice(0, n) + '…' : s
+}
+
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof AdminApiError) {
+    const body = err.body as { detail?: string; error?: string } | null
+    if (body?.detail) return body.detail
+    if (body?.error) return body.error
+    return `HTTP ${err.status}`
+  }
+  return String(err)
+}
+
+function isSyntaxError(err: AdminApiError): boolean {
+  const body = err.body as { detail?: string } | null
+  return typeof body?.detail === 'string' && body.detail.startsWith('Syntax validation failed')
 }
 
 export function FileContributionsTab() {
@@ -73,7 +88,13 @@ export function FileContributionsTab() {
       setToast({ message: 'Saved successfully', type: 'success' })
       closeDrawer()
     } catch (err) {
-      setToast({ message: String(err), type: 'error' })
+      const message = extractErrorMessage(err)
+      if (err instanceof AdminApiError && err.status === 400 && isSyntaxError(err)) {
+        setErrors({ content: message })
+        setToast({ message, type: 'error' })
+      } else {
+        setToast({ message, type: 'error' })
+      }
     } finally {
       setSaving(false)
     }

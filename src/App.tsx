@@ -3,11 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useMetadata } from './hooks/useMetadata'
 import { useExtensions } from './hooks/useExtensions'
 import { useSqlDialects } from './hooks/useSqlDialects'
+import { useOpenApiCapable } from './hooks/useOpenApiCapable'
 import { useCompatibility } from './hooks/useCompatibility'
 import { useProjectPreview } from './hooks/useProjectPreview'
 import { useStarterTemplates } from './hooks/useStarterTemplates'
 import { useModuleTemplates } from './hooks/useModuleTemplates'
 import { useProjectState } from './hooks/useProjectState'
+import { useProjectPresets } from './hooks/useProjectPresets'
 
 import { InitializrView } from './components/InitializrView'
 import { ProjectPreview } from './components/ProjectPreview'
@@ -20,13 +22,14 @@ const GuideView = lazy(() => import('./components/guide/GuideView').then(m => ({
 import { CommandPalette } from './components/CommandPalette'
 import { AppToast } from './components/AppToast'
 
-import { triggerDownload } from './utils/projectUtils'
+import { triggerDownload, captureSnapshot } from './utils/projectUtils'
 import type { Toast } from './types'
 
 export default function App() {
   const { metadata, loading, error } = useMetadata()
   const { extensions } = useExtensions()
   const { dialects: sqlDialects } = useSqlDialects()
+  const { depIds: openApiCapableDeps } = useOpenApiCapable()
   const { rules: compatibilityRules } = useCompatibility()
   const { templates } = useStarterTemplates()
   const { modules: moduleTemplates } = useModuleTemplates()
@@ -37,6 +40,7 @@ export default function App() {
     selected: selectedDeps,
     selectedOptions,
     sqlByDep,
+    openApiByDep,
     multiModuleEnabled,
     selectedModules,
     activeTemplate,
@@ -45,9 +49,30 @@ export default function App() {
     handleDepsChange,
     handleOptionsChange,
     handleSqlByDepChange,
+    handleOpenApiByDepChange,
     handleTemplateSelect,
+    applySnapshot,
     setSelectedModules
   } = useProjectState(metadata)
+
+  const {
+    presets,
+    recents,
+    savePreset,
+    deletePreset,
+    deleteRecent,
+    pushRecent,
+  } = useProjectPresets()
+
+  const currentSnapshot = captureSnapshot({
+    form,
+    selected: selectedDeps,
+    selectedOptions,
+    sqlByDep,
+    openApiByDep,
+    multiModuleEnabled,
+    selectedModules,
+  })
 
   const [shareCopied, setShareCopied] = useState(false)
   const [generateSuccess, setGenerateSuccess] = useState(false)
@@ -96,7 +121,8 @@ export default function App() {
   }
 
   function handleGenerate(): void {
-    triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep)
+    triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep)
+    pushRecent(currentSnapshot)
     setGenerateSuccess(true)
     setAppToast({ message: 'Project downloaded!', type: 'success' })
     setTimeout(() => setGenerateSuccess(false), 2000)
@@ -142,6 +168,18 @@ export default function App() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          {/* Search button */}
+          <button
+            onClick={() => setCommandPaletteOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-high transition-colors duration-200 text-secondary hover:text-on-surface group shadow-sm"
+            aria-label="Search dependencies"
+            title="Search dependencies (Cmd/Ctrl + K)"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>search</span>
+            <span className="hidden sm:inline text-xs font-medium">Search</span>
+            <span className="hidden sm:flex border border-outline-variant bg-surface-container rounded px-1.5 py-0.5 text-[10px] font-bold text-secondary group-hover:text-on-surface">⌘K</span>
+          </button>
+
           {/* Share button */}
           <button
             onClick={handleShare}
@@ -189,7 +227,7 @@ export default function App() {
             </span>
           </button>
           <button
-            onClick={() => fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep)}
+            onClick={() => { fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep); pushRecent(currentSnapshot) }}
             disabled={previewLoading}
             title={previewError ?? 'Preview project files before downloading'}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
@@ -270,6 +308,9 @@ export default function App() {
             sqlDialects={sqlDialects}
             sqlByDep={sqlByDep}
             onSqlByDepChange={handleSqlByDepChange}
+            openApiCapableDeps={openApiCapableDeps}
+            openApiByDep={openApiByDep}
+            onOpenApiByDepChange={handleOpenApiByDepChange}
             form={form}
             selectedDeps={selectedDeps}
             selectedOptions={selectedOptions}
@@ -283,6 +324,13 @@ export default function App() {
             onMultiModuleToggle={() => setMultiModuleEnabled(v => !v)}
             onModulesChange={setSelectedModules}
             onCompareOpen={() => setCompareOpen(true)}
+            presets={presets}
+            recents={recents}
+            currentSnapshot={currentSnapshot}
+            onPresetLoad={applySnapshot}
+            onPresetSave={savePreset}
+            onPresetDelete={deletePreset}
+            onRecentDelete={deleteRecent}
           />
         )}
       </main>
@@ -304,7 +352,7 @@ export default function App() {
           previousPreview={previousPreview}
           artifactId={form.artifactId}
           onClose={clearPreview}
-          onDownload={() => { triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep); clearPreview() }}
+          onDownload={() => { triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep); clearPreview() }}
 
         />
       )}

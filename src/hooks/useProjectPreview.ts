@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
-import type { PreviewResponse, ProjectFormValues, SqlByDep } from '../types'
+import type { PreviewResponse, ProjectFormValues, SqlByDep, OpenApiByDep } from '../types'
+import { buildWizardBody } from '../utils/projectUtils'
 
 export function useProjectPreview() {
   const [preview,         setPreview]         = useState<PreviewResponse | null>(null)
@@ -14,6 +15,7 @@ export function useProjectPreview() {
     selectedOptions: Record<string, string[]>,
     multiModule?: { enabled: boolean; modules: string[] },
     sqlByDep?: SqlByDep,
+    openApiByDep?: OpenApiByDep,
   ) => {
     setLoading(true)
     setError(null)
@@ -21,40 +23,15 @@ export function useProjectPreview() {
       const activeSql = sqlByDep
         ? Object.fromEntries(Object.entries(sqlByDep).filter(([id]) => selected.includes(id)))
         : {}
-      const hasSql = Object.keys(activeSql).length > 0
+      const activeOpenApi = openApiByDep
+        ? Object.fromEntries(Object.entries(openApiByDep).filter(([id]) => selected.includes(id)))
+        : {}
+      const hasWizard = Object.keys(activeSql).length > 0 || Object.keys(activeOpenApi).length > 0
 
       let data: PreviewResponse
-      if (hasSql) {
-        const opts: Record<string, string[]> = {}
-        for (const [depId, optIds] of Object.entries(selectedOptions)) {
-          if (optIds.length > 0 && selected.includes(depId)) opts[depId] = optIds
-        }
-        const sqlByDepBody: Record<string, string> = {}
-        const sqlOptionsBody: Record<string, { subPackage: string; tables: { name: string; generateRepository: boolean }[] }> = {}
-        for (const [depId, entry] of Object.entries(activeSql)) {
-          sqlByDepBody[depId] = entry.sql
-          sqlOptionsBody[depId] = {
-            subPackage: entry.subPackage,
-            tables: entry.tables.map(t => ({ name: t.name, generateRepository: t.generateRepository })),
-          }
-        }
-        const body = {
-          groupId: form.groupId,
-          artifactId: form.artifactId,
-          name: form.name,
-          description: form.description,
-          packageName: form.packageName,
-          type: form.type,
-          language: form.language,
-          bootVersion: form.bootVersion,
-          packaging: form.packaging,
-          javaVersion: form.javaVersion,
-          dependencies: selected,
-          opts,
-          sqlByDep: sqlByDepBody,
-          sqlOptions: sqlOptionsBody,
-        }
-        const res = await fetch('/starter-sql.preview', {
+      if (hasWizard) {
+        const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi)
+        const res = await fetch('/starter-wizard.preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
