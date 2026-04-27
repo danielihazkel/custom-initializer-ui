@@ -45,7 +45,7 @@ export function GuideCodeBlock({ example }: GuideCodeBlockProps) {
         <span className="material-symbols-outlined text-secondary" style={{ fontSize: '16px' }}>code</span>
         <span className="text-sm font-semibold text-secondary">{example.title}</span>
       </div>
-      <div className="glass-card rounded-xl overflow-hidden border border-outline-variant shadow-lg">
+      <div dir="ltr" className="glass-card rounded-xl overflow-hidden border border-outline-variant shadow-lg">
         <div className="flex items-center justify-between px-4 py-2.5 bg-surface-variant/50 border-b border-outline-variant">
           <div className="flex items-center gap-2">
             <div className="flex gap-1.5">

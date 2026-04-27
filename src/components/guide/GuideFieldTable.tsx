@@ -1,5 +1,6 @@
 import type { GuideField } from './guide-types'
 import type { UiStrings } from './guide-i18n'
+import { parseMarkdown } from './GuideView'
 
 interface GuideFieldTableProps {
   fields: GuideField[]
@@ -14,11 +15,11 @@ export function GuideFieldTable({ fields, labels }: GuideFieldTableProps) {
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-surface-variant/50 border-b border-outline-variant">
-            <th className="text-left px-4 py-3 text-xs font-bold text-secondary uppercase tracking-wider">{h.field}</th>
-            <th className="text-left px-4 py-3 text-xs font-bold text-secondary uppercase tracking-wider">{h.type}</th>
-            <th className="text-left px-4 py-3 text-xs font-bold text-secondary uppercase tracking-wider">{h.req}</th>
-            <th className="text-left px-4 py-3 text-xs font-bold text-secondary uppercase tracking-wider">{h.description}</th>
-            <th className="text-left px-4 py-3 text-xs font-bold text-secondary uppercase tracking-wider">{h.example}</th>
+            <th className="text-start px-4 py-3 text-xs font-bold text-secondary uppercase tracking-wider">{h.field}</th>
+            <th className="text-start px-4 py-3 text-xs font-bold text-secondary uppercase tracking-wider">{h.type}</th>
+            <th className="text-start px-4 py-3 text-xs font-bold text-secondary uppercase tracking-wider">{h.req}</th>
+            <th className="text-start px-4 py-3 text-xs font-bold text-secondary uppercase tracking-wider">{h.description}</th>
+            <th className="text-start px-4 py-3 text-xs font-bold text-secondary uppercase tracking-wider">{h.example}</th>
           </tr>
         </thead>
         <tbody>
@@ -33,7 +34,7 @@ export function GuideFieldTable({ fields, labels }: GuideFieldTableProps) {
                   <span className="inline-block w-2 h-2 rounded-full bg-outline-variant" title={leg.optional} />
                 )}
               </td>
-              <td className="px-4 py-3 text-on-surface-variant text-xs leading-relaxed">{field.description}</td>
+              <td className="px-4 py-3 text-on-surface-variant text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: parseMarkdown(field.description) }} />
               <td className="px-4 py-3 font-mono text-xs text-secondary whitespace-nowrap">
                 {field.example !== undefined && field.example !== '' ? field.example : <span className="text-outline">—</span>}
               </td>

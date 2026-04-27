@@ -6,6 +6,8 @@ interface GuideCalloutProps {
   labels: UiStrings
 }
 
+import { parseMarkdown } from './GuideView'
+
 const CALLOUT_STYLES = {
   info: {
     container: 'bg-primary/8 border-primary/30',
@@ -37,7 +39,7 @@ export function GuideCallout({ callout, labels }: GuideCalloutProps) {
       </span>
       <div>
         <span className={`text-xs font-bold uppercase tracking-wider ${style.titleColor} block mb-1`}>{title}</span>
-        <p className="text-sm text-on-surface-variant leading-relaxed">{callout.text}</p>
+        <p className="text-sm text-on-surface-variant leading-relaxed" dangerouslySetInnerHTML={{ __html: parseMarkdown(callout.text) }} />
       </div>
     </div>
   )
