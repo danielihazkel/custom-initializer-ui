@@ -1528,5 +1528,384 @@ menora:
         ]
       }
     ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 13. חוזה לסוכני AI
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'agent',
+    title: 'חוזה לסוכני AI',
+    icon: 'smart_toy',
+    topics: [
+      {
+        id: 'agent-what',
+        title: 'מהו חוזה הסוכן',
+        description: 'משטח HTTP ייעודי לסוכני AI ולקוחות headless.',
+        content: `### מטרה
+חוזה הסוכן הוא משטח מקביל לממשק הדפדפן, המיועד לסוכני AI (Claude, GPT, פנים-ארגוניים) ולכל לקוח HTTP שמעדיף עץ קבצים בפורמט JSON על פני ZIP בינארי. הזרימה: סוכן קורא לחוזה כדי ליצור שלד פרויקט Spring Boot, ולאחר מכן ממשיך לערוך את העץ שנוצר עם הלוגיקה העסקית שלו.
+
+### שלושה חלקים
+1. **\`GET /agent/manifest\`** — גילוי בקריאה אחת של כל התלויות, אפשרויות המשנה, תבניות ה-starter/multi-module, וחזרה על יכולות ה-wizards. מחליף שבעה round-trips נפרדים אל \`/metadata/*\`.
+2. **\`POST /agent/scaffold\`** — אותו pipeline שמפעיל \`/starter-wizard.zip\`, אך מחזיר עץ קבצים בפורמט JSON (utf-8 + base64) יחד עם manifest. אין צורך בטיפול בבינארי.
+3. **\`.menora-init.json\`** — manifest שנכתב בשורש הפרויקט, מציין את הקלטים ו-SHA-256 לכל קובץ. מאפשר לסוכן להבחין בין קבצים שנוצרו על ידי השלד לקבצים שהסוכן ערך בעצמו.
+
+### למה לא הנקודות הקיימות?
+\`/starter.zip\` ו-\`/starter-wizard.zip\` מצוינות עבור דפדפנים, אבל הן מאלצות סוכן להתמודד עם ZIP בינארי ולתפור גילוי מתוך מספר נקודות. חוזה הסוכן מאחד את שניהם ל-JSON, מה שהופך אותו לשמיש מכל שכבת tool-call של LLM בשתי בקשות HTTP.
+
+### אימות
+כרגע ללא אימות, בהתאם לנקודות הציבוריות הקיימות. ניתן להוסיף שכבת bearer-token בעתיד אם המשטח נחשף החוצה.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'חוזה הסוכן הוא תוספתי — ממשק הדפדפן ממשיך להשתמש ב-/starter.zip ו-/starter-wizard.zip בדיוק כמו קודם. שום דבר במשטח הקיים לא משתנה.'
+          },
+          {
+            type: 'tip',
+            text: 'הגילוי ניתן לקאש. אם הסוכן מבצע מספר קריאות scaffold ברצף, עדיף למשוך את /agent/manifest פעם אחת ולשמור.'
+          }
+        ]
+      },
+      {
+        id: 'agent-discovery',
+        title: 'GET /agent/manifest — גילוי',
+        description: 'נקודת קצה אחת המספקת את הקטלוג המלא הדרוש לסוכן לפני scaffold.',
+        content: `### מבנה התשובה
+JSON מסוג \`AgentManifestResponse\` המכיל כל קטלוג שהסוכן צריך כדי לבנות בקשת scaffold תקינה: תלויות (עם sub-options ב-inline ו-Boot compatibility ranges), starter templates, module templates, חוקי תאימות, ארבע רשימות ה-\`SingleSelectCapability\` (boot/java/language/packaging), ובלוק \`wizards\` עם רשימת התלויות הנתמכות עבור SQL, OpenAPI ו-SOAP.
+
+### למה זה קריאה אחת
+ממשק הדפדפן קורא ל-\`/metadata/client\`, \`/metadata/extensions\`, \`/metadata/compatibility\`, \`/metadata/starter-templates\`, \`/metadata/module-templates\`, \`/metadata/openapi-capable-deps\`, \`/metadata/soap-capable-deps\` ו-\`/metadata/sql-dialects\` בנפרד. לסוכן אין UI לאופטימיזציה; קריאה אחת שומרת על פרומפט פשוט.
+
+### הנחיית ולידציה לסוכנים
+לפני קריאה ל-\`/agent/scaffold\`, על הסוכן:
+- לבחור \`bootVersion\` מתוך \`bootVersions\` (ברירת מחדל זמינה ב-\`defaultBootVersion\`).
+- לסנן \`dependencies[]\` לפי \`compatibilityRange\` כנגד גרסת ה-Boot שנבחרה (סוכן שיבחר תלות לא תואמת יקבל 4xx).
+- לאתר את המזהים החוקיים של sub-options לכל תלות ב-\`dependencies[].subOptions\`.`,
+        codeExamples: [
+          {
+            title: 'גילוי — curl',
+            language: 'bash',
+            code: `curl http://localhost:8080/agent/manifest | jq '{
+  bootVersions, javaVersions,
+  depCount: (.dependencies | length),
+  sqlDeps: .wizards.sql.capableDeps
+}'`
+          },
+          {
+            title: 'גילוי — TypeScript SDK',
+            language: 'typescript',
+            code: `import { InitializrClient } from "@menora/initializr-client";
+
+const client = new InitializrClient({ baseUrl: "http://localhost:8080" });
+const cap = await client.manifest();
+console.log(cap.dependencies.length, "deps available");
+console.log("Boot defaults to", cap.defaultBootVersion);`
+          }
+        ]
+      },
+      {
+        id: 'agent-scaffold',
+        title: 'POST /agent/scaffold — יצירה',
+        description: 'JSON-in, JSON-out: יצירת פרויקט שמחזירה עץ קבצים (utf-8 או base64).',
+        content: `### מבנה הבקשה
+הגוף הוא super-set של \`/starter-wizard.zip\` הקיים, בתוספת דגל \`mode\` ומערך \`modules\`. כל שדות ה-wizard (\`sqlByDep\`, \`specByDep\`, \`wsdlByDep\` וכו') מתקבלים בדיוק כמו ב-\`/starter-wizard.zip\`.
+
+### בורר המצב
+| Mode | התנהגות |
+|---|---|
+| \`wizard\` (ברירת מחדל) | פרויקט יחיד; שדות ה-wizard עבור SQL/OpenAPI/SOAP מכובדים. |
+| \`starter\` | פרויקט יחיד; שווה ערך ל-\`wizard\` עם שדות wizard ריקים. |
+| \`multimodule\` | מחזיר HTTP 501 — השתמשו ב-\`GET /starter-multimodule.zip\` בינתיים. multi-module ב-JSON ב-roadmap. |
+
+### מבנה התשובה
+\`\`\`json
+{
+  "manifest": { /* .menora-init.json מפורק — ראו בנושא הבא */ },
+  "files": [
+    { "path": "pom.xml",                  "encoding": "utf-8",  "content": "<project>...", "sha256": "abc..." },
+    { "path": "src/main/java/.../App.java","encoding": "utf-8", "content": "package ...;",  "sha256": "def..." },
+    { "path": ".mvn/wrapper/mvn-wrapper.jar","encoding": "base64","content": "UEsD...",     "sha256": "789..." }
+  ]
+}
+\`\`\`
+
+### כללי קידוד
+קבצים עם סיומות טקסטואליות (\`.java\`, \`.xml\`, \`.yaml\`, \`.properties\`, \`.json\`, \`.md\`, \`.sh\`, \`.gitignore\`, \`Dockerfile\`, \`mvnw\` וכו') משוננים inline כ-UTF-8. כל השאר, יחד עם זיהוי בינארי (בייט NUL ב-4 KB הראשונים), נופל לאחור ל-base64. שדה ה-\`sha256\` תמיד משקף את הבייטים הגולמיים — שימושי לבדיקה צולבת מול ה-checksums של ה-manifest.
+
+### טיפול בשגיאות
+שגיאות parse של wizards (WSDL/OpenAPI/SQL פגום) צצות כתשובות 400 מובנות, זהות ל-\`/starter-wizard.zip\`:
+\`\`\`json
+{ "error": "Invalid OpenAPI spec", "messages": ["..."] }
+{ "error": "Invalid WSDL",         "messages": ["..."] }
+{ "error": "Invalid SQL",          "dep": "postgresql", "detail": "..." }
+\`\`\``,
+        codeExamples: [
+          {
+            title: 'scaffold מינימלי',
+            language: 'bash',
+            code: `curl -s -X POST http://localhost:8080/agent/scaffold \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "groupId": "com.acme",
+    "artifactId": "svc",
+    "bootVersion": "3.2.1",
+    "javaVersion": "21",
+    "packaging": "jar",
+    "language": "java",
+    "dependencies": ["web", "actuator"]
+  }' | jq '.files | map(.path)'`
+          },
+          {
+            title: 'עם wizard SQL',
+            language: 'bash',
+            code: `curl -s -X POST http://localhost:8080/agent/scaffold \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "bootVersion": "3.2.1",
+    "dependencies": ["postgresql","data-jpa"],
+    "opts": { "postgresql": ["pg-primary"] },
+    "sqlByDep": {
+      "postgresql": "CREATE TABLE users (id BIGSERIAL PRIMARY KEY, email VARCHAR(200) NOT NULL);"
+    },
+    "sqlOptions": {
+      "postgresql": {
+        "subPackage": "entity",
+        "tables": [{ "name": "users", "generateRepository": true }]
+      }
+    }
+  }' | jq '.files[].path' | grep entity`
+          },
+          {
+            title: 'דרך ה-SDK',
+            language: 'typescript',
+            code: `import { InitializrClient } from "@menora/initializr-client";
+
+const client = new InitializrClient();
+const project = await client.scaffold({
+  bootVersion: "3.2.1",
+  dependencies: ["web", "data-jpa", "postgresql"],
+  opts: { postgresql: ["pg-primary"] },
+});
+
+for (const file of project.files) {
+  const bytes = file.encoding === "base64"
+    ? Buffer.from(file.content, "base64")
+    : Buffer.from(file.content, "utf-8");
+  // כתיבת \`bytes\` תחת הנתיב המבוקש
+}`
+          }
+        ]
+      },
+      {
+        id: 'agent-manifest',
+        title: '.menora-init.json — מקור',
+        description: 'manifest בשורש הפרויקט שעוקב אחר קבצים שמקורם ב-scaffold.',
+        content: `### מה יש בו
+\`\`\`json
+{
+  "schemaVersion": 1,
+  "generator": {
+    "name": "menora-initializr",
+    "version": "1.0.0-SNAPSHOT",
+    "generatedAt": "2026-04-27T12:34:56.789Z"
+  },
+  "inputs": {
+    "mode": "wizard",
+    "groupId": "com.acme", "artifactId": "svc",
+    "bootVersion": "3.2.1", "javaVersion": "21",
+    "packaging": "jar", "language": "java",
+    "dependencies": ["web","data-jpa","postgresql"],
+    "modules": [],
+    "opts": { "postgresql": ["pg-primary"] },
+    "wizards": null
+  },
+  "files": [
+    { "path": "pom.xml",                  "sha256": "abc..." },
+    { "path": "src/main/java/.../App.java","sha256": "def..." }
+  ]
+}
+\`\`\`
+
+### למה checksum לכל קובץ
+לאחר ה-scaffold, הסוכן עורך קבצים. חלק מהעריכות יחולו על קבצים שמקורם ב-scaffold (למשל הוספת תלויות ל-\`pom.xml\`); חלקן יהיו קבצים חדשים לחלוטין (לוגיקה עסקית). כשהסוכן (או ריצת re-scaffold עתידית) רוצה לדעת מה זה מה, הוא משווה את עץ העבודה מול ה-manifest:
+
+| מצב בעץ העבודה | משמעות |
+|---|---|
+| הנתיב ב-manifest, sha זהה | scaffold ללא שינוי |
+| הנתיב ב-manifest, sha שונה | הסוכן ערך קובץ scaffold |
+| הנתיב לא ב-manifest | הסוכן הוסיף קובץ חדש |
+| הנתיב ב-manifest, הקובץ חסר | הסוכן מחק קובץ scaffold |
+
+זה הופך re-scaffolding בטוח לבר-ביצוע: ריצות עתידיות יכולות לחשב 3-way diff (scaffold ישן → scaffold חדש → עריכות הסוכן) במקום לדרוס את עבודת הסוכן.
+
+### חישוב ה-SHA בעצמכם
+\`\`\`bash
+# קובץ טקסט
+echo -n "$(cat pom.xml)" | sha256sum
+# או בכל שפה:
+node -e 'console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync("pom.xml")).digest("hex"))'
+\`\`\``,
+        callouts: [
+          {
+            type: 'info',
+            text: 'ה-manifest עצמו מוחרג מתוך files[] שלו — ה-sha שלו היה משתנה בכל פעם שה-manifest נכתב, מה שהיה מבטל את הצורך כולו.'
+          }
+        ]
+      },
+      {
+        id: 'agent-openapi',
+        title: 'OpenAPI Spec ו-Swagger UI',
+        description: 'תיעוד שנוצר אוטומטית עבור נקודות הקצה /agent/*.',
+        content: `### נקודות קצה
+- **\`GET /v3/api-docs\`** — מפרט OpenAPI 3 JSON מלא, מצומצם ל-\`com.menora.initializr.agent\` בלבד.
+- **\`GET /swagger-ui.html\`** — Swagger UI אינטראקטיבי לאותו מפרט.
+
+### למה הסינון לפי scope
+ה-controllers של ה-wizards לדפדפן מצביעים בעקיפין על טיפוסי \`javax.xml.bind\` ישנים דרך \`swagger-parser\` ו-\`wsdl4j\`. מתן ל-springdoc לסרוק אותם היה מפוצץ את המפרט בזמן ריצה. אנחנו מצמצמים את הסריקה ל-\`com.menora.initializr.agent\` כך שהמפרט נשאר ממוקד, תקין, ומיושר עם החוזה שסוכנים באמת משתמשים בו.
+
+### יצירת SDK
+אפשר להפעיל codegen של OpenAPI מול \`/v3/api-docs\` ולקבל לקוח typed בחינם:
+\`\`\`bash
+npx openapi-typescript http://localhost:8080/v3/api-docs -o agent-types.ts
+\`\`\`
+ה-TypeScript SDK המסופק ב-\`clients/typescript/\` נכתב ביד עבור אינטגרציה נוחה עם Anthropic SDK, אבל אפשר להחליף או להשלים אותו עם codegen.`,
+      },
+      {
+        id: 'agent-sdk',
+        title: 'TypeScript SDK',
+        description: '@menora/initializr-client — wrappers typed + הגדרות tool של Anthropic.',
+        content: `### היכן הוא נמצא
+\`clients/typescript/\` במונורפו. נבנה עם \`tsc\` רגיל; ללא bundler. משתמש ב-\`globalThis.fetch\` כך שרץ ללא שינוי ב-Node 18+, דפדפנים, Bun, Deno ו-Cloudflare Workers.
+
+### שני משטחים
+1. **\`InitializrClient\`** — wrappers typed לנקודות הקצה של הסוכן. שיטות: \`manifest()\`, \`scaffold(req)\`, \`detectOpenApiPaths(spec)\`, \`detectWsdlServices(wsdl)\`. שגיאות זורקות \`InitializrApiError\` עם status + parsed body.
+2. **\`anthropicTools()\` + \`executeAgentTool()\`** — הגדרות tool של Anthropic מוכנות לשימוש בפורמט \`Anthropic.Messages.Tool\`, יחד עם helper שמנתב בלוקי \`tool_use\` חזרה לקריאת ה-backend הנכונה. ניתן לשלב בכל זרימת \`messages.create({ tools })\`.
+
+### תצורה
+- \`new InitializrClient({ baseUrl })\` — ברירת מחדל היא משתנה הסביבה \`MENORA_INITIALIZR_URL\`, fallback ל-\`http://localhost:8080\`.
+- \`{ fetch }\` ו-\`{ timeoutMs }\` עבור runtimes לא סטנדרטיים.`,
+        codeExamples: [
+          {
+            title: 'אינטגרציה עם Anthropic SDK',
+            language: 'typescript',
+            code: `import Anthropic from "@anthropic-ai/sdk";
+import {
+  InitializrClient, anthropicTools, executeAgentTool,
+} from "@menora/initializr-client";
+
+const claude = new Anthropic();
+const menora = new InitializrClient();
+
+const response = await claude.messages.create({
+  model: "claude-opus-4-7",
+  max_tokens: 4096,
+  tools: anthropicTools(),                  // 4 כלים, סכמות מלאות
+  messages: [{
+    role: "user",
+    content: "Scaffold a Spring Boot 3.2.1 project with Spring Web and JPA.",
+  }],
+});
+
+for (const block of response.content) {
+  if (block.type === "tool_use") {
+    const result = await executeAgentTool(block.name, block.input, menora);
+    // ...להזין את התוצאה לקריאת messages.create() הבאה
+  }
+}`
+          },
+          {
+            title: 'שימוש פשוט ב-client',
+            language: 'typescript',
+            code: `import { InitializrClient } from "@menora/initializr-client";
+
+const client = new InitializrClient();
+
+const cap = await client.manifest();
+const project = await client.scaffold({
+  bootVersion: cap.defaultBootVersion!,
+  dependencies: ["web", "data-jpa", "postgresql"],
+  opts: { postgresql: ["pg-primary"] },
+});
+
+console.log(\`generated \${project.files.length} files\`);
+console.log("manifest:", project.manifest.inputs);`
+          }
+        ]
+      },
+      {
+        id: 'agent-mcp',
+        title: 'שרת MCP (Claude Code)',
+        description: 'שרת Model Context Protocol שעוטף את חוזה הסוכן.',
+        content: `### היכן הוא נמצא
+\`mcp-server/\` במונורפו. פרויקט Node קטן שעוטף את ה-TypeScript SDK ככלים של MCP, כך ש-Claude Code (וכל לקוח MCP) יוכל להפעיל scaffold באופן native.
+
+### התקנה
+\`\`\`bash
+cd mcp-server
+npm install
+npm run build
+claude mcp add menora-initializr -- node /abs/path/to/mcp-server/dist/index.js
+\`\`\`
+
+הגדירו \`MENORA_INITIALIZR_URL\` אם ה-backend לא רץ ב-\`http://localhost:8080\`.
+
+### כלים מוצעים
+
+| כלי | נקודת קצה |
+|---|---|
+| \`list_capabilities\` | \`GET /agent/manifest\` |
+| \`scaffold_project\` | \`POST /agent/scaffold\` |
+| \`detect_openapi_paths\` | \`POST /starter-wizard.detect-paths\` |
+| \`detect_wsdl_services\` | \`POST /starter-wizard.detect-services\` |
+
+### שימוש מ-Claude Code
+לאחר רישום, פרומפטים כמו הבא עובדים ללא הקשר נוסף:
+
+> "Use menora-initializr to scaffold a Spring Boot 3.2.1 service with web, data-jpa, and postgresql."
+
+Claude Code יקרא ל-\`list_capabilities\` כדי לאמת את הקלטים, אחר כך ל-\`scaffold_project\`, ולאחר מכן יכתוב את הקבצים לדיסק וימשיך במשימה.
+
+### Transport
+Stdio בלבד ב-v1. SSE/HTTP עבור סוכנים מרוחקים נמצא ב-roadmap; כרגע, יש להריץ את שרת ה-MCP לצד הסוכן (או באותו container).`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'שרת ה-MCP משתמש ב-TypeScript SDK המקומי דרך "@menora/initializr-client": "file:../clients/typescript". עריכות ב-SDK נקלטות לאחר build חוזר של שתי החבילות.'
+          }
+        ]
+      },
+      {
+        id: 'agent-workflow',
+        title: 'מקצה לקצה: סוכן AI בונה פרויקט',
+        description: 'סקירה של סוכן שמבצע scaffold וממשיך עם הלוגיקה העסקית.',
+        content: `השתמשו ב-workflow הזה כהפניה לאופן שבו סוכן צריך להפעיל את החוזה מקצה לקצה.`,
+        workflowSteps: [
+          {
+            title: 'גילוי',
+            description: 'הסוכן קורא ל-list_capabilities (או GET /agent/manifest). מקאש את התשובה. בוחר גרסת Boot מתוך bootVersions, מסנן dependencies[] לפי compatibilityRange, ומאתר את מזהי ה-sub-options הנדרשים.'
+          },
+          {
+            title: 'אימות wizard אופציונלי',
+            description: 'אם לסוכן יש מפרט OpenAPI או WSDL להזין, הוא קורא קודם ל-detect_openapi_paths / detect_wsdl_services. תשובה 400 כאן משמעה שהמפרט שבור — הסוכן מתקן אותו לפני scaffold במקום לקבל פרויקט חלקי.'
+          },
+          {
+            title: 'Scaffold',
+            description: 'הסוכן קורא ל-scaffold_project עם הקלטים שנפתרו. התשובה כוללת manifest ועץ קבצים JSON.'
+          },
+          {
+            title: 'כתיבת קבצים לדיסק',
+            description: 'הסוכן עובר על files[] וכותב כל אחד מהם תחת הספרייה המבוקשת, מפענח ערכי base64 קודם. ה-.menora-init.json יושב בשורש הפרויקט.'
+          },
+          {
+            title: 'המשך עם לוגיקה עסקית',
+            description: 'הסוכן עורך ומוסיף קבצים בחופשיות. ה-manifest בשורש מספר לו אילו קבצים הגיעו מה-scaffold (ובאיזה sha) ואילו הוא הוסיף בעצמו.'
+          },
+          {
+            title: 'הידור ובדיקה',
+            description: 'mvn verify סטנדרטי או שווה ערך. ה-scaffold משלח pom.xml תקין, כך שהסוכן לא אמור להזדקק לגעת ב-build לפני ה-compile הראשון.'
+          }
+        ]
+      }
+    ]
   }
 ]
