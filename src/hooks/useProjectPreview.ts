@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import type { PreviewResponse, ProjectFormValues, SqlByDep, OpenApiByDep } from '../types'
+import type { PreviewResponse, ProjectFormValues, SqlByDep, OpenApiByDep, SoapByDep } from '../types'
 import { buildWizardBody } from '../utils/projectUtils'
 
 export function useProjectPreview() {
@@ -16,6 +16,7 @@ export function useProjectPreview() {
     multiModule?: { enabled: boolean; modules: string[] },
     sqlByDep?: SqlByDep,
     openApiByDep?: OpenApiByDep,
+    soapByDep?: SoapByDep,
   ) => {
     setLoading(true)
     setError(null)
@@ -26,11 +27,16 @@ export function useProjectPreview() {
       const activeOpenApi = openApiByDep
         ? Object.fromEntries(Object.entries(openApiByDep).filter(([id]) => selected.includes(id)))
         : {}
-      const hasWizard = Object.keys(activeSql).length > 0 || Object.keys(activeOpenApi).length > 0
+      const activeSoap = soapByDep
+        ? Object.fromEntries(Object.entries(soapByDep).filter(([id]) => selected.includes(id)))
+        : {}
+      const hasWizard = Object.keys(activeSql).length > 0
+          || Object.keys(activeOpenApi).length > 0
+          || Object.keys(activeSoap).length > 0
 
       let data: PreviewResponse
       if (hasWizard) {
-        const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi)
+        const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap)
         const res = await fetch('/starter-wizard.preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
 import { SqlWizardDrawer } from './SqlWizardDrawer'
 import { OpenApiWizardDrawer } from './OpenApiWizardDrawer'
+import { SoapWizardDrawer } from './SoapWizardDrawer'
 import { SuggestionStrip, type Suggestion } from './SuggestionStrip'
 
 const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle', 'mongodb', 'h2'] as const
@@ -53,11 +54,15 @@ export function DependencySelector({
   openApiCapableDeps,
   openApiByDep,
   onOpenApiByDepChange,
+  soapCapableDeps,
+  soapByDep,
+  onSoapByDepChange,
 }: DependencySelectorProps) {
   const [search, setSearch] = useState<string>('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [wizardDepId, setWizardDepId] = useState<string | null>(null)
   const [openApiWizardDepId, setOpenApiWizardDepId] = useState<string | null>(null)
+  const [soapWizardDepId, setSoapWizardDepId] = useState<string | null>(null)
 
   const toggleGroup = useCallback((name: string) => {
     setCollapsedGroups(prev => {
@@ -219,6 +224,7 @@ export function DependencySelector({
 
   const wizardDep = wizardDepId ? allDeps.find(d => d.id === wizardDepId) : null
   const openApiWizardDep = openApiWizardDepId ? allDeps.find(d => d.id === openApiWizardDepId) : null
+  const soapWizardDep = soapWizardDepId ? allDeps.find(d => d.id === soapWizardDepId) : null
 
   return (
     <>
@@ -393,6 +399,23 @@ export function DependencySelector({
                     {openApiByDep[dep.id] && (
                       <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
                         ✓ spec attached
+                      </span>
+                    )}
+                  </div>
+                )}
+                {soapCapableDeps.includes(dep.id) && (
+                  <div className="mt-3 pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSoapWizardDepId(dep.id)}
+                      className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>hub</span>
+                      {soapByDep[dep.id] ? 'Edit SOAP services…' : 'Generate from WSDL…'}
+                    </button>
+                    {soapByDep[dep.id] && (
+                      <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
+                        ✓ WSDL attached
                       </span>
                     )}
                   </div>
@@ -580,6 +603,16 @@ export function DependencySelector({
         depName={openApiWizardDep.name}
         initial={openApiByDep[openApiWizardDep.id] ?? null}
         onSave={entry => onOpenApiByDepChange(openApiWizardDep.id, entry)}
+      />
+    )}
+    {soapWizardDep && (
+      <SoapWizardDrawer
+        isOpen={soapWizardDepId !== null}
+        onClose={() => setSoapWizardDepId(null)}
+        depId={soapWizardDep.id}
+        depName={soapWizardDep.name}
+        initial={soapByDep[soapWizardDep.id] ?? null}
+        onSave={entry => onSoapByDepChange(soapWizardDep.id, entry)}
       />
     )}
     </>

@@ -1038,6 +1038,247 @@ The goal of v1 is to kill boilerplate without opinionating the implementation. P
   },
 
   // ─────────────────────────────────────────────────────────────────
+  // 10b. SOAP WIZARD
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'soap-wizard',
+    title: 'SOAP Wizard',
+    icon: 'hub',
+    topics: [
+      {
+        id: 'soap-wizard-what',
+        title: 'What the Wizard Does',
+        description: 'Paste a WSDL and get @Endpoint stubs, a WebServiceTemplate client, or both.',
+        content: `### Purpose
+When the developer selects the \`web-services\` dependency (Spring Web Services starter), a **"SOAP…"** button appears on that card. Clicking it opens a drawer where the developer pastes a WSDL 1.1 document. On Generate, the backend drops the WSDL into \`src/main/resources/wsdl/\`, configures the JAX-WS Maven plugin to generate JAXB payload classes at build time, and emits one of three things — server \`@Endpoint\` stubs, a \`WebServiceGatewaySupport\` client, or both — depending on the chosen mode.
+
+This is the symmetrical twin of the OpenAPI wizard for SOAP teams. It removes the boilerplate for both contract-first SOAP servers and SOAP consumers.
+
+### Which Dependencies Are Eligible
+The UI calls \`GET /metadata/soap-capable-deps\` at page load — the button only appears on dep cards present in the response (currently just \`web-services\`, intersected with deps actually in the catalog).
+
+### Flow At a Glance
+1. Developer selects \`web-services\` from the catalog.
+2. Clicks **SOAP…** on the dep's card.
+3. Pastes or uploads a WSDL (\`.wsdl\` or \`.xml\`).
+4. A live **Detected Services** list appears (debounced 400ms) showing entries like \`CountryService.CountryPort: getCountry, listCountries\`.
+5. Picks a mode — **Endpoints**, **Client**, or **Both** — and (optionally) overrides sub-packages, the servlet context path (endpoint mode), and the base URL property (client mode).
+6. Save → the dep card shows a "WSDL attached" badge.
+7. Click **Generate** or **Explore** — the UI sends POST \`/starter-wizard.zip\` / \`/starter-wizard.preview\` with a JSON body. The endpoint is shared with the SQL and OpenAPI wizards — a single request can carry \`wsdlByDep\`, \`specByDep\`, and \`sqlByDep\` together.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'JAXB request/response classes are not written into the ZIP. They are generated at build time by the JAX-WS Maven plugin from the embedded XSD inside the WSDL. The first mvn compile produces them under target/generated-sources/jaxws/. IDEs detect this folder automatically.'
+          },
+          {
+            type: 'info',
+            text: 'The SQL, OpenAPI, and SOAP wizards are all composable — POST /starter-wizard.zip accepts sqlByDep, specByDep, and wsdlByDep simultaneously. Empty maps are a no-op.'
+          }
+        ]
+      },
+      {
+        id: 'soap-wizard-modes',
+        title: 'Generation Modes',
+        description: 'What gets emitted for ENDPOINTS, CLIENT, and BOTH.',
+        content: `### Modes
+The wizard exposes three modes; each controls which Java classes the generator writes (the WSDL itself and the JAX-WS plugin in \`pom.xml\` are emitted in all modes).
+
+| Mode | Files emitted besides the WSDL + the JAX-WS plugin |
+|---|---|
+| \`ENDPOINTS\` | \`{Service}Endpoint.java\` (\`@Endpoint\`, one method per operation) + \`WebServiceConfig.java\` (\`MessageDispatcherServlet\` at \`contextPath\`, \`SimpleWsdl11Definition\` exposing the WSDL) |
+| \`CLIENT\` | \`{Service}Client.java\` (\`WebServiceGatewaySupport\` subclass) + \`SoapClientConfig.java\` (\`Jaxb2Marshaller\` + \`WebServiceTemplate\` reading \`\${baseUrlProperty}\`) + \`application.yaml\` fragment with the base URL |
+| \`BOTH\` | All of the above. Endpoints and client share the same JAXB-generated payload classes. |
+
+### Endpoint Methods
+For each WSDL operation:
+
+- One method per operation, one \`@PayloadRoot(namespace = ..., localPart = ...)\` per method
+- \`namespace\` comes from the request element's namespace (or the WSDL \`targetNamespace\` if the part has no element reference)
+- \`localPart\` comes from the request element's local name (or the operation name as a fallback)
+- Method signature uses the JAXB-generated payload classes by name; they will resolve once \`mvn compile\` runs the JAX-WS plugin
+- Body throws \`UnsupportedOperationException\`
+
+### Client Methods
+For each WSDL operation:
+
+- One method per operation, with the JAXB request type as the parameter and the JAXB response type as the return type
+- Body delegates to \`getWebServiceTemplate().marshalSendAndReceive(request)\`
+- The \`WebServiceTemplate\` and \`Jaxb2Marshaller\` beans are configured in \`SoapClientConfig\` with \`contextPath\` set to the generated package
+
+### Packages
+- WSDL → \`src/main/resources/wsdl/{kebab-cased-service-name}.wsdl\`
+- Endpoints → \`{packageName}.{endpointSubPackage}\` (default \`endpoint\`)
+- Client → \`{packageName}.{clientSubPackage}\` (default \`client\`)
+- JAXB payloads → \`{packageName}.{payloadSubPackage}\` (default \`generated\`) — generated at build time by JAX-WS plugin`,
+      },
+      {
+        id: 'soap-wizard-api',
+        title: 'REST API',
+        description: 'POST endpoints and companion metadata.',
+        content: `### Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| \`GET\` | \`/metadata/soap-capable-deps\` | Dep IDs eligible for the wizard (intersected with deps in the catalog) |
+| \`POST\` | \`/starter-wizard.zip\` | Generate ZIP with endpoints/clients (shared with the SQL and OpenAPI wizards) |
+| \`POST\` | \`/starter-wizard.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
+| \`POST\` | \`/starter-wizard.detect-services\` | Server-side parse: \`{ wsdl }\` → \`["CountryService.CountryPort: getCountry, listCountries"]\` for the drawer's live preview |
+
+### Why a New POST Endpoint
+WSDL documents routinely run into tens of kilobytes once the embedded XSD is non-trivial — well past typical URL length limits. Reusing the same wizard POST endpoint that already exists for SQL and OpenAPI keeps the wire shape consistent and side-steps URL size ceilings.
+
+### Parse Errors
+If the WSDL is malformed, the backend returns HTTP 400 with a body like \`{ "error": "Invalid WSDL", "messages": ["WSDLException: faultCode=PARSER_ERROR: ..."] }\`. The drawer surfaces those messages in a yellow banner.`,
+        codeExamples: [
+          {
+            title: 'Generate a project from a tiny CountryService WSDL (BOTH mode)',
+            language: 'bash',
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "groupId":"com.menora","artifactId":"demo","name":"demo",
+    "packageName":"com.menora.demo","type":"maven-project","language":"java",
+    "bootVersion":"3.2.1","packaging":"jar","javaVersion":"21",
+    "dependencies":["web-services"],
+    "wsdlByDep":{"web-services":"<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?>\\n<wsdl:definitions xmlns:wsdl=\\"http://schemas.xmlsoap.org/wsdl/\\" xmlns:xsd=\\"http://www.w3.org/2001/XMLSchema\\" xmlns:soap=\\"http://schemas.xmlsoap.org/wsdl/soap/\\" xmlns:tns=\\"http://example.com/country\\" targetNamespace=\\"http://example.com/country\\">..."},
+    "soapOptions":{"web-services":{"mode":"BOTH"}}
+  }'
+unzip -p demo.zip demo/src/main/java/com/menora/demo/endpoint/CountryServiceEndpoint.java`
+          },
+          {
+            title: 'Example CountryService WSDL (XML)',
+            language: 'xml',
+            code: `<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                  xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+                  xmlns:tns="http://example.com/country"
+                  targetNamespace="http://example.com/country">
+  <wsdl:types>
+    <xsd:schema targetNamespace="http://example.com/country" elementFormDefault="qualified">
+      <xsd:element name="getCountryRequest">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="name" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+      <xsd:element name="getCountryResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="population" type="xsd:int"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+    </xsd:schema>
+  </wsdl:types>
+  <wsdl:message name="getCountryRequest">
+    <wsdl:part name="parameters" element="tns:getCountryRequest"/>
+  </wsdl:message>
+  <wsdl:message name="getCountryResponse">
+    <wsdl:part name="parameters" element="tns:getCountryResponse"/>
+  </wsdl:message>
+  <wsdl:portType name="CountryPort">
+    <wsdl:operation name="getCountry">
+      <wsdl:input  message="tns:getCountryRequest"/>
+      <wsdl:output message="tns:getCountryResponse"/>
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="CountryBinding" type="tns:CountryPort">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="getCountry">
+      <soap:operation soapAction=""/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="CountryService">
+    <wsdl:port name="CountryPort" binding="tns:CountryBinding">
+      <soap:address location="http://localhost:8080/ws"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>`
+          },
+          {
+            title: 'Generated CountryServiceEndpoint.java',
+            language: 'java',
+            code: `package com.menora.demo.endpoint;
+
+import com.menora.demo.generated.GetCountryRequest;
+import com.menora.demo.generated.GetCountryResponse;
+import org.springframework.ws.server.endpoint.annotation.Endpoint;
+import org.springframework.ws.server.endpoint.annotation.PayloadRoot;
+import org.springframework.ws.server.endpoint.annotation.RequestPayload;
+import org.springframework.ws.server.endpoint.annotation.ResponsePayload;
+
+@Endpoint
+public class CountryServiceEndpoint {
+
+    @PayloadRoot(namespace = "http://example.com/country", localPart = "getCountryRequest")
+    @ResponsePayload
+    public GetCountryResponse getCountry(@RequestPayload GetCountryRequest request) {
+        throw new UnsupportedOperationException("TODO: implement getCountry");
+    }
+}`
+          },
+          {
+            title: 'Generated CountryServiceClient.java',
+            language: 'java',
+            code: `package com.menora.demo.client;
+
+import com.menora.demo.generated.GetCountryRequest;
+import com.menora.demo.generated.GetCountryResponse;
+import org.springframework.ws.client.core.support.WebServiceGatewaySupport;
+
+public class CountryServiceClient extends WebServiceGatewaySupport {
+
+    public GetCountryResponse getCountry(GetCountryRequest request) {
+        return (GetCountryResponse) getWebServiceTemplate().marshalSendAndReceive(request);
+    }
+}`
+          }
+        ],
+        fields: [
+          { name: 'wsdlByDep', type: 'object', required: false, description: 'Map of depId → raw WSDL 1.1 document text. wsdl4j parses on the server.', example: '{ "web-services": "<?xml version=\\"1.0\\"?>..." }' },
+          { name: 'soapOptions', type: 'object', required: false, description: 'Map of depId → { mode, endpointSubPackage, clientSubPackage, payloadSubPackage, baseUrlProperty, contextPath }. mode is one of ENDPOINTS, CLIENT, BOTH (default ENDPOINTS).', example: '{ "web-services": { "mode": "BOTH", "endpointSubPackage": "endpoint", "clientSubPackage": "client" } }' },
+          { name: 'dependencies', type: 'array', required: true, description: 'The usual dep-id array. Only deps listed in /metadata/soap-capable-deps will have their entries in wsdlByDep processed.', example: '[ "web-services" ]' }
+        ]
+      },
+      {
+        id: 'soap-wizard-limits',
+        title: 'Notes & Limitations (v1)',
+        description: 'What this generation does, what it does not, and why.',
+        content: `### What v1 Produces
+- The WSDL itself, dropped verbatim into \`src/main/resources/wsdl/{kebab-service-name}.wsdl\`.
+- The JAX-WS Maven plugin (\`com.sun.xml.ws:jaxws-maven-plugin:4.0.2\`) wired to \`generate-sources\` in \`pom.xml\` — generates JAXB payload classes from the embedded XSD on every \`mvn compile\`.
+- One \`{Service}Endpoint.java\` and/or \`{Service}Client.java\` per \`<wsdl:service>\`, one method per operation.
+- A \`WebServiceConfig.java\` (endpoint mode) and/or \`SoapClientConfig.java\` (client mode).
+- An \`application.yaml\` fragment with the base URL property (client mode only) — deep-merged into the existing \`application.yaml\`.
+
+### What v1 Does Not Produce
+- **No JAXB classes in the ZIP.** They live in \`target/generated-sources/jaxws/\` after \`mvn compile\` runs the plugin. IDEs pick this up automatically.
+- **No WSDL 2.0 support** — wsdl4j parses WSDL 1.1 only.
+- **No standalone XSD input** — the wizard expects a WSDL with embedded or referenced schemas.
+- **No SOAP 1.2 binding override** — both 1.1 and 1.2 address bindings are detected for the live preview, but the generated code uses the default \`MessageFactory\` (SOAP 1.1). Switch to SOAP 1.2 in \`SoapClientConfig\` after generation if needed.
+- **No mTLS / WS-Security wiring** — the generated client is plain HTTP. Wire interceptors (\`Wss4jSecurityInterceptor\`, custom \`HttpComponents5MessageSender\`) yourself.
+
+### Why These Choices
+JAXB code generation is a complex, well-solved problem; reimplementing it inside the wizard would be a poor use of effort and would constantly drift from the JDK's reference behavior. Delegating to the JAX-WS Maven plugin gives the developer the *exact* classes they would have generated by hand from the WSDL, with no surprises — the wizard's value is the Spring wiring around those classes, not the classes themselves.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'After generation, run mvn -DskipTests compile once to materialize the JAXB payload classes. The generated Endpoint and Client classes will not resolve in the IDE until that runs at least once.'
+          },
+          {
+            type: 'tip',
+            text: 'For WS-Security or mTLS, add interceptors / a custom WebServiceMessageSender in SoapClientConfig after generation. The wizard intentionally stays out of security policy — that varies too much per service.'
+          }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
   // 11. EXPORT / IMPORT
   // ─────────────────────────────────────────────────────────────────
   {

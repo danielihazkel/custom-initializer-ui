@@ -82,6 +82,9 @@ export interface DependencySelectorProps {
   openApiCapableDeps:  string[]
   openApiByDep:        OpenApiByDep
   onOpenApiByDepChange: (depId: string, entry: OpenApiWizardEntry | null) => void
+  soapCapableDeps:     string[]
+  soapByDep:           SoapByDep
+  onSoapByDepChange:   (depId: string, entry: SoapWizardEntry | null) => void
 }
 
 // ── SQL Entity Wizard ─────────────────────────────────────────────────────────
@@ -114,6 +117,21 @@ export interface OpenApiWizardEntry {
 
 export type OpenApiByDep = Record<string, OpenApiWizardEntry>
 
+// ── SOAP Wizard ───────────────────────────────────────────────────────────────
+export type SoapMode = 'ENDPOINTS' | 'CLIENT' | 'BOTH'
+
+export interface SoapWizardEntry {
+  wsdl: string
+  endpointSubPackage: string
+  clientSubPackage: string
+  payloadSubPackage: string
+  mode: SoapMode
+  baseUrlProperty: string
+  contextPath: string
+}
+
+export type SoapByDep = Record<string, SoapWizardEntry>
+
 export interface GenerateButtonProps {
   form:     ProjectFormValues
   selected: string[]
@@ -126,6 +144,7 @@ export interface ProjectSnapshot {
   selectedOptions: Record<string, string[]>
   sqlByDep: SqlByDep
   openApiByDep: OpenApiByDep
+  soapByDep: SoapByDep
   multiModuleEnabled: boolean
   selectedModules: string[]
 }

@@ -1038,6 +1038,247 @@ public class PetsController {
   },
 
   // ─────────────────────────────────────────────────────────────────
+  // 10b. אשף SOAP
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'soap-wizard',
+    title: 'אשף SOAP',
+    icon: 'hub',
+    topics: [
+      {
+        id: 'soap-wizard-what',
+        title: 'מה האשף עושה',
+        description: 'הדבקה של WSDL ויצירת @Endpoint stubs, client מבוסס WebServiceTemplate, או שניהם.',
+        content: `### מטרה
+כאשר המפתח בוחר את התלות \`web-services\` (Spring Web Services starter), כפתור **"SOAP…"** מופיע על אותה כרטיסיה. לחיצה עליו פותחת מגירה שבה המפתח מדביק מסמך WSDL 1.1. בלחיצה על Generate, ה-backend שומר את ה-WSDL ב-\`src/main/resources/wsdl/\`, מגדיר את plugin של JAX-WS Maven ליצור מחלקות payload של JAXB בזמן build, ופולט אחד משלושה — stubs של \`@Endpoint\` בצד שרת, client מסוג \`WebServiceGatewaySupport\`, או שניהם — בהתאם למצב הנבחר.
+
+זהו התאום הסימטרי של אשף OpenAPI לצוותי SOAP. הוא מסיר את הבויילרפלייט גם לשרתי SOAP בגישת contract-first וגם לצרכני SOAP.
+
+### אילו תלויות זכאיות
+ה-UI קורא ל-\`GET /metadata/soap-capable-deps\` בטעינת הדף — הכפתור מופיע רק על כרטיסיות תלות שנוכחות בתגובה (כרגע רק \`web-services\`, בחיתוך עם תלויות הקיימות בקטלוג).
+
+### זרימה במבט מהיר
+1. המפתח בוחר \`web-services\` מהקטלוג.
+2. לוחץ **SOAP…** על כרטיסיית התלות.
+3. מדביק או מעלה WSDL (\`.wsdl\` או \`.xml\`).
+4. רשימת **שירותים שזוהו** חיה מופיעה (debounced 400ms) עם ערכים כגון \`CountryService.CountryPort: getCountry, listCountries\`.
+5. בוחר מצב — **Endpoints**, **Client**, או **Both** — ואופציונלית מחליף sub-packages, את context path של ה-servlet (במצב endpoint), ואת מאפיין ה-base URL (במצב client).
+6. שמירה → כרטיסיית התלות מציגה תווית "WSDL attached".
+7. לחיצה על **Generate** או **Explore** — ה-UI שולח POST \`/starter-wizard.zip\` / \`/starter-wizard.preview\` עם גוף JSON. ה-endpoint משותף עם אשפי SQL ו-OpenAPI — בקשה אחת יכולה לשאת \`wsdlByDep\`, \`specByDep\`, ו-\`sqlByDep\` ביחד.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'מחלקות JAXB request/response לא נכתבות לתוך ה-ZIP. הן נוצרות בזמן build על ידי ה-plugin של JAX-WS Maven מתוך ה-XSD המוטמע ב-WSDL. ה-mvn compile הראשון מייצר אותן תחת target/generated-sources/jaxws/. סביבות פיתוח מזהות את התיקייה הזאת אוטומטית.'
+          },
+          {
+            type: 'info',
+            text: 'אשפי SQL, OpenAPI ו-SOAP כולם ניתנים לשילוב — POST /starter-wizard.zip מקבל את sqlByDep, specByDep ו-wsdlByDep יחדיו. מפות ריקות הן no-op.'
+          }
+        ]
+      },
+      {
+        id: 'soap-wizard-modes',
+        title: 'מצבי יצירה',
+        description: 'מה נפלט עבור ENDPOINTS, CLIENT, ו-BOTH.',
+        content: `### מצבים
+האשף חושף שלושה מצבים; כל אחד שולט באילו מחלקות Java המחולל כותב (ה-WSDL עצמו וה-plugin של JAX-WS ב-\`pom.xml\` נפלטים בכל המצבים).
+
+| מצב | קבצים נפלטים בנוסף ל-WSDL ול-plugin של JAX-WS |
+|---|---|
+| \`ENDPOINTS\` | \`{Service}Endpoint.java\` (\`@Endpoint\`, מתודה אחת לכל פעולה) + \`WebServiceConfig.java\` (\`MessageDispatcherServlet\` ב-\`contextPath\`, \`SimpleWsdl11Definition\` שחושף את ה-WSDL) |
+| \`CLIENT\` | \`{Service}Client.java\` (תת-מחלקה של \`WebServiceGatewaySupport\`) + \`SoapClientConfig.java\` (\`Jaxb2Marshaller\` + \`WebServiceTemplate\` הקורא את \`\${baseUrlProperty}\`) + מקטע \`application.yaml\` עם ה-base URL |
+| \`BOTH\` | כל הנ"ל. ה-endpoints וה-client חולקים את אותן מחלקות payload שנוצרות על ידי JAXB. |
+
+### מתודות Endpoint
+לכל פעולת WSDL:
+
+- מתודה אחת לפעולה, \`@PayloadRoot(namespace = ..., localPart = ...)\` אחד לכל מתודה
+- \`namespace\` נלקח מ-namespace של ה-element של ה-request (או מ-\`targetNamespace\` של ה-WSDL אם ל-part אין הפניה ל-element)
+- \`localPart\` נלקח מהשם המקומי של ה-element של ה-request (או משם הפעולה כ-fallback)
+- חתימת המתודה משתמשת בשמות מחלקות payload של JAXB; הם יבוצעו resolve כש-\`mvn compile\` יריץ את ה-plugin של JAX-WS
+- הגוף זורק \`UnsupportedOperationException\`
+
+### מתודות Client
+לכל פעולת WSDL:
+
+- מתודה אחת לפעולה, עם טיפוס request של JAXB כפרמטר וטיפוס response של JAXB כערך החזרה
+- הגוף מאציל ל-\`getWebServiceTemplate().marshalSendAndReceive(request)\`
+- ה-beans של \`WebServiceTemplate\` ו-\`Jaxb2Marshaller\` מוגדרים ב-\`SoapClientConfig\` עם \`contextPath\` המכוון ל-package שנוצר
+
+### חבילות
+- WSDL → \`src/main/resources/wsdl/{kebab-cased-service-name}.wsdl\`
+- Endpoints → \`{packageName}.{endpointSubPackage}\` (ברירת מחדל \`endpoint\`)
+- Client → \`{packageName}.{clientSubPackage}\` (ברירת מחדל \`client\`)
+- payloads של JAXB → \`{packageName}.{payloadSubPackage}\` (ברירת מחדל \`generated\`) — נוצר בזמן build על ידי plugin של JAX-WS`,
+      },
+      {
+        id: 'soap-wizard-api',
+        title: 'REST API',
+        description: 'נקודות קצה POST ומטא-נתונים נלווים.',
+        content: `### נקודות קצה
+
+| Method | Path | מטרה |
+|---|---|---|
+| \`GET\` | \`/metadata/soap-capable-deps\` | מזהי תלות זכאים לאשף (בחיתוך עם תלויות בקטלוג) |
+| \`POST\` | \`/starter-wizard.zip\` | יצירת ZIP עם endpoints/clients (משותף עם אשפי SQL ו-OpenAPI) |
+| \`POST\` | \`/starter-wizard.preview\` | עץ קבצים + תוכן (אותה צורה כמו \`/starter.preview\`) |
+| \`POST\` | \`/starter-wizard.detect-services\` | פרסור צד-שרת: \`{ wsdl }\` → \`["CountryService.CountryPort: getCountry, listCountries"]\` עבור התצוגה החיה במגירה |
+
+### למה נקודת קצה POST חדשה
+מסמכי WSDL בקלות נכנסים לעשרות קילובייטים כש-XSD המוטמע אינו טריוויאלי — הרבה מעבר למגבלות אורך URL טיפוסיות. שימוש חוזר באותה נקודת קצה POST של האשף שכבר קיימת עבור SQL ו-OpenAPI שומר על אחידות הצורה ב-wire ועוקף תקרות גודל URL.
+
+### שגיאות פירוש
+אם ה-WSDL פגום, ה-backend מחזיר HTTP 400 עם גוף כגון \`{ "error": "Invalid WSDL", "messages": ["WSDLException: faultCode=PARSER_ERROR: ..."] }\`. המגירה מציגה את ההודעות האלה בבאנר צהוב.`,
+        codeExamples: [
+          {
+            title: 'יצירת פרויקט מ-WSDL קטן של CountryService (מצב BOTH)',
+            language: 'bash',
+            code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "groupId":"com.menora","artifactId":"demo","name":"demo",
+    "packageName":"com.menora.demo","type":"maven-project","language":"java",
+    "bootVersion":"3.2.1","packaging":"jar","javaVersion":"21",
+    "dependencies":["web-services"],
+    "wsdlByDep":{"web-services":"<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?>\\n<wsdl:definitions xmlns:wsdl=\\"http://schemas.xmlsoap.org/wsdl/\\" ..."},
+    "soapOptions":{"web-services":{"mode":"BOTH"}}
+  }'
+unzip -p demo.zip demo/src/main/java/com/menora/demo/endpoint/CountryServiceEndpoint.java`
+          },
+          {
+            title: 'דוגמת WSDL של CountryService (XML)',
+            language: 'xml',
+            code: `<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                  xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+                  xmlns:tns="http://example.com/country"
+                  targetNamespace="http://example.com/country">
+  <wsdl:types>
+    <xsd:schema targetNamespace="http://example.com/country" elementFormDefault="qualified">
+      <xsd:element name="getCountryRequest">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="name" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+      <xsd:element name="getCountryResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="population" type="xsd:int"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+    </xsd:schema>
+  </wsdl:types>
+  <wsdl:message name="getCountryRequest">
+    <wsdl:part name="parameters" element="tns:getCountryRequest"/>
+  </wsdl:message>
+  <wsdl:message name="getCountryResponse">
+    <wsdl:part name="parameters" element="tns:getCountryResponse"/>
+  </wsdl:message>
+  <wsdl:portType name="CountryPort">
+    <wsdl:operation name="getCountry">
+      <wsdl:input  message="tns:getCountryRequest"/>
+      <wsdl:output message="tns:getCountryResponse"/>
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="CountryBinding" type="tns:CountryPort">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="getCountry">
+      <soap:operation soapAction=""/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="CountryService">
+    <wsdl:port name="CountryPort" binding="tns:CountryBinding">
+      <soap:address location="http://localhost:8080/ws"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>`
+          },
+          {
+            title: 'CountryServiceEndpoint.java שנוצר',
+            language: 'java',
+            code: `package com.menora.demo.endpoint;
+
+import com.menora.demo.generated.GetCountryRequest;
+import com.menora.demo.generated.GetCountryResponse;
+import org.springframework.ws.server.endpoint.annotation.Endpoint;
+import org.springframework.ws.server.endpoint.annotation.PayloadRoot;
+import org.springframework.ws.server.endpoint.annotation.RequestPayload;
+import org.springframework.ws.server.endpoint.annotation.ResponsePayload;
+
+@Endpoint
+public class CountryServiceEndpoint {
+
+    @PayloadRoot(namespace = "http://example.com/country", localPart = "getCountryRequest")
+    @ResponsePayload
+    public GetCountryResponse getCountry(@RequestPayload GetCountryRequest request) {
+        throw new UnsupportedOperationException("TODO: implement getCountry");
+    }
+}`
+          },
+          {
+            title: 'CountryServiceClient.java שנוצר',
+            language: 'java',
+            code: `package com.menora.demo.client;
+
+import com.menora.demo.generated.GetCountryRequest;
+import com.menora.demo.generated.GetCountryResponse;
+import org.springframework.ws.client.core.support.WebServiceGatewaySupport;
+
+public class CountryServiceClient extends WebServiceGatewaySupport {
+
+    public GetCountryResponse getCountry(GetCountryRequest request) {
+        return (GetCountryResponse) getWebServiceTemplate().marshalSendAndReceive(request);
+    }
+}`
+          }
+        ],
+        fields: [
+          { name: 'wsdlByDep', type: 'object', required: false, description: 'מפה של depId → טקסט מסמך WSDL 1.1 גולמי. wsdl4j מפרש בצד השרת.', example: '{ "web-services": "<?xml version=\\"1.0\\"?>..." }' },
+          { name: 'soapOptions', type: 'object', required: false, description: 'מפה של depId → { mode, endpointSubPackage, clientSubPackage, payloadSubPackage, baseUrlProperty, contextPath }. mode הוא אחד מ-ENDPOINTS, CLIENT, BOTH (ברירת מחדל ENDPOINTS).', example: '{ "web-services": { "mode": "BOTH", "endpointSubPackage": "endpoint", "clientSubPackage": "client" } }' },
+          { name: 'dependencies', type: 'array', required: true, description: 'מערך dep-id הרגיל. רק תלויות הרשומות ב-/metadata/soap-capable-deps יעובדו עם רשומותיהן ב-wsdlByDep.', example: '[ "web-services" ]' }
+        ]
+      },
+      {
+        id: 'soap-wizard-limits',
+        title: 'הערות ומגבלות (גרסה 1)',
+        description: 'מה היצירה הזו עושה, מה לא, ומדוע.',
+        content: `### מה גרסה 1 מפיקה
+- ה-WSDL עצמו, נכתב verbatim ל-\`src/main/resources/wsdl/{kebab-service-name}.wsdl\`.
+- ה-plugin של JAX-WS Maven (\`com.sun.xml.ws:jaxws-maven-plugin:4.0.2\`) מחובר ל-\`generate-sources\` ב-\`pom.xml\` — מייצר מחלקות payload של JAXB מה-XSD המוטמע בכל \`mvn compile\`.
+- \`{Service}Endpoint.java\` ו/או \`{Service}Client.java\` אחד לכל \`<wsdl:service>\`, מתודה אחת לכל פעולה.
+- \`WebServiceConfig.java\` (מצב endpoint) ו/או \`SoapClientConfig.java\` (מצב client).
+- מקטע \`application.yaml\` עם מאפיין ה-base URL (מצב client בלבד) — מוזג עמוק ל-\`application.yaml\` הקיים.
+
+### מה גרסה 1 לא מפיקה
+- **אין מחלקות JAXB ב-ZIP.** הן חיות ב-\`target/generated-sources/jaxws/\` אחרי ש-\`mvn compile\` מריץ את ה-plugin. סביבות פיתוח קולטות את זה אוטומטית.
+- **אין תמיכה ב-WSDL 2.0** — wsdl4j מפרש WSDL 1.1 בלבד.
+- **אין קלט XSD עצמאי** — האשף מצפה ל-WSDL עם schemas מוטמעים או מוצמדים.
+- **אין דריסת SOAP 1.2 binding** — שתי קישורי כתובת 1.1 ו-1.2 מזוהים בתצוגה החיה, אך הקוד שנוצר משתמש ב-\`MessageFactory\` ברירת המחדל (SOAP 1.1). עברו ל-SOAP 1.2 ב-\`SoapClientConfig\` אחרי היצירה אם נדרש.
+- **אין חיווט mTLS / WS-Security** — ה-client שנוצר הוא HTTP פשוט. חברו interceptors (\`Wss4jSecurityInterceptor\`, \`HttpComponents5MessageSender\` מותאם) בעצמכם.
+
+### מדוע הבחירות האלה
+יצירת קוד JAXB היא בעיה מורכבת ומפותרת היטב; מימוש מחדש שלה בתוך האשף יהיה שימוש לא יעיל במאמץ ויסתה ללא הרף מהתנהגות הייחוס של ה-JDK. האצלה ל-plugin של JAX-WS Maven נותנת למפתח את המחלקות *המדויקות* שהיה מייצר ידנית מה-WSDL, ללא הפתעות — ערך האשף הוא חיווט Spring סביב המחלקות האלה, לא המחלקות עצמן.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'אחרי היצירה, הריצו mvn -DskipTests compile פעם אחת כדי לממש את מחלקות ה-payload של JAXB. מחלקות Endpoint ו-Client שנוצרו לא יבוצעו resolve ב-IDE עד שזה ירוץ לפחות פעם אחת.'
+          },
+          {
+            type: 'tip',
+            text: 'עבור WS-Security או mTLS, הוסיפו interceptors / WebServiceMessageSender מותאם ב-SoapClientConfig אחרי היצירה. האשף נשאר במכוון מחוץ למדיניות אבטחה — היא משתנה יותר מדי לכל שירות.'
+          }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
   // 11. ייצוא / ייבוא
   // ─────────────────────────────────────────────────────────────────
   {

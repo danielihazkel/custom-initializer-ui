@@ -4,7 +4,7 @@ import { OptionsPanel } from './OptionsPanel'
 import { ProjectForm } from './ProjectForm'
 import { ModuleSelector } from './ModuleSelector'
 import { DependencySelector } from './DependencySelector'
-import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry } from '../types'
 
 interface InitializrViewProps {
   metadata: InitializrMetadata | null
@@ -18,6 +18,9 @@ interface InitializrViewProps {
   openApiCapableDeps: string[]
   openApiByDep: OpenApiByDep
   onOpenApiByDepChange: (depId: string, entry: OpenApiWizardEntry | null) => void
+  soapCapableDeps: string[]
+  soapByDep: SoapByDep
+  onSoapByDepChange: (depId: string, entry: SoapWizardEntry | null) => void
 
   form: ProjectFormValues
   selectedDeps: string[]
@@ -55,6 +58,9 @@ export function InitializrView({
   openApiCapableDeps,
   openApiByDep,
   onOpenApiByDepChange,
+  soapCapableDeps,
+  soapByDep,
+  onSoapByDepChange,
   form,
   selectedDeps,
   selectedOptions,
@@ -159,6 +165,9 @@ export function InitializrView({
             openApiCapableDeps={openApiCapableDeps}
             openApiByDep={openApiByDep}
             onOpenApiByDepChange={onOpenApiByDepChange}
+            soapCapableDeps={soapCapableDeps}
+            soapByDep={soapByDep}
+            onSoapByDepChange={onSoapByDepChange}
           />
         </section>
       </div>

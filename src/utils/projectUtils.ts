@@ -1,4 +1,4 @@
-import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlByDep, OpenApiByDep } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlByDep, OpenApiByDep, SoapByDep } from '../types'
 
 export function captureSnapshot(args: {
   form: ProjectFormValues
@@ -6,6 +6,7 @@ export function captureSnapshot(args: {
   selectedOptions: Record<string, string[]>
   sqlByDep: SqlByDep
   openApiByDep: OpenApiByDep
+  soapByDep: SoapByDep
   multiModuleEnabled: boolean
   selectedModules: string[]
 }): ProjectSnapshot {
@@ -15,6 +16,7 @@ export function captureSnapshot(args: {
     selectedOptions: JSON.parse(JSON.stringify(args.selectedOptions)),
     sqlByDep: JSON.parse(JSON.stringify(args.sqlByDep)),
     openApiByDep: JSON.parse(JSON.stringify(args.openApiByDep)),
+    soapByDep: JSON.parse(JSON.stringify(args.soapByDep)),
     multiModuleEnabled: args.multiModuleEnabled,
     selectedModules: [...args.selectedModules],
   }
@@ -72,6 +74,7 @@ export function triggerDownload(
   multiModule?: { enabled: boolean; modules: string[] },
   sqlByDep?: SqlByDep,
   openApiByDep?: OpenApiByDep,
+  soapByDep?: SoapByDep,
 ): void {
   const activeSql = sqlByDep
     ? Object.fromEntries(Object.entries(sqlByDep).filter(([id]) => selected.includes(id)))
@@ -79,11 +82,16 @@ export function triggerDownload(
   const activeOpenApi = openApiByDep
     ? Object.fromEntries(Object.entries(openApiByDep).filter(([id]) => selected.includes(id)))
     : {}
-  const hasWizard = Object.keys(activeSql).length > 0 || Object.keys(activeOpenApi).length > 0
+  const activeSoap = soapByDep
+    ? Object.fromEntries(Object.entries(soapByDep).filter(([id]) => selected.includes(id)))
+    : {}
+  const hasWizard = Object.keys(activeSql).length > 0
+      || Object.keys(activeOpenApi).length > 0
+      || Object.keys(activeSoap).length > 0
 
-  // Branch: any wizard active → single POST carrying both payloads.
+  // Branch: any wizard active → single POST carrying all payloads.
   if (hasWizard) {
-    void triggerWizardDownload(form, selected, selectedOptions, activeSql, activeOpenApi)
+    void triggerWizardDownload(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap)
     return
   }
 
@@ -127,8 +135,9 @@ async function triggerWizardDownload(
   selectedOptions: Record<string, string[]>,
   activeSql: SqlByDep,
   activeOpenApi: OpenApiByDep,
+  activeSoap: SoapByDep,
 ): Promise<void> {
-  const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi)
+  const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap)
   const res = await fetch('/starter-wizard.zip', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -154,6 +163,7 @@ export function buildWizardBody(
   selectedOptions: Record<string, string[]>,
   activeSql: SqlByDep,
   activeOpenApi: OpenApiByDep,
+  activeSoap: SoapByDep,
 ): Record<string, unknown> {
   const opts: Record<string, string[]> = {}
   for (const [depId, optIds] of Object.entries(selectedOptions)) {
@@ -191,6 +201,27 @@ export function buildWizardBody(
     }
   }
 
+  const wsdlByDep: Record<string, string> = {}
+  const soapOptionsBody: Record<string, {
+    endpointSubPackage: string
+    clientSubPackage: string
+    payloadSubPackage: string
+    mode: string
+    baseUrlProperty: string
+    contextPath: string
+  }> = {}
+  for (const [depId, entry] of Object.entries(activeSoap)) {
+    wsdlByDep[depId] = entry.wsdl
+    soapOptionsBody[depId] = {
+      endpointSubPackage: entry.endpointSubPackage,
+      clientSubPackage: entry.clientSubPackage,
+      payloadSubPackage: entry.payloadSubPackage,
+      mode: entry.mode,
+      baseUrlProperty: entry.baseUrlProperty,
+      contextPath: entry.contextPath,
+    }
+  }
+
   return {
     groupId: form.groupId,
     artifactId: form.artifactId,
@@ -208,5 +239,7 @@ export function buildWizardBody(
     sqlOptions: sqlOptionsBody,
     specByDep,
     openApiOptions: openApiOptionsBody,
+    wsdlByDep,
+    soapOptions: soapOptionsBody,
   }
 }

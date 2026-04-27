@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { parseUrlParams, defaultForm } from '../utils/projectUtils'
-import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, StarterTemplate, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, StarterTemplate, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry } from '../types'
 
 function normalizeOpenApiByDep(raw: unknown): OpenApiByDep {
   if (!raw || typeof raw !== 'object') return {}
@@ -14,6 +14,24 @@ function normalizeOpenApiByDep(raw: unknown): OpenApiByDep {
       clientSubPackage: value.clientSubPackage ?? 'client',
       mode: value.mode ?? 'CONTROLLERS',
       baseUrlProperty: value.baseUrlProperty ?? 'openapi.client.base-url',
+    }
+  }
+  return out
+}
+
+function normalizeSoapByDep(raw: unknown): SoapByDep {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: SoapByDep = {}
+  for (const [depId, value] of Object.entries(raw as Record<string, Partial<SoapWizardEntry>>)) {
+    if (!value || typeof value !== 'object') continue
+    out[depId] = {
+      wsdl: value.wsdl ?? '',
+      endpointSubPackage: value.endpointSubPackage ?? 'endpoint',
+      clientSubPackage: value.clientSubPackage ?? 'client',
+      payloadSubPackage: value.payloadSubPackage ?? 'generated',
+      mode: value.mode ?? 'ENDPOINTS',
+      baseUrlProperty: value.baseUrlProperty ?? 'soap.client.base-url',
+      contextPath: value.contextPath ?? '/ws',
     }
   }
   return out
@@ -64,6 +82,11 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     return saved ? normalizeOpenApiByDep(JSON.parse(saved)) : {}
   })
 
+  const [soapByDep, setSoapByDep] = useState<SoapByDep>(() => {
+    const saved = localStorage.getItem('soapByDep')
+    return saved ? normalizeSoapByDep(JSON.parse(saved)) : {}
+  })
+
   // Persist form state to localStorage
   useEffect(() => { localStorage.setItem('formValues', JSON.stringify(form)) }, [form])
   useEffect(() => { localStorage.setItem('selectedDeps', JSON.stringify(selected)) }, [selected])
@@ -72,6 +95,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
   useEffect(() => { localStorage.setItem('selectedModules', JSON.stringify(selectedModules)) }, [selectedModules])
   useEffect(() => { localStorage.setItem('sqlByDep', JSON.stringify(sqlByDep)) }, [sqlByDep])
   useEffect(() => { localStorage.setItem('openApiByDep', JSON.stringify(openApiByDep)) }, [openApiByDep])
+  useEffect(() => { localStorage.setItem('soapByDep', JSON.stringify(soapByDep)) }, [soapByDep])
 
   // Sync form state into the URL so the page is shareable
   useEffect(() => {
@@ -150,6 +174,11 @@ export function useProjectState(metadata: InitializrMetadata | null) {
           for (const id of removed) delete next[id]
           return next
         })
+        setSoapByDep(prev => {
+          const next = { ...prev }
+          for (const id of removed) delete next[id]
+          return next
+        })
       }
       return newSelected
     })
@@ -174,6 +203,15 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     })
   }, [])
 
+  const handleSoapByDepChange = useCallback((depId: string, entry: SoapWizardEntry | null) => {
+    setSoapByDep(prev => {
+      const next = { ...prev }
+      if (entry === null) delete next[depId]
+      else next[depId] = entry
+      return next
+    })
+  }, [])
+
   const handleOptionsChange = useCallback((depId: string, optIds: string[]) => {
     setSelectedOptions(prev => ({ ...prev, [depId]: optIds }))
     setActiveTemplate(null)
@@ -186,10 +224,12 @@ export function useProjectState(metadata: InitializrMetadata | null) {
       setSelectedOptions({})
       setSqlByDep({})
       setOpenApiByDep({})
+      setSoapByDep({})
       return
     }
     setSqlByDep({})
     setOpenApiByDep({})
+    setSoapByDep({})
     setActiveTemplate(template.id)
     setSelected(template.dependencies.map(d => d.depId))
     const opts: Record<string, string[]> = {}
@@ -214,6 +254,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     setSelectedOptions(JSON.parse(JSON.stringify(snapshot.selectedOptions)))
     setSqlByDep(JSON.parse(JSON.stringify(snapshot.sqlByDep)))
     setOpenApiByDep(normalizeOpenApiByDep(JSON.parse(JSON.stringify(snapshot.openApiByDep ?? {}))))
+    setSoapByDep(normalizeSoapByDep(JSON.parse(JSON.stringify(snapshot.soapByDep ?? {}))))
     setMultiModuleEnabled(snapshot.multiModuleEnabled)
     setSelectedModules([...snapshot.selectedModules])
     setActiveTemplate(null)
@@ -225,6 +266,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     selectedOptions,
     sqlByDep,
     openApiByDep,
+    soapByDep,
     multiModuleEnabled,
     selectedModules,
     activeTemplate,
@@ -235,6 +277,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     handleOptionsChange,
     handleSqlByDepChange,
     handleOpenApiByDepChange,
+    handleSoapByDepChange,
     handleTemplateSelect,
     applySnapshot,
     setActiveTemplate,
