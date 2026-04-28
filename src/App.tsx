@@ -56,6 +56,7 @@ export default function App() {
     handleSoapByDepChange,
     handleTemplateSelect,
     applySnapshot,
+    resetAll,
     setSelectedModules
   } = useProjectState(metadata)
 
@@ -131,6 +132,12 @@ export default function App() {
     setGenerateSuccess(true)
     setAppToast({ message: 'Project downloaded!', type: 'success' })
     setTimeout(() => setGenerateSuccess(false), 2000)
+  }
+
+  function handleReset(): void {
+    if (!window.confirm('Reset the project to defaults? Your current selections will be lost.')) return
+    resetAll()
+    setAppToast({ message: 'Project reset to defaults', type: 'success' })
   }
 
   if (error) {
@@ -219,6 +226,15 @@ export default function App() {
                 </motion.span>
               )}
             </AnimatePresence>
+          </button>
+          {/* Reset button */}
+          <button
+            onClick={handleReset}
+            className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
+            aria-label="Reset to defaults"
+            title="Reset project to defaults (clears form & dependencies)"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>restart_alt</span>
           </button>
           {/* Theme toggle */}
           <button

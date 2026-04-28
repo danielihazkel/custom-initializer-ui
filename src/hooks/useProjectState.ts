@@ -260,6 +260,19 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     setActiveTemplate(null)
   }, [])
 
+  const resetAll = useCallback(() => {
+    setForm(defaultForm(metadata))
+    setSelected([])
+    setSelectedOptions({})
+    setSqlByDep({})
+    setOpenApiByDep({})
+    setSoapByDep({})
+    setMultiModuleEnabled(false)
+    setSelectedModules([])
+    setActiveTemplate(null)
+    window.history.replaceState(null, '', window.location.pathname)
+  }, [metadata])
+
   return {
     form,
     selected,
@@ -280,6 +293,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     handleSoapByDepChange,
     handleTemplateSelect,
     applySnapshot,
+    resetAll,
     setActiveTemplate,
   }
 }
