@@ -17,12 +17,7 @@ export function SuggestionStrip({ suggestions, onAdd }: SuggestionStripProps) {
   if (suggestions.length === 0) return null
 
   return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      exit={{ opacity: 0, height: 0 }}
-      className="mb-4 overflow-hidden"
-    >
+    <div className="mb-4">
       <div className="flex items-center gap-2 mb-2">
         <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }}>auto_awesome</span>
         <h4 className="text-[10px] font-bold uppercase tracking-widest text-secondary">Suggested for you</h4>
@@ -54,6 +49,6 @@ export function SuggestionStrip({ suggestions, onAdd }: SuggestionStripProps) {
           })}
         </AnimatePresence>
       </div>
-    </motion.div>
+    </div>
   )
 }
