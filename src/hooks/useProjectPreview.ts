@@ -1,13 +1,36 @@
 import { useState, useCallback, useRef } from 'react'
-import type { PreviewResponse, ProjectFormValues, SqlByDep, OpenApiByDep, SoapByDep } from '../types'
+import type { PreviewError, PreviewResponse, ProjectFormValues, SqlByDep, OpenApiByDep, SoapByDep } from '../types'
 import { buildWizardBody } from '../utils/projectUtils'
+
+async function readErrorBody(res: Response): Promise<PreviewError> {
+  const fallback: PreviewError = { message: `HTTP ${res.status}` }
+  try {
+    const body = await res.json() as {
+      error?: string; detail?: string; dep?: string;
+      snippet?: string; statementIndex?: number; messages?: string[]
+    } | null
+    if (!body) return fallback
+    const messages = Array.isArray(body.messages) && body.messages.length > 0
+      ? body.messages.join('; ')
+      : null
+    return {
+      message: body.detail ?? messages ?? body.error ?? fallback.message,
+      kind: body.error,
+      dep: body.dep,
+      snippet: body.snippet,
+      statementIndex: body.statementIndex,
+    }
+  } catch {
+    return fallback
+  }
+}
 
 export function useProjectPreview() {
   const [preview,         setPreview]         = useState<PreviewResponse | null>(null)
   const [previousPreview, setPreviousPreview] = useState<PreviewResponse | null>(null)
   const previewRef = useRef<PreviewResponse | null>(null)
   const [loading, setLoading]                 = useState(false)
-  const [error,   setError]                   = useState<string | null>(null)
+  const [error,   setError]                   = useState<PreviewError | null>(null)
 
   const fetchPreview = useCallback(async (
     form: ProjectFormValues,
@@ -42,7 +65,10 @@ export function useProjectPreview() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        if (!res.ok) {
+          setError(await readErrorBody(res))
+          return
+        }
         data = await res.json() as PreviewResponse
       } else {
         const isMultiModule = multiModule?.enabled && multiModule.modules.length > 0
@@ -72,14 +98,17 @@ export function useProjectPreview() {
           }
         }
         const res = await fetch(url.toString())
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        if (!res.ok) {
+          setError(await readErrorBody(res))
+          return
+        }
         data = await res.json() as PreviewResponse
       }
       setPreviousPreview(previewRef.current)
       previewRef.current = data
       setPreview(data)
     } catch (err) {
-      setError(String(err))
+      setError({ message: err instanceof Error ? err.message : String(err) })
     } finally {
       setLoading(false)
     }

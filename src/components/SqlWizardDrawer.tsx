@@ -11,6 +11,7 @@ interface Props {
   dialectName: string
   initial: SqlWizardEntry | null
   onSave: (entry: SqlWizardEntry | null) => void
+  parseError?: { message: string; snippet?: string; statementIndex?: number } | null
 }
 
 const TABLE_REGEX = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([a-zA-Z_][\w$]*))/gi
@@ -26,7 +27,7 @@ function detectTableNames(sql: string): string[] {
   return names
 }
 
-export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, initial, onSave }: Props) {
+export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, initial, onSave, parseError }: Props) {
   const [sql, setSql] = useState<string>(initial?.sql ?? '')
   const [subPackage, setSubPackage] = useState<string>(initial?.subPackage ?? 'entity')
   const [tables, setTables] = useState<SqlTableConfig[]>(initial?.tables ?? [])
@@ -127,9 +128,25 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
           />
           <p className="text-[10px] text-on-surface-variant mt-1.5 leading-relaxed">
             Paste one or more <code className="text-primary">CREATE TABLE</code> statements. Entities + optional
-            JPA repositories are generated into your project when downloaded.
+            JPA repositories are generated into your project when downloaded. <code className="text-primary">COMMENT ON</code>,
+            {' '}<code className="text-primary">CREATE INDEX</code>, and <code className="text-primary">GRANT</code> statements
+            are accepted and silently ignored.
           </p>
         </div>
+
+        {parseError && (
+          <div className="text-xs text-error bg-error/10 border border-error/30 rounded-lg p-3 space-y-1.5">
+            <div className="font-bold uppercase tracking-widest text-[10px]">SQL parse error</div>
+            <div className="text-on-surface">
+              {parseError.statementIndex != null
+                ? `Statement #${parseError.statementIndex}: ${parseError.message}`
+                : parseError.message}
+            </div>
+            {parseError.snippet && (
+              <pre className="mt-1 text-[10px] font-mono whitespace-pre-wrap text-on-surface-variant bg-surface-container-lowest border border-outline-variant rounded p-2">{parseError.snippet}</pre>
+            )}
+          </div>
+        )}
 
         {tables.length > 0 && (
           <div>

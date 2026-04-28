@@ -234,7 +234,7 @@ export default function App() {
           <button
             onClick={() => { fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep); pushRecent(currentSnapshot) }}
             disabled={previewLoading}
-            title={previewError ?? 'Preview project files before downloading'}
+            title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview project files before downloading'}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
           >
             {previewLoading
@@ -319,6 +319,7 @@ export default function App() {
             soapCapableDeps={soapCapableDeps}
             soapByDep={soapByDep}
             onSoapByDepChange={handleSoapByDepChange}
+            sqlParseError={previewError}
             form={form}
             selectedDeps={selectedDeps}
             selectedOptions={selectedOptions}

@@ -85,6 +85,7 @@ export interface DependencySelectorProps {
   soapCapableDeps:     string[]
   soapByDep:           SoapByDep
   onSoapByDepChange:   (depId: string, entry: SoapWizardEntry | null) => void
+  sqlParseError?:      PreviewError | null
 }
 
 // ── SQL Entity Wizard ─────────────────────────────────────────────────────────
@@ -344,6 +345,14 @@ export interface TreeNode {
 export interface PreviewResponse {
   files: PreviewFile[]
   tree: TreeNode[]
+}
+
+export interface PreviewError {
+  message: string
+  kind?: string       // e.g. "Invalid SQL", "Invalid OpenAPI spec", "Invalid WSDL"
+  dep?: string        // dependency id whose script failed (when applicable)
+  snippet?: string    // offending statement excerpt (SQL wizard only)
+  statementIndex?: number
 }
 
 // Module Templates (multi-module project generation)
