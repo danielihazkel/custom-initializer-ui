@@ -1,6 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { parseUrlParams, defaultForm } from '../utils/projectUtils'
-import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, StarterTemplate, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, StarterTemplate, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, AiPanelState, AiGeneratedFile } from '../types'
+
+const initialAiPanelState: AiPanelState = {
+  enabled: false,
+  prompt: '',
+  generatedFiles: [],
+  keptPaths: [],
+  loading: false,
+  error: null,
+}
 
 function normalizeOpenApiByDep(raw: unknown): OpenApiByDep {
   if (!raw || typeof raw !== 'object') return {}
@@ -87,6 +96,12 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     return saved ? normalizeSoapByDep(JSON.parse(saved)) : {}
   })
 
+  const [aiPanel, setAiPanel] = useState<AiPanelState>(() => {
+    const savedEnabled = localStorage.getItem('aiPanelEnabled') === 'true'
+    const savedPrompt = localStorage.getItem('aiPrompt') || ''
+    return { ...initialAiPanelState, enabled: savedEnabled, prompt: savedPrompt }
+  })
+
   // Persist form state to localStorage
   useEffect(() => { localStorage.setItem('formValues', JSON.stringify(form)) }, [form])
   useEffect(() => { localStorage.setItem('selectedDeps', JSON.stringify(selected)) }, [selected])
@@ -96,6 +111,8 @@ export function useProjectState(metadata: InitializrMetadata | null) {
   useEffect(() => { localStorage.setItem('sqlByDep', JSON.stringify(sqlByDep)) }, [sqlByDep])
   useEffect(() => { localStorage.setItem('openApiByDep', JSON.stringify(openApiByDep)) }, [openApiByDep])
   useEffect(() => { localStorage.setItem('soapByDep', JSON.stringify(soapByDep)) }, [soapByDep])
+  useEffect(() => { localStorage.setItem('aiPanelEnabled', String(aiPanel.enabled)) }, [aiPanel.enabled])
+  useEffect(() => { localStorage.setItem('aiPrompt', aiPanel.prompt) }, [aiPanel.prompt])
 
   // Sync form state into the URL so the page is shareable
   useEffect(() => {
@@ -270,8 +287,48 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     setMultiModuleEnabled(false)
     setSelectedModules([])
     setActiveTemplate(null)
+    setAiPanel(initialAiPanelState)
     window.history.replaceState(null, '', window.location.pathname)
   }, [metadata])
+
+  const toggleAiPanel = useCallback(() => {
+    setAiPanel(prev => ({ ...prev, enabled: !prev.enabled }))
+  }, [])
+
+  const setAiPrompt = useCallback((prompt: string) => {
+    setAiPanel(prev => ({ ...prev, prompt }))
+  }, [])
+
+  const setAiLoading = useCallback((loading: boolean) => {
+    setAiPanel(prev => ({ ...prev, loading, error: loading ? null : prev.error }))
+  }, [])
+
+  const setAiError = useCallback((error: string | null) => {
+    setAiPanel(prev => ({ ...prev, error, loading: false }))
+  }, [])
+
+  const setAiGeneratedFiles = useCallback((files: AiGeneratedFile[]) => {
+    setAiPanel(prev => ({
+      ...prev,
+      generatedFiles: files,
+      keptPaths: files.map(f => f.path),
+      loading: false,
+      error: null,
+    }))
+  }, [])
+
+  const toggleAiKeptPath = useCallback((path: string) => {
+    setAiPanel(prev => ({
+      ...prev,
+      keptPaths: prev.keptPaths.includes(path)
+        ? prev.keptPaths.filter(p => p !== path)
+        : [...prev.keptPaths, path],
+    }))
+  }, [])
+
+  const clearAiGeneration = useCallback(() => {
+    setAiPanel(prev => ({ ...prev, generatedFiles: [], keptPaths: [], error: null }))
+  }, [])
 
   return {
     form,
@@ -283,6 +340,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     multiModuleEnabled,
     selectedModules,
     activeTemplate,
+    aiPanel,
     setMultiModuleEnabled,
     setSelectedModules,
     handleFormChange,
@@ -295,5 +353,12 @@ export function useProjectState(metadata: InitializrMetadata | null) {
     applySnapshot,
     resetAll,
     setActiveTemplate,
+    toggleAiPanel,
+    setAiPrompt,
+    setAiLoading,
+    setAiError,
+    setAiGeneratedFiles,
+    toggleAiKeptPath,
+    clearAiGeneration,
   }
 }

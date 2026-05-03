@@ -1279,6 +1279,229 @@ JAXB code generation is a complex, well-solved problem; reimplementing it inside
   },
 
   // ─────────────────────────────────────────────────────────────────
+  // 10c. AI FILE ASSISTANT
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'ai-wizard',
+    title: 'AI File Assistant',
+    icon: 'auto_awesome',
+    topics: [
+      {
+        id: 'ai-wizard-what',
+        title: 'What the AI Assistant Does',
+        description: 'Free-form natural-language file generation that complements the structured wizards.',
+        content: `### Purpose
+After a developer has picked their dependencies, they can open the **AI File Assistant** panel below the project form, type a free-form prompt (e.g. *"Add a HelloController and a small DateUtils helper"*), and the backend forwards the prompt to a configured AI endpoint and returns a list of proposed files. The developer reviews the list, removes anything they don't want, and the kept files are bundled into the generated ZIP alongside the standard files.
+
+### When to Use This vs. the Other Wizards
+- **SQL / OpenAPI / SOAP wizards** — when you have structured input (a schema, a spec, a WSDL). The output is deterministic and reproducible.
+- **AI assistant** — for one-off boilerplate that no catalog or schema can predict: example controllers, demo utility classes, scaffolding the developer would otherwise paste in by hand.
+
+### Off by Default
+The feature is disabled until the admin sets \`ai.enabled=true\` and \`ai.endpoint-url=<your endpoint>\` in \`application.yml\`. With the feature off, the panel toggle still appears in the UI but the **Generate AI files** button surfaces a \`503 AI feature disabled\` toast.
+
+### Flow At a Glance
+1. Developer picks at least one dependency.
+2. Toggles **AI File Assistant** on (below the multi-module toggle).
+3. Types a prompt and clicks **Generate AI files**.
+4. UI POSTs to \`/ai/generate-files\` with the prompt + project metadata + selected dependencies.
+5. Backend calls the configured AI endpoint over plain HTTP and parses the proposed files out of the response.
+6. UI shows the list — each row has a path, an expand-to-view-content chevron, and a remove button.
+7. User clicks the main **Generate** — the kept files travel as \`aiFiles\` in the \`/starter-wizard.zip\` POST body and are written into the project tree.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'No AI SDK is on the classpath. The backend uses a plain Spring RestClient — switching providers (OpenAI, Anthropic via proxy, internal LLM proxy, vLLM, Ollama) is a YAML change.'
+          },
+          {
+            type: 'tip',
+            text: 'The AI flow is composable with the SQL, OpenAPI, and SOAP wizards. A single Generate click can carry all of them in one request body.'
+          }
+        ]
+      },
+      {
+        id: 'ai-wizard-config',
+        title: 'Configuration',
+        description: 'The ai.* keys in application.yml that control the AI call.',
+        content: `### Defaults
+
+All AI keys live under \`ai.*\` in \`backend/src/main/resources/application.yml\`. Defaults disable the feature and keep credentials empty.
+
+### Pointing at an Endpoint
+The endpoint must accept an OpenAI-compatible \`POST\` body of the form \`{ "model": "...", "messages": [{role, content}, …] }\` and return a body with \`choices[0].message.content\` containing the assistant's text. Most public LLM APIs and most internal proxies speak this. For an org endpoint that doesn't, put a thin proxy in front.
+
+### Auth Header
+\`auth-header-name\` and \`auth-header-value\` are sent as a single HTTP header on every request. If \`auth-header-value\` is blank, no header is sent — useful for unauthenticated local proxies. The most common values are \`Authorization\` + \`Bearer <token>\`.
+
+### Timeouts and Caps
+- \`timeout-seconds\` is both the connect and read timeout for the AI call. The UI also enforces a 60-second \`AbortController\` timeout client-side, so set the server timeout below that if you want a clean failure path.
+- \`max-files\` is a hard cap on how many files a single AI response can include. Output beyond the cap is truncated with a warning log.
+
+### System Prompt
+The default system prompt instructs the AI to respond with **only** a JSON object of the shape \`{"files":[{"path":"...","content":"..."}]}\`. Override it freely, but the response shape is fixed — the parser reads \`choices[0].message.content\` and expects that exact JSON envelope (with optional surrounding markdown fences, which are stripped).`,
+        codeExamples: [
+          {
+            title: 'application.yml — minimal configuration to enable the feature',
+            language: 'yaml',
+            code: `ai:
+  enabled: true
+  endpoint-url: https://api.openai.com/v1/chat/completions
+  auth-header-name: Authorization
+  auth-header-value: Bearer sk-xxxxxxxxxxxxxxxx
+  model: gpt-4o-mini
+  timeout-seconds: 60
+  max-files: 20`
+          }
+        ],
+        fields: [
+          { name: 'ai.enabled', type: 'boolean', required: true, description: 'Master switch. False by default.', example: 'true' },
+          { name: 'ai.endpoint-url', type: 'string', required: true, description: 'Full URL to POST the chat-completions body to.', example: 'https://api.openai.com/v1/chat/completions' },
+          { name: 'ai.auth-header-name', type: 'string', required: false, description: 'HTTP header carrying credentials. Default Authorization.', example: 'Authorization' },
+          { name: 'ai.auth-header-value', type: 'string', required: false, description: 'Header value (e.g. "Bearer sk-..."). Blank skips the header.', example: 'Bearer sk-xxxxxxxxxxxx' },
+          { name: 'ai.model', type: 'string', required: false, description: 'Model identifier passed in the request body.', example: 'gpt-4o-mini' },
+          { name: 'ai.timeout-seconds', type: 'integer', required: false, description: 'Connect+read timeout for the AI call.', example: '60' },
+          { name: 'ai.max-files', type: 'integer', required: false, description: 'Maximum number of files the response is allowed to contain.', example: '20' },
+          { name: 'ai.system-prompt', type: 'string', required: false, description: 'System message that pins the JSON response shape. Override only if you also pin the same shape.', example: 'You are a Spring Boot project scaffolding assistant. ...' }
+        ]
+      },
+      {
+        id: 'ai-wizard-api',
+        title: 'REST API',
+        description: 'The /ai/generate-files endpoint and the aiFiles field on the wizard ZIP endpoint.',
+        content: `### Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| \`POST\` | \`/ai/generate-files\` | Call the AI; returns the proposed files (no ZIP). UI uses this for the review step. |
+| \`POST\` | \`/starter-wizard.zip\` | Existing wizard endpoint, extended with an optional \`aiFiles: [{path, content}]\` field carrying the kept files. |
+
+### Why Two Endpoints
+The AI call is slow (10–30 s typical) and non-deterministic. Splitting it from the ZIP build means:
+
+- The user can review what the AI returned **before** committing to a download.
+- Re-prompting on a bad response doesn't require re-zipping.
+- The same kept files can be sent through the existing wizard pipeline alongside SQL/OpenAPI/SOAP output in a single Generate click.
+
+### Errors
+The error envelope is the same JSON \`{ error, detail }\` shape used by the other wizards. The mapping:
+
+| Status | When |
+|---|---|
+| \`400\` | \`prompt\` is blank, or the request body is malformed. |
+| \`502\` | The AI endpoint returned a non-2xx, was unreachable, or returned content that doesn't parse into \`{files:[…]}\`. |
+| \`503\` | \`ai.enabled=false\` (or \`ai.endpoint-url\` blank). |
+| \`504\` | The AI call timed out (\`ai.timeout-seconds\`). |`,
+        codeExamples: [
+          {
+            title: 'POST /ai/generate-files — request',
+            language: 'bash',
+            code: `curl -s -X POST http://localhost:8080/ai/generate-files \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "form":{"groupId":"com.menora","artifactId":"demo","packageName":"com.menora.demo","bootVersion":"3.2.1","javaVersion":"21","packaging":"jar"},
+    "dependencies":["web"],
+    "selectedOptions":{},
+    "prompt":"Add a HelloController returning a friendly greeting."
+  }'`
+          },
+          {
+            title: 'POST /ai/generate-files — successful response',
+            language: 'json',
+            code: `{
+  "files": [
+    {
+      "path": "src/main/java/com/menora/demo/HelloController.java",
+      "content": "package com.menora.demo;\\n\\npublic class HelloController { /* ... */ }"
+    },
+    {
+      "path": "src/main/java/com/menora/demo/util/DateUtils.java",
+      "content": "package com.menora.demo.util;\\n\\npublic class DateUtils { /* ... */ }"
+    }
+  ]
+}`
+          },
+          {
+            title: 'Bundle the AI files into a ZIP from curl',
+            language: 'bash',
+            code: `# 1. Ask the AI for files
+curl -s -X POST http://localhost:8080/ai/generate-files \\
+  -H "Content-Type: application/json" \\
+  -d '{"form":{"groupId":"com.menora","artifactId":"demo","packageName":"com.menora.demo","bootVersion":"3.2.1","javaVersion":"21","packaging":"jar"},"dependencies":["web"],"selectedOptions":{},"prompt":"Add a HelloController."}' \\
+  > ai.json
+
+# 2. Send the kept files through the wizard ZIP path
+jq -n --argfile ai ai.json '{
+  groupId:"com.menora", artifactId:"demo", name:"demo", description:"AI demo",
+  packageName:"com.menora.demo", type:"maven-project", language:"java",
+  bootVersion:"3.2.1", packaging:"jar", javaVersion:"21",
+  dependencies:["web"], opts:{},
+  aiFiles: $ai.files
+}' | curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
+       -H "Content-Type: application/json" --data-binary @-`
+          }
+        ],
+        fields: [
+          { name: 'form', type: 'object', required: true, description: 'Subset of project metadata: groupId, artifactId, name, description, packageName, bootVersion, javaVersion, packaging.', example: '{ "groupId":"com.menora", "artifactId":"demo", ... }' },
+          { name: 'dependencies', type: 'array', required: true, description: 'Selected dependency IDs. Included verbatim in the user message so the AI knows what dependencies the project will have.', example: '["web","kafka"]' },
+          { name: 'selectedOptions', type: 'object', required: false, description: 'Map of depId → array of selected sub-option IDs. Included in the user message for context.', example: '{"kafka":["consumer-example"]}' },
+          { name: 'prompt', type: 'string', required: true, description: 'Free-form description of the files the user wants. Must not be blank.', example: 'Add a HelloController returning a friendly greeting.' },
+          { name: 'aiFiles', type: 'array', required: false, description: 'On /starter-wizard.zip — the kept files from the panel. Each entry: {path, content}. Path is relative; framework-managed paths are rejected.', example: '[{"path":"src/main/java/com/menora/demo/Hi.java","content":"package..."}]' }
+        ]
+      },
+      {
+        id: 'ai-wizard-safety',
+        title: 'Path Safety & Defense in Depth',
+        description: 'How the system prevents the AI (or a malicious request body) from clobbering framework files.',
+        content: `### Validation Rules
+Every file path returned by the AI is validated **before** it reaches the UI for review. The same validator runs again inside the \`aiFileContributor\` bean as defense in depth — if a malicious request body skips the AI step and posts straight to \`/starter-wizard.zip\`, the contributor still rejects unsafe paths.
+
+A path is rejected if it:
+
+- Starts with \`/\` or a Windows drive letter (must be relative).
+- Contains \`..\` (no path traversal).
+- Is longer than 500 characters.
+- Targets a framework-managed file: \`pom.xml\`, \`mvnw\`, \`mvnw.cmd\`, \`build.gradle\` (and \`.kts\`), \`settings.gradle\` (and \`.kts\`), \`gradlew\`, \`gradlew.bat\`, \`src/main/resources/application.{yml,yaml,properties}\`, or anything under \`.mvn/\` or \`.gradle/\`.
+
+Rejected entries are **logged and dropped** — the rest of the project still generates cleanly. A malicious \`pom.xml\` entry doesn't 500 the request; it just doesn't make it into the ZIP.`,
+        callouts: [
+          {
+            type: 'warning',
+            text: 'The validator is the only protection against the AI clobbering build files. Never weaken the reserved-path list without thinking through how a hallucinated pom.xml or application.yml would interact with the rest of the generation pipeline.'
+          },
+          {
+            type: 'tip',
+            text: 'When extending the feature, run the same SafePath.validate at every boundary where AI output crosses into the project tree — both at parse time and at write time. The cost is one method call.'
+          }
+        ]
+      },
+      {
+        id: 'ai-wizard-limits',
+        title: 'Notes & Limitations (v1)',
+        description: 'What the assistant does, what it does not, and why.',
+        content: `### What v1 Produces
+- A list of \`{path, content}\` proposals from the AI, capped at \`ai.max-files\`.
+- The kept files are written into the project tree by the \`aiFileContributor\` bean (ordered after the SQL/OpenAPI/SOAP contributors so AI files don't clobber wizard output).
+
+### What v1 Does Not Produce
+- **No multi-module support.** \`GET /starter-multimodule.zip\` does not yet take a JSON body. AI files in a multi-module project would require a POST sibling — deferred.
+- **No inline content editing.** The user reviews and removes; for content tweaks, edit in your IDE after download.
+- **No request-shape templating.** The \`{model, messages}\` body is hard-coded. Org endpoints with a different shape need a thin proxy.
+- **No persistence.** Generated files are not stored server-side; every session asks the AI again.
+- **No admin UI for AI config.** Endpoint URL, model, auth, etc. live in \`application.yml\` only — set once at deploy time.
+
+### Why These Choices
+The MVP scope was deliberately narrow: prove the round-trip (UI → backend → AI → review → ZIP) with a clean separation between the AI call and the ZIP build. Everything in the "does not produce" list is a follow-up that can plug into the existing \`AiFilesContext\` + \`aiFileContributor\` plumbing without changing the contract.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'If the AI returns junk for a given prompt, just re-prompt — the previous proposal is replaced. Nothing carries over between calls.'
+          }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
   // 11. EXPORT / IMPORT
   // ─────────────────────────────────────────────────────────────────
   {

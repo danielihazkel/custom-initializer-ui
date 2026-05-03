@@ -1,4 +1,4 @@
-import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlByDep, OpenApiByDep, SoapByDep } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlByDep, OpenApiByDep, SoapByDep, AiGeneratedFile } from '../types'
 
 export function captureSnapshot(args: {
   form: ProjectFormValues
@@ -75,6 +75,7 @@ export function triggerDownload(
   sqlByDep?: SqlByDep,
   openApiByDep?: OpenApiByDep,
   soapByDep?: SoapByDep,
+  aiFiles?: AiGeneratedFile[],
 ): void {
   const activeSql = sqlByDep
     ? Object.fromEntries(Object.entries(sqlByDep).filter(([id]) => selected.includes(id)))
@@ -85,13 +86,15 @@ export function triggerDownload(
   const activeSoap = soapByDep
     ? Object.fromEntries(Object.entries(soapByDep).filter(([id]) => selected.includes(id)))
     : {}
+  const activeAi = aiFiles ?? []
   const hasWizard = Object.keys(activeSql).length > 0
       || Object.keys(activeOpenApi).length > 0
       || Object.keys(activeSoap).length > 0
+      || activeAi.length > 0
 
-  // Branch: any wizard active → single POST carrying all payloads.
+  // Branch: any wizard active (incl. AI files) → single POST carrying all payloads.
   if (hasWizard) {
-    void triggerWizardDownload(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap)
+    void triggerWizardDownload(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap, activeAi)
     return
   }
 
@@ -136,8 +139,9 @@ async function triggerWizardDownload(
   activeSql: SqlByDep,
   activeOpenApi: OpenApiByDep,
   activeSoap: SoapByDep,
+  activeAi: AiGeneratedFile[],
 ): Promise<void> {
-  const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap)
+  const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap, activeAi)
   const res = await fetch('/starter-wizard.zip', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -164,6 +168,7 @@ export function buildWizardBody(
   activeSql: SqlByDep,
   activeOpenApi: OpenApiByDep,
   activeSoap: SoapByDep,
+  activeAi: AiGeneratedFile[] = [],
 ): Record<string, unknown> {
   const opts: Record<string, string[]> = {}
   for (const [depId, optIds] of Object.entries(selectedOptions)) {
@@ -241,5 +246,6 @@ export function buildWizardBody(
     openApiOptions: openApiOptionsBody,
     wsdlByDep,
     soapOptions: soapOptionsBody,
+    aiFiles: activeAi.map(f => ({ path: f.path, content: f.content })),
   }
 }

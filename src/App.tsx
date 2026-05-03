@@ -24,6 +24,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { AppToast } from './components/AppToast'
 
 import { triggerDownload, captureSnapshot } from './utils/projectUtils'
+import { postAiGenerateFiles } from './services/aiClient'
 import type { Toast } from './types'
 
 export default function App() {
@@ -47,6 +48,7 @@ export default function App() {
     multiModuleEnabled,
     selectedModules,
     activeTemplate,
+    aiPanel,
     setMultiModuleEnabled,
     handleFormChange,
     handleDepsChange,
@@ -57,7 +59,13 @@ export default function App() {
     handleTemplateSelect,
     applySnapshot,
     resetAll,
-    setSelectedModules
+    setSelectedModules,
+    toggleAiPanel,
+    setAiPrompt,
+    setAiLoading,
+    setAiError,
+    setAiGeneratedFiles,
+    toggleAiKeptPath,
   } = useProjectState(metadata)
 
   const {
@@ -127,11 +135,38 @@ export default function App() {
   }
 
   function handleGenerate(): void {
-    triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep)
+    const keptAiFiles = aiPanel.enabled
+      ? aiPanel.generatedFiles.filter(f => aiPanel.keptPaths.includes(f.path))
+      : []
+    triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep, keptAiFiles)
     pushRecent(currentSnapshot)
     setGenerateSuccess(true)
     setAppToast({ message: 'Project downloaded!', type: 'success' })
     setTimeout(() => setGenerateSuccess(false), 2000)
+  }
+
+  async function handleAiGenerate(): Promise<void> {
+    if (selectedDeps.length === 0 || aiPanel.prompt.trim().length === 0) return
+    setAiLoading(true)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 60_000)
+    try {
+      const files = await postAiGenerateFiles(form, selectedDeps, selectedOptions, aiPanel.prompt, controller.signal)
+      setAiGeneratedFiles(files)
+      if (files.length === 0) {
+        setAppToast({ message: 'AI returned no files', type: 'error' })
+      } else {
+        setAppToast({ message: `AI generated ${files.length} file${files.length === 1 ? '' : 's'}`, type: 'success' })
+      }
+    } catch (err) {
+      const message = err instanceof DOMException && err.name === 'AbortError'
+        ? 'AI request timed out (60s)'
+        : err instanceof Error ? err.message : 'AI request failed'
+      setAiError(message)
+      setAppToast({ message, type: 'error' })
+    } finally {
+      clearTimeout(timeoutId)
+    }
   }
 
   function handleReset(): void {
@@ -356,6 +391,11 @@ export default function App() {
             onPresetSave={savePreset}
             onPresetDelete={deletePreset}
             onRecentDelete={deleteRecent}
+            aiPanel={aiPanel}
+            onAiToggle={toggleAiPanel}
+            onAiPromptChange={setAiPrompt}
+            onAiGenerate={handleAiGenerate}
+            onAiTogglePath={toggleAiKeptPath}
           />
         )}
       </main>
@@ -377,7 +417,13 @@ export default function App() {
           previousPreview={previousPreview}
           artifactId={form.artifactId}
           onClose={clearPreview}
-          onDownload={() => { triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep); clearPreview() }}
+          onDownload={() => {
+            const keptAiFiles = aiPanel.enabled
+              ? aiPanel.generatedFiles.filter(f => aiPanel.keptPaths.includes(f.path))
+              : []
+            triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep, keptAiFiles)
+            clearPreview()
+          }}
 
         />
       )}

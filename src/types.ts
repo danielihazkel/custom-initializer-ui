@@ -282,6 +282,21 @@ export interface Toast {
   type: 'success' | 'error'
 }
 
+// ── AI File Assistant ────────────────────────────────────────────────────────
+export interface AiGeneratedFile {
+  path: string
+  content: string
+}
+
+export interface AiPanelState {
+  enabled: boolean
+  prompt: string
+  generatedFiles: AiGeneratedFile[]
+  keptPaths: string[]
+  loading: boolean
+  error: string | null
+}
+
 // Starter Templates
 export interface StarterTemplateDep {
   depId: string

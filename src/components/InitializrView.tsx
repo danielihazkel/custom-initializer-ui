@@ -4,7 +4,8 @@ import { OptionsPanel } from './OptionsPanel'
 import { ProjectForm } from './ProjectForm'
 import { ModuleSelector } from './ModuleSelector'
 import { DependencySelector } from './DependencySelector'
-import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, PreviewError } from '../types'
+import { AiAssistantPanel } from './AiAssistantPanel'
+import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, PreviewError, AiPanelState } from '../types'
 
 interface InitializrViewProps {
   metadata: InitializrMetadata | null
@@ -45,6 +46,12 @@ interface InitializrViewProps {
   onPresetSave: (name: string, snapshot: ProjectSnapshot) => void
   onPresetDelete: (id: string) => void
   onRecentDelete: (id: string) => void
+
+  aiPanel: AiPanelState
+  onAiToggle: () => void
+  onAiPromptChange: (prompt: string) => void
+  onAiGenerate: () => void
+  onAiTogglePath: (path: string) => void
 }
 
 export function InitializrView({
@@ -83,6 +90,11 @@ export function InitializrView({
   onPresetSave,
   onPresetDelete,
   onRecentDelete,
+  aiPanel,
+  onAiToggle,
+  onAiPromptChange,
+  onAiGenerate,
+  onAiTogglePath,
 }: InitializrViewProps) {
   return (
     <>
@@ -149,6 +161,15 @@ export function InitializrView({
               )}
             </div>
           )}
+
+          <AiAssistantPanel
+            state={aiPanel}
+            hasDependencies={selectedDeps.length > 0}
+            onToggle={onAiToggle}
+            onPromptChange={onAiPromptChange}
+            onGenerate={onAiGenerate}
+            onTogglePath={onAiTogglePath}
+          />
         </section>
 
         {/* Right Column — Dependencies */}

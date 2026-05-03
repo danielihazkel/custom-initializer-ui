@@ -1279,6 +1279,229 @@ public class CountryServiceClient extends WebServiceGatewaySupport {
   },
 
   // ─────────────────────────────────────────────────────────────────
+  // 10c. עוזר קבצי AI
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'ai-wizard',
+    title: 'עוזר קבצי AI',
+    icon: 'auto_awesome',
+    topics: [
+      {
+        id: 'ai-wizard-what',
+        title: 'מה עוזר ה-AI עושה',
+        description: 'יצירת קבצים בשפה חופשית שמשלימה את האשפים המבוססים-מבנה.',
+        content: `### מטרה
+לאחר שהמפתח בחר תלויות, הוא יכול לפתוח את פאנל **AI File Assistant** מתחת לטופס הפרויקט, להקליד פרומפט בשפה חופשית (לדוגמה *"הוסף HelloController וכלי DateUtils קטן"*), והשרת מעביר את הפרומפט לנקודת קצה של AI שהוגדרה ומחזיר רשימה של קבצים מוצעים. המפתח סוקר את הרשימה, מסיר כל מה שאינו רוצה, והקבצים שנותרו נארזים ב-ZIP שנוצר לצד הקבצים הרגילים.
+
+### מתי להשתמש בזה לעומת האשפים האחרים
+- **אשפי SQL / OpenAPI / SOAP** — כשיש לכם קלט מובנה (סכמה, מפרט, WSDL). הפלט דטרמיניסטי וניתן לשחזור.
+- **עוזר ה-AI** — לקוד תבניתי חד-פעמי שאף קטלוג או סכמה לא יכולים לחזות: בקרי דוגמה, מחלקות עזר להדגמה, ופיגומים שהמפתח אחרת היה מדביק ביד.
+
+### כבוי כברירת מחדל
+התכונה מושבתת עד שהאדמין מגדיר \`ai.enabled=true\` ו-\`ai.endpoint-url=<נקודת הקצה שלכם>\` ב-\`application.yml\`. כשהתכונה כבויה, מתג הפאנל עדיין מופיע בממשק אך כפתור **Generate AI files** מציג טוסט \`503 AI feature disabled\`.
+
+### זרימה במבט מהיר
+1. המפתח בוחר לפחות תלות אחת.
+2. מפעיל את **AI File Assistant** (מתחת למתג ריבוי-המודולים).
+3. מקליד פרומפט ולוחץ **Generate AI files**.
+4. הממשק שולח POST ל-\`/ai/generate-files\` עם הפרומפט + מטא-נתוני הפרויקט + התלויות שנבחרו.
+5. השרת קורא לנקודת הקצה של ה-AI ב-HTTP פשוט ומפענח את הקבצים המוצעים מהתגובה.
+6. הממשק מציג את הרשימה — לכל שורה יש נתיב, חץ הרחבה לתצוגת תוכן, וכפתור הסרה.
+7. המשתמש לוחץ **Generate** הראשי — הקבצים שנשמרו נשלחים בשדה \`aiFiles\` בגוף הבקשה ל-\`/starter-wizard.zip\` ונכתבים לעץ הפרויקט.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'אין SDK של AI ב-classpath. השרת משתמש ב-Spring RestClient פשוט — החלפת ספקים (OpenAI, Anthropic דרך proxy, proxy LLM פנים-ארגוני, vLLM, Ollama) היא שינוי YAML.'
+          },
+          {
+            type: 'tip',
+            text: 'זרימת ה-AI ניתנת לשילוב עם אשפי SQL, OpenAPI ו-SOAP. לחיצת Generate אחת יכולה לשאת את כולם בגוף בקשה אחד.'
+          }
+        ]
+      },
+      {
+        id: 'ai-wizard-config',
+        title: 'קונפיגורציה',
+        description: 'מפתחות ai.* ב-application.yml השולטים בקריאה ל-AI.',
+        content: `### ברירות מחדל
+
+כל מפתחות ה-AI נמצאים תחת \`ai.*\` ב-\`backend/src/main/resources/application.yml\`. ברירות המחדל מנטרלות את התכונה ושומרות על אישורים ריקים.
+
+### הצבעה לנקודת קצה
+נקודת הקצה חייבת לקבל גוף POST תואם-OpenAI מהצורה \`{ "model": "...", "messages": [{role, content}, …] }\` ולהחזיר גוף עם \`choices[0].message.content\` המכיל את הטקסט של העוזר. רוב ממשקי ה-API הציבוריים של LLM ורוב ה-proxies הפנימיים מדברים את זה. עבור נקודת קצה ארגונית שלא, שימו proxy דק לפניה.
+
+### Header אימות
+\`auth-header-name\` ו-\`auth-header-value\` נשלחים כ-header HTTP יחיד בכל בקשה. אם \`auth-header-value\` ריק, לא נשלח header — שימושי ל-proxies מקומיים ללא אימות. הערכים הנפוצים ביותר הם \`Authorization\` + \`Bearer <token>\`.
+
+### Timeouts ומגבלות
+- \`timeout-seconds\` הוא גם timeout החיבור וגם timeout הקריאה לקריאת ה-AI. הממשק גם אוכף timeout של 60 שניות ב-\`AbortController\` בצד הלקוח, אז הגדירו את timeout השרת מתחת לזה אם אתם רוצים נתיב כשל נקי.
+- \`max-files\` הוא תקרה קשיחה על כמה קבצים תגובת AI יחידה יכולה לכלול. פלט מעבר לתקרה נחתך עם לוג אזהרה.
+
+### System Prompt
+ה-system prompt ברירת המחדל מנחה את ה-AI להגיב **רק** עם אובייקט JSON מהצורה \`{"files":[{"path":"...","content":"..."}]}\`. דרסו אותו בחופשיות, אך צורת התגובה קבועה — הפרסר קורא את \`choices[0].message.content\` ומצפה בדיוק לעטיפת ה-JSON הזו (עם גידור markdown אופציונלי, שמוסר).`,
+        codeExamples: [
+          {
+            title: 'application.yml — קונפיגורציה מינימלית להפעלת התכונה',
+            language: 'yaml',
+            code: `ai:
+  enabled: true
+  endpoint-url: https://api.openai.com/v1/chat/completions
+  auth-header-name: Authorization
+  auth-header-value: Bearer sk-xxxxxxxxxxxxxxxx
+  model: gpt-4o-mini
+  timeout-seconds: 60
+  max-files: 20`
+          }
+        ],
+        fields: [
+          { name: 'ai.enabled', type: 'boolean', required: true, description: 'מתג ראשי. False כברירת מחדל.', example: 'true' },
+          { name: 'ai.endpoint-url', type: 'string', required: true, description: 'URL מלא לשליחת גוף chat-completions ב-POST.', example: 'https://api.openai.com/v1/chat/completions' },
+          { name: 'ai.auth-header-name', type: 'string', required: false, description: 'header HTTP הנושא אישורים. ברירת מחדל Authorization.', example: 'Authorization' },
+          { name: 'ai.auth-header-value', type: 'string', required: false, description: 'ערך ה-header (לדוגמה "Bearer sk-..."). ריק מדלג על ה-header.', example: 'Bearer sk-xxxxxxxxxxxx' },
+          { name: 'ai.model', type: 'string', required: false, description: 'מזהה מודל המועבר בגוף הבקשה.', example: 'gpt-4o-mini' },
+          { name: 'ai.timeout-seconds', type: 'integer', required: false, description: 'Timeout חיבור+קריאה לקריאת ה-AI.', example: '60' },
+          { name: 'ai.max-files', type: 'integer', required: false, description: 'מספר מרבי של קבצים שהתגובה רשאית להכיל.', example: '20' },
+          { name: 'ai.system-prompt', type: 'string', required: false, description: 'הודעת מערכת המקבעת את צורת תגובת ה-JSON. דרסו רק אם אתם גם מקבעים את אותה צורה.', example: 'You are a Spring Boot project scaffolding assistant. ...' }
+        ]
+      },
+      {
+        id: 'ai-wizard-api',
+        title: 'REST API',
+        description: 'נקודת הקצה /ai/generate-files והשדה aiFiles ב-/starter-wizard.zip.',
+        content: `### נקודות קצה
+
+| Method | Path | מטרה |
+|---|---|---|
+| \`POST\` | \`/ai/generate-files\` | קוראת ל-AI; מחזירה את הקבצים המוצעים (ללא ZIP). הממשק משתמש בזה לשלב הסקירה. |
+| \`POST\` | \`/starter-wizard.zip\` | נקודת הקצה הקיימת של האשף, מורחבת בשדה אופציונלי \`aiFiles: [{path, content}]\` הנושא את הקבצים שנשמרו. |
+
+### למה שתי נקודות קצה
+קריאת ה-AI איטית (10–30 שניות אופייני) ולא דטרמיניסטית. הפרדה בין ה-ZIP build משמעותה:
+
+- המשתמש יכול לסקור מה ה-AI החזיר **לפני** שהוא מתחייב להורדה.
+- שאילתה חוזרת על תגובה גרועה אינה דורשת יצירת ZIP מחדש.
+- אותם קבצים שנשמרו יכולים להישלח דרך צינור האשף הקיים לצד פלט SQL/OpenAPI/SOAP בלחיצת Generate אחת.
+
+### שגיאות
+מעטפת השגיאה היא אותה צורת \`{ error, detail }\` בה משתמשים האשפים האחרים. המיפוי:
+
+| Status | מתי |
+|---|---|
+| \`400\` | \`prompt\` ריק, או גוף הבקשה פגום. |
+| \`502\` | נקודת הקצה של ה-AI החזירה non-2xx, לא הייתה ניתנת לפנייה, או החזירה תוכן שאינו מתפענח ל-\`{files:[…]}\`. |
+| \`503\` | \`ai.enabled=false\` (או \`ai.endpoint-url\` ריק). |
+| \`504\` | קריאת ה-AI התעכבה מעבר ל-\`ai.timeout-seconds\`. |`,
+        codeExamples: [
+          {
+            title: 'POST /ai/generate-files — בקשה',
+            language: 'bash',
+            code: `curl -s -X POST http://localhost:8080/ai/generate-files \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "form":{"groupId":"com.menora","artifactId":"demo","packageName":"com.menora.demo","bootVersion":"3.2.1","javaVersion":"21","packaging":"jar"},
+    "dependencies":["web"],
+    "selectedOptions":{},
+    "prompt":"Add a HelloController returning a friendly greeting."
+  }'`
+          },
+          {
+            title: 'POST /ai/generate-files — תגובה מוצלחת',
+            language: 'json',
+            code: `{
+  "files": [
+    {
+      "path": "src/main/java/com/menora/demo/HelloController.java",
+      "content": "package com.menora.demo;\\n\\npublic class HelloController { /* ... */ }"
+    },
+    {
+      "path": "src/main/java/com/menora/demo/util/DateUtils.java",
+      "content": "package com.menora.demo.util;\\n\\npublic class DateUtils { /* ... */ }"
+    }
+  ]
+}`
+          },
+          {
+            title: 'אריזת קבצי ה-AI לתוך ZIP מ-curl',
+            language: 'bash',
+            code: `# 1. בקשו מה-AI קבצים
+curl -s -X POST http://localhost:8080/ai/generate-files \\
+  -H "Content-Type: application/json" \\
+  -d '{"form":{"groupId":"com.menora","artifactId":"demo","packageName":"com.menora.demo","bootVersion":"3.2.1","javaVersion":"21","packaging":"jar"},"dependencies":["web"],"selectedOptions":{},"prompt":"Add a HelloController."}' \\
+  > ai.json
+
+# 2. שלחו את הקבצים שנשמרו דרך נתיב ה-ZIP של האשף
+jq -n --argfile ai ai.json '{
+  groupId:"com.menora", artifactId:"demo", name:"demo", description:"AI demo",
+  packageName:"com.menora.demo", type:"maven-project", language:"java",
+  bootVersion:"3.2.1", packaging:"jar", javaVersion:"21",
+  dependencies:["web"], opts:{},
+  aiFiles: $ai.files
+}' | curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
+       -H "Content-Type: application/json" --data-binary @-`
+          }
+        ],
+        fields: [
+          { name: 'form', type: 'object', required: true, description: 'תת-קבוצה של מטא-נתוני הפרויקט: groupId, artifactId, name, description, packageName, bootVersion, javaVersion, packaging.', example: '{ "groupId":"com.menora", "artifactId":"demo", ... }' },
+          { name: 'dependencies', type: 'array', required: true, description: 'מזהי תלויות שנבחרו. נכללים בהודעת המשתמש כך שה-AI יודע אילו תלויות יהיו לפרויקט.', example: '["web","kafka"]' },
+          { name: 'selectedOptions', type: 'object', required: false, description: 'מפה של depId → מערך מזהי תת-אפשרויות שנבחרו. נכלל בהודעת המשתמש כקונטקסט.', example: '{"kafka":["consumer-example"]}' },
+          { name: 'prompt', type: 'string', required: true, description: 'תיאור חופשי של הקבצים שהמשתמש רוצה. אסור שיהיה ריק.', example: 'Add a HelloController returning a friendly greeting.' },
+          { name: 'aiFiles', type: 'array', required: false, description: 'ב-/starter-wizard.zip — הקבצים שנשמרו מהפאנל. כל ערך: {path, content}. הנתיב יחסי; נתיבים מנוהלי-framework נדחים.', example: '[{"path":"src/main/java/com/menora/demo/Hi.java","content":"package..."}]' }
+        ]
+      },
+      {
+        id: 'ai-wizard-safety',
+        title: 'בטיחות נתיבים והגנה בעומק',
+        description: 'איך המערכת מונעת מה-AI (או מגוף בקשה זדוני) להחליף קבצי framework.',
+        content: `### חוקי ולידציה
+כל נתיב קובץ שמוחזר מה-AI עובר ולידציה **לפני** שהוא מגיע לממשק לסקירה. אותו validator רץ שוב בתוך ה-bean \`aiFileContributor\` כהגנה בעומק — אם גוף בקשה זדוני מדלג על שלב ה-AI ושולח ישירות ל-\`/starter-wizard.zip\`, ה-contributor עדיין דוחה נתיבים לא בטוחים.
+
+נתיב נדחה אם הוא:
+
+- מתחיל ב-\`/\` או באות-כונן Windows (חייב להיות יחסי).
+- מכיל \`..\` (אין path traversal).
+- ארוך מ-500 תווים.
+- מכוון לקובץ מנוהל-framework: \`pom.xml\`, \`mvnw\`, \`mvnw.cmd\`, \`build.gradle\` (ו-\`.kts\`), \`settings.gradle\` (ו-\`.kts\`), \`gradlew\`, \`gradlew.bat\`, \`src/main/resources/application.{yml,yaml,properties}\`, או כל דבר תחת \`.mvn/\` או \`.gradle/\`.
+
+ערכים שנדחים **נרשמים בלוג ונזרקים** — שאר הפרויקט עדיין נוצר באופן נקי. ערך \`pom.xml\` זדוני אינו מחזיר 500 לבקשה; הוא פשוט לא מגיע ל-ZIP.`,
+        callouts: [
+          {
+            type: 'warning',
+            text: 'ה-validator הוא ההגנה היחידה מפני ה-AI שדורס קבצי build. לעולם אל תחלישו את רשימת הנתיבים השמורים בלי לחשוב על איך pom.xml או application.yml שהוזה ה-AI יקיימו אינטראקציה עם שאר צינור היצירה.'
+          },
+          {
+            type: 'tip',
+            text: 'בעת הרחבת התכונה, הריצו את אותו SafePath.validate בכל גבול שבו פלט AI חוצה לתוך עץ הפרויקט — גם בזמן ניתוח וגם בזמן כתיבה. העלות היא קריאת method אחת.'
+          }
+        ]
+      },
+      {
+        id: 'ai-wizard-limits',
+        title: 'הערות ומגבלות (גרסה 1)',
+        description: 'מה העוזר עושה, מה הוא לא עושה, ולמה.',
+        content: `### מה גרסה 1 מייצרת
+- רשימת הצעות \`{path, content}\` מה-AI, מוגבלת ל-\`ai.max-files\`.
+- הקבצים שנשמרו נכתבים לעץ הפרויקט על ידי ה-bean \`aiFileContributor\` (מסודר אחרי ה-contributors של SQL/OpenAPI/SOAP כך שקבצי AI לא דורסים פלט אשפים).
+
+### מה גרסה 1 לא מייצרת
+- **אין תמיכה ב-multi-module.** \`GET /starter-multimodule.zip\` עדיין לא מקבל גוף JSON. קבצי AI בפרויקט multi-module ידרשו אח POST — נדחה.
+- **אין עריכת תוכן בתוך הממשק.** המשתמש סוקר ומסיר; לעריכת תוכן, ערכו ב-IDE שלכם לאחר ההורדה.
+- **אין templating לצורת הבקשה.** גוף ה-\`{model, messages}\` מקודד-קשיח. נקודות קצה ארגוניות עם צורה אחרת זקוקות ל-proxy דק.
+- **אין persistence.** קבצים שנוצרו אינם נשמרים בצד-שרת; כל סשן שואל את ה-AI מחדש.
+- **אין ממשק אדמין לקונפיגורציית AI.** URL נקודת הקצה, מודל, אימות וכו' חיים רק ב-\`application.yml\` — מוגדרים פעם אחת בזמן deploy.
+
+### למה הבחירות האלה
+טווח ה-MVP היה צר במכוון: להוכיח את ה-round-trip (ממשק → שרת → AI → סקירה → ZIP) עם הפרדה נקייה בין קריאת ה-AI לבניית ה-ZIP. כל מה שברשימת "לא מייצרת" הוא follow-up שיכול להתחבר לצנרת \`AiFilesContext\` + \`aiFileContributor\` הקיימת מבלי לשנות את החוזה.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'אם ה-AI מחזיר זבל לפרומפט נתון, פשוט שאלו שוב — ההצעה הקודמת מוחלפת. שום דבר לא נישא בין קריאות.'
+          }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
   // 11. ייצוא / ייבוא
   // ─────────────────────────────────────────────────────────────────
   {
