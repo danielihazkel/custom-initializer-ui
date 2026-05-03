@@ -1355,13 +1355,108 @@ public class CountryServiceClient extends WebServiceGatewaySupport {
         ],
         fields: [
           { name: 'ai.enabled', type: 'boolean', required: true, description: 'מתג ראשי. False כברירת מחדל.', example: 'true' },
-          { name: 'ai.endpoint-url', type: 'string', required: true, description: 'URL מלא לשליחת גוף chat-completions ב-POST.', example: 'https://api.openai.com/v1/chat/completions' },
+          { name: 'ai.provider', type: 'string', required: false, description: 'צורת בקשה/תגובה. "openai" (ברירת מחדל) או "menora". פרטים על Menora בנושא הבא.', example: 'openai' },
+          { name: 'ai.endpoint-url', type: 'string', required: true, description: 'URL מלא לשליחה ב-POST. הצורה נקבעת על ידי ai.provider.', example: 'https://api.openai.com/v1/chat/completions' },
           { name: 'ai.auth-header-name', type: 'string', required: false, description: 'header HTTP הנושא אישורים. ברירת מחדל Authorization.', example: 'Authorization' },
-          { name: 'ai.auth-header-value', type: 'string', required: false, description: 'ערך ה-header (לדוגמה "Bearer sk-..."). ריק מדלג על ה-header.', example: 'Bearer sk-xxxxxxxxxxxx' },
+          { name: 'ai.auth-header-value', type: 'string', required: false, description: 'ערך ה-header (לדוגמה "Bearer sk-..." ל-OpenAI, "Basic <base64>" ל-Menora). ריק מדלג על ה-header.', example: 'Bearer sk-xxxxxxxxxxxx' },
           { name: 'ai.model', type: 'string', required: false, description: 'מזהה מודל המועבר בגוף הבקשה.', example: 'gpt-4o-mini' },
-          { name: 'ai.timeout-seconds', type: 'integer', required: false, description: 'Timeout חיבור+קריאה לקריאת ה-AI.', example: '60' },
+          { name: 'ai.menora-app-id', type: 'string', required: false, description: 'נדרש כשprovider=menora. נשלח כ-labels.app_id בכל בקשה — מוקצה על ידי צוות הפלטפורמה.', example: 'APM0000001' },
+          { name: 'ai.timeout-seconds', type: 'integer', required: false, description: 'Timeout חיבור+קריאה לקריאת ה-AI. הגדילו ל-180 עבור Claude Sonnet 4.', example: '60' },
           { name: 'ai.max-files', type: 'integer', required: false, description: 'מספר מרבי של קבצים שהתגובה רשאית להכיל.', example: '20' },
           { name: 'ai.system-prompt', type: 'string', required: false, description: 'הודעת מערכת המקבעת את צורת תגובת ה-JSON. דרסו רק אם אתם גם מקבעים את אותה צורה.', example: 'You are a Spring Boot project scaffolding assistant. ...' }
+        ]
+      },
+      {
+        id: 'ai-wizard-menora',
+        title: 'קונפיגורציית שער Menora',
+        description: 'איך להפנות את עוזר ה-AI לשער ה-AI הפנימי של צוות הפלטפורמה של Menora.',
+        content: `### מתי להשתמש בזה
+השתמשו ב-\`ai.provider: menora\` כדי לקרוא לשער ה-AI הפנימי של צוות הפלטפורמה של Menora ב-\`https://xgwint.menora.co.il:9450/ai-peng/api/v1/chats/completions\`. השער עומד מול AWS Bedrock והוא הנתיב הנתמך-ארגונית לקריאות AI; נתיב OpenAI מיועד לפיתוח מול APIs חיצוניים.
+
+### מה שונה מנתיב OpenAI
+שער Menora משתמש ב-**\`multipart/form-data\`** עם שדה **\`input\`** יחיד במקום גוף ה-JSON של OpenAI **\`{model, messages:[…]}\`**. השירות מטפל בהבדל באופן פנימי:
+
+- ה-system prompt משורשר לתוך שדה \`input\` היחיד (לשער אין הפרדת תפקידים). Claude Sonnet 4 עוקב אחר ההנחיה המוטמעת "ענה רק עם JSON זה" באופן אמין.
+- השירות קורא את הטקסט של העוזר משדה **\`message\`** של התגובה במקום \`choices[0].message.content\`. הצורה היא \`{"conversationId":"…","message":"…"}\`.
+- האימות הוא **HTTP Basic** ולא Bearer. חשבו את ערך ה-header כ-\`Basic \` + base64(\`clientId:clientSecret\`).
+- השער דורש ערך **\`labels.app_id\`** (לדוגמה \`APM0000001\`) בכל בקשה. הגדירו אותו פעם אחת ב-\`ai.menora-app-id\` — השירות מזריק אותו לכל קריאה.
+- מודלים בברירת מחדל הם מזהי AWS Bedrock כמו \`eu.anthropic.claude-sonnet-4-20250514-v1:0\`. בצעו \`GET /api/v1/chats/models\` ישירות מול השער כדי לרשום מודלים זמינים.
+- הגדילו את \`ai.timeout-seconds\` ל-180; יצירות של Claude Sonnet 4 יכולות לקחת 90–150 שניות ב-Bedrock. ה-AbortController הבטיחותי של הממשק כבר 180 שניות.
+
+### מצבי כשל
+- **\`menora-app-id\` ריק** → \`502 AI endpoint error\` עם detail \`ai.menora-app-id is required when ai.provider=menora\`.
+- **אישורים שגויים** → 401 של השער מופיע כ-\`502 AI endpoint error\` עם detail \`AI endpoint returned HTTP 401\`.
+- **תגובה חסרה שדה \`message\`** → \`502 Could not parse AI response\` עם detail \`AI response missing 'message' field\`.
+
+הניתוח של עטיפת ה-JSON במורד הזרם (\`{"files":[…]}\` חילוץ, הסרת גידור markdown, ולידציית \`SafePath\`, תקרת \`max-files\`) זהה לנתיב OpenAI — אותה סמנטיקת שגיאות, אותן הבטחות אבטחה.`,
+        codeExamples: [
+          {
+            title: 'application.yml — קונפיגורציית שער Menora',
+            language: 'yaml',
+            code: `ai:
+  enabled: true
+  provider: menora
+  endpoint-url: https://xgwint.menora.co.il:9450/ai-peng/api/v1/chats/completions
+  auth-header-name: Authorization
+  auth-header-value: Basic <base64(clientId:clientSecret)>
+  model: eu.anthropic.claude-sonnet-4-20250514-v1:0
+  menora-app-id: APM0000001
+  timeout-seconds: 180
+  max-files: 20`
+          },
+          {
+            title: 'רשימת מודלי Bedrock זמינים שהשער תומך בהם',
+            language: 'bash',
+            code: `curl -s -H "Authorization: Basic <base64(clientId:clientSecret)>" \\
+  https://xgwint.menora.co.il:9450/ai-peng/api/v1/chats/models | jq .
+
+# מחזיר ערכים כמו:
+# [
+#   {"modelId":"eu.anthropic.claude-3-haiku-20240307-v1:0","friendlyName":"Claude 3 Haiku","providerName":"Anthropic"},
+#   {"modelId":"eu.anthropic.claude-3-sonnet-20240229-v1:0","friendlyName":"Claude 3 Sonnet","providerName":"Anthropic"}
+# ]`
+          },
+          {
+            title: 'מה השירות שולח לשער (לדיבאג)',
+            language: 'http',
+            code: `POST /api/v1/chats/completions HTTP/1.1
+Host: xgwint.menora.co.il:9450
+Authorization: Basic <base64>
+Content-Type: multipart/form-data; boundary=...
+
+--...
+Content-Disposition: form-data; name="input"
+
+You are a Spring Boot project scaffolding assistant. ...
+Respond with ONLY a JSON object of the shape:
+{"files":[{"path":"src/main/java/...","content":"..."}]}
+
+Project metadata:
+- groupId: com.menora
+- artifactId: demo
+...
+User request:
+Add a HelloController.
+--...
+Content-Disposition: form-data; name="modelId"
+
+eu.anthropic.claude-sonnet-4-20250514-v1:0
+--...
+Content-Disposition: form-data; name="labels"
+
+{"app_id":"APM0000001"}
+--...--`
+          }
+        ],
+        callouts: [
+          {
+            type: 'info',
+            text: 'נתיב OpenAI נשאר זמין — החליפו את ai.provider חזרה ל-openai לפיתוח מול APIs חיצוניים בלי שינויי קוד.'
+          },
+          {
+            type: 'tip',
+            text: 'Streaming, ספירת טוקנים, והעלאות קבצים בשער Menora אינם בשימוש בתכונה הזו. הם זמינים ב-/api/v1/chats/completions/stream, /tokenizer, ובשדה הטופס files, אך זרימת עוזר הקבצים זקוקה רק ל-prompt-in / JSON-out.'
+          }
         ]
       },
       {

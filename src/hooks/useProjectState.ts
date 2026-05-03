@@ -308,13 +308,24 @@ export function useProjectState(metadata: InitializrMetadata | null) {
   }, [])
 
   const setAiGeneratedFiles = useCallback((files: AiGeneratedFile[]) => {
-    setAiPanel(prev => ({
-      ...prev,
-      generatedFiles: files,
-      keptPaths: files.map(f => f.path),
-      loading: false,
-      error: null,
-    }))
+    // Merge: each new file overrides any existing entry at the same path,
+    // others are kept untouched. New paths default to kept (so a newly
+    // proposed file shows up checked in the review list).
+    setAiPanel(prev => {
+      const newPaths = new Set(files.map(f => f.path))
+      const merged: AiGeneratedFile[] = [
+        ...prev.generatedFiles.filter(f => !newPaths.has(f.path)),
+        ...files,
+      ]
+      const keptPaths = Array.from(new Set([...prev.keptPaths, ...files.map(f => f.path)]))
+      return {
+        ...prev,
+        generatedFiles: merged,
+        keptPaths,
+        loading: false,
+        error: null,
+      }
+    })
   }, [])
 
   const toggleAiKeptPath = useCallback((path: string) => {

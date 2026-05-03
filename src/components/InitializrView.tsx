@@ -52,6 +52,7 @@ interface InitializrViewProps {
   onAiPromptChange: (prompt: string) => void
   onAiGenerate: () => void
   onAiTogglePath: (path: string) => void
+  onAiClear: () => void
 }
 
 export function InitializrView({
@@ -95,6 +96,7 @@ export function InitializrView({
   onAiPromptChange,
   onAiGenerate,
   onAiTogglePath,
+  onAiClear,
 }: InitializrViewProps) {
   return (
     <>
@@ -169,6 +171,7 @@ export function InitializrView({
             onPromptChange={onAiPromptChange}
             onGenerate={onAiGenerate}
             onTogglePath={onAiTogglePath}
+            onClear={onAiClear}
           />
         </section>
 

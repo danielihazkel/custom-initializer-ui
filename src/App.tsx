@@ -66,6 +66,7 @@ export default function App() {
     setAiError,
     setAiGeneratedFiles,
     toggleAiKeptPath,
+    clearAiGeneration,
   } = useProjectState(metadata)
 
   const {
@@ -149,7 +150,10 @@ export default function App() {
     if (selectedDeps.length === 0 || aiPanel.prompt.trim().length === 0) return
     setAiLoading(true)
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 60_000)
+    // 180s safety cap — Claude Sonnet 4 on Bedrock can take 90–150s for
+    // non-trivial generations. The backend's ai.timeout-seconds is the
+    // authoritative limit; this just keeps the UI from looking stuck.
+    const timeoutId = setTimeout(() => controller.abort(), 180_000)
     try {
       const files = await postAiGenerateFiles(form, selectedDeps, selectedOptions, aiPanel.prompt, controller.signal)
       setAiGeneratedFiles(files)
@@ -160,7 +164,7 @@ export default function App() {
       }
     } catch (err) {
       const message = err instanceof DOMException && err.name === 'AbortError'
-        ? 'AI request timed out (60s)'
+        ? 'AI request timed out (180s)'
         : err instanceof Error ? err.message : 'AI request failed'
       setAiError(message)
       setAppToast({ message, type: 'error' })
@@ -402,6 +406,7 @@ export default function App() {
             onAiPromptChange={setAiPrompt}
             onAiGenerate={handleAiGenerate}
             onAiTogglePath={toggleAiKeptPath}
+            onAiClear={clearAiGeneration}
           />
         )}
       </main>

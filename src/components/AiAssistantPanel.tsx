@@ -8,6 +8,7 @@ interface Props {
   onPromptChange: (prompt: string) => void
   onGenerate: () => void
   onTogglePath: (path: string) => void
+  onClear: () => void
 }
 
 export function AiAssistantPanel({
@@ -17,6 +18,7 @@ export function AiAssistantPanel({
   onPromptChange,
   onGenerate,
   onTogglePath,
+  onClear,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
@@ -109,9 +111,19 @@ export function AiAssistantPanel({
             <div className="space-y-2">
               <div className="text-[11px] uppercase tracking-wide font-semibold text-secondary flex items-center justify-between">
                 <span>Generated files</span>
-                <span className="text-on-surface-variant normal-case tracking-normal">
-                  {keptCount} of {totalCount} will be added
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-on-surface-variant normal-case tracking-normal">
+                    {keptCount} of {totalCount} will be added
+                  </span>
+                  <button
+                    onClick={onClear}
+                    disabled={state.loading}
+                    className="text-on-surface-variant hover:text-error normal-case tracking-normal text-[11px] underline-offset-2 hover:underline disabled:opacity-50"
+                    title="Clear all generated files"
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
               <ul className="rounded-lg border border-outline-variant divide-y divide-outline-variant bg-surface-container-lowest max-h-72 overflow-y-auto">
                 {state.generatedFiles.map(file => {

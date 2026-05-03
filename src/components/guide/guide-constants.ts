@@ -1355,13 +1355,108 @@ The default system prompt instructs the AI to respond with **only** a JSON objec
         ],
         fields: [
           { name: 'ai.enabled', type: 'boolean', required: true, description: 'Master switch. False by default.', example: 'true' },
-          { name: 'ai.endpoint-url', type: 'string', required: true, description: 'Full URL to POST the chat-completions body to.', example: 'https://api.openai.com/v1/chat/completions' },
+          { name: 'ai.provider', type: 'string', required: false, description: 'Request/response shape. "openai" (default) or "menora". See the next topic for Menora specifics.', example: 'openai' },
+          { name: 'ai.endpoint-url', type: 'string', required: true, description: 'Full URL to POST to. Shape determined by ai.provider.', example: 'https://api.openai.com/v1/chat/completions' },
           { name: 'ai.auth-header-name', type: 'string', required: false, description: 'HTTP header carrying credentials. Default Authorization.', example: 'Authorization' },
-          { name: 'ai.auth-header-value', type: 'string', required: false, description: 'Header value (e.g. "Bearer sk-..."). Blank skips the header.', example: 'Bearer sk-xxxxxxxxxxxx' },
+          { name: 'ai.auth-header-value', type: 'string', required: false, description: 'Header value (e.g. "Bearer sk-..." for OpenAI, "Basic <base64>" for Menora). Blank skips the header.', example: 'Bearer sk-xxxxxxxxxxxx' },
           { name: 'ai.model', type: 'string', required: false, description: 'Model identifier passed in the request body.', example: 'gpt-4o-mini' },
-          { name: 'ai.timeout-seconds', type: 'integer', required: false, description: 'Connect+read timeout for the AI call.', example: '60' },
+          { name: 'ai.menora-app-id', type: 'string', required: false, description: 'Required when provider=menora. Sent as labels.app_id on every request — assigned by the platform team.', example: 'APM0000001' },
+          { name: 'ai.timeout-seconds', type: 'integer', required: false, description: 'Connect+read timeout for the AI call. Bump to 180 for Claude Sonnet 4.', example: '60' },
           { name: 'ai.max-files', type: 'integer', required: false, description: 'Maximum number of files the response is allowed to contain.', example: '20' },
           { name: 'ai.system-prompt', type: 'string', required: false, description: 'System message that pins the JSON response shape. Override only if you also pin the same shape.', example: 'You are a Spring Boot project scaffolding assistant. ...' }
+        ]
+      },
+      {
+        id: 'ai-wizard-menora',
+        title: 'Menora Gateway Configuration',
+        description: 'How to point the AI assistant at the Menora platform team\'s internal AI gateway.',
+        content: `### When to Use This
+Use \`ai.provider: menora\` to call the Menora platform team's internal AI gateway at \`https://xgwint.menora.co.il:9450/ai-peng/api/v1/chats/completions\`. The gateway fronts AWS Bedrock and is the org-supported path for AI calls; the OpenAI path is for development against external APIs.
+
+### What's Different From the OpenAI Path
+The Menora gateway uses **\`multipart/form-data\`** with a single **\`input\`** field instead of the OpenAI **\`{model, messages:[…]}\`** JSON body. The service handles the difference internally:
+
+- The system prompt is concatenated into the single \`input\` field (the gateway has no role separation). Claude Sonnet 4 follows the inline "respond with ONLY this JSON" instruction reliably.
+- The service reads the assistant's text from the response's **\`message\`** field instead of \`choices[0].message.content\`. The shape is \`{"conversationId":"…","message":"…"}\`.
+- Auth is **HTTP Basic** rather than Bearer. Compute the header value as \`Basic \` + base64(\`clientId:clientSecret\`).
+- The gateway requires a **\`labels.app_id\`** value (e.g. \`APM0000001\`) on every request. Set it once in \`ai.menora-app-id\` — the service injects it into each call.
+- Default models are AWS Bedrock model IDs like \`eu.anthropic.claude-sonnet-4-20250514-v1:0\`. Hit \`GET /api/v1/chats/models\` against the gateway directly to enumerate available models.
+- Bump \`ai.timeout-seconds\` to 180; Claude Sonnet 4 generations can take 90–150 s on Bedrock. The UI's safety AbortController is already 180 s.
+
+### Failure Modes
+- **Blank \`menora-app-id\`** → \`502 AI endpoint error\` with detail \`ai.menora-app-id is required when ai.provider=menora\`.
+- **Bad credentials** → the gateway's 401 surfaces as \`502 AI endpoint error\` with detail \`AI endpoint returned HTTP 401\`.
+- **Response missing \`message\` field** → \`502 Could not parse AI response\` with detail \`AI response missing 'message' field\`.
+
+The downstream JSON-envelope parse (\`{"files":[…]}\` extraction, markdown fence stripping, \`SafePath\` validation, \`max-files\` cap) is identical to the OpenAI path — same error semantics, same security guarantees.`,
+        codeExamples: [
+          {
+            title: 'application.yml — Menora gateway configuration',
+            language: 'yaml',
+            code: `ai:
+  enabled: true
+  provider: menora
+  endpoint-url: https://xgwint.menora.co.il:9450/ai-peng/api/v1/chats/completions
+  auth-header-name: Authorization
+  auth-header-value: Basic <base64(clientId:clientSecret)>
+  model: eu.anthropic.claude-sonnet-4-20250514-v1:0
+  menora-app-id: APM0000001
+  timeout-seconds: 180
+  max-files: 20`
+          },
+          {
+            title: 'List available Bedrock models the gateway supports',
+            language: 'bash',
+            code: `curl -s -H "Authorization: Basic <base64(clientId:clientSecret)>" \\
+  https://xgwint.menora.co.il:9450/ai-peng/api/v1/chats/models | jq .
+
+# Returns entries like:
+# [
+#   {"modelId":"eu.anthropic.claude-3-haiku-20240307-v1:0","friendlyName":"Claude 3 Haiku","providerName":"Anthropic"},
+#   {"modelId":"eu.anthropic.claude-3-sonnet-20240229-v1:0","friendlyName":"Claude 3 Sonnet","providerName":"Anthropic"}
+# ]`
+          },
+          {
+            title: 'What the service sends to the gateway (for debugging)',
+            language: 'http',
+            code: `POST /api/v1/chats/completions HTTP/1.1
+Host: xgwint.menora.co.il:9450
+Authorization: Basic <base64>
+Content-Type: multipart/form-data; boundary=...
+
+--...
+Content-Disposition: form-data; name="input"
+
+You are a Spring Boot project scaffolding assistant. ...
+Respond with ONLY a JSON object of the shape:
+{"files":[{"path":"src/main/java/...","content":"..."}]}
+
+Project metadata:
+- groupId: com.menora
+- artifactId: demo
+...
+User request:
+Add a HelloController.
+--...
+Content-Disposition: form-data; name="modelId"
+
+eu.anthropic.claude-sonnet-4-20250514-v1:0
+--...
+Content-Disposition: form-data; name="labels"
+
+{"app_id":"APM0000001"}
+--...--`
+          }
+        ],
+        callouts: [
+          {
+            type: 'info',
+            text: 'The OpenAI path stays available — flip ai.provider back to openai for development against external APIs without code changes.'
+          },
+          {
+            type: 'tip',
+            text: 'Streaming, token counting, and file uploads on the Menora gateway are not used by this feature. They\'re available on /api/v1/chats/completions/stream, /tokenizer, and the files form-field, but the file-assistant flow only needs prompt-in / JSON-out.'
+          }
         ]
       },
       {
