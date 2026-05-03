@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import type { PreviewError, PreviewResponse, ProjectFormValues, SqlByDep, OpenApiByDep, SoapByDep } from '../types'
+import type { PreviewError, PreviewResponse, ProjectFormValues, SqlByDep, OpenApiByDep, SoapByDep, AiGeneratedFile } from '../types'
 import { buildWizardBody } from '../utils/projectUtils'
 
 async function readErrorBody(res: Response): Promise<PreviewError> {
@@ -40,6 +40,7 @@ export function useProjectPreview() {
     sqlByDep?: SqlByDep,
     openApiByDep?: OpenApiByDep,
     soapByDep?: SoapByDep,
+    aiFiles?: AiGeneratedFile[],
   ) => {
     setLoading(true)
     setError(null)
@@ -53,13 +54,15 @@ export function useProjectPreview() {
       const activeSoap = soapByDep
         ? Object.fromEntries(Object.entries(soapByDep).filter(([id]) => selected.includes(id)))
         : {}
+      const activeAi = aiFiles ?? []
       const hasWizard = Object.keys(activeSql).length > 0
           || Object.keys(activeOpenApi).length > 0
           || Object.keys(activeSoap).length > 0
+          || activeAi.length > 0
 
       let data: PreviewResponse
       if (hasWizard) {
-        const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap)
+        const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap, activeAi)
         const res = await fetch('/starter-wizard.preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

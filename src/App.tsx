@@ -283,7 +283,13 @@ export default function App() {
             </span>
           </button>
           <button
-            onClick={() => { fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep); pushRecent(currentSnapshot) }}
+            onClick={() => {
+              const keptAiFiles = aiPanel.enabled
+                ? aiPanel.generatedFiles.filter(f => aiPanel.keptPaths.includes(f.path))
+                : []
+              fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep, keptAiFiles)
+              pushRecent(currentSnapshot)
+            }}
             disabled={previewLoading}
             title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview project files before downloading'}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
