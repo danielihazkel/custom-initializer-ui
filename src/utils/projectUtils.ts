@@ -28,6 +28,7 @@ export function parseUrlParams(): {
   selectedOptions: Record<string, string[]>
 } | null {
   const p = new URLSearchParams(window.location.search)
+  if (p.get('tab') === 'frontend') return null
   if (!p.has('groupId') && !p.has('dependencies')) return null
 
   const form: Partial<ProjectFormValues> = {}

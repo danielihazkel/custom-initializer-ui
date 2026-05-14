@@ -37,7 +37,7 @@ function normalizeSoapByDep(raw: unknown): SoapByDep {
   return out
 }
 
-export function useProjectState(metadata: InitializrMetadata | null) {
+export function useProjectState(metadata: InitializrMetadata | null, active: boolean = true) {
   const [form, setForm] = useState<ProjectFormValues>(() => {
     const url = parseUrlParams()
     if (url) return { ...defaultForm(null), ...url.form }
@@ -99,7 +99,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
 
   // Sync form state into the URL so the page is shareable
   useEffect(() => {
-    if (!initialized) return
+    if (!active || !initialized) return
     const p = new URLSearchParams()
     p.set('groupId', form.groupId)
     p.set('artifactId', form.artifactId)
@@ -118,7 +118,7 @@ export function useProjectState(metadata: InitializrMetadata | null) {
       }
     }
     window.history.replaceState(null, '', '?' + p.toString())
-  }, [form, selected, selectedOptions, initialized])
+  }, [form, selected, selectedOptions, initialized, active])
 
   // Apply server defaults on first metadata load (only if no saved form and no URL params)
   useEffect(() => {

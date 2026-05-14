@@ -28,6 +28,10 @@ import { triggerDownload, captureSnapshot } from './utils/projectUtils'
 import type { Toast } from './types'
 
 export default function App() {
+  const [view, setView] = useState<'initializr' | 'tutorial' | 'admin' | 'guide' | 'frontend'>(() => {
+    return new URLSearchParams(window.location.search).get('tab') === 'frontend' ? 'frontend' : 'initializr'
+  })
+
   const { metadata, loading, error } = useMetadata()
   const { extensions } = useExtensions()
   const { dialects: sqlDialects } = useSqlDialects()
@@ -59,7 +63,7 @@ export default function App() {
     applySnapshot,
     resetAll,
     setSelectedModules
-  } = useProjectState(metadata)
+  } = useProjectState(metadata, view === 'initializr')
 
   const {
     presets,
@@ -90,7 +94,6 @@ export default function App() {
     return saved ? saved === 'dark' : true
   })
   
-  const [view, setView] = useState<'initializr' | 'tutorial' | 'admin' | 'guide' | 'frontend'>('initializr')
   const [compareOpen, setCompareOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 

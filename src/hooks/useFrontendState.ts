@@ -60,11 +60,17 @@ function defaultState(metadata: FrontendMetadata | null): FeState {
   }
 }
 
-export function useFrontendState(metadata: FrontendMetadata | null) {
+export function useFrontendState(metadata: FrontendMetadata | null, active: boolean = true) {
   const [state, setState] = useState<FeState>(() => {
     const stored = readStored()
+    const fromUrl = parseFrontendUrl()
     const base = defaultState(metadata)
-    const merged = { ...base, ...stored, form: { ...base.form, ...(stored?.form ?? {}) } }
+    const merged: FeState = {
+      ...base,
+      ...stored,
+      ...fromUrl,
+      form: { ...base.form, ...(stored?.form ?? {}), ...(fromUrl?.form ?? {}) },
+    }
     // Always re-derive designSystem from selectedDeps so the picker stays in sync
     // with the source of truth even after older state shapes are loaded.
     merged.designSystem = deriveDesignSystem(merged.selectedDeps)
@@ -76,7 +82,8 @@ export function useFrontendState(metadata: FrontendMetadata | null) {
     if (!metadata) return
     setState(prev => {
       const stored = readStored()
-      if (stored) return prev
+      const fromUrl = parseFrontendUrl()
+      if (stored || fromUrl) return prev
       return defaultState(metadata)
     })
   }, [metadata])
@@ -89,6 +96,12 @@ export function useFrontendState(metadata: FrontendMetadata | null) {
       /* quota — ignore */
     }
   }, [state])
+
+  // Sync state into the URL so the Frontend tab is shareable.
+  useEffect(() => {
+    if (!active) return
+    window.history.replaceState(null, '', '?tab=frontend&' + buildFrontendQuery(state))
+  }, [state, active])
 
   const updateForm = useCallback((patch: Partial<FeForm>) => {
     setState(s => ({ ...s, form: { ...s.form, ...patch } }))
@@ -134,7 +147,10 @@ export function useFrontendState(metadata: FrontendMetadata | null) {
     })
   }, [])
 
-  const reset = useCallback(() => setState(defaultState(metadata)), [metadata])
+  const reset = useCallback(() => {
+    setState(defaultState(metadata))
+    window.history.replaceState(null, '', window.location.pathname)
+  }, [metadata])
 
   const downloadUrl = useMemo(() => buildDownloadUrl(state), [state])
 
@@ -174,4 +190,40 @@ export function buildFrontendQuery(s: FeState): string {
 
 export function buildDownloadUrl(s: FeState): string {
   return `/frontend/starter.zip?${buildFrontendQuery(s)}`
+}
+
+export function parseFrontendUrl(): Partial<FeState> | null {
+  const p = new URLSearchParams(window.location.search)
+  if (p.get('tab') !== 'frontend') return null
+
+  const form: Partial<FeForm> = {}
+  for (const key of ['projectName', 'description', 'scope', 'appTitle'] as const) {
+    const v = p.get(key)
+    if (v !== null) form[key] = v
+  }
+
+  const out: Partial<FeState> = {}
+  if (Object.keys(form).length > 0) out.form = form as FeForm
+  const reactVersion = p.get('reactVersion'); if (reactVersion) out.reactVersion = reactVersion
+  const nodeVersion = p.get('nodeVersion'); if (nodeVersion) out.nodeVersion = nodeVersion
+  const packageManager = p.get('packageManager'); if (packageManager) out.packageManager = packageManager
+  const basePath = p.get('basePath'); if (basePath) out.basePath = basePath
+  const colorPalette = p.get('colorPalette'); if (colorPalette) out.colorPaletteId = colorPalette
+
+  const deps = p.get('dependencies')
+  if (deps !== null) {
+    const selectedDeps = deps.split(',').filter(Boolean)
+    out.selectedDeps = selectedDeps
+    out.designSystem = deriveDesignSystem(selectedDeps)
+  }
+
+  const selectedOptions: Record<string, string[]> = {}
+  for (const [k, v] of p.entries()) {
+    if (k.startsWith('opts-')) {
+      selectedOptions[k.slice(5)] = v.split(',').filter(Boolean)
+    }
+  }
+  if (Object.keys(selectedOptions).length > 0) out.selectedOptions = selectedOptions
+
+  return out
 }
