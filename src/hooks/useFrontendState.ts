@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FrontendMetadata } from './useFrontendMetadata'
+import type { StarterTemplate } from '../types'
 
 export interface FeForm {
   projectName: string
@@ -77,6 +78,8 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
     return merged
   })
 
+  const [activeTemplate, setActiveTemplate] = useState<string | null>(null)
+
   // Apply server defaults once metadata loads, but only for fields the user hasn't touched.
   useEffect(() => {
     if (!metadata) return
@@ -114,6 +117,7 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
   const setColorPaletteId = useCallback((v: string) => setState(s => ({ ...s, colorPaletteId: v })), [])
 
   const toggleDep = useCallback((depId: string) => {
+    setActiveTemplate(null)
     setState(s => {
       const has = s.selectedDeps.includes(depId)
       const selectedDeps = has ? s.selectedDeps.filter(d => d !== depId) : [...s.selectedDeps, depId]
@@ -124,6 +128,7 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
   }, [])
 
   const setDesignSystem = useCallback((id: string) => {
+    setActiveTemplate(null)
     setState(s => {
       let deps = s.selectedDeps.filter(d => !d.startsWith('design-'))
       if (id !== DESIGN_NONE) deps = [...deps, id]
@@ -133,6 +138,26 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
       }
       return { ...s, selectedDeps: deps, designSystem: id }
     })
+  }, [])
+
+  const applyTemplate = useCallback((tpl: StarterTemplate | null) => {
+    if (!tpl) {
+      setActiveTemplate(null)
+      setState(s => ({ ...s, selectedDeps: [], selectedOptions: {}, designSystem: DESIGN_NONE }))
+      return
+    }
+    const selectedDeps = tpl.dependencies.map(d => d.depId)
+    const selectedOptions: Record<string, string[]> = {}
+    for (const d of tpl.dependencies) {
+      if (d.subOptions && d.subOptions.length) selectedOptions[d.depId] = [...d.subOptions]
+    }
+    setActiveTemplate(tpl.id)
+    setState(s => ({ ...s, selectedDeps, selectedOptions, designSystem: deriveDesignSystem(selectedDeps) }))
+  }, [])
+
+  const loadSnapshot = useCallback((snap: FeState) => {
+    setActiveTemplate(null)
+    setState(snap)
   }, [])
 
   const toggleOption = useCallback((depId: string, optionId: string) => {
@@ -148,6 +173,7 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
   }, [])
 
   const reset = useCallback(() => {
+    setActiveTemplate(null)
     setState(defaultState(metadata))
     window.history.replaceState(null, '', window.location.pathname)
   }, [metadata])
@@ -156,6 +182,7 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
 
   return {
     state,
+    activeTemplate,
     updateForm,
     setReactVersion,
     setNodeVersion,
@@ -165,6 +192,8 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
     toggleDep,
     toggleOption,
     setDesignSystem,
+    applyTemplate,
+    loadSnapshot,
     reset,
     downloadUrl,
   }

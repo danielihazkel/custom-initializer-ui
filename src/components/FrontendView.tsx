@@ -3,6 +3,10 @@ import { createPortal } from 'react-dom'
 import { useFrontendMetadata } from '../hooks/useFrontendMetadata'
 import { useFrontendState } from '../hooks/useFrontendState'
 import { useFrontendPreview } from '../hooks/useFrontendPreview'
+import { useStarterTemplates } from '../hooks/useStarterTemplates'
+import { useFrontendPresets } from '../hooks/useFrontendPresets'
+import { TemplatePicker } from './TemplatePicker'
+import { PresetPickerFE } from './frontend/PresetPickerFE'
 import { ProjectFormFE } from './frontend/ProjectFormFE'
 import { OptionsPanelFE } from './frontend/OptionsPanelFE'
 import { SelectedDependenciesFE } from './frontend/SelectedDependenciesFE'
@@ -17,6 +21,8 @@ interface Props {
 export function FrontendView({ onGenerated, onReset }: Props) {
   const { metadata, loading, error, reload } = useFrontendMetadata()
   const fe = useFrontendState(metadata)
+  const { templates } = useStarterTemplates('FRONTEND')
+  const presets = useFrontendPresets()
   const {
     preview, previousPreview,
     loading: previewLoading, error: previewError,
@@ -63,6 +69,7 @@ export function FrontendView({ onGenerated, onReset }: Props) {
   }
 
   function handleGenerate() {
+    presets.pushRecent(fe.state)
     const a = document.createElement('a')
     a.href = fe.downloadUrl
     a.download = `${fe.state.form.projectName || 'demo'}.zip`
@@ -121,6 +128,23 @@ export function FrontendView({ onGenerated, onReset }: Props) {
         </button>,
         resetSlot
       )}
+
+      {templates.length > 0 && (
+        <TemplatePicker
+          templates={templates}
+          activeTemplateId={fe.activeTemplate}
+          onSelect={fe.applyTemplate}
+        />
+      )}
+      <PresetPickerFE
+        presets={presets.presets}
+        recents={presets.recents}
+        currentSnapshot={fe.state}
+        onLoad={fe.loadSnapshot}
+        onSave={presets.savePreset}
+        onDeletePreset={presets.deletePreset}
+        onDeleteRecent={presets.deleteRecent}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left column: form + options */}

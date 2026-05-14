@@ -7,13 +7,18 @@ export interface UseStarterTemplatesResult {
   error: string | null
 }
 
-export function useStarterTemplates(): UseStarterTemplatesResult {
+export type ProjectKind = 'BACKEND' | 'FRONTEND'
+
+export function useStarterTemplates(projectKind?: ProjectKind): UseStarterTemplatesResult {
   const [templates, setTemplates] = useState<StarterTemplate[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/metadata/starter-templates')
+    const url = projectKind
+      ? `/metadata/starter-templates?projectKind=${projectKind}`
+      : '/metadata/starter-templates'
+    fetch(url)
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
@@ -26,7 +31,7 @@ export function useStarterTemplates(): UseStarterTemplatesResult {
         setError(err.message)
         setLoading(false)
       })
-  }, [])
+  }, [projectKind])
 
   return { templates, loading, error }
 }
