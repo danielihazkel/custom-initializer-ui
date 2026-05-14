@@ -1,4 +1,5 @@
-import type { FrontendMetadata } from '../../hooks/useFrontendMetadata'
+import { getDesignSystemEntries, type FrontendMetadata } from '../../hooks/useFrontendMetadata'
+import { DESIGN_NONE } from '../../hooks/useFrontendState'
 
 interface Props {
   metadata: FrontendMetadata
@@ -6,10 +7,12 @@ interface Props {
   nodeVersion: string
   packageManager: string
   basePath: string
+  designSystem: string
   onReactVersionChange: (v: string) => void
   onNodeVersionChange: (v: string) => void
   onPackageManagerChange: (v: string) => void
   onBasePathChange: (v: string) => void
+  onDesignSystemChange: (v: string) => void
 }
 
 function Dropdown({
@@ -88,11 +91,17 @@ export function OptionsPanelFE({
   nodeVersion,
   packageManager,
   basePath,
+  designSystem,
   onReactVersionChange,
   onNodeVersionChange,
   onPackageManagerChange,
   onBasePathChange,
+  onDesignSystemChange,
 }: Props) {
+  const designEntries = getDesignSystemEntries(metadata)
+  const designOptions = designEntries.length
+    ? designEntries.map(e => ({ id: e.id, name: e.name }))
+    : [{ id: DESIGN_NONE, name: 'None / Plain CSS' }]
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -122,6 +131,12 @@ export function OptionsPanelFE({
         value={packageManager}
         options={metadata.packageManagers}
         onChange={onPackageManagerChange}
+      />
+      <Dropdown
+        label="Design System"
+        value={designSystem}
+        options={designOptions}
+        onChange={onDesignSystemChange}
       />
       <label className="block">
         <span className="block text-[10px] uppercase font-bold tracking-widest text-primary mb-1.5">

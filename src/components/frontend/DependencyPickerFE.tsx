@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { FrontendMetadata, FeDependency } from '../../hooks/useFrontendMetadata'
+import { DESIGN_GROUP_NAME, type FrontendMetadata, type FeDependency } from '../../hooks/useFrontendMetadata'
 
 interface Props {
   metadata: FrontendMetadata
@@ -19,9 +19,11 @@ export function DependencyPickerFE({
   const [query, setQuery] = useState('')
 
   const filteredGroups = useMemo(() => {
+    // The Design System group is rendered as a dedicated picker in OptionsPanelFE.
+    const groups = metadata.dependencies.filter(g => g.name !== DESIGN_GROUP_NAME)
     const q = query.trim().toLowerCase()
-    if (!q) return metadata.dependencies
-    return metadata.dependencies
+    if (!q) return groups
+    return groups
       .map(g => ({
         ...g,
         entries: g.entries.filter(
@@ -34,6 +36,11 @@ export function DependencyPickerFE({
       .filter(g => g.entries.length > 0)
   }, [metadata.dependencies, query])
 
+  const visibleSelectedDeps = useMemo(
+    () => selectedDeps.filter(id => !id.startsWith('design-')),
+    [selectedDeps]
+  )
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -44,8 +51,8 @@ export function DependencyPickerFE({
           <span className="text-xs font-bold uppercase tracking-widest text-on-surface">
             Dependencies
           </span>
-          {selectedDeps.length > 0 && (
-            <span className="text-[11px] text-secondary">({selectedDeps.length} selected)</span>
+          {visibleSelectedDeps.length > 0 && (
+            <span className="text-[11px] text-secondary">({visibleSelectedDeps.length} selected)</span>
           )}
         </div>
         <input
@@ -58,9 +65,9 @@ export function DependencyPickerFE({
       </div>
 
       {/* Selected chips */}
-      {selectedDeps.length > 0 && (
+      {visibleSelectedDeps.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pb-2 border-b border-outline-variant">
-          {selectedDeps.map(id => {
+          {visibleSelectedDeps.map(id => {
             const dep = findDep(metadata, id)
             return (
               <button

@@ -16,6 +16,13 @@ export interface FeState {
   basePath: string
   selectedDeps: string[]
   selectedOptions: Record<string, string[]>
+  designSystem: string
+}
+
+export const DESIGN_NONE = 'design-none'
+
+function deriveDesignSystem(deps: string[]): string {
+  return deps.find(d => d.startsWith('design-')) ?? DESIGN_NONE
 }
 
 const STORAGE_KEY = 'frontendInitializrState'
@@ -44,6 +51,7 @@ function defaultState(metadata: FrontendMetadata | null): FeState {
     basePath: '/',
     selectedDeps: [],
     selectedOptions: {},
+    designSystem: DESIGN_NONE,
   }
 }
 
@@ -51,7 +59,11 @@ export function useFrontendState(metadata: FrontendMetadata | null) {
   const [state, setState] = useState<FeState>(() => {
     const stored = readStored()
     const base = defaultState(metadata)
-    return { ...base, ...stored, form: { ...base.form, ...(stored?.form ?? {}) } }
+    const merged = { ...base, ...stored, form: { ...base.form, ...(stored?.form ?? {}) } }
+    // Always re-derive designSystem from selectedDeps so the picker stays in sync
+    // with the source of truth even after older state shapes are loaded.
+    merged.designSystem = deriveDesignSystem(merged.selectedDeps)
+    return merged
   })
 
   // Apply server defaults once metadata loads, but only for fields the user hasn't touched.
@@ -88,7 +100,19 @@ export function useFrontendState(metadata: FrontendMetadata | null) {
       const selectedDeps = has ? s.selectedDeps.filter(d => d !== depId) : [...s.selectedDeps, depId]
       const selectedOptions = { ...s.selectedOptions }
       if (has) delete selectedOptions[depId]
-      return { ...s, selectedDeps, selectedOptions }
+      return { ...s, selectedDeps, selectedOptions, designSystem: deriveDesignSystem(selectedDeps) }
+    })
+  }, [])
+
+  const setDesignSystem = useCallback((id: string) => {
+    setState(s => {
+      let deps = s.selectedDeps.filter(d => !d.startsWith('design-'))
+      if (id !== DESIGN_NONE) deps = [...deps, id]
+      // shadcn requires Tailwind — auto-add for instant UX feedback (backend enforces too).
+      if (id === 'design-shadcn' && !deps.includes('style-tailwind')) {
+        deps = [...deps, 'style-tailwind']
+      }
+      return { ...s, selectedDeps: deps, designSystem: id }
     })
   }, [])
 
@@ -117,6 +141,7 @@ export function useFrontendState(metadata: FrontendMetadata | null) {
     setBasePath,
     toggleDep,
     toggleOption,
+    setDesignSystem,
     reset,
     downloadUrl,
   }

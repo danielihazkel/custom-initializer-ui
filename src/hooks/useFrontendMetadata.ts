@@ -39,6 +39,13 @@ export interface UseFrontendMetadataResult {
   reload: () => void
 }
 
+export const DESIGN_GROUP_NAME = 'Design System'
+
+export function getDesignSystemEntries(metadata: FrontendMetadata): FeDependency[] {
+  const g = metadata.dependencies.find(g => g.name === DESIGN_GROUP_NAME)
+  return g?.entries ?? []
+}
+
 export function useFrontendMetadata(): UseFrontendMetadataResult {
   const [metadata, setMetadata] = useState<FrontendMetadata | null>(null)
   const [loading, setLoading] = useState(true)
