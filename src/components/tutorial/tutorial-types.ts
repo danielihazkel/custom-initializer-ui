@@ -16,12 +16,15 @@ export interface MockApi {
   description: string;
 }
 
+export type LessonLanguage = 'java' | 'xml' | 'tsx' | 'ts' | 'js' | 'css';
+
 export interface Lesson {
   id: string;
   title: string;
   description: string;
   content: string; // Markdown-like or raw text
   codeSnippet?: string;
+  language?: LessonLanguage;
   architectureHighlight?: 'gateway' | 'client' | 'controller' | 'service' | 'repository' | 'database' | 'security' | 'cache' | 'event-bus' | 'broker' | 'test' | 'graphql' | 'none';
   dependencies?: Dependency[];
   mockApi?: MockApi;
@@ -29,6 +32,8 @@ export interface Lesson {
   showSecurityVisualizer?: boolean;
   showJpaMapper?: boolean;
   showTopologyVisualizer?: boolean;
+  showRenderTreeVisualizer?: boolean;
+  showHooksLifecycleVisualizer?: boolean;
 }
 
 export interface Module {

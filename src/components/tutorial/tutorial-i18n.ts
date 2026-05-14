@@ -2,6 +2,7 @@ export type Lang = 'en' | 'he'
 
 export interface UiStrings {
   sidebarTitle: string
+  frontendTitle: string
   searchPlaceholder: string
   noLessonsFound: string
   clearSearch: string
@@ -13,11 +14,15 @@ export interface UiStrings {
   showVisualizer: string
   langToggleLabel: string
   langToggleTitle: string
+  trackBackend: string
+  trackFrontend: string
+  trackToggleTitle: string
 }
 
 export const UI_STRINGS: Record<Lang, UiStrings> = {
   en: {
     sidebarTitle: 'Spring Master',
+    frontendTitle: 'Frontend Master',
     searchPlaceholder: 'Search lessons...',
     noLessonsFound: 'No lessons found',
     clearSearch: 'Clear search',
@@ -29,9 +34,13 @@ export const UI_STRINGS: Record<Lang, UiStrings> = {
     showVisualizer: 'Show Visualizer',
     langToggleLabel: 'עב',
     langToggleTitle: 'עבור לעברית',
+    trackBackend: 'Backend',
+    trackFrontend: 'Frontend',
+    trackToggleTitle: 'Switch curriculum',
   },
   he: {
     sidebarTitle: 'ספרינג מאסטר',
+    frontendTitle: 'פרונטאנד מאסטר',
     searchPlaceholder: 'חיפוש שיעורים...',
     noLessonsFound: 'לא נמצאו שיעורים',
     clearSearch: 'נקה חיפוש',
@@ -43,5 +52,8 @@ export const UI_STRINGS: Record<Lang, UiStrings> = {
     showVisualizer: 'הצג ויזואליזציה',
     langToggleLabel: 'EN',
     langToggleTitle: 'Switch to English',
+    trackBackend: 'בקאנד',
+    trackFrontend: 'פרונטאנד',
+    trackToggleTitle: 'החלף תוכנית לימודים',
   },
 }

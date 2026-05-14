@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { BookOpen, Code2, Terminal, ChevronRight, Menu, X, Layers, Search, Command } from 'lucide-react';
+import { BookOpen, Code2, Terminal, ChevronRight, Menu, X, Layers, Search, Command, Server, Palette } from 'lucide-react';
 import { CURRICULUM } from './tutorial-constants';
 import { CURRICULUM_HE } from './tutorial-constants-he';
+import { CURRICULUM_FE } from './tutorial-constants-fe';
+import { CURRICULUM_FE_HE } from './tutorial-constants-fe-he';
 import { UI_STRINGS, type Lang } from './tutorial-i18n';
-import { Module, Lesson } from './tutorial-types';
+import { Module, Lesson, LessonLanguage } from './tutorial-types';
 import ArchitectureVisualizer from './visualizers/ArchitectureVisualizer';
 import ProjectScaffolder from './visualizers/ProjectScaffolder';
 import MockApiPlayground from './visualizers/MockApiPlayground';
@@ -11,6 +13,10 @@ import BeanLifecycleVisualizer from './visualizers/BeanLifecycleVisualizer';
 import SecurityFilterVisualizer from './visualizers/SecurityFilterVisualizer';
 import JpaEntityMapper from './visualizers/JpaEntityMapper';
 import MicroservicesTopology from './visualizers/MicroservicesTopology';
+import ReactRenderTreeVisualizer from './visualizers/ReactRenderTreeVisualizer';
+import HooksLifecycleVisualizer from './visualizers/HooksLifecycleVisualizer';
+
+type Track = 'backend' | 'frontend';
 
 interface TutorialViewProps {
   onClose?: () => void;
@@ -18,6 +24,7 @@ interface TutorialViewProps {
 
 export function TutorialView(_props: TutorialViewProps) {
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('tutorial-lang') as Lang) ?? 'en');
+  const [track, setTrack] = useState<Track>(() => (localStorage.getItem('tutorial-track') as Track) ?? 'backend');
   const [activeModule, setActiveModule] = useState<Module>(CURRICULUM[0]);
   const [activeLesson, setActiveLesson] = useState<Lesson>(CURRICULUM[0].lessons[0]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -26,18 +33,29 @@ export function TutorialView(_props: TutorialViewProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const curriculum = lang === 'he' ? CURRICULUM_HE : CURRICULUM;
+  const curriculum =
+    track === 'frontend'
+      ? (lang === 'he' ? CURRICULUM_FE_HE : CURRICULUM_FE)
+      : (lang === 'he' ? CURRICULUM_HE : CURRICULUM);
   const ui = UI_STRINGS[lang];
   const isRtl = lang === 'he';
+  const sidebarTitle = track === 'frontend' ? ui.frontendTitle : ui.sidebarTitle;
 
-  // Keep active module/lesson in sync by id when language changes
+  // Keep active module/lesson in sync by id when language or track changes
   useEffect(() => {
     const matchedModule = curriculum.find(m => m.id === activeModule.id) ?? curriculum[0];
     const matchedLesson = matchedModule.lessons.find(l => l.id === activeLesson.id) ?? matchedModule.lessons[0];
     setActiveModule(matchedModule);
     setActiveLesson(matchedLesson);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lang]);
+  }, [lang, track]);
+
+  const handleTrackChange = (next: Track) => {
+    if (next === track) return;
+    localStorage.setItem('tutorial-track', next);
+    setTrack(next);
+    setSearchQuery('');
+  };
 
   // Scoped keyboard shortcut — only fires when tutorial container is focused
   useEffect(() => {
@@ -131,7 +149,7 @@ export function TutorialView(_props: TutorialViewProps) {
   };
 
   // Syntax highlighting helper
-  const highlightCode = (code: string) => {
+  const highlightCode = (code: string, language: LessonLanguage = 'java') => {
     let safeCode = code
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -143,19 +161,63 @@ export function TutorialView(_props: TutorialViewProps) {
       return `___PLACEHOLDER_${placeholders.length - 1}___`;
     };
 
+    // Strings: double-quoted (all langs) and single-quoted/template (JS/TS)
     safeCode = safeCode.replace(/("[^"]*")/g, (match) => pushPlaceholder(`<span class="text-tertiary">${match}</span>`));
+    if (language === 'tsx' || language === 'ts' || language === 'js') {
+      safeCode = safeCode.replace(/('[^']*')/g, (match) => pushPlaceholder(`<span class="text-tertiary">${match}</span>`));
+      safeCode = safeCode.replace(/(`[^`]*`)/g, (match) => pushPlaceholder(`<span class="text-tertiary">${match}</span>`));
+    }
+
+    // Comments
     safeCode = safeCode.replace(/(\/\/.*)/g, (match) => pushPlaceholder(`<span class="text-secondary italic">${match}</span>`));
+    safeCode = safeCode.replace(/(\/\*[\s\S]*?\*\/)/g, (match) => pushPlaceholder(`<span class="text-secondary italic">${match}</span>`));
     safeCode = safeCode.replace(/(&lt;!--[\s\S]*?--&gt;)/g, (match) => pushPlaceholder(`<span class="text-secondary italic">${match}</span>`));
-    safeCode = safeCode.replace(/\b(public|private|protected|class|interface|record|enum|return|if|else|void|new|final|static|package|import|throws|try|catch|extends|implements)\b/g, '<span class="text-primary font-semibold">$1</span>');
-    safeCode = safeCode.replace(/\b(String|Long|Integer|Boolean|List|Optional|LocalDate|BigDecimal|ResponseEntity|ProblemDetail|HttpStatus|User|UserDTO|OrderDTO|OrderRequest|UserRepository|Component|Service|RestController|RestControllerAdvice|GetMapping|PostMapping|PutMapping|PatchMapping|DeleteMapping|PathVariable|RequestBody|Autowired|Bean|Scope|SecurityFilterChain|HttpSecurity|SessionCreationPolicy|DataSource|MailConfig|Document|Map|ConcurrentHashMap|Mono|Flux|StepVerifier|Container|PostgreSQLContainer|JoinPoint|ProceedingJoinPoint|Aspect|Before|Around|ApplicationEventPublisher|EventListener|Async|Scheduled|Cacheable|CacheEvict|Flyway|RestClient|WebClient|HealthIndicator|Health|RouteLocator|RouteLocatorBuilder|CircuitBreaker|RabbitListener|OrderEvent|KafkaListener|UserEvent|MessageMapping|SendTo|ChatMessage|Operation|ApiResponses|ApiResponse|QueryMapping|SchemaMapping|Argument|Book|MongoRepository|Id|Step|JobRepository|PlatformTransactionManager|StepBuilder)\b/g, '<span class="text-on-surface font-semibold">$1</span>');
-    safeCode = safeCode.replace(/(@\w+)/g, '<span class="text-tertiary font-semibold">$1</span>');
-    safeCode = safeCode.replace(/(&lt;\/?[a-z][a-z0-9\-\.:]*)/g, '<span class="text-primary">$1</span>');
+
+    if (language === 'tsx' || language === 'ts' || language === 'js') {
+      // JS/TS keywords
+      safeCode = safeCode.replace(/\b(const|let|var|function|return|if|else|import|export|from|as|type|interface|enum|class|extends|implements|default|new|typeof|instanceof|async|await|yield|throw|try|catch|finally|for|while|do|switch|case|break|continue|of|in|null|undefined|true|false|void|readonly|public|private|protected|static)\b/g, '<span class="text-primary font-semibold">$1</span>');
+      // React / TS identifiers worth bolding
+      safeCode = safeCode.replace(/\b(useState|useEffect|useMemo|useCallback|useRef|useContext|useReducer|useLayoutEffect|React|Component|FC|PropsWithChildren|ReactNode|ReactElement|HTMLAttributes|ButtonHTMLAttributes|InputHTMLAttributes|PayloadAction|RootState|Reducer|Item|Todo|User|CartItem|HTMLInputElement|HTMLDivElement|HTMLButtonElement|string|number|boolean|Array|Promise|Record|Partial|Pick|Omit|Set|Map)\b/g, '<span class="text-on-surface font-semibold">$1</span>');
+      // JSX tags
+      safeCode = safeCode.replace(/(&lt;\/?[A-Za-z][A-Za-z0-9\-\.:]*)/g, '<span class="text-primary">$1</span>');
+    } else if (language === 'css') {
+      safeCode = safeCode.replace(/(@[a-z-]+)/g, '<span class="text-tertiary font-semibold">$1</span>');
+      safeCode = safeCode.replace(/([a-z-]+)\s*:/g, '<span class="text-primary font-semibold">$1</span>:');
+    } else {
+      // Java / XML (default — original behavior)
+      safeCode = safeCode.replace(/\b(public|private|protected|class|interface|record|enum|return|if|else|void|new|final|static|package|import|throws|try|catch|extends|implements)\b/g, '<span class="text-primary font-semibold">$1</span>');
+      safeCode = safeCode.replace(/\b(String|Long|Integer|Boolean|List|Optional|LocalDate|BigDecimal|ResponseEntity|ProblemDetail|HttpStatus|User|UserDTO|OrderDTO|OrderRequest|UserRepository|Component|Service|RestController|RestControllerAdvice|GetMapping|PostMapping|PutMapping|PatchMapping|DeleteMapping|PathVariable|RequestBody|Autowired|Bean|Scope|SecurityFilterChain|HttpSecurity|SessionCreationPolicy|DataSource|MailConfig|Document|Map|ConcurrentHashMap|Mono|Flux|StepVerifier|Container|PostgreSQLContainer|JoinPoint|ProceedingJoinPoint|Aspect|Before|Around|ApplicationEventPublisher|EventListener|Async|Scheduled|Cacheable|CacheEvict|Flyway|RestClient|WebClient|HealthIndicator|Health|RouteLocator|RouteLocatorBuilder|CircuitBreaker|RabbitListener|OrderEvent|KafkaListener|UserEvent|MessageMapping|SendTo|ChatMessage|Operation|ApiResponses|ApiResponse|QueryMapping|SchemaMapping|Argument|Book|MongoRepository|Id|Step|JobRepository|PlatformTransactionManager|StepBuilder)\b/g, '<span class="text-on-surface font-semibold">$1</span>');
+      safeCode = safeCode.replace(/(@\w+)/g, '<span class="text-tertiary font-semibold">$1</span>');
+      safeCode = safeCode.replace(/(&lt;\/?[a-z][a-z0-9\-\.:]*)/g, '<span class="text-primary">$1</span>');
+    }
 
     placeholders.forEach((content, index) => {
       safeCode = safeCode.replace(`___PLACEHOLDER_${index}___`, content);
     });
 
     return safeCode;
+  };
+
+  // File-name label shown above the code block
+  const codeFileLabel = (lesson: Lesson): string => {
+    const lang = lesson.language ?? 'java';
+    if (lang === 'tsx') return 'Component.tsx';
+    if (lang === 'ts') return 'module.ts';
+    if (lang === 'js') return 'module.js';
+    if (lang === 'css') return 'styles.css';
+    if (lang === 'xml' || lesson.id.startsWith('maven')) return 'Maven POM';
+    return 'SpringContext.java';
+  };
+
+  // Right-of-header tag (e.g. "Java 17+" or "TypeScript 5+")
+  const codeLanguageTag = (lesson: Lesson): string => {
+    const lang = lesson.language ?? 'java';
+    if (lang === 'tsx') return 'React + TypeScript';
+    if (lang === 'ts') return 'TypeScript 5+';
+    if (lang === 'js') return 'JavaScript';
+    if (lang === 'css') return 'CSS';
+    if (lang === 'xml' || lesson.id.startsWith('maven')) return 'pom.xml';
+    return 'Java 17+';
   };
 
   const handleModuleSelect = (module: Module) => {
@@ -205,23 +267,59 @@ export function TutorialView(_props: TutorialViewProps) {
         className={`fixed inset-y-0 ${isRtl ? 'right-0' : 'left-0'} z-40 w-80 bg-surface-container border-${isRtl ? 'l' : 'r'} border-outline-variant transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : isRtl ? 'translate-x-full' : '-translate-x-full'}`}
         style={{ top: '4rem', height: 'calc(100vh - 4rem)' }}
       >
-        <div className="p-5 border-b border-outline-variant flex justify-between items-center bg-surface-container">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-container rounded-lg flex items-center justify-center shadow-lg shadow-primary/30">
-              <span className="font-bold text-on-primary text-lg">S</span>
+        <div className="p-5 border-b border-outline-variant bg-surface-container">
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-container rounded-lg flex items-center justify-center shadow-lg shadow-primary/30">
+                <span className="font-bold text-on-primary text-lg">{track === 'frontend' ? 'F' : 'S'}</span>
+              </div>
+              <h1 className="font-bold text-lg tracking-tight text-on-surface">{sidebarTitle}</h1>
             </div>
-            <h1 className="font-bold text-lg tracking-tight text-on-surface">{ui.sidebarTitle}</h1>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleLangToggle}
+                className="px-2.5 py-1 rounded-md text-xs font-bold border border-outline-variant text-secondary hover:text-on-surface hover:border-primary/40 transition-colors"
+                title={ui.langToggleTitle}
+              >
+                {ui.langToggleLabel}
+              </button>
+              <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-secondary">
+                <X size={20} />
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Backend / Frontend track toggle */}
+          <div
+            role="tablist"
+            aria-label={ui.trackToggleTitle}
+            className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-background border border-outline-variant"
+          >
             <button
-              onClick={handleLangToggle}
-              className="px-2.5 py-1 rounded-md text-xs font-bold border border-outline-variant text-secondary hover:text-on-surface hover:border-primary/40 transition-colors"
-              title={ui.langToggleTitle}
+              role="tab"
+              aria-selected={track === 'backend'}
+              onClick={() => handleTrackChange('backend')}
+              className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-bold transition-all ${
+                track === 'backend'
+                  ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm'
+                  : 'text-secondary hover:text-on-surface'
+              }`}
             >
-              {ui.langToggleLabel}
+              <Server size={12} />
+              {ui.trackBackend}
             </button>
-            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-secondary">
-              <X size={20} />
+            <button
+              role="tab"
+              aria-selected={track === 'frontend'}
+              onClick={() => handleTrackChange('frontend')}
+              className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-bold transition-all ${
+                track === 'frontend'
+                  ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm'
+                  : 'text-secondary hover:text-on-surface'
+              }`}
+            >
+              <Palette size={12} />
+              {ui.trackFrontend}
             </button>
           </div>
         </div>
@@ -245,7 +343,7 @@ export function TutorialView(_props: TutorialViewProps) {
           </div>
         </div>
 
-        <div className="p-4 overflow-y-auto tutorial-scroll" style={{ height: 'calc(100% - 130px)' }}>
+        <div className="p-4 overflow-y-auto tutorial-scroll" style={{ height: 'calc(100% - 200px)' }}>
           <div className="space-y-8">
             {filteredCurriculum.length > 0 ? (
               filteredCurriculum.map((module) => (
@@ -311,13 +409,15 @@ export function TutorialView(_props: TutorialViewProps) {
           </div>
 
           <div className="flex gap-2 shrink-0">
-            <button
-              onClick={() => setShowArchitecture(!showArchitecture)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${showArchitecture ? 'bg-primary/10 text-primary border-primary/20' : 'bg-surface-container text-secondary border-outline-variant hover:border-outline'}`}
-            >
-              <Layers size={14} />
-              {showArchitecture ? ui.hideArchitecture : ui.showArchitecture}
-            </button>
+            {track === 'backend' && (
+              <button
+                onClick={() => setShowArchitecture(!showArchitecture)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${showArchitecture ? 'bg-primary/10 text-primary border-primary/20' : 'bg-surface-container text-secondary border-outline-variant hover:border-outline'}`}
+              >
+                <Layers size={14} />
+                {showArchitecture ? ui.hideArchitecture : ui.showArchitecture}
+              </button>
+            )}
           </div>
         </header>
 
@@ -352,7 +452,7 @@ export function TutorialView(_props: TutorialViewProps) {
                       {ui.implementationExample}
                     </h4>
                     <span className="text-xs text-secondary font-mono">
-                      {activeLesson.id.startsWith('maven') ? 'pom.xml' : 'Java 17+'}
+                      {codeLanguageTag(activeLesson)}
                     </span>
                   </div>
                   <div dir="ltr" className="glass-card rounded-xl overflow-hidden shadow-2xl group border border-outline-variant">
@@ -364,14 +464,14 @@ export function TutorialView(_props: TutorialViewProps) {
                           <div className="w-2.5 h-2.5 rounded-full bg-primary/80"></div>
                         </div>
                         <span className="text-xs font-mono text-secondary opacity-60">
-                          {activeLesson.id.startsWith('maven') ? 'Maven POM' : 'SpringContext.java'}
+                          {codeFileLabel(activeLesson)}
                         </span>
                       </div>
                       <div className="px-2 py-0.5 rounded text-[10px] font-medium bg-surface text-secondary border border-outline-variant">{ui.readOnly}</div>
                     </div>
                     <div className="relative p-6 overflow-x-auto bg-surface/50 tutorial-scroll">
                       <pre className="font-mono text-sm leading-6 text-on-surface-variant">
-                        <code dangerouslySetInnerHTML={{ __html: highlightCode(activeLesson.codeSnippet) }} />
+                        <code dangerouslySetInnerHTML={{ __html: highlightCode(activeLesson.codeSnippet, activeLesson.language) }} />
                       </pre>
                     </div>
                   </div>
@@ -420,38 +520,56 @@ export function TutorialView(_props: TutorialViewProps) {
                 </div>
               )}
 
-              {/* Interactive Architecture View (Mobile/Tablet inline) */}
-              <div className="xl:hidden">
-                {showArchitecture && (
-                  <div className="my-8">
-                    <ArchitectureVisualizer activeStage={activeLesson.architectureHighlight} />
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+              {/* React Re-Render Tree (Frontend) */}
+              {activeLesson.showRenderTreeVisualizer && (
+                <div className="mt-12">
+                  <ReactRenderTreeVisualizer />
+                </div>
+              )}
 
-          {/* Right: Architecture (Desktop) */}
-          <div className={`hidden xl:flex w-[420px] bg-surface-container-low border-${isRtl ? 'r' : 'l'} border-outline-variant flex-col shrink-0`}>
-            <div className="p-6 h-full overflow-y-auto tutorial-scroll">
-              {showArchitecture ? (
-                <ArchitectureVisualizer activeStage={activeLesson.architectureHighlight} />
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-secondary space-y-4">
-                  <div className="w-16 h-16 rounded-full bg-surface container flex items-center justify-center border border-outline-variant">
-                    <Terminal size={24} className="opacity-40" />
-                  </div>
-                  <p className="text-sm">{ui.architectureHidden}</p>
-                  <button
-                    onClick={() => setShowArchitecture(true)}
-                    className="text-xs text-primary hover:text-primary-container transition-colors border-b border-primary/30 pb-0.5"
-                  >
-                    {ui.showVisualizer}
-                  </button>
+              {/* Hooks Lifecycle Timeline (Frontend) */}
+              {activeLesson.showHooksLifecycleVisualizer && (
+                <div className="mt-12">
+                  <HooksLifecycleVisualizer />
+                </div>
+              )}
+
+              {/* Interactive Architecture View (Mobile/Tablet inline, backend only) */}
+              {track === 'backend' && (
+                <div className="xl:hidden">
+                  {showArchitecture && (
+                    <div className="my-8">
+                      <ArchitectureVisualizer activeStage={activeLesson.architectureHighlight} />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
+
+          {/* Right: Architecture (Desktop, backend only) */}
+          {track === 'backend' && (
+            <div className={`hidden xl:flex w-[420px] bg-surface-container-low border-${isRtl ? 'r' : 'l'} border-outline-variant flex-col shrink-0`}>
+              <div className="p-6 h-full overflow-y-auto tutorial-scroll">
+                {showArchitecture ? (
+                  <ArchitectureVisualizer activeStage={activeLesson.architectureHighlight} />
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-secondary space-y-4">
+                    <div className="w-16 h-16 rounded-full bg-surface container flex items-center justify-center border border-outline-variant">
+                      <Terminal size={24} className="opacity-40" />
+                    </div>
+                    <p className="text-sm">{ui.architectureHidden}</p>
+                    <button
+                      onClick={() => setShowArchitecture(true)}
+                      className="text-xs text-primary hover:text-primary-container transition-colors border-b border-primary/30 pb-0.5"
+                    >
+                      {ui.showVisualizer}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
