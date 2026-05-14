@@ -189,7 +189,7 @@ export function OptionsPanelFE({
         options={designOptions}
         onChange={onDesignSystemChange}
       />
-      {showPalettePicker && (
+      {showPalettePicker && (metadata.colorPalettes?.length ?? 0) > 0 && (
         <PalettePicker
           palettes={metadata.colorPalettes}
           selectedId={colorPaletteId}
