@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useFrontendMetadata } from '../hooks/useFrontendMetadata'
 import { useFrontendState } from '../hooks/useFrontendState'
 import { useFrontendPreview } from '../hooks/useFrontendPreview'
@@ -18,6 +20,11 @@ export function FrontendView({ onGenerated }: Props) {
     loading: previewLoading, error: previewError,
     fetchPreview, clearPreview,
   } = useFrontendPreview()
+
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setHeaderSlot(document.getElementById('header-frontend-actions'))
+  }, [])
 
   if (loading) {
     return (
@@ -63,14 +70,15 @@ export function FrontendView({ onGenerated }: Props) {
 
   return (
     <div className="relative z-10 max-w-7xl mx-auto px-4 lg:px-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-on-surface">React + TypeScript + Vite Generator</h2>
-          <p className="text-xs text-secondary mt-0.5">
-            Scaffolds a Feature-Slice Design project with your chosen tooling. Single-app v1.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <div className="mb-6">
+        <h2 className="text-lg font-bold text-on-surface">React + TypeScript + Vite Generator</h2>
+        <p className="text-xs text-secondary mt-0.5">
+          Scaffolds a Feature-Slice Design project with your chosen tooling. Single-app v1.
+        </p>
+      </div>
+
+      {headerSlot && createPortal(
+        <>
           <button
             onClick={() => fetchPreview(fe.state)}
             disabled={previewLoading}
@@ -84,11 +92,13 @@ export function FrontendView({ onGenerated }: Props) {
           <button
             onClick={handleGenerate}
             className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn"
+            style={{ minWidth: '110px' }}
           >
             Generate
           </button>
-        </div>
-      </div>
+        </>,
+        headerSlot
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left column: form + options */}
@@ -139,14 +149,15 @@ export function FrontendView({ onGenerated }: Props) {
         </section>
       </div>
 
-      {preview && (
+      {preview && createPortal(
         <ProjectPreview
           preview={preview}
           previousPreview={previousPreview}
           artifactId={fe.state.form.projectName || 'demo'}
           onClose={clearPreview}
           onDownload={() => { handleGenerate(); clearPreview() }}
-        />
+        />,
+        document.body,
       )}
     </div>
   )

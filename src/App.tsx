@@ -305,6 +305,7 @@ export default function App() {
             </AnimatePresence>
           </button>
           )}
+          <div id="header-frontend-actions" className="flex items-center gap-3" />
         </div>
       </header>
 
