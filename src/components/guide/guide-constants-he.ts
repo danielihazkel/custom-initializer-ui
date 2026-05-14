@@ -82,7 +82,173 @@ export const GUIDE_SECTIONS_HE: GuideSection[] = [
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // 2. קבוצות תלויות
+  // 2. מחולל פרויקטי Frontend (React + TS + Vite + FSD)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'frontend-generator',
+    title: 'מחולל Frontend',
+    icon: 'web',
+    topics: [
+      {
+        id: 'fe-what',
+        title: 'מה זה מחולל ה-Frontend?',
+        description: 'מחולל שני שמייצר פרויקטי React + TypeScript + Vite בארכיטקטורת Feature-Slice Design.',
+        content: `### מטרה
+אותו קטלוג מבוסס-DB שמייצר backend של Spring Boot מייצר גם פרויקטי **React + TypeScript + Vite** בארכיטקטורת [Feature-Slice Design](https://feature-sliced.design/). המפתח בוחר שם פרויקט, npm scope, תלויות, sub-options, ולוחץ Generate — התשובה היא פרויקט frontend מכווץ שמוכן ל-\`pnpm install && pnpm dev\`.
+
+לשונית **Frontend** ראשית חדשה בממשק יושבת ליד **Backend / Training / Guide / Config**. אותו פאנל אדמין מנהל את שני הקטלוגים זה לצד זה.
+
+### למה נתיב שני במקום שימוש חוזר ב-Spring?
+מסגרת Spring Initializr קשורה ל-Maven/Gradle בקשיחות — היא לא יכולה לייצר \`package.json\` או \`vite.config.ts\`. לכן נתיב ה-FE עוקף את המסגרת לחלוטין. \`FrontendStarterController\` הוא REST controller רגיל של Spring שמפעיל שירות חדש בשם \`FrontendProjectGenerator\`, שבונה תיקייה זמנית בדיוק כמו ה-backend ואז מכווץ.
+
+מה שחשוב — נתיב ה-FE **משתמש מחדש** בכל מה שלא תלוי בכלי הבנייה: \`DependencyConfigService\`, טבלת \`FileContributionEntity\` (עם כל ארבעת הסוגים — STATIC_COPY, TEMPLATE, YAML_MERGE, DELETE), \`ProjectOptionsContext\` ל-sub-options, פילטר ה-servlet \`InitializrWebConfiguration\`, ואותו מנוע Mustache עם אותן ההסכמות בקונטקסט (\`has<Dep>\`, \`opt<Dep><Option>\`).
+
+### דיסקרימינטור ProjectKind
+לכל שורה בשש טבלאות הקטלוג יש עכשיו עמודת \`project_kind\` (\`BACKEND\` או \`FRONTEND\`). קטלוגי backend ו-frontend חיים באותו מסד H2 אבל לעולם לא רואים זה את זה — \`DependencyConfigService\` מסנן לפי kind בזמן שאילתה. שורות קיימות מקבלות \`BACKEND\` כברירת מחדל כך שהשינוי תואם לאחור באופן מלא.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'נתיב ה-FE **אינו** עובר דרך מסגרת Spring Initializr. הנקודות תחת `/frontend/*`, נפרדות מ-`/starter.zip`. לשונית Frontend בממשק מדברת עם `/frontend/metadata` ו-`/frontend/starter.zip`.'
+          }
+        ]
+      },
+      {
+        id: 'fe-using',
+        title: 'שימוש בלשונית Frontend',
+        description: 'מה מפתח רואה וממלא בעת יצירת פרויקט React.',
+        content: `### עמודה שמאלית — פרויקט + Stack
+- **Project Name** — שם התיקייה וערך \`package.json "name"\`. נגזר אוטומטית ל-App Title ב-title case.
+- **Scope** (אופציונלי) — npm scope בלי ה-\`@\`. \`menora\` + \`my-app\` הופך ל-\`@menora/my-app\` ב-\`package.json\`.
+- **App Title** — מופיע ב-\`<title>\` וב-HomePage לדוגמה.
+- **Description** — ערך \`package.json "description"\`.
+- **React** — תפריט גרסה (18 / 19), ברירת מחדל מ-\`application.yml\`.
+- **Node** — תפריט גרסה (18 / 20 / 22).
+- **Package Manager** — pill toggle: \`npm\` או \`pnpm\`. משפיע על הוראות ההרצה ב-README דרך הדגלים \`isNpm\` / \`isPnpm\` ב-Mustache.
+- **Base Path** — קונפיגורציית \`base\` של Vite לפריסות תת-נתיב (ברירת מחדל \`/\`).
+
+### עמודה ימנית — תלויות
+אותה תבנית של chips + רשימה מקובצת כמו בלשונית ה-Backend. לכל תלות יכולים להיות sub-options שמופיעים כ-checkboxes מקוננים אחרי שהאב נבחר. תיבת סינון בראש מחפשת לפי id, שם ותיאור.
+
+### Generate
+כפתור Generate ב-FrontendView מחובר ל-\`/frontend/starter.zip\` עם כל ערכי הטופס + התלויות הנבחרות ורשימות \`opts-{depId}\` לכל תלות. הקובץ מוזרם לדפדפן כ-\`{projectName}.zip\`.
+
+### שמירת מצב
+כל שינוי בטופס, בבחירות, או ב-sub-options נכתב ל-\`localStorage\` תחת \`frontendInitializrState\` — רענון של הדף משחזר את המצב. הקישור "Reset to defaults" מנקה אותו.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'לשונית ה-Frontend **אינה** חולקת state, presets, או recents עם לשונית ה-Backend. הן עצמאיות. Backend ממשיך להשתמש ב-`useProjectState`; frontend משתמש ב-hook המקביל `useFrontendState`.'
+          }
+        ]
+      },
+      {
+        id: 'fe-admin-pill',
+        title: 'אדמין: ה-Pill של Backend ⇄ Frontend',
+        description: 'איך הטוגל בכותרת האדמין מגביל כל לשונית לקטלוג אחד.',
+        content: `### איפה למצוא
+פתחו Config (Admin). בכותרת יש עכשיו pill toggle קטן: **Backend** | **Frontend**. ה-kind הנוכחי נשמר ב-\`localStorage\` כך שהוא שורד רענון דף.
+
+### על מה זה משפיע
+שש לשוניות מסננות שורות לפי ערך ה-pill הנוכחי ומסמנות \`projectKind\` על כל רשומה חדשה:
+- **Dep Groups** — קטגוריות שמופיעות בבוחר
+- **Dependencies** — רשומות הקטלוג
+- **File Contribs** — שורות STATIC_COPY / TEMPLATE / YAML_MERGE / DELETE
+- **Build Customizations** — כולל שני הסוגים החדשים שתחומים ל-FE (למטה)
+- **Sub-Options** — בחירות מותנות לכל תלות
+- **Compatibility** — חוקי REQUIRES / CONFLICTS / RECOMMENDS
+
+### על מה זה לא משפיע
+- **Overview** ו-**Activity** מציגות נתונים בשני ה-kinds.
+- **Templates** (חבילות starter) ו-**Modules** (multi-module) הם backend-only ב-v1.
+
+### שורות מהעבר
+שורות קיימות ללא \`projectKind\` נחשבות \`BACKEND\` על ידי הסנן בצד הלקוח (ברירת המחדל ב-DB דואגת לכך גם בצד השרת). אין צורך ב-backfill.`,
+        callouts: [
+          {
+            type: 'warning',
+            text: 'אם יוצרים רשומה תחת ה-pill הלא נכון — למשל מוסיפים `state-zustand` כשה-pill על Backend — היא תופיע ב-`/metadata/client` (קטלוג Spring) ותשבור את ה-pipeline של ה-backend בזמן יצירה. תמיד ודאו את ה-pill לפני שלוחצים **New Entry**.'
+          }
+        ]
+      },
+      {
+        id: 'fe-build-types',
+        title: 'שני סוגי Build Customization חדשים',
+        description: 'ADD_NPM_DEPENDENCY ו-ADD_VITE_PLUGIN — שימוש חוזר בעמודות קיימות עם משמעויות חדשות.',
+        content: `### שימוש חוזר בסכמה
+במקום להוסיף ישות חדשה, ל-\`BuildCustomizationEntity\` נוספו שני ערכי enum. העמודות שלו **מתפרשות מחדש** לפי שילוב של \`projectKind\` ו-\`customizationType\`. משמעות השדה לכל שורה:
+
+| Type | פרשנות שדות |
+|---|---|
+| \`ADD_NPM_DEPENDENCY\` | \`mavenArtifactId\` = שם חבילת npm (למשל \`react-router-dom\`); \`version\` = טווח semver (למשל \`^6.26.0\`); \`scope\` = \`"dev"\` → מגיע ל-\`devDependencies\`, כל ערך אחר → \`dependencies\` |
+| \`ADD_VITE_PLUGIN\` | \`mavenGroupId\` = נתיב import (למשל \`@vitejs/plugin-react\`); \`mavenArtifactId\` = שם binding (למשל \`react\`); \`version\` = ביטוי קריאת ה-plugin (למשל \`react()\`) |
+
+### איך הם מיושמים
+- **\`PackageJsonBuilder\`** טוען את ה-baseline \`templates/frontend/fe-package-base.mustache\`, מבצע render דרך Mustache, מפרסר ל-Jackson tree, ואז עובר על כל שורות \`ADD_NPM_DEPENDENCY\` ומכניס אותן לבלוק הנכון. המפתחות ממוינים אלפביתית בכל בלוק לדיפים יציבים.
+- **\`ViteConfigBuilder\`** טוען את \`templates/frontend/fe-vite-config.mustache\`, אוסף imports ייחודיים ורשימת קריאות plugin משורות \`ADD_VITE_PLUGIN\`, חושף אותם כ-\`{{vitePluginImports}}\` ו-\`{{vitePluginCalls}}\` בקונטקסט ה-Mustache, ומבצע render.
+
+### חבילות שתמיד מותקנות
+התלות \`__common__\` נושאת את ה-npm deps הבסיסיים שכל פרויקט מקבל — \`react\`, \`react-dom\`, \`typescript\`, \`vite\`, \`@vitejs/plugin-react\`, בתוספת ערימת האיכות שתמיד פעילה (\`eslint\`, \`prettier\`, \`husky\`, \`lint-staged\`, ועוד). שורת \`@vitejs/plugin-react\` היא גם השורה היחידה \`ADD_VITE_PLUGIN\` ב-\`__common__\`.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'הוספת חבילת npm חדשה דרך האדמין היא שורה אחת: בחרו **Build Customizations**, הגדירו את ה-type ל-`ADD_NPM_DEPENDENCY`, מלאו את שם החבילה ב-**mavenArtifactId**, גרסה ב-**version**, ו-`"dev"` ב-**scope** אם זה שייך ל-devDependencies.'
+          }
+        ]
+      },
+      {
+        id: 'fe-structure',
+        title: 'מה נוצר',
+        description: 'כל פרויקט מגיע עם הקבצים האלה — ללא קשר לבחירת התלויות.',
+        content: `### מבנה בסיסי
+כל פרויקט frontend שנוצר כולל:
+
+- **בנייה וקונפיגורציה** — \`package.json\`, \`vite.config.ts\`, \`tsconfig.json\`, \`tsconfig.node.json\` עם aliases של נתיבים \`@app/@pages/@widgets/@features/@entities/@shared\` ממופים גם ב-Vite וגם ב-TypeScript.
+- **כניסה** — \`index.html\` (עם החלפת \`{{appTitle}}\`), \`src/main.tsx\` שעוטף \`<App/>\` מ-\`@app/App\`, ו-HomePage עובד תחת \`src/pages/home/ui/\` כך ש-\`pnpm dev\` מראה משהו ברגע שההתקנה מסתיימת.
+- **איכות** — \`eslint.config.js\` (flat config, TS + React + react-hooks + react-refresh), \`.prettierrc.json\`, \`.husky/pre-commit\` שמריץ \`lint-staged\`. תמיד פעיל.
+- **CI / פריסה** — \`Dockerfile\` רב-שלבי (node → nginx), \`nginx.conf\` עם SPA fallback, \`Jenkinsfile\`, \`.dockerignore\`.
+- **כל 6 שכבות ה-FSD** — \`src/app\`, \`src/pages\`, \`src/widgets\`, \`src/features\`, \`src/entities\`, \`src/shared\` — לכל אחת barrel \`index.ts\` ו-\`README.md\` קצר שמסביר את מקום השכבה בהיררכיית ה-imports של FSD.
+
+### קבצים תלויי תלות
+- **\`style-tailwind\`** → \`tailwind.config.js\`, \`postcss.config.js\`, \`src/index.css\` עם שלוש הוראות \`@tailwind\`. \`src/main.tsx\` מייבא את ה-CSS תלוי-תנאי דרך \`{{#hasStyleTailwind}}…{{/hasStyleTailwind}}\`.
+- **\`test-vitest-rtl\`** → \`vitest.config.ts\`, \`src/test-setup.ts\`. \`package.json\` מקבל את ה-scripts \`test\`, \`test:ui\`, \`coverage\` תחת \`{{#hasTestVitestRtl}}\`.
+- כל השאר כרגע רק npm deps — המשתמש מחבר את הספרייה ל-\`App.tsx\` בעצמו. הוספת חיבור אוטומטי לכל תלות היא שורת file-contribution אחת מרחק.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'גם Mustache וגם JSX משתמשים ב-`{{` כפותח טוקן — אובייקטי inline-style כמו `style={{ color: "red" }}` מתנגשים. ה-`HomePage.tsx` הזרוע מרים את הסגנונות לקבועים ברמת המודול, וזה הפתרון הנקי ביותר. אם אתם כותבים שורת TEMPLATE שזקוקה ל-JSX עם סוגריים כפולים, השתמשו באותו דפוס.'
+          }
+        ]
+      },
+      {
+        id: 'fe-curl',
+        title: 'API Reference (curl)',
+        description: 'קריאה ישירה ל-/frontend/metadata ו-/frontend/starter.zip.',
+        content: `### Metadata
+\`\`\`bash
+curl http://localhost:8080/frontend/metadata | python -m json.tool | head -60
+\`\`\`
+
+מחזיר את ברירות המחדל של הטופס, את תפריטי React/Node/package-manager, את גרסאות ה-TS/Vite המקובעות, ואת קטלוג ה-FRONTEND (קבוצות → רשומות → sub-options).
+
+### Generate
+\`\`\`bash
+curl -o demo.zip "http://localhost:8080/frontend/starter.zip?\\
+projectName=demo&appTitle=Demo&scope=menora&\\
+reactVersion=18&nodeVersion=20&packageManager=pnpm&\\
+dependencies=router-react-router,state-zustand,style-tailwind,test-vitest-rtl&\\
+opts-state-zustand=sample-store&\\
+opts-router-react-router=lazy-routes,sample-routes"
+
+unzip -l demo.zip
+\`\`\`
+
+Sub-options עוקבים אחר אותה הסכמה \`opts-{depId}=opt1,opt2\` כמו בנתיב ה-backend; ה-servlet filter הקיים \`InitializrWebConfiguration\` מאכלס את \`ProjectOptionsContext\` לכל בקשה שמגיעה לאפליקציה, כך שנקודות הקצה של ה-frontend מקבלות sub-options בחינם.`,
+      },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 3. קבוצות תלויות
   // ─────────────────────────────────────────────────────────────────
   {
     id: 'dep-groups',

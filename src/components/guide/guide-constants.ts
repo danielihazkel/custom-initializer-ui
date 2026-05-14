@@ -82,7 +82,173 @@ File contributions and build customizations are read fresh from the database on 
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // 2. DEPENDENCY GROUPS
+  // 2. FRONTEND GENERATOR (React + TS + Vite + FSD)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'frontend-generator',
+    title: 'Frontend Generator',
+    icon: 'web',
+    topics: [
+      {
+        id: 'fe-what',
+        title: 'What Is the Frontend Generator?',
+        description: 'A second generator that scaffolds React + TypeScript + Vite projects using Feature-Slice Design.',
+        content: `### Purpose
+The same DB-driven catalog that produces Spring Boot backends also produces **React + TypeScript + Vite** frontends laid out with [Feature-Slice Design](https://feature-sliced.design/). Developers pick a project name, an npm scope, dependencies, sub-options, and click Generate — the response is a zipped frontend project ready to \`pnpm install && pnpm dev\`.
+
+A new top-level **Frontend** tab in the main UI sits beside **Backend / Training / Guide / Config**. The same admin panel manages both catalogs side by side.
+
+### Why a Second Path Instead of Reusing the Spring One?
+The Spring Initializr framework is Maven/Gradle-hardcoded — it can't emit \`package.json\` or \`vite.config.ts\`. So the FE path skips the framework entirely. \`FrontendStarterController\` is a plain Spring REST controller that calls a new \`FrontendProjectGenerator\` service, which builds a temp directory exactly like the backend does, then zips it.
+
+Crucially, the FE path **reuses** everything that's not build-tool-specific: \`DependencyConfigService\`, the \`FileContributionEntity\` table (with all four types — STATIC_COPY, TEMPLATE, YAML_MERGE, DELETE), \`ProjectOptionsContext\` for sub-options, the \`InitializrWebConfiguration\` servlet filter, and the same Mustache engine with the same context conventions (\`has<Dep>\`, \`opt<Dep><Option>\`).
+
+### The ProjectKind Discriminator
+Every row in the six catalog tables now has a \`project_kind\` column (\`BACKEND\` or \`FRONTEND\`). Backend and frontend catalogs live in the same H2 database but never see each other — \`DependencyConfigService\` filters by kind at query time. Existing rows default to \`BACKEND\` so this is fully backwards-compatible.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'The FE path **does not** go through the Spring Initializr framework. Endpoints live under `/frontend/*`, separate from `/starter.zip`. The Frontend tab in the UI talks to `/frontend/metadata` and `/frontend/starter.zip`.'
+          }
+        ]
+      },
+      {
+        id: 'fe-using',
+        title: 'Using the Frontend Tab',
+        description: 'What a developer sees and fills in when generating a React project.',
+        content: `### Left Column — Project + Stack
+- **Project Name** — folder name and \`package.json "name"\`. Auto-derives the App Title in title case.
+- **Scope** (optional) — npm scope without the \`@\`. \`menora\` + \`my-app\` becomes \`@menora/my-app\` in \`package.json\`.
+- **App Title** — appears in \`<title>\` and the sample \`HomePage\`.
+- **Description** — \`package.json "description"\`.
+- **React** — version dropdown (18 / 19), default from \`application.yml\`.
+- **Node** — version dropdown (18 / 20 / 22).
+- **Package Manager** — pill toggle: \`npm\` or \`pnpm\`. Shapes the README run instructions via the \`isNpm\` / \`isPnpm\` Mustache flags.
+- **Base Path** — Vite's \`base\` config for sub-path deploys (defaults to \`/\`).
+
+### Right Column — Dependencies
+Same chip + grouped-list pattern as the backend tab. Each dependency can expose sub-options that surface as nested checkboxes after the parent is selected. Filter box at the top searches across id, name, and description.
+
+### Generate
+The Generate button on the FrontendView is wired to \`/frontend/starter.zip\` with all the form values + the selected dependencies and per-dep \`opts-{depId}\` lists. The file streams to the browser as \`{projectName}.zip\`.
+
+### State Persistence
+Every change to the form, selections, or sub-options is written to \`localStorage\` under \`frontendInitializrState\` — refresh the page and the state restores. The "Reset to defaults" link clears it.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'The Frontend tab does **not** share state, presets, or recents with the Backend tab. They are independent. Backend continues to use `useProjectState`; frontend uses the parallel `useFrontendState` hook.'
+          }
+        ]
+      },
+      {
+        id: 'fe-admin-pill',
+        title: 'Admin: The Backend ⇄ Frontend Pill',
+        description: 'How the admin header toggle scopes every tab to one catalog.',
+        content: `### Where to Find It
+Open Config (Admin). The header now has a small pill toggle: **Backend** | **Frontend**. The current kind is persisted to \`localStorage\` so it survives a page reload.
+
+### What It Affects
+Six tabs filter their rows by the current pill value and stamp \`projectKind\` on every new entry:
+- **Dep Groups** — categories shown in the picker
+- **Dependencies** — the catalog entries
+- **File Contribs** — STATIC_COPY / TEMPLATE / YAML_MERGE / DELETE rows
+- **Build Customizations** — including the two new FE-only types below
+- **Sub-Options** — gated per-dep selections
+- **Compatibility** — REQUIRES / CONFLICTS / RECOMMENDS rules
+
+### What It Doesn't Affect
+- **Overview** and **Activity** show data across both kinds.
+- **Templates** (starter bundles) and **Modules** (multi-module) are backend-only in v1.
+
+### Legacy Rows
+Existing rows without a \`projectKind\` are treated as \`BACKEND\` by the client filter (the DB default takes care of the same on the server side). No backfill needed.`,
+        callouts: [
+          {
+            type: 'warning',
+            text: 'If you create a row under the wrong pill — say you add `state-zustand` while the pill is on Backend — it will appear in `/metadata/client` (Spring catalog) and break the backend pipeline at generation time. Always confirm the pill before clicking **New Entry**.'
+          }
+        ]
+      },
+      {
+        id: 'fe-build-types',
+        title: 'Two New Build Customization Types',
+        description: 'ADD_NPM_DEPENDENCY and ADD_VITE_PLUGIN — reusing existing fields with new meanings.',
+        content: `### Schema Reuse
+Rather than adding a new entity, the existing \`BuildCustomizationEntity\` gained two enum values. Its columns are **reinterpreted** based on the \`projectKind\` + \`customizationType\` combination. Field meaning per row:
+
+| Type | Field reinterpretation |
+|---|---|
+| \`ADD_NPM_DEPENDENCY\` | \`mavenArtifactId\` = npm package name (e.g. \`react-router-dom\`); \`version\` = semver range (e.g. \`^6.26.0\`); \`scope\` = \`"dev"\` → goes to \`devDependencies\`, anything else → \`dependencies\` |
+| \`ADD_VITE_PLUGIN\` | \`mavenGroupId\` = import path (e.g. \`@vitejs/plugin-react\`); \`mavenArtifactId\` = import binding (e.g. \`react\`); \`version\` = call expression (e.g. \`react()\`) |
+
+### How They're Applied
+- **\`PackageJsonBuilder\`** loads the baseline \`templates/frontend/fe-package-base.mustache\`, renders it through Mustache, parses to Jackson tree, then walks all \`ADD_NPM_DEPENDENCY\` rows and inserts them into the right block. Keys are alphabetised within each block for stable diffs.
+- **\`ViteConfigBuilder\`** loads \`templates/frontend/fe-vite-config.mustache\`, collects unique imports and the plugin-call list from \`ADD_VITE_PLUGIN\` rows, exposes them as \`{{vitePluginImports}}\` and \`{{vitePluginCalls}}\` in the Mustache context, and renders.
+
+### Always-On Packages
+The \`__common__\` dependency carries the baseline npm deps every project gets — \`react\`, \`react-dom\`, \`typescript\`, \`vite\`, \`@vitejs/plugin-react\`, plus the always-on quality stack (\`eslint\`, \`prettier\`, \`husky\`, \`lint-staged\`, and friends). The \`@vitejs/plugin-react\` row is also the single \`__common__\` \`ADD_VITE_PLUGIN\` row.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'Adding a new npm package via the admin is one row: pick **Build Customizations**, set type to `ADD_NPM_DEPENDENCY`, fill the package name in **mavenArtifactId**, version in **version**, and `"dev"` in **scope** if it belongs in devDependencies.'
+          }
+        ]
+      },
+      {
+        id: 'fe-structure',
+        title: 'What Gets Generated',
+        description: 'Every project ships with these files — regardless of dependency selection.',
+        content: `### Baseline Layout
+Every generated frontend project includes:
+
+- **Build & config** — \`package.json\`, \`vite.config.ts\`, \`tsconfig.json\`, \`tsconfig.node.json\` with \`@app/@pages/@widgets/@features/@entities/@shared\` path aliases mapped in both Vite and TypeScript.
+- **Entry** — \`index.html\` (\`{{appTitle}}\` substituted), \`src/main.tsx\` mounting \`<App/>\` from \`@app/App\`, and a working \`HomePage\` under \`src/pages/home/ui/\` so \`pnpm dev\` shows something the moment install finishes.
+- **Quality** — \`eslint.config.js\` (flat config, TS + React + react-hooks + react-refresh), \`.prettierrc.json\`, \`.husky/pre-commit\` running \`lint-staged\`. Always on.
+- **CI / deploy** — multi-stage \`Dockerfile\` (node → nginx), \`nginx.conf\` with SPA fallback, \`Jenkinsfile\`, \`.dockerignore\`.
+- **All 6 FSD layers** — \`src/app\`, \`src/pages\`, \`src/widgets\`, \`src/features\`, \`src/entities\`, \`src/shared\` — each with a barrel \`index.ts\` and a short \`README.md\` explaining the layer's place in the FSD import hierarchy.
+
+### Dependency-Driven Files
+- **\`style-tailwind\`** → \`tailwind.config.js\`, \`postcss.config.js\`, \`src/index.css\` with the three \`@tailwind\` directives. \`src/main.tsx\` conditionally imports the CSS via \`{{#hasStyleTailwind}}…{{/hasStyleTailwind}}\`.
+- **\`test-vitest-rtl\`** → \`vitest.config.ts\`, \`src/test-setup.ts\`. \`package.json\` gains \`test\`, \`test:ui\`, \`coverage\` scripts gated on \`{{#hasTestVitestRtl}}\`.
+- Everything else is currently npm-deps-only — the user wires the library into \`App.tsx\` themselves. Adding generated wiring is a per-dep file-contribution row away.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'Mustache and JSX both use `{{` as a token opener — inline-style objects like `style={{ color: "red" }}` collide. The seeded `HomePage.tsx` lifts inline styles to a top-level `const`, which is the cleanest workaround. If you author a TEMPLATE row that needs JSX double braces, use the same pattern.'
+          }
+        ]
+      },
+      {
+        id: 'fe-curl',
+        title: 'API Reference (curl)',
+        description: 'Calling /frontend/metadata and /frontend/starter.zip directly.',
+        content: `### Metadata
+\`\`\`bash
+curl http://localhost:8080/frontend/metadata | python -m json.tool | head -60
+\`\`\`
+
+Returns the form defaults, the React/Node/package-manager dropdowns, the pinned TS/Vite versions, and the FRONTEND-kind catalog (groups → entries → sub-options).
+
+### Generate
+\`\`\`bash
+curl -o demo.zip "http://localhost:8080/frontend/starter.zip?\\
+projectName=demo&appTitle=Demo&scope=menora&\\
+reactVersion=18&nodeVersion=20&packageManager=pnpm&\\
+dependencies=router-react-router,state-zustand,style-tailwind,test-vitest-rtl&\\
+opts-state-zustand=sample-store&\\
+opts-router-react-router=lazy-routes,sample-routes"
+
+unzip -l demo.zip
+\`\`\`
+
+Sub-options follow the same \`opts-{depId}=opt1,opt2\` convention as the backend path; the existing \`InitializrWebConfiguration\` servlet filter populates \`ProjectOptionsContext\` for every request that hits the app, so frontend endpoints get sub-options for free.`,
+      },
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 3. DEPENDENCY GROUPS
   // ─────────────────────────────────────────────────────────────────
   {
     id: 'dep-groups',
