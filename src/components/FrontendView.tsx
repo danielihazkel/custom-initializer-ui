@@ -11,9 +11,10 @@ import { ProjectPreview } from './ProjectPreview'
 
 interface Props {
   onGenerated?: () => void
+  onReset?: () => void
 }
 
-export function FrontendView({ onGenerated }: Props) {
+export function FrontendView({ onGenerated, onReset }: Props) {
   const { metadata, loading, error, reload } = useFrontendMetadata()
   const fe = useFrontendState(metadata)
   const {
@@ -23,8 +24,10 @@ export function FrontendView({ onGenerated }: Props) {
   } = useFrontendPreview()
 
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null)
+  const [resetSlot, setResetSlot] = useState<HTMLElement | null>(null)
   useEffect(() => {
     setHeaderSlot(document.getElementById('header-frontend-actions'))
+    setResetSlot(document.getElementById('header-frontend-reset'))
   }, [])
 
   if (loading) {
@@ -69,6 +72,12 @@ export function FrontendView({ onGenerated }: Props) {
     onGenerated?.()
   }
 
+  function handleReset() {
+    if (!window.confirm('Reset the project to defaults? Your current selections will be lost.')) return
+    fe.reset()
+    onReset?.()
+  }
+
   return (
     <div className="relative z-10 max-w-7xl mx-auto px-4 lg:px-6">
       <div className="mb-6">
@@ -101,6 +110,18 @@ export function FrontendView({ onGenerated }: Props) {
         headerSlot
       )}
 
+      {resetSlot && createPortal(
+        <button
+          onClick={handleReset}
+          className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
+          aria-label="Reset to defaults"
+          title="Reset project to defaults (clears form & dependencies)"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>restart_alt</span>
+        </button>,
+        resetSlot
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left column: form + options */}
         <section className="lg:col-span-5 space-y-6">
@@ -124,14 +145,7 @@ export function FrontendView({ onGenerated }: Props) {
               onColorPaletteChange={fe.setColorPaletteId}
             />
           </div>
-          <div className="flex items-center justify-between text-[11px] text-secondary px-1">
-            <button
-              type="button"
-              onClick={fe.reset}
-              className="hover:text-on-surface transition-colors"
-            >
-              Reset to defaults
-            </button>
+          <div className="flex items-center justify-end text-[11px] text-secondary px-1">
             <span>
               FSD layers: <code className="text-on-surface">app · pages · widgets · features · entities · shared</code>
             </span>

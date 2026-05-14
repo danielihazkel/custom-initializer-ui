@@ -243,7 +243,8 @@ export default function App() {
               )}
             </AnimatePresence>
           </button>
-          {/* Reset button */}
+          {/* Reset button — backend views only; FrontendView portals its own reset into header-frontend-reset (same slot) */}
+          {view !== 'frontend' && (
           <button
             onClick={handleReset}
             className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
@@ -252,6 +253,8 @@ export default function App() {
           >
             <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>restart_alt</span>
           </button>
+          )}
+          <div id="header-frontend-reset" className="contents" />
           {/* Theme toggle */}
           <button
             onClick={() => setIsDark(d => !d)}
@@ -308,7 +311,7 @@ export default function App() {
             </AnimatePresence>
           </button>
           )}
-          <div id="header-frontend-actions" className="flex items-center gap-3" />
+          <div id="header-frontend-actions" className="contents" />
         </div>
       </header>
 
@@ -321,7 +324,10 @@ export default function App() {
         {view === 'frontend' ? (
           <div className="relative z-10 animate-fade-in-up">
             <Suspense fallback={<div className="flex items-center justify-center p-16 text-secondary text-sm">Loading Frontend Generator...</div>}>
-              <FrontendView onGenerated={() => setAppToast({ message: 'Frontend project downloaded!', type: 'success' })} />
+              <FrontendView
+                onGenerated={() => setAppToast({ message: 'Frontend project downloaded!', type: 'success' })}
+                onReset={() => setAppToast({ message: 'Project reset to defaults', type: 'success' })}
+              />
             </Suspense>
           </div>
         ) : view === 'tutorial' ? (
