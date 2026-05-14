@@ -5,7 +5,8 @@ import { useFrontendState } from '../hooks/useFrontendState'
 import { useFrontendPreview } from '../hooks/useFrontendPreview'
 import { ProjectFormFE } from './frontend/ProjectFormFE'
 import { OptionsPanelFE } from './frontend/OptionsPanelFE'
-import { DependencyPickerFE } from './frontend/DependencyPickerFE'
+import { SelectedDependenciesFE } from './frontend/SelectedDependenciesFE'
+import { AvailableDependenciesFE } from './frontend/AvailableDependenciesFE'
 import { ProjectPreview } from './ProjectPreview'
 
 interface Props {
@@ -137,15 +138,22 @@ export function FrontendView({ onGenerated }: Props) {
           </div>
         </section>
 
-        {/* Right column: dependency picker */}
-        <section className="lg:col-span-7">
+        {/* Right column: selected + available dependency panels */}
+        <section className="lg:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="glass-panel rounded-2xl p-5">
-            <DependencyPickerFE
+            <SelectedDependenciesFE
               metadata={metadata}
               selectedDeps={fe.state.selectedDeps}
               selectedOptions={fe.state.selectedOptions}
               onToggleDep={fe.toggleDep}
               onToggleOption={fe.toggleOption}
+            />
+          </div>
+          <div className="glass-panel rounded-2xl p-5">
+            <AvailableDependenciesFE
+              metadata={metadata}
+              selectedDeps={fe.state.selectedDeps}
+              onToggleDep={fe.toggleDep}
             />
           </div>
         </section>
