@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import type { AdminBuildCustomization, AdminDependencyEntry, Toast } from '../../../types'
 import { useAdminResource } from '../../../hooks/useAdminResource'
+import { useAdminKind, filterByKind } from '../AdminKindContext'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog } from '../shared/DeleteConfirmDialog'
@@ -15,8 +16,11 @@ const EMPTY: Partial<AdminBuildCustomization> = {
 }
 
 export function BuildCustomizationsTab() {
-  const { items, loading, create, update, remove } = useAdminResource<AdminBuildCustomization>('/admin/build-customizations')
-  const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const { kind } = useAdminKind()
+  const { items: allItems, loading, create, update, remove } = useAdminResource<AdminBuildCustomization>('/admin/build-customizations')
+  const { items: allDepEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const items = useMemo(() => filterByKind(allItems, kind), [allItems, kind])
+  const depEntries = useMemo(() => filterByKind(allDepEntries, kind), [allDepEntries, kind])
   const [editing, setEditing] = useState<Partial<AdminBuildCustomization> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -26,7 +30,7 @@ export function BuildCustomizationsTab() {
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
 
-  function openNew() { setEditing({ ...EMPTY }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
+  function openNew() { setEditing({ ...EMPTY, projectKind: kind }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
   function openEdit(row: AdminBuildCustomization) { setEditing({ ...row }); setIsNew(false); setErrors({}); setDrawerOpen(true) }
   function closeDrawer() { setDrawerOpen(false); setEditing(null) }
 

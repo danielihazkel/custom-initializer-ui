@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import type { AdminFileContribution, AdminDependencyEntry, AdminSubOption, Toast } from '../../../types'
 import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
+import { useAdminKind, filterByKind } from '../AdminKindContext'
 import { useAdminMetadata } from '../../../hooks/useAdminMetadata'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -33,9 +34,13 @@ function isSyntaxError(err: AdminApiError): boolean {
 }
 
 export function FileContributionsTab() {
-  const { items, loading, create, update, remove } = useAdminResource<AdminFileContribution>('/admin/file-contributions')
-  const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
-  const { items: subOptions } = useAdminResource<AdminSubOption>('/admin/sub-options')
+  const { kind } = useAdminKind()
+  const { items: allItems, loading, create, update, remove } = useAdminResource<AdminFileContribution>('/admin/file-contributions')
+  const { items: allDepEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const { items: allSubOptions } = useAdminResource<AdminSubOption>('/admin/sub-options')
+  const items = useMemo(() => filterByKind(allItems, kind), [allItems, kind])
+  const depEntries = useMemo(() => filterByKind(allDepEntries, kind), [allDepEntries, kind])
+  const subOptions = useMemo(() => filterByKind(allSubOptions, kind), [allSubOptions, kind])
   const { javaVersions } = useAdminMetadata()
   const [editing, setEditing] = useState<Partial<AdminFileContribution> | null>(null)
   const [isNew, setIsNew] = useState(false)
@@ -46,7 +51,7 @@ export function FileContributionsTab() {
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
 
-  function openNew() { setEditing({ ...EMPTY }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
+  function openNew() { setEditing({ ...EMPTY, projectKind: kind }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
   function openEdit(row: AdminFileContribution) { setEditing({ ...row }); setIsNew(false); setErrors({}); setDrawerOpen(true) }
   function closeDrawer() { setDrawerOpen(false); setEditing(null) }
 

@@ -6,6 +6,7 @@ import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog, type OrphanDetails } from '../shared/DeleteConfirmDialog'
 import { StatusToast } from '../shared/StatusToast'
 import { DependencyEntryForm } from './DependencyEntryForm'
+import { useAdminKind, filterByKind } from '../AdminKindContext'
 
 const EMPTY: Partial<AdminDependencyEntry> = {
   group: { id: 0 }, depId: '', name: '', description: '',
@@ -14,9 +15,12 @@ const EMPTY: Partial<AdminDependencyEntry> = {
 }
 
 export function DependencyEntriesTab() {
-  const { items, loading, create, update, remove } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
-  const { items: groups } = useAdminResource<AdminDependencyGroup>('/admin/dependency-groups')
+  const { kind } = useAdminKind()
+  const { items: allItems, loading, create, update, remove } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const { items: allGroups } = useAdminResource<AdminDependencyGroup>('/admin/dependency-groups')
   const { items: buildCustomizations } = useAdminResource<AdminBuildCustomization>('/admin/build-customizations')
+  const items = useMemo(() => filterByKind(allItems, kind), [allItems, kind])
+  const groups = useMemo(() => filterByKind(allGroups, kind), [allGroups, kind])
   const depIdsWithPomEntry = useMemo(
     () => new Set(buildCustomizations.filter(c => c.customizationType === 'ADD_DEPENDENCY').map(c => c.dependencyId)),
     [buildCustomizations],
@@ -33,7 +37,7 @@ export function DependencyEntriesTab() {
 
   const groupName = (id: number) => groups.find(g => g.id === id)?.name ?? id
 
-  function openNew() { setEditing({ ...EMPTY }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
+  function openNew() { setEditing({ ...EMPTY, projectKind: kind } as Partial<AdminDependencyEntry>); setIsNew(true); setErrors({}); setDrawerOpen(true) }
   function openEdit(row: AdminDependencyEntry) { setEditing({ ...row }); setIsNew(false); setErrors({}); setDrawerOpen(true) }
   function closeDrawer() { setDrawerOpen(false); setEditing(null) }
 

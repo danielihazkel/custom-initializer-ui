@@ -17,6 +17,7 @@ export default defineConfig({
       '/starter-wizard.detect-services': 'http://localhost:8080',
       '/actuator': 'http://localhost:8080',
       '/admin': 'http://localhost:8080',
+      '/frontend': 'http://localhost:8080',
     }
   }
 })

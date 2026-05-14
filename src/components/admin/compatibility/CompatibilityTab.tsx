@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { List, Share2 } from 'lucide-react'
 import type { AdminDependencyCompatibility, AdminDependencyEntry, Toast } from '../../../types'
 import { useAdminResource } from '../../../hooks/useAdminResource'
+import { useAdminKind, filterByKind } from '../AdminKindContext'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog } from '../shared/DeleteConfirmDialog'
@@ -22,8 +23,11 @@ const RELATION_BADGE: Record<string, string> = {
 }
 
 export function CompatibilityTab() {
-  const { items, loading, create, update, remove } = useAdminResource<AdminDependencyCompatibility>('/admin/compatibility')
-  const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const { kind } = useAdminKind()
+  const { items: allItems, loading, create, update, remove } = useAdminResource<AdminDependencyCompatibility>('/admin/compatibility')
+  const { items: allDepEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const items = useMemo(() => filterByKind(allItems, kind), [allItems, kind])
+  const depEntries = useMemo(() => filterByKind(allDepEntries, kind), [allDepEntries, kind])
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [tableQuery, setTableQuery] = useState('')
 
@@ -41,7 +45,7 @@ export function CompatibilityTab() {
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
 
-  function openNew() { setEditing({ ...EMPTY }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
+  function openNew() { setEditing({ ...EMPTY, projectKind: kind }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
   function openEdit(row: AdminDependencyCompatibility) { setEditing({ ...row }); setIsNew(false); setErrors({}); setDrawerOpen(true) }
   function closeDrawer() { setDrawerOpen(false); setEditing(null) }
 

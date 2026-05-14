@@ -159,10 +159,14 @@ export interface ProjectPreset {
 
 // ── Admin entity types ────────────────────────────────────────────────────────
 
+/** Discriminates entries between the Spring Boot backend catalog and the React/Vite frontend catalog. */
+export type ProjectKind = 'BACKEND' | 'FRONTEND'
+
 export interface AdminDependencyGroup {
   id: number
   name: string
   sortOrder: number
+  projectKind?: ProjectKind
 }
 
 export interface AdminDependencyEntry {
@@ -179,6 +183,7 @@ export interface AdminDependencyEntry {
   compatibilityRange: string
   sortOrder: number
   starter: boolean
+  projectKind?: ProjectKind
 }
 
 export type FileType = 'STATIC_COPY' | 'YAML_MERGE' | 'TEMPLATE' | 'DELETE'
@@ -194,9 +199,15 @@ export interface AdminFileContribution {
   javaVersion: string
   subOptionId: string
   sortOrder: number
+  projectKind?: ProjectKind
 }
 
-export type BuildCustomizationType = 'ADD_DEPENDENCY' | 'EXCLUDE_DEPENDENCY' | 'ADD_REPOSITORY'
+export type BuildCustomizationType =
+  | 'ADD_DEPENDENCY'
+  | 'EXCLUDE_DEPENDENCY'
+  | 'ADD_REPOSITORY'
+  | 'ADD_NPM_DEPENDENCY'
+  | 'ADD_VITE_PLUGIN'
 
 export interface AdminBuildCustomization {
   id: number
@@ -211,7 +222,9 @@ export interface AdminBuildCustomization {
   repoName: string
   repoUrl: string
   snapshotsEnabled: boolean
+  scope?: string
   sortOrder: number
+  projectKind?: ProjectKind
 }
 
 export interface AdminSubOption {
@@ -221,6 +234,7 @@ export interface AdminSubOption {
   label: string
   description: string
   sortOrder: number
+  projectKind?: ProjectKind
 }
 
 // Compatibility rules
@@ -240,6 +254,7 @@ export interface AdminDependencyCompatibility {
   relationType: RelationType
   description: string
   sortOrder: number
+  projectKind?: ProjectKind
 }
 
 export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules'

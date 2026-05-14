@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import type { AdminSubOption, AdminDependencyEntry, Toast } from '../../../types'
 import { useAdminResource } from '../../../hooks/useAdminResource'
+import { useAdminKind, filterByKind } from '../AdminKindContext'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog } from '../shared/DeleteConfirmDialog'
@@ -10,8 +11,11 @@ import { SubOptionForm } from './SubOptionForm'
 const EMPTY: Partial<AdminSubOption> = { dependencyId: '', optionId: '', label: '', description: '', sortOrder: 0 }
 
 export function SubOptionsTab() {
-  const { items, loading, create, update, remove } = useAdminResource<AdminSubOption>('/admin/sub-options')
-  const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const { kind } = useAdminKind()
+  const { items: allItems, loading, create, update, remove } = useAdminResource<AdminSubOption>('/admin/sub-options')
+  const { items: allDepEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const items = useMemo(() => filterByKind(allItems, kind), [allItems, kind])
+  const depEntries = useMemo(() => filterByKind(allDepEntries, kind), [allDepEntries, kind])
   const [editing, setEditing] = useState<Partial<AdminSubOption> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -21,7 +25,7 @@ export function SubOptionsTab() {
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
 
-  function openNew() { setEditing({ ...EMPTY }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
+  function openNew() { setEditing({ ...EMPTY, projectKind: kind }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
   function openEdit(row: AdminSubOption) { setEditing({ ...row }); setIsNew(false); setErrors({}); setDrawerOpen(true) }
   function closeDrawer() { setDrawerOpen(false); setEditing(null) }
 

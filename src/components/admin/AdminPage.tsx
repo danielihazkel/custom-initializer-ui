@@ -4,6 +4,7 @@ import type { AdminTab } from '../../types'
 import { AdminLogin } from './AdminLogin'
 import { AdminSidebar } from './AdminSidebar'
 import { AdminGlobalActions } from './AdminGlobalActions'
+import { AdminKindProvider, useAdminKind } from './AdminKindContext'
 
 import { OverviewTab } from './overview/OverviewTab'
 import { ActivityTab } from './activity/ActivityTab'
@@ -43,17 +44,19 @@ export function AdminPage() {
   }
 
   return (
+    <AdminKindProvider>
     <div className="flex bg-surface-container-lowest rounded-2xl overflow-hidden border border-outline-variant shadow-lg relative z-20 mx-auto w-full max-w-[1400px]" style={{ height: 'calc(100vh - 8rem)' }}>
       {/* Sidebar Navigation */}
       <AdminSidebar activeTab={activeTab} onTabChange={setActiveTab} />
-      
+
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
-        {/* Header - Top Right Corner Global Actions */}
-        <header className="flex items-center justify-end px-8 py-4 border-b border-outline-variant bg-surface/80 backdrop-blur-md">
-          <AdminGlobalActions 
-            onImportComplete={() => setReloadKey(k => k + 1)} 
-            onLogout={handleLogout} 
+        {/* Header - Project-kind pill + Global Actions */}
+        <header className="flex items-center justify-between px-8 py-4 border-b border-outline-variant bg-surface/80 backdrop-blur-md">
+          <ProjectKindPill />
+          <AdminGlobalActions
+            onImportComplete={() => setReloadKey(k => k + 1)}
+            onLogout={handleLogout}
           />
         </header>
 
@@ -81,6 +84,34 @@ export function AdminPage() {
           </AnimatePresence>
         </main>
       </div>
+    </div>
+    </AdminKindProvider>
+  )
+}
+
+function ProjectKindPill() {
+  const { kind, setKind } = useAdminKind()
+  const tabs: { id: 'BACKEND' | 'FRONTEND'; label: string }[] = [
+    { id: 'BACKEND', label: 'Backend' },
+    { id: 'FRONTEND', label: 'Frontend' },
+  ]
+  return (
+    <div className="inline-flex p-0.5 rounded-xl border border-outline-variant bg-surface-container-high">
+      {tabs.map(t => {
+        const active = t.id === kind
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setKind(t.id)}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              active ? 'bg-primary text-on-primary shadow-sm' : 'text-secondary hover:text-on-surface'
+            }`}
+          >
+            {t.label}
+          </button>
+        )
+      })}
     </div>
   )
 }

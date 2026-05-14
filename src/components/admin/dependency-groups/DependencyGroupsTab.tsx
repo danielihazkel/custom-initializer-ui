@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import type { AdminDependencyGroup, Toast } from '../../../types'
 import { useAdminResource, AdminApiError, adminFetch } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
@@ -6,11 +6,14 @@ import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog, type OrphanDetails } from '../shared/DeleteConfirmDialog'
 import { StatusToast } from '../shared/StatusToast'
 import { DependencyGroupForm } from './DependencyGroupForm'
+import { useAdminKind, filterByKind } from '../AdminKindContext'
 
 const EMPTY: Partial<AdminDependencyGroup> = { name: '', sortOrder: 0 }
 
 export function DependencyGroupsTab() {
-  const { items, loading, create, update, remove, reload } = useAdminResource<AdminDependencyGroup>('/admin/dependency-groups')
+  const { kind } = useAdminKind()
+  const { items: allItems, loading, create, update, remove, reload } = useAdminResource<AdminDependencyGroup>('/admin/dependency-groups')
+  const items = useMemo(() => filterByKind(allItems, kind), [allItems, kind])
   const [editing, setEditing] = useState<Partial<AdminDependencyGroup> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -41,7 +44,7 @@ export function DependencyGroupsTab() {
   }
 
   function openNew() {
-    setEditing({ ...EMPTY })
+    setEditing({ ...EMPTY, projectKind: kind })
     setIsNew(true)
     setErrors({})
     setDrawerOpen(true)
