@@ -122,7 +122,7 @@ export function useFrontendState(metadata: FrontendMetadata | null) {
   }
 }
 
-export function buildDownloadUrl(s: FeState): string {
+export function buildFrontendQuery(s: FeState): string {
   const qp = new URLSearchParams()
   qp.set('projectName', s.form.projectName)
   if (s.form.description) qp.set('description', s.form.description)
@@ -136,5 +136,9 @@ export function buildDownloadUrl(s: FeState): string {
   for (const [depId, opts] of Object.entries(s.selectedOptions)) {
     if (opts.length) qp.set(`opts-${depId}`, opts.join(','))
   }
-  return `/frontend/starter.zip?${qp.toString()}`
+  return qp.toString()
+}
+
+export function buildDownloadUrl(s: FeState): string {
+  return `/frontend/starter.zip?${buildFrontendQuery(s)}`
 }

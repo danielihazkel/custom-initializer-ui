@@ -1,8 +1,10 @@
 import { useFrontendMetadata } from '../hooks/useFrontendMetadata'
 import { useFrontendState } from '../hooks/useFrontendState'
+import { useFrontendPreview } from '../hooks/useFrontendPreview'
 import { ProjectFormFE } from './frontend/ProjectFormFE'
 import { OptionsPanelFE } from './frontend/OptionsPanelFE'
 import { DependencyPickerFE } from './frontend/DependencyPickerFE'
+import { ProjectPreview } from './ProjectPreview'
 
 interface Props {
   onGenerated?: () => void
@@ -11,6 +13,11 @@ interface Props {
 export function FrontendView({ onGenerated }: Props) {
   const { metadata, loading, error, reload } = useFrontendMetadata()
   const fe = useFrontendState(metadata)
+  const {
+    preview, previousPreview,
+    loading: previewLoading, error: previewError,
+    fetchPreview, clearPreview,
+  } = useFrontendPreview()
 
   if (loading) {
     return (
@@ -63,12 +70,24 @@ export function FrontendView({ onGenerated }: Props) {
             Scaffolds a Feature-Slice Design project with your chosen tooling. Single-app v1.
           </p>
         </div>
-        <button
-          onClick={handleGenerate}
-          className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn"
-        >
-          Generate
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchPreview(fe.state)}
+            disabled={previewLoading}
+            title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview project files before downloading'}
+            className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
+          >
+            {previewLoading
+              ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }}>progress_activity</span>
+              : 'Explore'}
+          </button>
+          <button
+            onClick={handleGenerate}
+            className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn"
+          >
+            Generate
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -117,6 +136,16 @@ export function FrontendView({ onGenerated }: Props) {
           </div>
         </section>
       </div>
+
+      {preview && (
+        <ProjectPreview
+          preview={preview}
+          previousPreview={previousPreview}
+          artifactId={fe.state.form.projectName || 'demo'}
+          onClose={clearPreview}
+          onDownload={() => { handleGenerate(); clearPreview() }}
+        />
+      )}
     </div>
   )
 }
