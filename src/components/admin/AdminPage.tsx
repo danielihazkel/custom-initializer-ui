@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { AdminTab } from '../../types'
 import { AdminLogin } from './AdminLogin'
@@ -19,9 +19,7 @@ import { ModuleTemplatesTab } from './module-templates/ModuleTemplatesTab'
 import { ColorPalettesTab } from './color-palettes/ColorPalettesTab'
 
 export function AdminPage() {
-  const [activeTab, setActiveTab] = useState<AdminTab>('overview')
   const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('adminToken'))
-  const [reloadKey, setReloadKey] = useState(0)
 
   function handleLogin(newToken: string) {
     sessionStorage.setItem('adminToken', newToken)
@@ -46,6 +44,22 @@ export function AdminPage() {
 
   return (
     <AdminKindProvider>
+      <AdminPageInner onLogout={handleLogout} />
+    </AdminKindProvider>
+  )
+}
+
+function AdminPageInner({ onLogout }: { onLogout: () => void }) {
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview')
+  const [reloadKey, setReloadKey] = useState(0)
+  const { kind } = useAdminKind()
+
+  useEffect(() => {
+    if (activeTab === 'modules' && kind === 'FRONTEND') setActiveTab('overview')
+    if (activeTab === 'palettes' && kind === 'BACKEND') setActiveTab('overview')
+  }, [activeTab, kind])
+
+  return (
     <div className="flex bg-surface-container-lowest rounded-2xl overflow-hidden border border-outline-variant shadow-lg relative z-20 mx-auto w-full max-w-[1400px]" style={{ height: 'calc(100vh - 8rem)' }}>
       {/* Sidebar Navigation */}
       <AdminSidebar activeTab={activeTab} onTabChange={setActiveTab} />
@@ -57,7 +71,7 @@ export function AdminPage() {
           <ProjectKindPill />
           <AdminGlobalActions
             onImportComplete={() => setReloadKey(k => k + 1)}
-            onLogout={handleLogout}
+            onLogout={onLogout}
           />
         </header>
 
@@ -87,7 +101,6 @@ export function AdminPage() {
         </main>
       </div>
     </div>
-    </AdminKindProvider>
   )
 }
 

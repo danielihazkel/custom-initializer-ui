@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import type { AdminTab } from '../../types'
+import { useAdminKind } from './AdminKindContext'
 
 const TABS: { id: AdminTab; label: string; icon: string; desc: string }[] = [
   { id: 'overview',   label: 'Overview',      icon: 'dashboard',      desc: 'Platform Dashboard' },
@@ -23,6 +24,12 @@ interface AdminSidebarProps {
 
 export function AdminSidebar({ activeTab, onTabChange }: AdminSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const { kind } = useAdminKind()
+  const visibleTabs = TABS.filter(t => {
+    if (t.id === 'modules' && kind === 'FRONTEND') return false
+    if (t.id === 'palettes' && kind === 'BACKEND') return false
+    return true
+  })
 
   return (
     <aside className={`border-r border-outline-variant bg-surface-container-low flex flex-col h-full shrink-0 transition-all duration-300 relative ${isCollapsed ? 'w-20' : 'w-64'}`}>
@@ -47,7 +54,7 @@ export function AdminSidebar({ activeTab, onTabChange }: AdminSidebarProps) {
         </button>
       </div>
       <nav className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
-        {TABS.map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}

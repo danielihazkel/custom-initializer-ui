@@ -338,6 +338,7 @@ export interface AdminStarterTemplate {
   javaVersion: string
   packaging: string
   sortOrder: number
+  projectKind?: ProjectKind
 }
 
 export interface AdminStarterTemplateDep {

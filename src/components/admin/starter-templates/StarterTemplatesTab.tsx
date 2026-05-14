@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import type { AdminStarterTemplate, AdminStarterTemplateDep, AdminDependencyEntry, Toast } from '../../../types'
 import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
+import { useAdminKind, filterByKind } from '../AdminKindContext'
 import { useAdminMetadata } from '../../../hooks/useAdminMetadata'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -19,10 +20,21 @@ const EMPTY_DEP: Partial<AdminStarterTemplateDep> = {
 }
 
 export function StarterTemplatesTab() {
-  const templates = useAdminResource<AdminStarterTemplate>('/admin/starter-templates')
-  const deps = useAdminResource<AdminStarterTemplateDep>('/admin/starter-template-deps')
-  const { items: depEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const { kind } = useAdminKind()
+  const allTemplates = useAdminResource<AdminStarterTemplate>('/admin/starter-templates')
+  const allDeps = useAdminResource<AdminStarterTemplateDep>('/admin/starter-template-deps')
+  const { items: allDepEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
   const { bootVersions, javaVersions, packagings } = useAdminMetadata()
+
+  const filteredTemplateItems = useMemo(() => filterByKind(allTemplates.items, kind), [allTemplates.items, kind])
+  const templates = { ...allTemplates, items: filteredTemplateItems }
+  const visibleTemplateIds = useMemo(() => new Set(filteredTemplateItems.map(t => t.id)), [filteredTemplateItems])
+  const filteredDepItems = useMemo(
+    () => allDeps.items.filter(d => visibleTemplateIds.has(d.template?.id ?? -1)),
+    [allDeps.items, visibleTemplateIds],
+  )
+  const deps = { ...allDeps, items: filteredDepItems }
+  const depEntries = useMemo(() => filterByKind(allDepEntries, kind), [allDepEntries, kind])
 
   // Template CRUD state
   const [editing, setEditing] = useState<Partial<AdminStarterTemplate> | null>(null)
@@ -45,7 +57,7 @@ export function StarterTemplatesTab() {
   const [deletingDep, setDeletingDep] = useState(false)
 
   // Template handlers
-  function openNew() { setEditing({ ...EMPTY_TEMPLATE }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
+  function openNew() { setEditing({ ...EMPTY_TEMPLATE, projectKind: kind }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
   function openEdit(row: AdminStarterTemplate) { setEditing({ ...row }); setIsNew(false); setErrors({}); setDrawerOpen(true) }
   function closeDrawer() { setDrawerOpen(false); setEditing(null) }
 
