@@ -257,7 +257,20 @@ export interface AdminDependencyCompatibility {
   projectKind?: ProjectKind
 }
 
-export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules'
+export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes'
+
+export interface AdminColorPalette {
+  id: number
+  paletteId: string
+  name: string
+  description: string
+  primary: string
+  secondary: string
+  accent: string | null
+  error: string | null
+  isDefault: boolean
+  sortOrder: number
+}
 
 // Activity / Audit
 export type GenerationEventStatus = 'SUCCESS' | 'FAILURE'

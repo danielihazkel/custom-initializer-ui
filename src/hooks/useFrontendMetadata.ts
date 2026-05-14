@@ -23,6 +23,17 @@ export interface FeDefaults {
   nodeVersion: string
   packageManager: string
 }
+export interface FeColorPalette {
+  id: string
+  name: string
+  description?: string | null
+  primary: string
+  secondary: string
+  accent?: string | null
+  error?: string | null
+  isDefault: boolean
+  sortOrder: number
+}
 export interface FrontendMetadata {
   defaults: FeDefaults
   reactVersions: FeVersion[]
@@ -30,6 +41,7 @@ export interface FrontendMetadata {
   packageManagers: FeVersion[]
   pinned: { typescript: string; vite: string }
   dependencies: FeGroup[]
+  colorPalettes: FeColorPalette[]
 }
 
 export interface UseFrontendMetadataResult {

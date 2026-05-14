@@ -13,6 +13,7 @@ const TABS: { id: AdminTab; label: string; icon: string; desc: string }[] = [
   { id: 'compatibility', label: 'Compatibility', icon: 'compare_arrows', desc: 'Version rules' },
   { id: 'templates',     label: 'Templates',     icon: 'view_cozy',      desc: 'Starter bundles' },
   { id: 'modules',       label: 'Modules',       icon: 'account_tree',   desc: 'Multi-module setup' },
+  { id: 'palettes',      label: 'Palettes',      icon: 'palette',        desc: 'Frontend color schemes' },
 ]
 
 interface AdminSidebarProps {

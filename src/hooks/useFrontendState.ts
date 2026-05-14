@@ -17,6 +17,7 @@ export interface FeState {
   selectedDeps: string[]
   selectedOptions: Record<string, string[]>
   designSystem: string
+  colorPaletteId: string
 }
 
 export const DESIGN_NONE = 'design-none'
@@ -38,6 +39,9 @@ function readStored(): Partial<FeState> | null {
 
 function defaultState(metadata: FrontendMetadata | null): FeState {
   const d = metadata?.defaults
+  const defaultPalette = metadata?.colorPalettes?.find(p => p.isDefault)?.id
+    ?? metadata?.colorPalettes?.[0]?.id
+    ?? ''
   return {
     form: {
       projectName: d?.projectName ?? 'demo',
@@ -52,6 +56,7 @@ function defaultState(metadata: FrontendMetadata | null): FeState {
     selectedDeps: [],
     selectedOptions: {},
     designSystem: DESIGN_NONE,
+    colorPaletteId: defaultPalette,
   }
 }
 
@@ -93,6 +98,7 @@ export function useFrontendState(metadata: FrontendMetadata | null) {
   const setNodeVersion = useCallback((v: string) => setState(s => ({ ...s, nodeVersion: v })), [])
   const setPackageManager = useCallback((v: string) => setState(s => ({ ...s, packageManager: v })), [])
   const setBasePath = useCallback((v: string) => setState(s => ({ ...s, basePath: v || '/' })), [])
+  const setColorPaletteId = useCallback((v: string) => setState(s => ({ ...s, colorPaletteId: v })), [])
 
   const toggleDep = useCallback((depId: string) => {
     setState(s => {
@@ -139,6 +145,7 @@ export function useFrontendState(metadata: FrontendMetadata | null) {
     setNodeVersion,
     setPackageManager,
     setBasePath,
+    setColorPaletteId,
     toggleDep,
     toggleOption,
     setDesignSystem,
@@ -157,6 +164,7 @@ export function buildFrontendQuery(s: FeState): string {
   qp.set('nodeVersion', s.nodeVersion)
   qp.set('packageManager', s.packageManager)
   if (s.basePath && s.basePath !== '/') qp.set('basePath', s.basePath)
+  if (s.colorPaletteId) qp.set('colorPalette', s.colorPaletteId)
   if (s.selectedDeps.length) qp.set('dependencies', s.selectedDeps.join(','))
   for (const [depId, opts] of Object.entries(s.selectedOptions)) {
     if (opts.length) qp.set(`opts-${depId}`, opts.join(','))

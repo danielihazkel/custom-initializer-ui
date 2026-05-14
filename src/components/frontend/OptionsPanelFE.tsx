@@ -1,4 +1,4 @@
-import { getDesignSystemEntries, type FrontendMetadata } from '../../hooks/useFrontendMetadata'
+import { getDesignSystemEntries, type FrontendMetadata, type FeColorPalette } from '../../hooks/useFrontendMetadata'
 import { DESIGN_NONE } from '../../hooks/useFrontendState'
 
 interface Props {
@@ -8,12 +8,18 @@ interface Props {
   packageManager: string
   basePath: string
   designSystem: string
+  colorPaletteId: string
   onReactVersionChange: (v: string) => void
   onNodeVersionChange: (v: string) => void
   onPackageManagerChange: (v: string) => void
   onBasePathChange: (v: string) => void
   onDesignSystemChange: (v: string) => void
+  onColorPaletteChange: (v: string) => void
 }
+
+// Palette injection only colorizes themed design systems (MUI / Chakra / Mantine).
+// design-none has no theme file; design-shadcn ships its own Tailwind-based tokens.
+const PALETTE_AWARE_DESIGN_SYSTEMS = new Set(['design-mui', 'design-chakra', 'design-mantine'])
 
 function Dropdown({
   label,
@@ -85,6 +91,48 @@ function PillToggle({
   )
 }
 
+function PalettePicker({
+  palettes,
+  selectedId,
+  onChange,
+}: {
+  palettes: FeColorPalette[]
+  selectedId: string
+  onChange: (id: string) => void
+}) {
+  if (palettes.length === 0) return null
+  const selected = palettes.find(p => p.id === selectedId) ?? palettes[0]
+  return (
+    <div>
+      <span className="block text-[10px] uppercase font-bold tracking-widest text-primary mb-1.5">
+        Color Palette
+      </span>
+      <div className="flex items-center gap-2 flex-wrap">
+        {palettes.map(p => {
+          const active = p.id === selected.id
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onChange(p.id)}
+              title={p.name}
+              aria-label={p.name}
+              aria-pressed={active}
+              className={`relative w-9 h-9 rounded-full border border-outline-variant overflow-hidden transition-all ${
+                active ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface' : 'hover:scale-105'
+              }`}
+              style={{
+                background: `linear-gradient(135deg, ${p.primary} 0%, ${p.primary} 50%, ${p.secondary} 50%, ${p.secondary} 100%)`,
+              }}
+            />
+          )
+        })}
+      </div>
+      <p className="text-[11px] text-secondary mt-1.5 px-0.5">{selected.name}</p>
+    </div>
+  )
+}
+
 export function OptionsPanelFE({
   metadata,
   reactVersion,
@@ -92,16 +140,19 @@ export function OptionsPanelFE({
   packageManager,
   basePath,
   designSystem,
+  colorPaletteId,
   onReactVersionChange,
   onNodeVersionChange,
   onPackageManagerChange,
   onBasePathChange,
   onDesignSystemChange,
+  onColorPaletteChange,
 }: Props) {
   const designEntries = getDesignSystemEntries(metadata)
   const designOptions = designEntries.length
     ? designEntries.map(e => ({ id: e.id, name: e.name }))
     : [{ id: DESIGN_NONE, name: 'None / Plain CSS' }]
+  const showPalettePicker = PALETTE_AWARE_DESIGN_SYSTEMS.has(designSystem)
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -138,6 +189,13 @@ export function OptionsPanelFE({
         options={designOptions}
         onChange={onDesignSystemChange}
       />
+      {showPalettePicker && (
+        <PalettePicker
+          palettes={metadata.colorPalettes}
+          selectedId={colorPaletteId}
+          onChange={onColorPaletteChange}
+        />
+      )}
       <label className="block">
         <span className="block text-[10px] uppercase font-bold tracking-widest text-primary mb-1.5">
           Base Path

@@ -114,11 +114,13 @@ export function FrontendView({ onGenerated }: Props) {
               packageManager={fe.state.packageManager}
               basePath={fe.state.basePath}
               designSystem={fe.state.designSystem}
+              colorPaletteId={fe.state.colorPaletteId}
               onReactVersionChange={fe.setReactVersion}
               onNodeVersionChange={fe.setNodeVersion}
               onPackageManagerChange={fe.setPackageManager}
               onBasePathChange={fe.setBasePath}
               onDesignSystemChange={fe.setDesignSystem}
+              onColorPaletteChange={fe.setColorPaletteId}
             />
           </div>
           <div className="flex items-center justify-between text-[11px] text-secondary px-1">

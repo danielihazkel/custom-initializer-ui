@@ -16,6 +16,7 @@ import { SubOptionsTab } from './sub-options/SubOptionsTab'
 import { CompatibilityTab } from './compatibility/CompatibilityTab'
 import { StarterTemplatesTab } from './starter-templates/StarterTemplatesTab'
 import { ModuleTemplatesTab } from './module-templates/ModuleTemplatesTab'
+import { ColorPalettesTab } from './color-palettes/ColorPalettesTab'
 
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview')
@@ -80,6 +81,7 @@ export function AdminPage() {
               {activeTab === 'compatibility' && <CompatibilityTab />}
               {activeTab === 'templates'  && <StarterTemplatesTab />}
               {activeTab === 'modules'    && <ModuleTemplatesTab />}
+              {activeTab === 'palettes'   && <ColorPalettesTab />}
             </motion.div>
           </AnimatePresence>
         </main>
