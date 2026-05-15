@@ -4,7 +4,8 @@ import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '.
 import { SqlWizardDrawer } from './SqlWizardDrawer'
 import { OpenApiWizardDrawer } from './OpenApiWizardDrawer'
 import { SoapWizardDrawer } from './SoapWizardDrawer'
-import { SuggestionStrip, type Suggestion } from './SuggestionStrip'
+import { SuggestionStrip } from './SuggestionStrip'
+import { useDependencyCompatibility } from '../hooks/useDependencyCompatibility'
 
 const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle', 'mongodb', 'h2'] as const
 const DB_PRIMARY_OPTIONS: Record<string, string> = {
@@ -177,51 +178,10 @@ export function DependencySelector({
 
   const selectedDeps = allDeps.filter(d => selected.includes(d.id))
 
-  const warnings = useMemo(() => {
-    const conflicts: { source: string; target: string; desc: string }[] = []
-    const requires: { source: string; target: string; desc: string }[] = []
-    const depName = (id: string) => allDeps.find(d => d.id === id)?.name ?? id
-    for (const rule of compatibilityRules) {
-      if (!selected.includes(rule.sourceDepId)) continue
-      if (rule.relationType === 'CONFLICTS' && selected.includes(rule.targetDepId)) {
-        conflicts.push({ source: rule.sourceDepId, target: rule.targetDepId, desc: rule.description ?? `${depName(rule.sourceDepId)} conflicts with ${depName(rule.targetDepId)}` })
-      }
-      if (rule.relationType === 'REQUIRES' && !selected.includes(rule.targetDepId)) {
-        requires.push({ source: rule.sourceDepId, target: rule.targetDepId, desc: rule.description ?? `${depName(rule.sourceDepId)} requires ${depName(rule.targetDepId)}` })
-      }
-    }
-    return { conflicts, requires }
-  }, [selected, compatibilityRules, allDeps])
-
-  const suggestions = useMemo<Suggestion[]>(() => {
-    const depName = (id: string) => allDeps.find(d => d.id === id)?.name ?? id
-    const byTarget = new Map<string, Suggestion>()
-    for (const rule of compatibilityRules) {
-      if (rule.relationType !== 'RECOMMENDS') continue
-      if (!selected.includes(rule.sourceDepId)) continue
-      if (selected.includes(rule.targetDepId)) continue
-      if (!allDeps.some(d => d.id === rule.targetDepId)) continue
-      const existing = byTarget.get(rule.targetDepId)
-      const sourceName = depName(rule.sourceDepId)
-      const reason = rule.description ?? `${sourceName} recommends ${depName(rule.targetDepId)}`
-      if (existing) {
-        if (!existing.sourceNames.includes(sourceName)) {
-          existing.sourceNames.push(sourceName)
-          existing.score += 1
-        }
-        if (!existing.reasons.includes(reason)) existing.reasons.push(reason)
-      } else {
-        byTarget.set(rule.targetDepId, {
-          targetDepId: rule.targetDepId,
-          targetName: depName(rule.targetDepId),
-          score: 1,
-          sourceNames: [sourceName],
-          reasons: [reason],
-        })
-      }
-    }
-    return Array.from(byTarget.values()).sort((a, b) => b.score - a.score || a.targetName.localeCompare(b.targetName))
-  }, [selected, compatibilityRules, allDeps])
+  const { conflicts, requires, suggestions } = useDependencyCompatibility(
+    compatibilityRules, selected, allDeps,
+  )
+  const warnings = { conflicts, requires }
 
   const wizardDep = wizardDepId ? allDeps.find(d => d.id === wizardDepId) : null
   const openApiWizardDep = openApiWizardDepId ? allDeps.find(d => d.id === openApiWizardDepId) : null

@@ -246,6 +246,7 @@ export interface CompatibilityRule {
   targetDepId: string
   relationType: RelationType
   description: string
+  projectKind: ProjectKind
 }
 
 export interface AdminDependencyCompatibility {

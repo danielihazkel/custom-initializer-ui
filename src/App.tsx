@@ -37,7 +37,7 @@ export default function App() {
   const { dialects: sqlDialects } = useSqlDialects()
   const { depIds: openApiCapableDeps } = useOpenApiCapable()
   const { depIds: soapCapableDeps } = useSoapCapable()
-  const { rules: compatibilityRules } = useCompatibility()
+  const { rules: compatibilityRules } = useCompatibility('BACKEND')
   const { templates } = useStarterTemplates()
   const { modules: moduleTemplates } = useModuleTemplates()
   const { preview, previousPreview, loading: previewLoading, error: previewError, fetchPreview, clearPreview } = useProjectPreview()

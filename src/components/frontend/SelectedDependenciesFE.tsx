@@ -1,11 +1,15 @@
 import { useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { FrontendMetadata, FeDependency } from '../../hooks/useFrontendMetadata'
+import type { CompatibilityRule } from '../../types'
+import { useDependencyCompatibility } from '../../hooks/useDependencyCompatibility'
+import { SuggestionStrip } from '../SuggestionStrip'
 
 interface Props {
   metadata: FrontendMetadata
   selectedDeps: string[]
   selectedOptions: Record<string, string[]>
+  compatibilityRules: CompatibilityRule[]
   onToggleDep: (depId: string) => void
   onToggleOption: (depId: string, optionId: string) => void
 }
@@ -14,6 +18,7 @@ export function SelectedDependenciesFE({
   metadata,
   selectedDeps,
   selectedOptions,
+  compatibilityRules,
   onToggleDep,
   onToggleOption,
 }: Props) {
@@ -23,6 +28,15 @@ export function SelectedDependenciesFE({
       .map(id => findDep(metadata, id))
       .filter((d): d is FeDependency => !!d)
   }, [metadata, selectedDeps])
+
+  const allDeps = useMemo(
+    () => metadata.dependencies.flatMap(g => g.entries.map(e => ({ id: e.id, name: e.name }))),
+    [metadata],
+  )
+  const { conflicts, requires, suggestions } = useDependencyCompatibility(
+    compatibilityRules, selectedDeps, allDeps,
+  )
+  const depName = (id: string) => allDeps.find(d => d.id === id)?.name ?? id
 
   return (
     <div className="flex flex-col h-full text-on-surface">
@@ -37,6 +51,55 @@ export function SelectedDependenciesFE({
           {cards.length}
         </span>
       </div>
+
+      {(conflicts.length > 0 || requires.length > 0) && (
+        <div className="mb-3 space-y-2">
+          {conflicts.map((w, i) => (
+            <div
+              key={`conflict-${i}`}
+              className="flex items-start gap-2 text-xs rounded-lg border border-error/30 bg-error/10 text-on-surface p-2.5"
+              role="alert"
+            >
+              <span className="material-symbols-outlined text-error mt-0.5" style={{ fontSize: '16px' }}>error</span>
+              <span className="flex-1">
+                <span className="font-semibold">{depName(w.source)}</span> conflicts with{' '}
+                <span className="font-semibold">{depName(w.target)}</span>
+                <span className="block text-on-surface-variant mt-0.5">{w.desc}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => onToggleDep(w.target)}
+                className="text-error font-semibold hover:underline shrink-0"
+              >
+                Remove {depName(w.target)}
+              </button>
+            </div>
+          ))}
+          {requires.map((w, i) => (
+            <div
+              key={`require-${i}`}
+              className="flex items-start gap-2 text-xs rounded-lg border border-warning/30 bg-warning/10 text-on-surface p-2.5"
+              role="alert"
+            >
+              <span className="material-symbols-outlined text-warning mt-0.5" style={{ fontSize: '16px' }}>info</span>
+              <span className="flex-1">
+                <span className="font-semibold">{depName(w.source)}</span> requires{' '}
+                <span className="font-semibold">{depName(w.target)}</span>
+                <span className="block text-on-surface-variant mt-0.5">{w.desc}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => onToggleDep(w.target)}
+                className="text-warning font-semibold hover:underline shrink-0"
+              >
+                Add {depName(w.target)}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <SuggestionStrip suggestions={suggestions} onAdd={onToggleDep} />
 
       <div className="flex flex-col gap-3 flex-grow overflow-y-auto pr-2 max-h-[60vh]">
         <AnimatePresence mode="popLayout">

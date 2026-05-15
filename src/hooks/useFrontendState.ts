@@ -132,10 +132,6 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
     setState(s => {
       let deps = s.selectedDeps.filter(d => !d.startsWith('design-'))
       if (id !== DESIGN_NONE) deps = [...deps, id]
-      // shadcn requires Tailwind — auto-add for instant UX feedback (backend enforces too).
-      if (id === 'design-shadcn' && !deps.includes('style-tailwind')) {
-        deps = [...deps, 'style-tailwind']
-      }
       return { ...s, selectedDeps: deps, designSystem: id }
     })
   }, [])

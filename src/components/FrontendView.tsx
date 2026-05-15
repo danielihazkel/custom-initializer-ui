@@ -5,6 +5,7 @@ import { useFrontendState } from '../hooks/useFrontendState'
 import { useFrontendPreview } from '../hooks/useFrontendPreview'
 import { useStarterTemplates } from '../hooks/useStarterTemplates'
 import { useFrontendPresets } from '../hooks/useFrontendPresets'
+import { useCompatibility } from '../hooks/useCompatibility'
 import { TemplatePicker } from './TemplatePicker'
 import { PresetPickerFE } from './frontend/PresetPickerFE'
 import { ProjectFormFE } from './frontend/ProjectFormFE'
@@ -22,6 +23,7 @@ export function FrontendView({ onGenerated, onReset }: Props) {
   const { metadata, loading, error, reload } = useFrontendMetadata()
   const fe = useFrontendState(metadata)
   const { templates } = useStarterTemplates('FRONTEND')
+  const { rules: compatibilityRules } = useCompatibility('FRONTEND')
   const presets = useFrontendPresets()
   const {
     preview, previousPreview,
@@ -183,6 +185,7 @@ export function FrontendView({ onGenerated, onReset }: Props) {
               metadata={metadata}
               selectedDeps={fe.state.selectedDeps}
               selectedOptions={fe.state.selectedOptions}
+              compatibilityRules={compatibilityRules}
               onToggleDep={fe.toggleDep}
               onToggleOption={fe.toggleOption}
             />
