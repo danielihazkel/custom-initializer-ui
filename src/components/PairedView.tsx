@@ -1,79 +1,103 @@
-import { useEffect, useState } from 'react'
-import { useMetadata } from '../hooks/useMetadata'
-import { useFrontendMetadata } from '../hooks/useFrontendMetadata'
+import { useCallback, useMemo, useState } from 'react'
+import { BackendHalfPanel, type BackendHalfState } from './paired/BackendHalfPanel'
+import { FrontendHalfPanel, type FrontendHalfState } from './paired/FrontendHalfPanel'
+import { OpenApiSourceInput } from './paired/OpenApiSourceInput'
 
 /**
- * Minimal MVP for the paired generator. Two columns (BE + FE), each with project
- * naming and a flat dependency picker, plus a single Generate button that POSTs
- * to `/starter-paired.zip` and triggers a browser download.
+ * Paired BE+FE generator. Two columns hosting the same form components used by
+ * the dedicated Backend and Frontend tabs — sub-options, compatibility banners,
+ * design system + palette, starter templates, version selectors all carry over.
  *
- * Power users who want the rich BE form (wizards, multi-module, presets) or the
- * rich FE form (starter templates, color palette, sub-options) still use the
- * dedicated Backend/Frontend tabs. This view exists to demonstrate the paired
- * endpoint and produce a working monorepo skeleton.
+ * Each half-panel owns its own state in memory (paired state is intentionally
+ * not persisted to localStorage so it doesn't collide with the dedicated tabs'
+ * saved selections). The bottom row carries the three shared concerns:
+ *   - apiBaseUrl (FE → BE wiring at dev time)
+ *   - OpenAPI spec (drives BE codegen + FE typed-client output)
+ *   - the Generate button (single POST to /starter-paired.zip)
  */
 export function PairedView() {
-  const { metadata: be, loading: beLoading } = useMetadata()
-  const { metadata: fe, loading: feLoading } = useFrontendMetadata()
-
-  const [beArtifactId, setBeArtifactId] = useState('demo-api')
-  const [bePackageName, setBePackageName] = useState('')
-  const [beBootVersion, setBeBootVersion] = useState('')
-  const [beDeps, setBeDeps] = useState<string[]>(['web'])
-
-  const [feProjectName, setFeProjectName] = useState('demo-ui')
-  const [fePackageManager, setFePackageManager] = useState('pnpm')
-  const [feDeps, setFeDeps] = useState<string[]>(['style-tailwind'])
+  const [beState, setBeState] = useState<BackendHalfState | null>(null)
+  const [feState, setFeState] = useState<FrontendHalfState | null>(null)
 
   const [apiBaseUrl, setApiBaseUrl] = useState('')
   const [openApiSpec, setOpenApiSpec] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Apply server defaults once metadata loads, but don't overwrite user edits.
-  useEffect(() => {
-    if (be && !beBootVersion) setBeBootVersion(be.bootVersion?.default ?? '')
-  }, [be, beBootVersion])
-  useEffect(() => {
-    if (fe && !fePackageManager) setFePackageManager(fe.defaults.packageManager)
-  }, [fe, fePackageManager])
+  const onBeChange = useCallback((s: BackendHalfState) => setBeState(s), [])
+  const onFeChange = useCallback((s: FrontendHalfState) => setFeState(s), [])
 
-  function toggleBeDep(depId: string) {
-    setBeDeps(prev => prev.includes(depId) ? prev.filter(d => d !== depId) : [...prev, depId])
-  }
-  function toggleFeDep(depId: string) {
-    setFeDeps(prev => prev.includes(depId) ? prev.filter(d => d !== depId) : [...prev, depId])
-  }
+  const beArtifactId = beState?.form.artifactId ?? 'demo-api'
+  const feProjectName = feState?.form.projectName ?? 'demo-ui'
+
+  const ready = beState !== null && feState !== null
+
+  const showOpenApiSpecMissingWarning = useMemo(
+    () => Boolean(feState?.selectedDeps.includes('api-client-openapi')) && !openApiSpec.trim(),
+    [feState?.selectedDeps, openApiSpec],
+  )
 
   async function handleGenerate() {
+    if (!beState || !feState) return
     setBusy(true)
     setError(null)
     try {
-      // When the user provides an OpenAPI spec we route it through the existing
-      // wizard contract (specByDep keyed by the BE openapi dep id). The same spec
-      // is picked up by FrontendProjectGenerator and written to frontend/openapi.yaml
-      // when the FE half has the api-client-openapi dep selected.
       const trimmedSpec = openApiSpec.trim()
-      const backendDeps = trimmedSpec && !beDeps.includes('openapi')
-        ? [...beDeps, 'openapi']
-        : beDeps
 
-      const body: Record<string, unknown> = {
+      const beOpts: Record<string, string[]> = {}
+      for (const [depId, optIds] of Object.entries(beState.selectedOptions)) {
+        if (optIds.length > 0 && beState.selectedDeps.includes(depId)) beOpts[depId] = optIds
+      }
+
+      const specByDep: Record<string, string> = {}
+      let backendDeps = beState.selectedDeps
+      if (trimmedSpec) {
+        specByDep.openapi = trimmedSpec
+        if (!backendDeps.includes('openapi')) backendDeps = [...backendDeps, 'openapi']
+      }
+      // Carry per-dep wizard specs (set via the BE half's OpenAPI wizard drawer).
+      for (const [depId, entry] of Object.entries(beState.openApiByDep)) {
+        if (backendDeps.includes(depId) && entry.spec) specByDep[depId] = entry.spec
+      }
+
+      const feOpts: Record<string, string[]> = {}
+      for (const [depId, optIds] of Object.entries(feState.selectedOptions)) {
+        if (optIds.length > 0 && feState.selectedDeps.includes(depId)) feOpts[depId] = optIds
+      }
+
+      const body = {
         backend: {
-          artifactId: beArtifactId || 'demo-api',
-          packageName: bePackageName || undefined,
-          bootVersion: beBootVersion || undefined,
+          groupId: beState.form.groupId,
+          artifactId: beState.form.artifactId,
+          name: beState.form.name,
+          description: beState.form.description,
+          packageName: beState.form.packageName,
+          bootVersion: beState.form.bootVersion,
+          language: beState.form.language,
+          type: beState.form.type,
+          packaging: beState.form.packaging,
+          javaVersion: beState.form.javaVersion,
           dependencies: backendDeps,
-          ...(trimmedSpec ? { specByDep: { openapi: trimmedSpec } } : {}),
+          opts: beOpts,
+          ...(Object.keys(specByDep).length > 0 ? { specByDep } : {}),
         },
         frontend: {
-          projectName: feProjectName || 'demo-ui',
-          packageManager: fePackageManager,
-          dependencies: feDeps,
+          projectName: feState.form.projectName,
+          description: feState.form.description,
+          scope: feState.form.scope,
+          appTitle: feState.form.appTitle,
+          reactVersion: feState.reactVersion,
+          nodeVersion: feState.nodeVersion,
+          packageManager: feState.packageManager,
+          basePath: feState.basePath,
+          colorPalette: feState.colorPaletteId,
           apiBaseUrl: apiBaseUrl || undefined,
-          backendArtifactId: beArtifactId || undefined,
+          backendArtifactId: beState.form.artifactId || undefined,
+          dependencies: feState.selectedDeps,
+          opts: feOpts,
         },
       }
+
       const res = await fetch('/starter-paired.zip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -87,7 +111,7 @@ export function PairedView() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${beArtifactId || 'paired'}.zip`
+      a.download = `${beState.form.artifactId || 'paired'}.zip`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -97,13 +121,6 @@ export function PairedView() {
     } finally {
       setBusy(false)
     }
-  }
-
-  if (beLoading || feLoading) {
-    return <div className="flex items-center justify-center p-16 text-secondary text-sm">Loading metadata…</div>
-  }
-  if (!be || !fe) {
-    return <div className="flex items-center justify-center p-16 text-error text-sm">Failed to load metadata.</div>
   }
 
   return (
@@ -117,96 +134,62 @@ export function PairedView() {
         </div>
         <p className="text-sm text-secondary">
           Spring Boot backend + React/Vite frontend in a single monorepo zip, pre-wired so the FE talks
-          to the BE in dev (env file + Vite proxy + CORS).
+          to the BE in dev (env file + Vite proxy + CORS). Same form depth as the dedicated tabs.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Backend column */}
-        <div className="glass-panel rounded-2xl p-6 space-y-4">
-          <div className="flex items-center gap-2 mb-2">
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 px-2">
             <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>terminal</span>
             <h2 className="text-sm font-bold uppercase tracking-widest text-on-surface">Backend</h2>
+            <span className="text-[11px] text-secondary ml-2">
+              artifactId: <code className="text-on-surface">{beArtifactId}</code>
+            </span>
           </div>
-
-          <Field label="Artifact ID">
-            <input value={beArtifactId} onChange={e => setBeArtifactId(e.target.value)}
-                   className={inputClass} placeholder="demo-api" />
-          </Field>
-          <Field label="Package Name (optional)">
-            <input value={bePackageName} onChange={e => setBePackageName(e.target.value)}
-                   className={inputClass} placeholder="com.menora.demo" />
-          </Field>
-          <Field label="Boot Version">
-            <select value={beBootVersion} onChange={e => setBeBootVersion(e.target.value)} className={inputClass}>
-              {be.bootVersion.values.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
-          </Field>
-
-          <DepGroupList
-            groups={be.dependencies.values.map(g => ({
-              name: g.name,
-              entries: g.values.map(v => ({ id: v.id, name: v.name, description: v.description })),
-            }))}
-            selected={beDeps}
-            onToggle={toggleBeDep}
-          />
-        </div>
+          <BackendHalfPanel onChange={onBeChange} />
+        </section>
 
         {/* Frontend column */}
-        <div className="glass-panel rounded-2xl p-6 space-y-4">
-          <div className="flex items-center gap-2 mb-2">
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 px-2">
             <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>monitor</span>
             <h2 className="text-sm font-bold uppercase tracking-widest text-on-surface">Frontend</h2>
+            <span className="text-[11px] text-secondary ml-2">
+              project: <code className="text-on-surface">{feProjectName}</code>
+            </span>
           </div>
-
-          <Field label="Project Name">
-            <input value={feProjectName} onChange={e => setFeProjectName(e.target.value)}
-                   className={inputClass} placeholder="demo-ui" />
-          </Field>
-          <Field label="Package Manager">
-            <div className="inline-flex p-0.5 rounded-xl border border-outline-variant bg-surface-container-high">
-              {fe.packageManagers.map(pm => {
-                const active = pm.id === fePackageManager
-                return (
-                  <button key={pm.id} type="button" onClick={() => setFePackageManager(pm.id)}
-                          className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                            active ? 'bg-primary text-on-primary shadow-sm'
-                                   : 'text-secondary hover:text-on-surface'}`}>
-                    {pm.name}
-                  </button>
-                )
-              })}
-            </div>
-          </Field>
-
-          <DepGroupList
-            groups={fe.dependencies.map(g => ({
-              name: g.name,
-              entries: g.entries.map(e => ({ id: e.id, name: e.name, description: e.description })),
-            }))}
-            selected={feDeps}
-            onToggle={toggleFeDep}
-          />
-        </div>
+          <FrontendHalfPanel onChange={onFeChange} />
+        </section>
       </div>
 
       {/* Bottom row: paired wiring + Generate */}
       <div className="glass-panel rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>cable</span>
+          <h2 className="text-sm font-bold uppercase tracking-widest text-on-surface">Wiring</h2>
+        </div>
+
         <Field label="API Base URL (optional — defaults to http://localhost:8080)">
-          <input value={apiBaseUrl} onChange={e => setApiBaseUrl(e.target.value)}
-                 className={inputClass} placeholder="http://localhost:8080" />
+          <input
+            value={apiBaseUrl}
+            onChange={e => setApiBaseUrl(e.target.value)}
+            className={inputClass}
+            placeholder="http://localhost:8080"
+          />
+          <span className="block text-[11px] text-secondary mt-1 px-0.5">
+            Writes <code>.env.development</code> and a <code>/api</code> proxy in the FE’s <code>vite.config.ts</code>.
+          </span>
         </Field>
 
         <Field label="OpenAPI spec (optional — drives BE codegen + FE typed client)">
-          <textarea
+          <OpenApiSourceInput
             value={openApiSpec}
-            onChange={e => setOpenApiSpec(e.target.value)}
-            placeholder={"# Paste an OpenAPI 3 YAML or JSON spec.\n# Auto-adds the BE openapi dep; the FE gets it at\n# frontend/openapi.yaml + a gen:api npm script."}
-            className={`${inputClass} font-mono text-xs min-h-[140px]`}
-            spellCheck={false}
+            onChange={setOpenApiSpec}
+            apiBaseUrl={apiBaseUrl}
           />
-          {feDeps.includes('api-client-openapi') && !openApiSpec.trim() && (
+          {showOpenApiSpecMissingWarning && (
             <span className="block text-[11px] text-on-warning-container/80 mt-1 px-0.5">
               <span className="material-symbols-outlined align-middle" style={{ fontSize: '13px' }}>info</span>{' '}
               api-client-openapi is selected but no spec was provided — the dep ships its
@@ -222,8 +205,11 @@ export function PairedView() {
         )}
 
         <div className="flex justify-end">
-          <button onClick={handleGenerate} disabled={busy}
-                  className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn disabled:opacity-60">
+          <button
+            onClick={handleGenerate}
+            disabled={busy || !ready}
+            className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn disabled:opacity-60"
+          >
             {busy ? 'Generating…' : 'Generate Paired Zip'}
           </button>
         </div>
@@ -241,45 +227,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="block text-[10px] uppercase font-bold tracking-widest text-primary mb-1.5">{label}</span>
       {children}
     </label>
-  )
-}
-
-interface DepListGroup {
-  name: string
-  entries: { id: string; name: string; description?: string }[]
-}
-
-function DepGroupList({ groups, selected, onToggle }: {
-  groups: DepListGroup[]
-  selected: string[]
-  onToggle: (id: string) => void
-}) {
-  return (
-    <div className="space-y-3">
-      <span className="block text-[10px] uppercase font-bold tracking-widest text-primary">Dependencies</span>
-      <div className="space-y-3 max-h-[420px] overflow-y-auto pr-2">
-        {groups.map(g => (
-          <div key={g.name}>
-            <div className="text-[11px] text-secondary mb-1.5 px-0.5 uppercase tracking-wide">{g.name}</div>
-            <div className="flex flex-wrap gap-1.5">
-              {g.entries.map(e => {
-                const active = selected.includes(e.id)
-                return (
-                  <button key={e.id} type="button" onClick={() => onToggle(e.id)}
-                          title={e.description}
-                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                            active
-                              ? 'bg-primary text-on-primary border-primary'
-                              : 'border-outline-variant text-secondary hover:text-on-surface hover:border-primary/40'
-                          }`}>
-                    {e.name}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
   )
 }

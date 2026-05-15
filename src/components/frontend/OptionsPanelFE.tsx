@@ -20,6 +20,7 @@ interface Props {
   onColorPaletteChange: (v: string) => void
   onApiBaseUrlChange: (v: string) => void
   onBackendArtifactIdChange: (v: string) => void
+  hidePairedBackendSection?: boolean
 }
 
 // Palette injection only colorizes themed design systems (MUI / Chakra / Mantine).
@@ -156,6 +157,7 @@ export function OptionsPanelFE({
   onColorPaletteChange,
   onApiBaseUrlChange,
   onBackendArtifactIdChange,
+  hidePairedBackendSection = false,
 }: Props) {
   const designEntries = getDesignSystemEntries(metadata)
   const designOptions = designEntries.length
@@ -223,6 +225,7 @@ export function OptionsPanelFE({
         TypeScript {metadata.pinned.typescript} · Vite {metadata.pinned.vite} (pinned)
       </p>
 
+      {!hidePairedBackendSection && (
       <div className="border-t border-outline-variant pt-4">
         <button
           type="button"
@@ -273,6 +276,7 @@ export function OptionsPanelFE({
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }
