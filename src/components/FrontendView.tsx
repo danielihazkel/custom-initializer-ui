@@ -163,12 +163,16 @@ export function FrontendView({ onGenerated, onReset }: Props) {
               basePath={fe.state.basePath}
               designSystem={fe.state.designSystem}
               colorPaletteId={fe.state.colorPaletteId}
+              apiBaseUrl={fe.state.apiBaseUrl}
+              backendArtifactId={fe.state.backendArtifactId}
               onReactVersionChange={fe.setReactVersion}
               onNodeVersionChange={fe.setNodeVersion}
               onPackageManagerChange={fe.setPackageManager}
               onBasePathChange={fe.setBasePath}
               onDesignSystemChange={fe.setDesignSystem}
               onColorPaletteChange={fe.setColorPaletteId}
+              onApiBaseUrlChange={fe.setApiBaseUrl}
+              onBackendArtifactIdChange={fe.setBackendArtifactId}
             />
           </div>
           <div className="flex items-center justify-end text-[11px] text-secondary px-1">

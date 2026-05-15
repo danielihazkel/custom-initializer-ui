@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { getDesignSystemEntries, type FrontendMetadata, type FeColorPalette } from '../../hooks/useFrontendMetadata'
 import { DESIGN_NONE } from '../../hooks/useFrontendState'
 
@@ -9,12 +10,16 @@ interface Props {
   basePath: string
   designSystem: string
   colorPaletteId: string
+  apiBaseUrl: string
+  backendArtifactId: string
   onReactVersionChange: (v: string) => void
   onNodeVersionChange: (v: string) => void
   onPackageManagerChange: (v: string) => void
   onBasePathChange: (v: string) => void
   onDesignSystemChange: (v: string) => void
   onColorPaletteChange: (v: string) => void
+  onApiBaseUrlChange: (v: string) => void
+  onBackendArtifactIdChange: (v: string) => void
 }
 
 // Palette injection only colorizes themed design systems (MUI / Chakra / Mantine).
@@ -141,18 +146,24 @@ export function OptionsPanelFE({
   basePath,
   designSystem,
   colorPaletteId,
+  apiBaseUrl,
+  backendArtifactId,
   onReactVersionChange,
   onNodeVersionChange,
   onPackageManagerChange,
   onBasePathChange,
   onDesignSystemChange,
   onColorPaletteChange,
+  onApiBaseUrlChange,
+  onBackendArtifactIdChange,
 }: Props) {
   const designEntries = getDesignSystemEntries(metadata)
   const designOptions = designEntries.length
     ? designEntries.map(e => ({ id: e.id, name: e.name }))
     : [{ id: DESIGN_NONE, name: 'None / Plain CSS' }]
   const showPalettePicker = PALETTE_AWARE_DESIGN_SYSTEMS.has(designSystem)
+  // Open the pair section by default when something is already set so user state is visible.
+  const [pairOpen, setPairOpen] = useState(Boolean(apiBaseUrl || backendArtifactId))
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -211,6 +222,57 @@ export function OptionsPanelFE({
       <p className="text-[11px] text-secondary px-1">
         TypeScript {metadata.pinned.typescript} · Vite {metadata.pinned.vite} (pinned)
       </p>
+
+      <div className="border-t border-outline-variant pt-4">
+        <button
+          type="button"
+          onClick={() => setPairOpen(o => !o)}
+          aria-expanded={pairOpen}
+          className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-widest text-primary hover:text-on-surface transition-colors"
+        >
+          <span
+            className="material-symbols-outlined transition-transform"
+            style={{ fontSize: '16px', transform: pairOpen ? 'rotate(90deg)' : 'none' }}
+          >
+            chevron_right
+          </span>
+          Paired Backend (optional)
+        </button>
+        {pairOpen && (
+          <div className="mt-3 space-y-3">
+            <label className="block">
+              <span className="block text-[10px] uppercase font-bold tracking-widest text-primary mb-1.5">
+                API Base URL
+              </span>
+              <input
+                type="text"
+                value={apiBaseUrl}
+                onChange={e => onApiBaseUrlChange(e.target.value)}
+                placeholder="http://localhost:8080"
+                className="w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              />
+              <span className="block text-[11px] text-secondary mt-1 px-0.5">
+                Writes <code>.env.development</code> and a <code>/api</code> proxy in <code>vite.config.ts</code>.
+              </span>
+            </label>
+            <label className="block">
+              <span className="block text-[10px] uppercase font-bold tracking-widest text-primary mb-1.5">
+                Backend ArtifactId
+              </span>
+              <input
+                type="text"
+                value={backendArtifactId}
+                onChange={e => onBackendArtifactIdChange(e.target.value)}
+                placeholder="demo-api"
+                className="w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              />
+              <span className="block text-[11px] text-secondary mt-1 px-0.5">
+                Mentioned in the generated README only.
+              </span>
+            </label>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -19,6 +19,8 @@ export interface FeState {
   selectedOptions: Record<string, string[]>
   designSystem: string
   colorPaletteId: string
+  apiBaseUrl: string
+  backendArtifactId: string
 }
 
 export const DESIGN_NONE = 'design-none'
@@ -58,6 +60,8 @@ function defaultState(metadata: FrontendMetadata | null): FeState {
     selectedOptions: {},
     designSystem: DESIGN_NONE,
     colorPaletteId: defaultPalette,
+    apiBaseUrl: '',
+    backendArtifactId: '',
   }
 }
 
@@ -115,6 +119,8 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
   const setPackageManager = useCallback((v: string) => setState(s => ({ ...s, packageManager: v })), [])
   const setBasePath = useCallback((v: string) => setState(s => ({ ...s, basePath: v || '/' })), [])
   const setColorPaletteId = useCallback((v: string) => setState(s => ({ ...s, colorPaletteId: v })), [])
+  const setApiBaseUrl = useCallback((v: string) => setState(s => ({ ...s, apiBaseUrl: v })), [])
+  const setBackendArtifactId = useCallback((v: string) => setState(s => ({ ...s, backendArtifactId: v })), [])
 
   const toggleDep = useCallback((depId: string) => {
     setActiveTemplate(null)
@@ -185,6 +191,8 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
     setPackageManager,
     setBasePath,
     setColorPaletteId,
+    setApiBaseUrl,
+    setBackendArtifactId,
     toggleDep,
     toggleOption,
     setDesignSystem,
@@ -206,6 +214,8 @@ export function buildFrontendQuery(s: FeState): string {
   qp.set('packageManager', s.packageManager)
   if (s.basePath && s.basePath !== '/') qp.set('basePath', s.basePath)
   if (s.colorPaletteId) qp.set('colorPalette', s.colorPaletteId)
+  if (s.apiBaseUrl) qp.set('apiBaseUrl', s.apiBaseUrl)
+  if (s.backendArtifactId) qp.set('backendArtifactId', s.backendArtifactId)
   if (s.selectedDeps.length) qp.set('dependencies', s.selectedDeps.join(','))
   for (const [depId, opts] of Object.entries(s.selectedOptions)) {
     if (opts.length) qp.set(`opts-${depId}`, opts.join(','))
@@ -234,6 +244,8 @@ export function parseFrontendUrl(): Partial<FeState> | null {
   const packageManager = p.get('packageManager'); if (packageManager) out.packageManager = packageManager
   const basePath = p.get('basePath'); if (basePath) out.basePath = basePath
   const colorPalette = p.get('colorPalette'); if (colorPalette) out.colorPaletteId = colorPalette
+  const apiBaseUrl = p.get('apiBaseUrl'); if (apiBaseUrl !== null) out.apiBaseUrl = apiBaseUrl
+  const backendArtifactId = p.get('backendArtifactId'); if (backendArtifactId !== null) out.backendArtifactId = backendArtifactId
 
   const deps = p.get('dependencies')
   if (deps !== null) {
