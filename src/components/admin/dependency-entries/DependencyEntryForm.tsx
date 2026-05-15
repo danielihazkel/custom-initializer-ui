@@ -1,6 +1,7 @@
 import type { AdminDependencyEntry, AdminDependencyGroup } from '../../../types'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 import { MAVEN_SCOPES, REPOSITORIES } from '../shared/adminConstants'
+import { useAdminKind } from '../AdminKindContext'
 
 interface Props {
   data: Partial<AdminDependencyEntry>
@@ -11,8 +12,13 @@ interface Props {
 }
 
 export function DependencyEntryForm({ data, groups, errors, depIdsWithPomEntry, onChange }: Props) {
+  const { kind } = useAdminKind()
   const depIdAddsPomViaCustomization = !!data.depId && depIdsWithPomEntry.has(data.depId)
   const fileOnly = data.starter === false
+  const rangeHint = kind === 'FRONTEND'
+    ? 'React major version range, e.g. [18.0.0,19.0.0) — matched at /frontend/metadata?reactVersion='
+    : 'Spring Boot version range, e.g. [3.2.0,4.0.0) or 3.2.0 — blank = all versions'
+  const rangePlaceholder = kind === 'FRONTEND' ? '[18.0.0,19.0.0)' : '[3.2.0,4.0.0)'
 
   const toggleFileOnly = (next: boolean) => {
     if (next) {
@@ -107,8 +113,8 @@ export function DependencyEntryForm({ data, groups, errors, depIdsWithPomEntry, 
           </>
         )}
         <div className={fileOnly ? '' : 'space-y-4 mt-4'}>
-          <FieldRow label="Compatibility Range" hint='Spring Boot version range, e.g. [3.2.0,4.0.0) or 3.2.0 — blank = all versions'>
-            <input className={inputClass} value={data.compatibilityRange ?? ''} onChange={e => onChange({ compatibilityRange: e.target.value })} placeholder="[3.2.0,4.0.0)" />
+          <FieldRow label="Compatibility Range" hint={rangeHint}>
+            <input className={inputClass} value={data.compatibilityRange ?? ''} onChange={e => onChange({ compatibilityRange: e.target.value })} placeholder={rangePlaceholder} />
           </FieldRow>
         </div>
       </div>

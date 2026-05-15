@@ -172,26 +172,30 @@ Existing rows without a \`projectKind\` are treated as \`BACKEND\` by the client
       },
       {
         id: 'fe-build-types',
-        title: 'Two New Build Customization Types',
-        description: 'ADD_NPM_DEPENDENCY and ADD_VITE_PLUGIN — reusing existing fields with new meanings.',
+        title: 'Three New Build Customization Types',
+        description: 'ADD_NPM_DEPENDENCY, ADD_NPM_SCRIPT, and ADD_VITE_PLUGIN — reusing existing fields with new meanings.',
         content: `### Schema Reuse
-Rather than adding a new entity, the existing \`BuildCustomizationEntity\` gained two enum values. Its columns are **reinterpreted** based on the \`projectKind\` + \`customizationType\` combination. Field meaning per row:
+Rather than adding a new entity, the existing \`BuildCustomizationEntity\` gained three enum values. Its columns are **reinterpreted** based on the \`projectKind\` + \`customizationType\` combination. Field meaning per row:
 
 | Type | Field reinterpretation |
 |---|---|
 | \`ADD_NPM_DEPENDENCY\` | \`mavenArtifactId\` = npm package name (e.g. \`react-router-dom\`); \`version\` = semver range (e.g. \`^6.26.0\`); \`scope\` = \`"dev"\` → goes to \`devDependencies\`, anything else → \`dependencies\` |
+| \`ADD_NPM_SCRIPT\` | \`mavenArtifactId\` = script name (e.g. \`lint:fix\`); \`version\` = command (e.g. \`eslint . --fix\`). Later rows with the same name override earlier ones, so admins can replace baseline scripts without editing the template |
 | \`ADD_VITE_PLUGIN\` | \`mavenGroupId\` = import path (e.g. \`@vitejs/plugin-react\`); \`mavenArtifactId\` = import binding (e.g. \`react\`); \`version\` = call expression (e.g. \`react()\`) |
 
 ### How They're Applied
-- **\`PackageJsonBuilder\`** loads the baseline \`templates/frontend/fe-package-base.mustache\`, renders it through Mustache, parses to Jackson tree, then walks all \`ADD_NPM_DEPENDENCY\` rows and inserts them into the right block. Keys are alphabetised within each block for stable diffs.
+- **\`PackageJsonBuilder\`** loads the baseline \`templates/frontend/fe-package-base.mustache\`, renders it through Mustache, parses to Jackson tree, then walks all \`ADD_NPM_DEPENDENCY\` rows (into \`dependencies\` / \`devDependencies\`) and \`ADD_NPM_SCRIPT\` rows (into \`scripts\`). Keys are alphabetised within each block for stable diffs.
 - **\`ViteConfigBuilder\`** loads \`templates/frontend/fe-vite-config.mustache\`, collects unique imports and the plugin-call list from \`ADD_VITE_PLUGIN\` rows, exposes them as \`{{vitePluginImports}}\` and \`{{vitePluginCalls}}\` in the Mustache context, and renders.
 
-### Always-On Packages
-The \`__common__\` dependency carries the baseline npm deps every project gets — \`react\`, \`react-dom\`, \`typescript\`, \`vite\`, \`@vitejs/plugin-react\`, plus the always-on quality stack (\`eslint\`, \`prettier\`, \`husky\`, \`lint-staged\`, and friends). The \`@vitejs/plugin-react\` row is also the single \`__common__\` \`ADD_VITE_PLUGIN\` row.`,
+### Always-On Packages & Scripts
+The \`__common__\` dependency carries the baseline npm deps every project gets — \`react\`, \`react-dom\`, \`typescript\`, \`vite\`, \`@vitejs/plugin-react\`, plus the always-on quality stack (\`eslint\`, \`prettier\`, \`husky\`, \`lint-staged\`, and friends). It also seeds the universally-useful scripts \`lint:fix\`, \`format:check\`, and \`typecheck\` via \`ADD_NPM_SCRIPT\` rows. The \`@vitejs/plugin-react\` row is the single \`__common__\` \`ADD_VITE_PLUGIN\` row.
+
+### Kind-Aware Admin Form
+The **Build Customizations** drawer now reads the Backend ⇄ Frontend pill. In Frontend mode the type dropdown only offers the three FE types and the field labels match the domain — *Package Name*, *Script Name*, *Command*, *Import Path*, *Import Binding*, *Plugin Call* — instead of the underlying \`mavenArtifactId\` / \`mavenGroupId\` columns. The DB row is unchanged; only the form translates.`,
         callouts: [
           {
             type: 'tip',
-            text: 'Adding a new npm package via the admin is one row: pick **Build Customizations**, set type to `ADD_NPM_DEPENDENCY`, fill the package name in **mavenArtifactId**, version in **version**, and `"dev"` in **scope** if it belongs in devDependencies.'
+            text: 'Adding a new npm package via the admin is one row: switch the pill to **Frontend**, open **Build Customizations → New Customization**, pick `ADD_NPM_DEPENDENCY`, fill **Package Name** and **Version**, tick **devDependency?** if it belongs in `devDependencies`. Hit Save, then `POST /admin/refresh`.'
           }
         ]
       },

@@ -1,8 +1,10 @@
 import type { AdminBuildCustomization, AdminDependencyEntry, BuildCustomizationType } from '../../../types'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 import { COMMON_DEP_ID } from '../shared/adminConstants'
+import { useAdminKind } from '../AdminKindContext'
 
-const CUST_TYPES: BuildCustomizationType[] = ['ADD_DEPENDENCY', 'EXCLUDE_DEPENDENCY', 'ADD_REPOSITORY']
+const BACKEND_TYPES: BuildCustomizationType[] = ['ADD_DEPENDENCY', 'EXCLUDE_DEPENDENCY', 'ADD_REPOSITORY']
+const FRONTEND_TYPES: BuildCustomizationType[] = ['ADD_NPM_DEPENDENCY', 'ADD_NPM_SCRIPT', 'ADD_VITE_PLUGIN']
 
 interface Props {
   data: Partial<AdminBuildCustomization>
@@ -13,7 +15,9 @@ interface Props {
 }
 
 export function BuildCustomizationForm({ data, isEditing, errors, onChange, dependencyEntries }: Props) {
+  const { kind } = useAdminKind()
   const type = data.customizationType
+  const types = kind === 'FRONTEND' ? FRONTEND_TYPES : BACKEND_TYPES
 
   return (
     <>
@@ -36,7 +40,7 @@ export function BuildCustomizationForm({ data, isEditing, errors, onChange, depe
           disabled={isEditing}
         >
           <option value="">— Select type —</option>
-          {CUST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          {types.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         {isEditing && (
           <p className="text-[10px] text-secondary mt-1">Delete and recreate to change the type.</p>
@@ -91,6 +95,54 @@ export function BuildCustomizationForm({ data, isEditing, errors, onChange, depe
             />
             <span className="text-sm text-on-surface">Snapshots enabled</span>
           </label>
+        </div>
+      )}
+
+      {type === 'ADD_NPM_DEPENDENCY' && (
+        <div className="space-y-4 border-t border-outline-variant pt-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-secondary">npm Package</p>
+          <FieldRow label="Package Name" required error={errors.mavenArtifactId}>
+            <input className={inputClass} value={data.mavenArtifactId ?? ''} onChange={e => onChange({ mavenArtifactId: e.target.value })} placeholder="react-router-dom" />
+          </FieldRow>
+          <FieldRow label="Version" required error={errors.version} hint="semver range written into package.json verbatim">
+            <input className={inputClass} value={data.version ?? ''} onChange={e => onChange({ version: e.target.value })} placeholder="^6.26.0" />
+          </FieldRow>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={data.scope === 'dev'}
+              onChange={e => onChange({ scope: e.target.checked ? 'dev' : '' })}
+              className="w-4 h-4 rounded border-outline-variant accent-primary"
+            />
+            <span className="text-sm text-on-surface">devDependency (goes under <code>devDependencies</code>)</span>
+          </label>
+        </div>
+      )}
+
+      {type === 'ADD_NPM_SCRIPT' && (
+        <div className="space-y-4 border-t border-outline-variant pt-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-secondary">package.json script</p>
+          <FieldRow label="Script Name" required error={errors.mavenArtifactId} hint="Later rows with the same name override earlier ones, so admins can replace baseline scripts">
+            <input className={inputClass} value={data.mavenArtifactId ?? ''} onChange={e => onChange({ mavenArtifactId: e.target.value })} placeholder="lint:fix" />
+          </FieldRow>
+          <FieldRow label="Command" required error={errors.version}>
+            <input className={inputClass} value={data.version ?? ''} onChange={e => onChange({ version: e.target.value })} placeholder="eslint . --fix" />
+          </FieldRow>
+        </div>
+      )}
+
+      {type === 'ADD_VITE_PLUGIN' && (
+        <div className="space-y-4 border-t border-outline-variant pt-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-secondary">Vite plugin</p>
+          <FieldRow label="Import Path" required error={errors.mavenGroupId} hint="The module Vite imports the plugin from">
+            <input className={inputClass} value={data.mavenGroupId ?? ''} onChange={e => onChange({ mavenGroupId: e.target.value })} placeholder="@vitejs/plugin-react" />
+          </FieldRow>
+          <FieldRow label="Import Binding" required error={errors.mavenArtifactId} hint="Local name used in vite.config.ts (e.g. react, vue, tsconfigPaths)">
+            <input className={inputClass} value={data.mavenArtifactId ?? ''} onChange={e => onChange({ mavenArtifactId: e.target.value })} placeholder="react" />
+          </FieldRow>
+          <FieldRow label="Plugin Call" required error={errors.version} hint="Expression placed inside plugins[]">
+            <input className={inputClass} value={data.version ?? ''} onChange={e => onChange({ version: e.target.value })} placeholder="react()" />
+          </FieldRow>
         </div>
       )}
 

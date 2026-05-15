@@ -207,6 +207,7 @@ export type BuildCustomizationType =
   | 'EXCLUDE_DEPENDENCY'
   | 'ADD_REPOSITORY'
   | 'ADD_NPM_DEPENDENCY'
+  | 'ADD_NPM_SCRIPT'
   | 'ADD_VITE_PLUGIN'
 
 export interface AdminBuildCustomization {

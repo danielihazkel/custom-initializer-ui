@@ -50,6 +50,15 @@ export function BuildCustomizationsTab() {
       if (!data.repoId?.trim()) e.repoId = 'Required'
       if (!data.repoUrl?.trim()) e.repoUrl = 'Required'
     }
+    if (data.customizationType === 'ADD_NPM_DEPENDENCY' || data.customizationType === 'ADD_NPM_SCRIPT') {
+      if (!data.mavenArtifactId?.trim()) e.mavenArtifactId = 'Required'
+      if (!data.version?.trim()) e.version = 'Required'
+    }
+    if (data.customizationType === 'ADD_VITE_PLUGIN') {
+      if (!data.mavenGroupId?.trim()) e.mavenGroupId = 'Required'
+      if (!data.mavenArtifactId?.trim()) e.mavenArtifactId = 'Required'
+      if (!data.version?.trim()) e.version = 'Required'
+    }
     return e
   }
 
@@ -88,6 +97,11 @@ export function BuildCustomizationsTab() {
 
   function describeRow(r: AdminBuildCustomization): string {
     if (r.customizationType === 'ADD_REPOSITORY') return r.repoId ?? ''
+    if (r.customizationType === 'ADD_NPM_SCRIPT') return r.mavenArtifactId ?? ''
+    if (r.customizationType === 'ADD_NPM_DEPENDENCY') {
+      return [r.mavenArtifactId, r.version].filter(Boolean).join('@')
+    }
+    if (r.customizationType === 'ADD_VITE_PLUGIN') return r.mavenGroupId ?? ''
     return [r.mavenGroupId, r.mavenArtifactId].filter(Boolean).join(':')
   }
 
@@ -95,7 +109,11 @@ export function BuildCustomizationsTab() {
     <div className="space-y-4">
       <div>
         <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Build Customizations</h2>
-        <p className="text-[11px] text-on-surface-variant mt-0.5">Maven pom.xml modifications — add/exclude deps, add repositories</p>
+        <p className="text-[11px] text-on-surface-variant mt-0.5">
+          {kind === 'FRONTEND'
+            ? 'package.json / vite.config.ts modifications — npm deps, scripts, Vite plugins'
+            : 'Maven pom.xml modifications — add/exclude deps, add repositories'}
+        </p>
       </div>
 
       <AdminTable

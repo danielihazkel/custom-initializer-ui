@@ -172,26 +172,30 @@ export const GUIDE_SECTIONS_HE: GuideSection[] = [
       },
       {
         id: 'fe-build-types',
-        title: 'שני סוגי Build Customization חדשים',
-        description: 'ADD_NPM_DEPENDENCY ו-ADD_VITE_PLUGIN — שימוש חוזר בעמודות קיימות עם משמעויות חדשות.',
+        title: 'שלושה סוגי Build Customization חדשים',
+        description: 'ADD_NPM_DEPENDENCY, ADD_NPM_SCRIPT ו-ADD_VITE_PLUGIN — שימוש חוזר בעמודות קיימות עם משמעויות חדשות.',
         content: `### שימוש חוזר בסכמה
-במקום להוסיף ישות חדשה, ל-\`BuildCustomizationEntity\` נוספו שני ערכי enum. העמודות שלו **מתפרשות מחדש** לפי שילוב של \`projectKind\` ו-\`customizationType\`. משמעות השדה לכל שורה:
+במקום להוסיף ישות חדשה, ל-\`BuildCustomizationEntity\` נוספו שלושה ערכי enum. העמודות שלו **מתפרשות מחדש** לפי שילוב של \`projectKind\` ו-\`customizationType\`. משמעות השדה לכל שורה:
 
 | Type | פרשנות שדות |
 |---|---|
 | \`ADD_NPM_DEPENDENCY\` | \`mavenArtifactId\` = שם חבילת npm (למשל \`react-router-dom\`); \`version\` = טווח semver (למשל \`^6.26.0\`); \`scope\` = \`"dev"\` → מגיע ל-\`devDependencies\`, כל ערך אחר → \`dependencies\` |
+| \`ADD_NPM_SCRIPT\` | \`mavenArtifactId\` = שם הסקריפט (למשל \`lint:fix\`); \`version\` = פקודה (למשל \`eslint . --fix\`). שורות מאוחרות עם אותו שם דורסות קודמות, כך שאדמינים יכולים להחליף סקריפטים בסיסיים בלי לערוך את ה-template |
 | \`ADD_VITE_PLUGIN\` | \`mavenGroupId\` = נתיב import (למשל \`@vitejs/plugin-react\`); \`mavenArtifactId\` = שם binding (למשל \`react\`); \`version\` = ביטוי קריאת ה-plugin (למשל \`react()\`) |
 
 ### איך הם מיושמים
-- **\`PackageJsonBuilder\`** טוען את ה-baseline \`templates/frontend/fe-package-base.mustache\`, מבצע render דרך Mustache, מפרסר ל-Jackson tree, ואז עובר על כל שורות \`ADD_NPM_DEPENDENCY\` ומכניס אותן לבלוק הנכון. המפתחות ממוינים אלפביתית בכל בלוק לדיפים יציבים.
+- **\`PackageJsonBuilder\`** טוען את ה-baseline \`templates/frontend/fe-package-base.mustache\`, מבצע render דרך Mustache, מפרסר ל-Jackson tree, ואז עובר על כל שורות \`ADD_NPM_DEPENDENCY\` (לתוך \`dependencies\` / \`devDependencies\`) ושורות \`ADD_NPM_SCRIPT\` (לתוך \`scripts\`). המפתחות ממוינים אלפביתית בכל בלוק לדיפים יציבים.
 - **\`ViteConfigBuilder\`** טוען את \`templates/frontend/fe-vite-config.mustache\`, אוסף imports ייחודיים ורשימת קריאות plugin משורות \`ADD_VITE_PLUGIN\`, חושף אותם כ-\`{{vitePluginImports}}\` ו-\`{{vitePluginCalls}}\` בקונטקסט ה-Mustache, ומבצע render.
 
-### חבילות שתמיד מותקנות
-התלות \`__common__\` נושאת את ה-npm deps הבסיסיים שכל פרויקט מקבל — \`react\`, \`react-dom\`, \`typescript\`, \`vite\`, \`@vitejs/plugin-react\`, בתוספת ערימת האיכות שתמיד פעילה (\`eslint\`, \`prettier\`, \`husky\`, \`lint-staged\`, ועוד). שורת \`@vitejs/plugin-react\` היא גם השורה היחידה \`ADD_VITE_PLUGIN\` ב-\`__common__\`.`,
+### חבילות וסקריפטים שתמיד מותקנים
+התלות \`__common__\` נושאת את ה-npm deps הבסיסיים שכל פרויקט מקבל — \`react\`, \`react-dom\`, \`typescript\`, \`vite\`, \`@vitejs/plugin-react\`, בתוספת ערימת האיכות שתמיד פעילה (\`eslint\`, \`prettier\`, \`husky\`, \`lint-staged\`, ועוד). היא גם זורעת את הסקריפטים השימושיים \`lint:fix\`, \`format:check\` ו-\`typecheck\` דרך שורות \`ADD_NPM_SCRIPT\`. שורת \`@vitejs/plugin-react\` היא השורה היחידה \`ADD_VITE_PLUGIN\` ב-\`__common__\`.
+
+### טופס אדמין מודע ל-Kind
+מגירת **Build Customizations** קוראת כעת את ה-pill של Backend ⇄ Frontend. במצב Frontend הרשימה הנפתחת של ה-type מציעה רק את שלושת ה-types של FE, ותוויות השדות תואמות לדומיין — *Package Name*, *Script Name*, *Command*, *Import Path*, *Import Binding*, *Plugin Call* — במקום העמודות \`mavenArtifactId\` / \`mavenGroupId\` הבסיסיות. שורת ה-DB לא משתנה; רק הטופס מתרגם.`,
         callouts: [
           {
             type: 'tip',
-            text: 'הוספת חבילת npm חדשה דרך האדמין היא שורה אחת: בחרו **Build Customizations**, הגדירו את ה-type ל-`ADD_NPM_DEPENDENCY`, מלאו את שם החבילה ב-**mavenArtifactId**, גרסה ב-**version**, ו-`"dev"` ב-**scope** אם זה שייך ל-devDependencies.'
+            text: 'הוספת חבילת npm חדשה דרך האדמין היא שורה אחת: העבירו את ה-pill ל-**Frontend**, פתחו **Build Customizations → New Customization**, בחרו `ADD_NPM_DEPENDENCY`, מלאו **Package Name** ו-**Version**, וסמנו **devDependency?** אם זה שייך ל-`devDependencies`. שמרו, ואז `POST /admin/refresh`.'
           }
         ]
       },
