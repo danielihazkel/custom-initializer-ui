@@ -42,7 +42,7 @@ export default function App() {
   const { depIds: openApiCapableDeps } = useOpenApiCapable()
   const { depIds: soapCapableDeps } = useSoapCapable()
   const { rules: compatibilityRules } = useCompatibility('BACKEND')
-  const { templates } = useStarterTemplates()
+  const { templates } = useStarterTemplates('BACKEND')
   const { modules: moduleTemplates } = useModuleTemplates()
   const { preview, previousPreview, loading: previewLoading, error: previewError, fetchPreview, clearPreview } = useProjectPreview()
 
