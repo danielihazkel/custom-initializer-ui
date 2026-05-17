@@ -2,6 +2,22 @@ import { useCallback, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { DESIGN_GROUP_NAME, type FrontendMetadata, type FeGroup } from '../../hooks/useFrontendMetadata'
 
+/**
+ * Renders a Spring Initializr-style version range as a short React-version label.
+ * `[18.0.0,19.0.0)` → "React 18 only", `[18.0.0,)` → "React 18+", everything else → raw.
+ */
+function formatReactRange(range: string): string {
+  const closed = /^\[(\d+)\.\d+\.\d+,(\d+)\.\d+\.\d+\)$/.exec(range)
+  if (closed) {
+    const lo = Number(closed[1])
+    const hi = Number(closed[2])
+    return hi === lo + 1 ? `React ${lo} only` : `React ${lo}–${hi - 1}`
+  }
+  const openUpper = /^\[(\d+)\.\d+\.\d+,\)$/.exec(range)
+  if (openUpper) return `React ${openUpper[1]}+`
+  return `React ${range}`
+}
+
 interface Props {
   metadata: FrontendMetadata
   selectedDeps: string[]
@@ -150,7 +166,17 @@ export function AvailableDependenciesFE({ metadata, selectedDeps, onToggleDep }:
                                 )}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <div className="text-sm font-bold text-on-surface">{dep.name}</div>
+                                <div className="text-sm font-bold text-on-surface flex items-center flex-wrap gap-2">
+                                  {dep.name}
+                                  {dep.versionRange && (
+                                    <span
+                                      title={dep.versionRange}
+                                      className="text-[9px] font-bold text-secondary bg-surface-container px-1.5 py-0.5 rounded-full border border-outline-variant/50"
+                                    >
+                                      {formatReactRange(dep.versionRange)}
+                                    </span>
+                                  )}
+                                </div>
                                 {dep.description && (
                                   <div className="text-xs text-on-surface-variant leading-relaxed mt-1">{dep.description}</div>
                                 )}

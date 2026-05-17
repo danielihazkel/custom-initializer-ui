@@ -8,6 +8,8 @@ export interface FeDependency {
   description?: string
   sortOrder: number
   subOptions?: FeSubOption[]
+  /** Spring Initializr range syntax (e.g. "[18.0.0,19.0.0)"). Only emitted when set on the catalog. */
+  versionRange?: string
 }
 export interface FeGroup {
   name: string
