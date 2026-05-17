@@ -224,6 +224,7 @@ export interface AdminBuildCustomization {
   repoUrl: string
   snapshotsEnabled: boolean
   scope?: string
+  subOptionId?: string
   sortOrder: number
   projectKind?: ProjectKind
 }

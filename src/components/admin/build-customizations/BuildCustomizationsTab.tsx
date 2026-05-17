@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import type { AdminBuildCustomization, AdminDependencyEntry, Toast } from '../../../types'
+import type { AdminBuildCustomization, AdminDependencyEntry, AdminSubOption, Toast } from '../../../types'
 import { useAdminResource } from '../../../hooks/useAdminResource'
 import { useAdminKind, filterByKind } from '../AdminKindContext'
 import { AdminTable } from '../shared/AdminTable'
@@ -19,8 +19,10 @@ export function BuildCustomizationsTab() {
   const { kind } = useAdminKind()
   const { items: allItems, loading, create, update, remove } = useAdminResource<AdminBuildCustomization>('/admin/build-customizations')
   const { items: allDepEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const { items: allSubOptions } = useAdminResource<AdminSubOption>('/admin/sub-options')
   const items = useMemo(() => filterByKind(allItems, kind), [allItems, kind])
   const depEntries = useMemo(() => filterByKind(allDepEntries, kind), [allDepEntries, kind])
+  const subOptions = useMemo(() => filterByKind(allSubOptions, kind), [allSubOptions, kind])
   const [editing, setEditing] = useState<Partial<AdminBuildCustomization> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -153,6 +155,7 @@ export function BuildCustomizationsTab() {
             errors={errors}
             onChange={updates => setEditing(prev => ({ ...prev, ...updates }))}
             dependencyEntries={depEntries}
+            subOptions={subOptions}
           />
         )}
       </AdminFormDrawer>

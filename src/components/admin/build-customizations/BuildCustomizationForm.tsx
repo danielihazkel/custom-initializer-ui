@@ -1,4 +1,4 @@
-import type { AdminBuildCustomization, AdminDependencyEntry, BuildCustomizationType } from '../../../types'
+import type { AdminBuildCustomization, AdminDependencyEntry, AdminSubOption, BuildCustomizationType } from '../../../types'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 import { COMMON_DEP_ID } from '../shared/adminConstants'
 import { useAdminKind } from '../AdminKindContext'
@@ -12,12 +12,14 @@ interface Props {
   errors: Record<string, string>
   onChange: (updates: Partial<AdminBuildCustomization>) => void
   dependencyEntries: AdminDependencyEntry[]
+  subOptions: AdminSubOption[]
 }
 
-export function BuildCustomizationForm({ data, isEditing, errors, onChange, dependencyEntries }: Props) {
+export function BuildCustomizationForm({ data, isEditing, errors, onChange, dependencyEntries, subOptions }: Props) {
   const { kind } = useAdminKind()
   const type = data.customizationType
   const types = kind === 'FRONTEND' ? FRONTEND_TYPES : BACKEND_TYPES
+  const matchingSubOptions = subOptions.filter(s => s.dependencyId === data.dependencyId)
 
   return (
     <>
@@ -144,6 +146,24 @@ export function BuildCustomizationForm({ data, isEditing, errors, onChange, depe
             <input className={inputClass} value={data.version ?? ''} onChange={e => onChange({ version: e.target.value })} placeholder="react()" />
           </FieldRow>
         </div>
+      )}
+
+      {kind === 'FRONTEND' && matchingSubOptions.length > 0 && (
+        <FieldRow
+          label="Sub-Option (optional)"
+          hint="If set, this customization only applies when the user picks this sub-option under the parent dependency."
+        >
+          <select
+            className={selectClass}
+            value={data.subOptionId ?? ''}
+            onChange={e => onChange({ subOptionId: e.target.value })}
+          >
+            <option value="">— Always apply —</option>
+            {matchingSubOptions.map(s => (
+              <option key={s.optionId} value={s.optionId}>{s.label} ({s.optionId})</option>
+            ))}
+          </select>
+        </FieldRow>
       )}
 
       <FieldRow label="Sort Order">
