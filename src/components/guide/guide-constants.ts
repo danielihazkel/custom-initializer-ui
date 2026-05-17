@@ -335,9 +335,23 @@ In the paired flow, the spec comes from \`backend.specByDep.openapi\` — the sa
 
 Selecting the dep without a spec is harmless: the scripts and devDep still ship, the user can author \`openapi.yaml\` themselves and run \`gen:api\` whenever they're ready.
 
+### Pre-Generated Typed Client
+When a spec is supplied, the paired zip ships with a working typed client at \`src/shared/api/generated/\` — produced by a pure-Java OpenAPI → TS codegen, no Node round-trip needed. \`tsc --noEmit\` passes on extraction. Files:
+
+- \`schema.ts\` — \`export type\` per component schema. \`oneOf\` with \`discriminator\` becomes a tagged union (narrowable on the tag); \`allOf\` becomes an intersection; \`nullable\` becomes \`T | null\`
+- \`paths.ts\` — typed path/method map. Responses split into \`success\` (2xx) and \`error\` (rest + \`default\`); JSDoc emitted for \`summary\` / \`description\` / \`@deprecated\`
+- \`errors.ts\` — \`SuccessBody<P, M>\` / \`ErrorBody<P, M>\` conditional types, an \`ApiError<P, M>\` envelope, and an \`isApiError(x)\` runtime guard
+- \`client.ts\` — \`createApiClient()\` exposing \`request()\` (raw \`Response\`) and \`requestJson<P, M>()\` (returns the narrowed success body; throws \`ApiError\` on non-2xx)
+- \`hooks.ts\` *(only when \`data-tanstack-query\` is also selected)* — \`useXxx\` for GETs (\`useQuery\`) and \`useXxxMutation\` for POST/PUT/PATCH/DELETE
+- \`msw.ts\` *(only when \`test-vitest-rtl\` is also selected)* — MSW v2 handlers seeded from spec \`example\` → schema \`example\` → synthesised stub
+
 ### The react-query-hooks Sub-Option
 Picking this sub-option emits an \`orval.config.ts\` configured to produce React Query hooks against \`openapi.yaml\`, with the existing \`src/shared/api/axios.ts\` mutator wired in. \`orval\` itself is not auto-installed (no sub-option gating on build customizations today) — users opt in via \`pnpm add -D orval\` and then \`npx orval\`.`,
         callouts: [
+          {
+            type: 'info',
+            text: 'Pre-generated coverage is the 80% — primitives, refs, enums, nullable, one/any/allOf, discriminated unions. Edge cases degrade to `unknown` with a comment; `pnpm gen:api` (using `openapi-typescript`) remains the regen escape hatch for full coverage. Codegen failures never abort generation — they fall back to a README pointing at `gen:api`.'
+          },
           {
             type: 'info',
             text: 'The default `gen:api` script targets `openapi-typescript` (types-only). The `react-query-hooks` sub-option is additive — it adds an orval config alongside the openapi-typescript script. Users pick the workflow they prefer.'
