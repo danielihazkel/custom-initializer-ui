@@ -1,55 +1,80 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #050508;
-  --color-on-background: #f8fafc;
-  --color-surface: #0a0a0f;
-  --color-surface-dim: #0a0a0f;
-  --color-surface-container: #101014;
-  --color-surface-container-low: #0a0a0c;
-  --color-surface-container-high: #1a1a20;
-  --color-surface-container-highest: #22222a;
-  --color-surface-container-lowest: #050508;
-  --color-surface-bright: #1a1a20;
-  --color-surface-variant: #1a1a20;
-  --color-surface-tint: #8b5cf6;
-  --color-primary: #8b5cf6;
-  --color-on-primary: #ffffff;
-  --color-primary-container: #6d28d9;
-  --color-on-primary-container: #ede9fe;
-  --color-primary-fixed: #ede9fe;
-  --color-primary-fixed-dim: #c4b5fd;
-  --color-on-primary-fixed: #2e1065;
-  --color-on-primary-fixed-variant: #5b21b6;
-  --color-inverse-primary: #5b21b6;
-  --color-secondary: #94a3b8;
-  --color-on-secondary: #050508;
-  --color-secondary-container: #1e293b;
-  --color-on-secondary-container: #e2e8f0;
-  --color-secondary-fixed: #e2e8f0;
-  --color-secondary-fixed-dim: #94a3b8;
-  --color-on-secondary-fixed: #0f172a;
-  --color-on-secondary-fixed-variant: #334155;
-  --color-tertiary: #10b981;
-  --color-on-tertiary: #ffffff;
-  --color-tertiary-container: #047857;
-  --color-on-tertiary-container: #d1fae5;
-  --color-tertiary-fixed: #d1fae5;
-  --color-tertiary-fixed-dim: #34d399;
-  --color-on-tertiary-fixed: #022c22;
-  --color-on-tertiary-fixed-variant: #065f46;
-  --color-error: #ef4444;
-  --color-on-error: #ffffff;
-  --color-error-container: #7f1d1d;
-  --color-on-error-container: #fecaca;
-  --color-outline: #334155;
-  --color-outline-variant: #1e293b;
-  --color-on-surface: #f8fafc;
-  --color-on-surface-variant: #94a3b8;
-  --color-inverse-surface: #f8fafc;
-  --color-inverse-on-surface: #050508;
+  /* Backgrounds (ink layers) */
+  --color-background: #02050d;
+  --color-on-background: #e9efff;
+  --color-surface: #05091a;
+  --color-surface-dim: #03060f;
+  --color-surface-container-lowest: #02050d;
+  --color-surface-container-low: #05091a;
+  --color-surface-container: #080e22;
+  --color-surface-container-high: #0c1430;
+  --color-surface-container-highest: #101a3e;
+  --color-surface-bright: #101a3e;
+  --color-surface-variant: #080e22;
+  --color-surface-tint: #4c9eff;
 
-  --font-sans: 'Geist', 'Inter', sans-serif;
+  /* Primary = azure (default; mode swaps below) */
+  --color-primary: #4c9eff;
+  --color-on-primary: #02050d;
+  --color-primary-container: #1a3a78;
+  --color-on-primary-container: #cfe2ff;
+  --color-primary-fixed: #cfe2ff;
+  --color-primary-fixed-dim: #6db4ff;
+  --color-on-primary-fixed: #0a2745;
+  --color-on-primary-fixed-variant: #1a3a78;
+  --color-inverse-primary: #6db4ff;
+
+  /* Secondary = mid-blue text/border family */
+  --color-secondary: #8fa6cf;
+  --color-on-secondary: #02050d;
+  --color-secondary-container: #0c1430;
+  --color-on-secondary-container: #cfd8ef;
+  --color-secondary-fixed: #cfd8ef;
+  --color-secondary-fixed-dim: #8fa6cf;
+  --color-on-secondary-fixed: #0a1428;
+  --color-on-secondary-fixed-variant: #2c3554;
+
+  /* Tertiary = emerald */
+  --color-tertiary: #4ad295;
+  --color-on-tertiary: #02050d;
+  --color-tertiary-container: #0d3d2a;
+  --color-on-tertiary-container: #c8f3df;
+  --color-tertiary-fixed: #c8f3df;
+  --color-tertiary-fixed-dim: #74e6b0;
+  --color-on-tertiary-fixed: #052c1c;
+  --color-on-tertiary-fixed-variant: #0d3d2a;
+
+  --color-error: #ff5a6b;
+  --color-on-error: #02050d;
+  --color-error-container: #4a0f1a;
+  --color-on-error-container: #ffd0d6;
+
+  /* Outline = rune lines */
+  --color-outline: rgba(140, 185, 245, 0.45);
+  --color-outline-variant: rgba(120, 165, 230, 0.22);
+
+  --color-on-surface: #e9efff;
+  --color-on-surface-variant: #8fa6cf;
+  --color-inverse-surface: #e9efff;
+  --color-inverse-on-surface: #02050d;
+
+  /* Font stacks */
+  --font-sans: "Spectral", "Cormorant Garamond", Georgia, serif;
+  --font-serif: "Cormorant Garamond", "Spectral", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-runic: "Cinzel", "Cormorant Garamond", serif;
+
+  /* Mockup accent jewels */
+  --color-jewel-azure: #4c9eff;
+  --color-jewel-azure-glow: #6db4ff;
+  --color-jewel-emerald: #4ad295;
+  --color-jewel-emerald-glow: #74e6b0;
+  --color-jewel-violet: #a979ff;
+  --color-jewel-violet-glow: #c79bff;
+  --color-jewel-amber: #ff9d3b;
+  --color-jewel-amber-glow: #ffb968;
 
   --radius: 0.375rem;
   --radius-lg: 0.75rem;
@@ -58,57 +83,82 @@
   --radius-full: 9999px;
 }
 
-/* ── Light mode color overrides ────────────────────────────── */
+/* ── Light mode (parchment counterpart) ─────────────────────── */
 html.light {
-  --color-background: #f8fafc;
-  --color-on-background: #0f172a;
+  --color-background: #f5f1e8;
+  --color-on-background: #15172a;
   --color-surface: #ffffff;
-  --color-surface-dim: #f1f5f9;
-  --color-surface-container: #ffffff;
-  --color-surface-container-low: #f8fafc;
-  --color-surface-container-high: #f1f5f9;
-  --color-surface-container-highest: #e2e8f0;
-  --color-surface-container-lowest: #ffffff;
+  --color-surface-dim: #efe9da;
+  --color-surface-container-lowest: #fbf8f1;
+  --color-surface-container-low: #f5f1e8;
+  --color-surface-container: #efe9da;
+  --color-surface-container-high: #e6dec9;
+  --color-surface-container-highest: #d6cbb1;
   --color-surface-bright: #ffffff;
-  --color-surface-variant: #f1f5f9;
-  --color-surface-tint: #7c3aed;
-  --color-primary: #7c3aed;
+  --color-surface-variant: #efe9da;
+  --color-surface-tint: #1a5fb8;
+
+  --color-primary: #1a5fb8;
   --color-on-primary: #ffffff;
-  --color-primary-container: #8b5cf6;
-  --color-on-primary-container: #ffffff;
-  --color-primary-fixed: #ede9fe;
-  --color-primary-fixed-dim: #d0bcff;
-  --color-on-primary-fixed: #23005c;
-  --color-on-primary-fixed-variant: #5b21b6;
-  --color-inverse-primary: #d0bcff;
-  --color-secondary: #64748b;
+  --color-primary-container: #cfe2ff;
+  --color-on-primary-container: #0a2745;
+  --color-primary-fixed: #cfe2ff;
+  --color-primary-fixed-dim: #6db4ff;
+  --color-on-primary-fixed: #0a2745;
+  --color-on-primary-fixed-variant: #1a3a78;
+  --color-inverse-primary: #6db4ff;
+
+  --color-secondary: #4a5d7d;
   --color-on-secondary: #ffffff;
-  --color-secondary-container: #f1f5f9;
-  --color-on-secondary-container: #334155;
-  --color-secondary-fixed: #e2e8f0;
-  --color-secondary-fixed-dim: #cbd5e1;
-  --color-on-secondary-fixed: #0f172a;
-  --color-on-secondary-fixed-variant: #334155;
-  --color-tertiary: #059669;
+  --color-secondary-container: #e6dec9;
+  --color-on-secondary-container: #2c3554;
+  --color-secondary-fixed: #e6dec9;
+  --color-secondary-fixed-dim: #b6c0d6;
+  --color-on-secondary-fixed: #15172a;
+  --color-on-secondary-fixed-variant: #2c3554;
+
+  --color-tertiary: #0f7a4d;
   --color-on-tertiary: #ffffff;
-  --color-tertiary-container: #10b981;
-  --color-on-tertiary-container: #ffffff;
-  --color-tertiary-fixed: #d1fae5;
+  --color-tertiary-container: #c8f3df;
+  --color-on-tertiary-container: #062c1c;
+  --color-tertiary-fixed: #c8f3df;
   --color-tertiary-fixed-dim: #6ee7b7;
-  --color-on-tertiary-fixed: #022c22;
-  --color-on-tertiary-fixed-variant: #047857;
-  --color-error: #ef4444;
+  --color-on-tertiary-fixed: #052c1c;
+  --color-on-tertiary-fixed-variant: #0d3d2a;
+
+  --color-error: #b3242f;
   --color-on-error: #ffffff;
-  --color-error-container: #fee2e2;
-  --color-on-error-container: #991b1b;
-  --color-outline: #cbd5e1;
-  --color-outline-variant: #e2e8f0;
-  --color-on-surface: #0f172a;
-  --color-on-surface-variant: #64748b;
-  --color-inverse-surface: #1e293b;
-  --color-inverse-on-surface: #f8fafc;
+  --color-error-container: #ffd0d6;
+  --color-on-error-container: #4a0f1a;
+
+  --color-outline: rgba(40, 70, 130, 0.45);
+  --color-outline-variant: rgba(40, 70, 130, 0.22);
+
+  --color-on-surface: #15172a;
+  --color-on-surface-variant: #4a5d7d;
+  --color-inverse-surface: #15172a;
+  --color-inverse-on-surface: #f5f1e8;
 }
 
+/* ── Mode-aware accent swaps (wired to App.tsx view state) ──── */
+body[data-mode="frontend"] {
+  --color-primary: var(--color-jewel-emerald);
+  --color-surface-tint: var(--color-jewel-emerald);
+  --color-inverse-primary: var(--color-jewel-emerald-glow);
+}
+body[data-mode="paired"] {
+  --color-primary: var(--color-jewel-violet);
+  --color-surface-tint: var(--color-jewel-violet);
+  --color-inverse-primary: var(--color-jewel-violet-glow);
+}
+body[data-mode="tutorial"] {
+  --color-primary: var(--color-jewel-amber);
+  --color-surface-tint: var(--color-jewel-amber);
+  --color-inverse-primary: var(--color-jewel-amber-glow);
+}
+/* backend / admin / guide stay on the default azure --color-primary */
+
+/* ── Base typography ────────────────────────────────────────── */
 body {
   font-family: var(--font-sans);
   background-color: var(--color-background);
@@ -117,78 +167,199 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-::selection {
-  background-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
-  color: var(--color-primary);
+h1, h2, h3, .display {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
 }
 
-/* Glassmorphism Utilities */
+code, pre, kbd, samp {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background-color: color-mix(in oklab, var(--color-primary) 35%, transparent);
+  color: var(--color-on-primary);
+}
+
+/* ── Runic / label utilities ────────────────────────────────── */
+.runic,
+.label-runic {
+  font-family: var(--font-runic);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-weight: 500;
+}
+.label-runic-sm {
+  font-size: 11px;
+  letter-spacing: 0.32em;
+}
+
+/* Auto-promote the existing uppercase+wide-tracking section-label convention
+   (used throughout components) to Cinzel runic so we don't have to edit 50+ files. */
+.uppercase.tracking-widest,
+.uppercase.tracking-wider {
+  font-family: var(--font-runic);
+  letter-spacing: 0.22em;
+}
+
+/* Auto-promote Tailwind rounded-xl / rounded-2xl utilities (the common
+   card/input/panel radius across the codebase) to chamfered clip-path.
+   This gives every card the mockup's cut-corner aesthetic without
+   touching 50+ component files. Skips rounded-full / rounded-md / rounded-sm
+   so pills, switches, and small chips stay round. */
+.rounded-md {
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  border-radius: 0;
+}
+.rounded-lg {
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  border-radius: 0;
+}
+.rounded-xl {
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  border-radius: 0;
+}
+.rounded-2xl {
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  border-radius: 0;
+}
+.rounded-3xl {
+  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  border-radius: 0;
+}
+
+/* ── Cut-corner button (paired with .animated-gradient-btn) ─── */
+.cut-corners {
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  border-radius: 0;
+}
+
+/* ── Decorative frame corner brackets ───────────────────────── */
+.frame-corners {
+  position: relative;
+}
+.frame-corners::before,
+.frame-corners::after {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-color: var(--color-outline);
+  pointer-events: none;
+}
+.frame-corners::before {
+  top: 6px;
+  left: 6px;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+.frame-corners::after {
+  bottom: 6px;
+  right: 6px;
+  border-bottom: 1px solid;
+  border-right: 1px solid;
+}
+
+/* ── Ambient page background (radial gradients) ─────────────── */
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 50% at 20% 10%, color-mix(in srgb, var(--color-primary) 18%, transparent), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 80%, color-mix(in srgb, var(--color-tertiary) 12%, transparent), transparent 60%),
+    radial-gradient(ellipse 80% 50% at 50% 100%, color-mix(in srgb, var(--color-surface-container-high) 60%, transparent), transparent 70%);
+}
+
+/* ── Glassmorphism / frame utilities ────────────────────────── */
 .glass-header {
-  background: color-mix(in srgb, var(--color-background) 80%, transparent);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--color-background) 90%, transparent),
+    color-mix(in srgb, var(--color-background) 70%, transparent));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent);
+  border-bottom: 1px solid var(--color-outline-variant);
+  position: relative;
+}
+.glass-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: radial-gradient(ellipse at center,
+    color-mix(in srgb, var(--color-primary) 70%, transparent) 0%,
+    transparent 60%);
+  pointer-events: none;
 }
 
 .glass-panel {
-  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+  position: relative;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--color-surface) 78%, transparent),
+    color-mix(in srgb, var(--color-surface-container) 85%, transparent));
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-outline-variant);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--color-primary) 12%, transparent),
+    inset 0 0 26px color-mix(in srgb, var(--color-primary) 6%, transparent);
 }
 
 .glass-card {
-  background: color-mix(in srgb, var(--color-surface-container) 70%, transparent);
+  position: relative;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--color-surface) 78%, transparent),
+    color-mix(in srgb, var(--color-surface-container) 85%, transparent));
   backdrop-filter: blur(12px);
   border: 1px solid var(--color-outline-variant);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-html.dark .glass-card {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--color-primary) 12%, transparent),
+    inset 0 0 26px color-mix(in srgb, var(--color-primary) 6%, transparent);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .glass-card:hover {
-  border-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
-  transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
-}
-
-html.dark .glass-card:hover {
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  border-color: var(--color-outline);
+  box-shadow:
+    0 0 32px color-mix(in srgb, var(--color-primary) 22%, transparent),
+    inset 0 0 26px color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
 
 .glass-drawer {
   background: color-mix(in srgb, var(--color-surface) 95%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-left: 1px solid color-mix(in srgb, var(--color-outline-variant) 80%, transparent);
-  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.1);
+  border-left: 1px solid var(--color-outline-variant);
+  box-shadow:
+    -8px 0 40px color-mix(in srgb, var(--color-background) 60%, transparent),
+    inset 0 0 26px color-mix(in srgb, var(--color-primary) 6%, transparent);
 }
 
-html.dark .glass-drawer {
-  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.4);
-}
-
-/* Gradients and Animations */
+/* ── Gradients and animations ───────────────────────────────── */
 .signature-gradient {
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-container) 100%);
 }
 
 .animated-gradient-btn {
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-container) 100%, var(--color-tertiary) 200%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-container) 60%, var(--color-tertiary) 140%);
   background-size: 200% 200%;
   animation: gradient-shift 4s ease infinite;
   color: var(--color-on-primary);
-  box-shadow: 0 4px 15px color-mix(in srgb, var(--color-primary) 40%, transparent);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--color-primary) 35%, transparent),
+    inset 0 0 18px color-mix(in srgb, var(--color-primary) 25%, transparent);
+  transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .animated-gradient-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px color-mix(in srgb, var(--color-primary) 60%, transparent);
+  box-shadow:
+    0 0 36px color-mix(in srgb, var(--color-primary) 55%, transparent),
+    inset 0 0 22px color-mix(in srgb, var(--color-primary) 35%, transparent);
 }
 
 .animated-gradient-btn:active {
@@ -197,20 +368,21 @@ html.dark .glass-drawer {
 
 @keyframes glow-burst {
   0% {
-    box-shadow: 0 4px 15px color-mix(in srgb, var(--color-primary) 40%, transparent);
+    box-shadow: 0 0 24px color-mix(in srgb, var(--color-primary) 35%, transparent);
     transform: scale(1);
   }
   15% {
-    box-shadow: 0 0 40px 10px color-mix(in srgb, var(--color-primary) 60%, transparent),
-                0 0 80px 20px color-mix(in srgb, var(--color-tertiary) 30%, transparent);
+    box-shadow:
+      0 0 60px 10px color-mix(in srgb, var(--color-primary) 70%, transparent),
+      0 0 100px 20px color-mix(in srgb, var(--color-tertiary) 35%, transparent);
     transform: scale(1.05);
   }
   50% {
-    box-shadow: 0 0 20px 5px color-mix(in srgb, var(--color-primary) 30%, transparent);
+    box-shadow: 0 0 30px 5px color-mix(in srgb, var(--color-primary) 35%, transparent);
     transform: scale(1.02);
   }
   100% {
-    box-shadow: 0 4px 15px color-mix(in srgb, var(--color-primary) 40%, transparent);
+    box-shadow: 0 0 24px color-mix(in srgb, var(--color-primary) 35%, transparent);
     transform: scale(1);
   }
 }
@@ -220,37 +392,22 @@ html.dark .glass-drawer {
 }
 
 @keyframes gradient-shift {
-  0% {
-    background-position: 0% 50%;
-  }
-
-  50% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0% 50%;
-  }
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
-/* Animations map */
+/* Fade-in animation map */
 @keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .animate-fade-in-up {
   animation: fade-in-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-/* Scrollbar styling */
+/* ── Scrollbar styling ──────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;
 }

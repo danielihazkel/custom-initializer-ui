@@ -105,7 +105,7 @@ export function InitializrView({
       </div>
       <div className="max-w-7xl mx-auto px-8 grid grid-cols-12 gap-10 relative z-10 animate-fade-in-up">
         {/* Left Column */}
-        <section className="col-span-12 lg:col-span-5 space-y-8">
+        <section className="frame-corners col-span-12 lg:col-span-5 space-y-8 px-2 py-3">
           <div className="mb-2">
             <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">
               Project Setup
@@ -152,7 +152,7 @@ export function InitializrView({
         </section>
 
         {/* Right Column — Dependencies */}
-        <section className="col-span-12 lg:col-span-7">
+        <section className="frame-corners col-span-12 lg:col-span-7 px-2 py-3">
           <DependencySelector
             metadata={metadata}
             selected={selectedDeps}

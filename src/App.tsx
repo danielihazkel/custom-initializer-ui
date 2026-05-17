@@ -126,6 +126,16 @@ export default function App() {
     localStorage.setItem('theme', isDark ? 'dark' : 'light')
   }, [isDark])
 
+  // Sync view → body[data-mode] for mode-aware accent jewels
+  useEffect(() => {
+    const mode =
+      view === 'frontend' ? 'frontend' :
+      view === 'paired'   ? 'paired'   :
+      view === 'tutorial' ? 'tutorial' :
+      'backend'
+    document.body.dataset.mode = mode
+  }, [view])
+
   function handleShare(): void {
     navigator.clipboard.writeText(window.location.href).then(() => {
       setShareCopied(true)
@@ -165,41 +175,41 @@ export default function App() {
       {/* Top Nav */}
       <header className="fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 glass-header">
         <div className="flex items-center gap-8">
-          <span className="text-xl font-bold text-on-surface tracking-tighter">Menora Initializr</span>
+          <span className="display text-xl text-on-surface tracking-wide">Menora Initializr</span>
           <nav className="hidden md:flex items-center gap-6">
             <button
               onClick={() => setView('initializr')}
-              className={`text-sm transition-colors duration-200 ${view === 'initializr' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
+              className={`runic label-runic-sm transition-colors duration-200 ${view === 'initializr' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
             >
               Backend
             </button>
             <button
               onClick={() => setView('frontend')}
-              className={`text-sm transition-colors duration-200 ${view === 'frontend' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
+              className={`runic label-runic-sm transition-colors duration-200 ${view === 'frontend' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
             >
               Frontend
             </button>
             <button
               onClick={() => setView('paired')}
-              className={`text-sm transition-colors duration-200 ${view === 'paired' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
+              className={`runic label-runic-sm transition-colors duration-200 ${view === 'paired' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
             >
               Paired
             </button>
             <button
               onClick={() => setView(v => v === 'tutorial' ? 'initializr' : 'tutorial')}
-              className={`text-sm transition-colors duration-200 ${view === 'tutorial' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
+              className={`runic label-runic-sm transition-colors duration-200 ${view === 'tutorial' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
             >
               Training
             </button>
             <button
               onClick={() => setView(v => v === 'guide' ? 'initializr' : 'guide')}
-              className={`text-sm transition-colors duration-200 ${view === 'guide' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
+              className={`runic label-runic-sm transition-colors duration-200 ${view === 'guide' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
             >
               Guide
             </button>
             <button
               onClick={() => setView(v => v === 'admin' ? 'initializr' : 'admin')}
-              className={`text-sm transition-colors duration-200 ${view === 'admin' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
+              className={`runic label-runic-sm transition-colors duration-200 ${view === 'admin' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
             >
               Config
             </button>
@@ -281,7 +291,7 @@ export default function App() {
             onClick={() => { fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep); pushRecent(currentSnapshot) }}
             disabled={previewLoading}
             title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview project files before downloading'}
-            className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
+            className={`runic label-runic-sm cut-corners px-4 py-1.5 transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
           >
             {previewLoading
               ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }}>progress_activity</span>
@@ -291,7 +301,7 @@ export default function App() {
           {view !== 'frontend' && view !== 'paired' && (
           <button
             onClick={handleGenerate}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn ${generateSuccess ? 'generate-success' : ''}`}
+            className={`runic label-runic-sm cut-corners px-6 py-2 text-sm font-semibold transition-all duration-300 active:scale-95 animated-gradient-btn ${generateSuccess ? 'generate-success' : ''}`}
             style={{ minWidth: '110px' }}
           >
             <AnimatePresence mode="wait">
@@ -325,11 +335,11 @@ export default function App() {
         </div>
       </header>
 
+      {/* Ambient page background (fixed; sits below content) */}
+      <div className="ambient-bg" aria-hidden="true" />
+
       {/* Main Content */}
       <main className="pt-20 pb-8 min-h-screen bg-background relative overflow-hidden">
-        {/* Decorative ambient background blobs */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-tertiary/10 rounded-full blur-[120px] pointer-events-none" />
 
         {view === 'frontend' ? (
           <div className="relative z-10 animate-fade-in-up">
