@@ -102,7 +102,7 @@ export function FrontendView({ onGenerated, onReset }: Props) {
             onClick={() => fetchPreview(fe.state)}
             disabled={previewLoading}
             title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview project files before downloading'}
-            className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
+            className={`runic label-runic-sm cut-corners px-4 py-1.5 transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
           >
             {previewLoading
               ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }}>progress_activity</span>
@@ -110,7 +110,7 @@ export function FrontendView({ onGenerated, onReset }: Props) {
           </button>
           <button
             onClick={handleGenerate}
-            className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn"
+            className="runic label-runic-sm cut-corners px-6 py-2 text-sm font-semibold transition-all duration-300 active:scale-95 animated-gradient-btn"
             style={{ minWidth: '110px' }}
           >
             Generate
