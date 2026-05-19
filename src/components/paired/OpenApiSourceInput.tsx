@@ -243,4 +243,4 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 }
 
 const INPUT_CLASS =
-  'w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all'
+  'w-full bg-surface-container/40 border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all'

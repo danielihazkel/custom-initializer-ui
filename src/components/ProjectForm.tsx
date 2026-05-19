@@ -59,12 +59,12 @@ export function ProjectForm({ values, onChange }: ProjectFormProps) {
   }
 
   return (
-    <div className="space-y-4 pt-6">
-      <div className="flex items-center gap-2">
-        <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>tune</span>
-        <span className="text-xs font-bold uppercase tracking-widest text-on-surface">Project Metadata</span>
-      </div>
-      <div className="grid grid-cols-2 gap-4 mt-4">
+    <div className="space-y-4">
+      <span className="label-runic-sm text-primary flex items-center gap-2">
+        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>sell</span>
+        Project Metadata
+      </span>
+      <div className="grid grid-cols-2 gap-4 mt-3">
         <div className="col-span-1">
           <FloatingInput id="groupId" label="Group" value={values.groupId} onChange={handle('groupId')} />
         </div>

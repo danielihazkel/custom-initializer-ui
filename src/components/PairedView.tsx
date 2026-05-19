@@ -124,15 +124,17 @@ export function PairedView() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 space-y-6">
-      <div className="glass-panel rounded-2xl p-6">
-        <div className="flex items-center gap-3 mb-2">
-          <span className="material-symbols-outlined text-primary" style={{ fontSize: '24px' }}>
-            link
-          </span>
-          <h1 className="text-xl font-bold text-on-surface">Paired Generator</h1>
-        </div>
-        <p className="text-sm text-secondary">
+    <div className="max-w-7xl mx-auto px-6 space-y-8">
+      {/* Mini-hero */}
+      <div className="px-2 space-y-3">
+        <span className="label-runic-sm text-primary flex items-center gap-2">
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>link</span>
+          Paired Generator
+        </span>
+        <h2 className="display text-on-surface font-normal" style={{ fontSize: 'clamp(28px, 4vw, 36px)', lineHeight: 1.1 }}>
+          Backend + Frontend, Pre-Wired
+        </h2>
+        <p className="text-sm text-secondary max-w-3xl">
           Spring Boot backend + React/Vite frontend in a single monorepo zip, pre-wired so the FE talks
           to the BE in dev (env file + Vite proxy + CORS). Same form depth as the dedicated tabs.
         </p>
@@ -142,10 +144,12 @@ export function PairedView() {
         {/* Backend column */}
         <section className="space-y-4">
           <div className="flex items-center gap-2 px-2">
-            <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>terminal</span>
-            <h2 className="text-sm font-bold uppercase tracking-widest text-on-surface">Backend</h2>
-            <span className="text-[11px] text-secondary ml-2">
-              artifactId: <code className="text-on-surface">{beArtifactId}</code>
+            <span className="label-runic-sm text-primary flex items-center gap-2">
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>terminal</span>
+              Backend
+            </span>
+            <span className="cut-corners ml-2 px-2 py-0.5 text-[10px] font-mono bg-primary/10 text-primary">
+              {beArtifactId}
             </span>
           </div>
           <BackendHalfPanel onChange={onBeChange} />
@@ -154,10 +158,12 @@ export function PairedView() {
         {/* Frontend column */}
         <section className="space-y-4">
           <div className="flex items-center gap-2 px-2">
-            <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>monitor</span>
-            <h2 className="text-sm font-bold uppercase tracking-widest text-on-surface">Frontend</h2>
-            <span className="text-[11px] text-secondary ml-2">
-              project: <code className="text-on-surface">{feProjectName}</code>
+            <span className="label-runic-sm text-primary flex items-center gap-2">
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>monitor</span>
+              Frontend
+            </span>
+            <span className="cut-corners ml-2 px-2 py-0.5 text-[10px] font-mono bg-primary/10 text-primary">
+              {feProjectName}
             </span>
           </div>
           <FrontendHalfPanel onChange={onFeChange} />
@@ -166,10 +172,10 @@ export function PairedView() {
 
       {/* Bottom row: paired wiring + Generate */}
       <div className="glass-panel rounded-2xl p-6 space-y-4">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>cable</span>
-          <h2 className="text-sm font-bold uppercase tracking-widest text-on-surface">Wiring</h2>
-        </div>
+        <h2 className="label-runic-sm text-primary flex items-center gap-2">
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>cable</span>
+          Wiring
+        </h2>
 
         <Field label="API Base URL (optional — defaults to http://localhost:8080)">
           <input
@@ -208,7 +214,7 @@ export function PairedView() {
           <button
             onClick={handleGenerate}
             disabled={busy || !ready}
-            className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn disabled:opacity-60"
+            className="cut-corners runic label-runic-sm px-6 py-2 transition-all duration-300 active:scale-95 animated-gradient-btn disabled:opacity-60"
           >
             {busy ? 'Generating…' : 'Generate Paired Zip'}
           </button>
@@ -219,12 +225,12 @@ export function PairedView() {
 }
 
 const inputClass =
-  'w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all'
+  'w-full bg-surface-container/40 border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all'
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[10px] uppercase font-bold tracking-widest text-primary mb-1.5">{label}</span>
+      <span className="label-runic-sm text-primary block mb-1.5">{label}</span>
       {children}
     </label>
   )

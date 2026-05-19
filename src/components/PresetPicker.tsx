@@ -50,17 +50,54 @@ export function PresetPicker({
   }
 
   const hasAnything = presets.length > 0 || recents.length > 0 || savePromptOpen
+
+  const tabsRow = (
+    <div className="flex items-center justify-between mb-3 gap-4">
+      <div className="flex items-center gap-5">
+        <button
+          onClick={() => setTab('presets')}
+          className={`label-runic-sm flex items-center gap-2 transition-colors ${tab === 'presets' ? 'text-on-surface' : 'text-secondary hover:text-on-surface'}`}
+        >
+          My Presets
+          {presets.length > 0 && (
+            <span className="cut-corners px-1.5 py-0.5 bg-primary/15 text-primary text-[10px] font-mono">
+              {presets.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setTab('recents')}
+          className={`label-runic-sm flex items-center gap-2 transition-colors ${tab === 'recents' ? 'text-on-surface' : 'text-secondary hover:text-on-surface'}`}
+        >
+          Recent
+          {recents.length > 0 && (
+            <span className="cut-corners px-1.5 py-0.5 bg-tertiary/15 text-tertiary text-[10px] font-mono">
+              {recents.length}
+            </span>
+          )}
+        </button>
+      </div>
+    </div>
+  )
+
   if (!hasAnything) {
     return (
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">My Presets</h2>
+      <div className="mb-8">
+        {tabsRow}
+        <div className="glass-panel frame-corners flex items-center gap-4 px-6 py-5">
+          <span className="material-symbols-outlined text-secondary opacity-60" style={{ fontSize: '36px' }}>
+            explore
+          </span>
+          <p className="flex-1 text-sm text-secondary">
+            No presets yet. Configure a project and click{' '}
+            <em className="text-on-surface font-medium">&ldquo;Save current as preset…&rdquo;</em> above.
+          </p>
           <button
             onClick={() => setSavePromptOpen(true)}
-            className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
+            className="cut-corners flex items-center gap-2 px-4 py-2 text-xs font-medium text-secondary hover:text-on-surface bg-surface-container/60 border border-outline-variant hover:border-outline transition-colors"
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>bookmark_add</span>
-            Save current as preset…
+            Save Current as Preset…
           </button>
         </div>
       </div>
@@ -68,27 +105,27 @@ export function PresetPicker({
   }
 
   return (
-    <div className="mb-6">
+    <div className="mb-8">
       <div className="flex items-center justify-between mb-3 gap-4">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-5">
           <button
             onClick={() => setTab('presets')}
-            className={`text-xs font-bold uppercase tracking-widest transition-colors ${tab === 'presets' ? 'text-on-surface' : 'text-secondary hover:text-on-surface'}`}
+            className={`label-runic-sm flex items-center gap-2 transition-colors ${tab === 'presets' ? 'text-on-surface' : 'text-secondary hover:text-on-surface'}`}
           >
             My Presets
             {presets.length > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-primary/15 text-primary text-[9px] font-bold">
+              <span className="cut-corners px-1.5 py-0.5 bg-primary/15 text-primary text-[10px] font-mono">
                 {presets.length}
               </span>
             )}
           </button>
           <button
             onClick={() => setTab('recents')}
-            className={`text-xs font-bold uppercase tracking-widest transition-colors ${tab === 'recents' ? 'text-on-surface' : 'text-secondary hover:text-on-surface'}`}
+            className={`label-runic-sm flex items-center gap-2 transition-colors ${tab === 'recents' ? 'text-on-surface' : 'text-secondary hover:text-on-surface'}`}
           >
             Recent
             {recents.length > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-tertiary/15 text-tertiary text-[9px] font-bold">
+              <span className="cut-corners px-1.5 py-0.5 bg-tertiary/15 text-tertiary text-[10px] font-mono">
                 {recents.length}
               </span>
             )}
@@ -96,10 +133,10 @@ export function PresetPicker({
         </div>
         <button
           onClick={() => setSavePromptOpen(v => !v)}
-          className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
+          className="cut-corners flex items-center gap-2 px-4 py-2 text-xs font-medium text-secondary hover:text-on-surface bg-surface-container/60 border border-outline-variant hover:border-outline transition-colors"
         >
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>bookmark_add</span>
-          Save current as preset…
+          Save Current as Preset…
         </button>
       </div>
 
@@ -111,7 +148,7 @@ export function PresetPicker({
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden mb-3"
           >
-            <div className="flex items-center gap-2 p-3 rounded-lg border border-outline-variant bg-surface-container">
+            <div className="glass-panel rounded-lg flex items-center gap-2 p-3">
               <input
                 autoFocus
                 type="text"
@@ -156,7 +193,7 @@ export function PresetPicker({
             return (
               <div
                 key={item.id}
-                className="relative flex-shrink-0 w-52 rounded-lg border-2 border-outline-variant bg-surface-container hover:border-outline group transition-all"
+                className="glass-card relative flex-shrink-0 w-52 rounded-lg group"
               >
                 <button
                   onClick={() => onLoad(item.snapshot)}

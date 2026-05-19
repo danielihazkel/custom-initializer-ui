@@ -167,20 +167,21 @@ export function FrontendHalfPanel({ onChange, onMetadataLoaded }: Props) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {templates.length > 0 && (
         <TemplatePicker
           templates={templates}
           activeTemplateId={activeTemplate}
           onSelect={applyTemplate}
+          compact
         />
       )}
 
-      <div className="glass-panel rounded-2xl p-5">
+      <div className="glass-panel rounded-2xl p-6">
         <ProjectFormFE values={state.form} onChange={updateForm} />
       </div>
 
-      <div className="glass-panel rounded-2xl p-5">
+      <div className="glass-panel rounded-2xl p-6">
         <OptionsPanelFE
           metadata={metadata}
           reactVersion={state.reactVersion}
@@ -203,8 +204,15 @@ export function FrontendHalfPanel({ onChange, onMetadataLoaded }: Props) {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="glass-panel rounded-2xl p-5">
+      <div className="space-y-4">
+        <div className="glass-panel rounded-2xl p-6">
+          <AvailableDependenciesFE
+            metadata={metadata}
+            selectedDeps={state.selectedDeps}
+            onToggleDep={toggleDep}
+          />
+        </div>
+        <div className="glass-panel rounded-2xl p-6">
           <SelectedDependenciesFE
             metadata={metadata}
             selectedDeps={state.selectedDeps}
@@ -212,13 +220,6 @@ export function FrontendHalfPanel({ onChange, onMetadataLoaded }: Props) {
             compatibilityRules={compatibilityRules}
             onToggleDep={toggleDep}
             onToggleOption={toggleOption}
-          />
-        </div>
-        <div className="glass-panel rounded-2xl p-5">
-          <AvailableDependenciesFE
-            metadata={metadata}
-            selectedDeps={state.selectedDeps}
-            onToggleDep={toggleDep}
           />
         </div>
       </div>

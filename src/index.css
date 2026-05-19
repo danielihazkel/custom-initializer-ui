@@ -234,30 +234,50 @@ code, pre, kbd, samp {
   border-radius: 0;
 }
 
-/* ── Decorative frame corner brackets ───────────────────────── */
+/* ── Decorative frame corner brackets (all four corners via gradients) ─
+   Each corner is an L: one horizontal arm + one vertical arm.
+   8 gradients total, paired (h then v) per corner. */
 .frame-corners {
   position: relative;
+  background-image:
+    /* TL h, TL v, TR h, TR v, BL h, BL v, BR h, BR v */
+    linear-gradient(rgba(150, 195, 255, 0.55), rgba(150, 195, 255, 0.55)),
+    linear-gradient(rgba(150, 195, 255, 0.55), rgba(150, 195, 255, 0.55)),
+    linear-gradient(rgba(150, 195, 255, 0.55), rgba(150, 195, 255, 0.55)),
+    linear-gradient(rgba(150, 195, 255, 0.55), rgba(150, 195, 255, 0.55)),
+    linear-gradient(rgba(150, 195, 255, 0.55), rgba(150, 195, 255, 0.55)),
+    linear-gradient(rgba(150, 195, 255, 0.55), rgba(150, 195, 255, 0.55)),
+    linear-gradient(rgba(150, 195, 255, 0.55), rgba(150, 195, 255, 0.55)),
+    linear-gradient(rgba(150, 195, 255, 0.55), rgba(150, 195, 255, 0.55));
+  background-size:
+    18px 1px, 1px 18px,
+    18px 1px, 1px 18px,
+    18px 1px, 1px 18px,
+    18px 1px, 1px 18px;
+  background-position:
+    4px 4px,                       4px 4px,
+    calc(100% - 4px) 4px,          calc(100% - 4px) 4px,
+    4px calc(100% - 4px),          4px calc(100% - 4px),
+    calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) calc(100% - 4px);
+  background-repeat: no-repeat;
 }
-.frame-corners::before,
-.frame-corners::after {
-  content: "";
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  border-color: var(--color-outline);
-  pointer-events: none;
+
+/* Slow spin for empty-cart compass */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
-.frame-corners::before {
-  top: 6px;
-  left: 6px;
-  border-top: 1px solid;
-  border-left: 1px solid;
+.animate-spin-slow {
+  animation: spin-slow 60s linear infinite;
 }
-.frame-corners::after {
-  bottom: 6px;
-  right: 6px;
-  border-bottom: 1px solid;
-  border-right: 1px solid;
+
+/* Slow spin for empty-cart compass */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 60s linear infinite;
 }
 
 /* ── Ambient page background (radial gradients) ─────────────── */

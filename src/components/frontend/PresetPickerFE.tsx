@@ -118,7 +118,7 @@ export function PresetPickerFE({
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden mb-3"
           >
-            <div className="flex items-center gap-2 p-3 rounded-lg border border-outline-variant bg-surface-container">
+            <div className="glass-panel rounded-lg flex items-center gap-2 p-3">
               <input
                 autoFocus
                 type="text"
@@ -162,7 +162,7 @@ export function PresetPickerFE({
             return (
               <div
                 key={item.id}
-                className="relative flex-shrink-0 w-52 rounded-lg border-2 border-outline-variant bg-surface-container hover:border-outline group transition-all"
+                className="glass-card relative flex-shrink-0 w-52 rounded-lg group"
               >
                 <button
                   onClick={() => onLoad(item.snapshot)}

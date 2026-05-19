@@ -8,6 +8,7 @@ import { useCompatibility } from '../../hooks/useCompatibility'
 import { OptionsPanel } from '../OptionsPanel'
 import { ProjectForm } from '../ProjectForm'
 import { DependencySelector } from '../DependencySelector'
+import { SelectedDependenciesPanel } from '../SelectedDependenciesPanel'
 import { defaultForm } from '../../utils/projectUtils'
 import type {
   InitializrMetadata,
@@ -161,28 +162,42 @@ export function BackendHalfPanel({ onChange, onMetadataLoaded }: Props) {
 
   return (
     <div className="space-y-6">
-      <OptionsPanel metadata={metadata} values={state.form} onChange={handleFormChange} section="upper" />
-      <ProjectForm values={state.form} onChange={handleFormChange} />
-      <OptionsPanel metadata={metadata} values={state.form} onChange={handleFormChange} section="lower" />
-      <div className="glass-panel rounded-2xl p-4">
-        <DependencySelector
-          metadata={metadata}
-          selected={state.selectedDeps}
-          onChange={handleDepsChange}
-          extensions={extensions}
-          selectedOptions={state.selectedOptions}
-          onOptionsChange={handleOptionsChange}
-          compatibilityRules={compatibilityRules}
-          sqlDialects={sqlDialects}
-          sqlByDep={state.sqlByDep}
-          onSqlByDepChange={handleSqlByDepChange}
-          openApiCapableDeps={openApiCapableDeps}
-          openApiByDep={state.openApiByDep}
-          onOpenApiByDepChange={handleOpenApiByDepChange}
-          soapCapableDeps={soapCapableDeps}
-          soapByDep={state.soapByDep}
-          onSoapByDepChange={handleSoapByDepChange}
-        />
+      <div className="glass-panel rounded-2xl p-6 space-y-6">
+        <OptionsPanel metadata={metadata} values={state.form} onChange={handleFormChange} section="upper" />
+        <ProjectForm values={state.form} onChange={handleFormChange} />
+        <OptionsPanel metadata={metadata} values={state.form} onChange={handleFormChange} section="lower" />
+      </div>
+      <div className="space-y-4">
+        <div className="glass-panel rounded-2xl p-6">
+          <DependencySelector
+            metadata={metadata}
+            selected={state.selectedDeps}
+            onChange={handleDepsChange}
+            compatibilityRules={compatibilityRules}
+            compact
+          />
+        </div>
+        <div className="glass-panel rounded-2xl p-6">
+          <SelectedDependenciesPanel
+            metadata={metadata}
+            selected={state.selectedDeps}
+            onChange={handleDepsChange}
+            extensions={extensions}
+            selectedOptions={state.selectedOptions}
+            onOptionsChange={handleOptionsChange}
+            compatibilityRules={compatibilityRules}
+            sqlDialects={sqlDialects}
+            sqlByDep={state.sqlByDep}
+            onSqlByDepChange={handleSqlByDepChange}
+            openApiCapableDeps={openApiCapableDeps}
+            openApiByDep={state.openApiByDep}
+            onOpenApiByDepChange={handleOpenApiByDepChange}
+            soapCapableDeps={soapCapableDeps}
+            soapByDep={state.soapByDep}
+            onSoapByDepChange={handleSoapByDepChange}
+            compact
+          />
+        </div>
       </div>
     </div>
   )

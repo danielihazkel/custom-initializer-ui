@@ -4,6 +4,7 @@ import { OptionsPanel } from './OptionsPanel'
 import { ProjectForm } from './ProjectForm'
 import { ModuleSelector } from './ModuleSelector'
 import { DependencySelector } from './DependencySelector'
+import { SelectedDependenciesPanel } from './SelectedDependenciesPanel'
 import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, PreviewError } from '../types'
 
 interface InitializrViewProps {
@@ -103,15 +104,16 @@ export function InitializrView({
           onDeleteRecent={onRecentDelete}
         />
       </div>
-      <div className="max-w-7xl mx-auto px-8 grid grid-cols-12 gap-10 relative z-10 animate-fade-in-up">
-        {/* Left Column */}
-        <section className="frame-corners col-span-12 lg:col-span-5 space-y-8 px-2 py-3">
+      <div className="max-w-7xl mx-auto px-8 grid grid-cols-1 lg:grid-cols-[1.05fr_1.1fr_1.05fr] gap-6 relative z-10 animate-fade-in-up">
+        {/* Column 1 — Project Setup */}
+        <section className="frame-corners space-y-8 px-3 py-4">
           <div className="mb-2">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">
+            <h2 className="label-runic-sm text-primary flex items-center gap-2">
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>tune</span>
               Project Setup
             </h2>
-            <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">
-              Configure metadata and core language settings
+            <p className="text-[11px] text-on-surface-variant font-medium mt-1.5">
+              Configure metadata and core language settings.
             </p>
           </div>
           <OptionsPanel metadata={metadata} values={form} onChange={onFormChange} section="upper" />
@@ -123,11 +125,11 @@ export function InitializrView({
             <div className="glass-panel rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 id="multi-module-label" className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1.5">
+                  <h3 id="multi-module-label" className="label-runic-sm text-primary flex items-center gap-2">
                     <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
                     Multi-Module Project
                   </h3>
-                  <p className="text-[11px] text-on-surface-variant mt-0.5">Generate a parent POM with sub-modules</p>
+                  <p className="text-[11px] text-on-surface-variant mt-1">Generate a parent POM with sub-modules</p>
                 </div>
                 <button
                   role="switch"
@@ -151,9 +153,9 @@ export function InitializrView({
           )}
         </section>
 
-        {/* Right Column — Dependencies */}
-        <section className="frame-corners col-span-12 lg:col-span-7 px-2 py-3">
-          <DependencySelector
+        {/* Column 2 — Selected Dependencies (cart) */}
+        <section className="frame-corners px-3 py-4">
+          <SelectedDependenciesPanel
             metadata={metadata}
             selected={selectedDeps}
             onChange={onDepsChange}
@@ -171,6 +173,16 @@ export function InitializrView({
             soapByDep={soapByDep}
             onSoapByDepChange={onSoapByDepChange}
             sqlParseError={sqlParseError}
+          />
+        </section>
+
+        {/* Column 3 — Explore Dependencies */}
+        <section className="frame-corners px-3 py-4">
+          <DependencySelector
+            metadata={metadata}
+            selected={selectedDeps}
+            onChange={onDepsChange}
+            compatibilityRules={compatibilityRules}
           />
         </section>
       </div>

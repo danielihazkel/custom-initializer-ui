@@ -11,102 +11,98 @@ export function OptionsPanel({ metadata, values, onChange, section }: OptionsPan
 
   const buildTypes = types.filter(t => t.id === 'maven-project')
 
-  const sectionLabelClass = 'text-[10px] font-bold uppercase tracking-widest text-secondary flex items-center gap-2'
+  function tonePillStyle(active: boolean, tone: 'azure' | 'emerald'): React.CSSProperties {
+    const toneVar = tone === 'azure' ? 'var(--color-jewel-azure)' : 'var(--color-jewel-emerald)'
+    if (active) {
+      return {
+        background: `color-mix(in srgb, ${toneVar} 12%, transparent)`,
+        borderColor: `color-mix(in srgb, ${toneVar} 60%, transparent)`,
+        color: toneVar,
+        boxShadow: `inset 0 0 18px color-mix(in srgb, ${toneVar} 18%, transparent), 0 0 16px color-mix(in srgb, ${toneVar} 18%, transparent)`,
+      }
+    }
+    return {}
+  }
 
   if (section === 'upper') {
     return (
-      <div className="space-y-8">
-        {/* Project + Language side by side */}
-        <div className="grid grid-cols-2 gap-6">
-          <div className="space-y-3">
-            <span className={sectionLabelClass}>
-              <span className="material-symbols-outlined outline-none text-primary/70" style={{ fontSize: '16px' }}>account_tree</span>
+      <div className="space-y-6">
+        {/* Project Build + Language side by side as tone-pill buttons */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <span className="label-runic-sm text-primary flex items-center gap-2">
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>build</span>
               Project Build
             </span>
-            <div className="flex flex-col gap-3 mt-2">
-              {buildTypes.map(t => (
-                <label key={t.id} className="relative cursor-pointer group">
-                  <input
-                    type="radio"
-                    name="project-type"
-                    value={t.id}
-                    checked={values.type === t.id}
-                    onChange={() => onChange({ type: t.id })}
-                    className="sr-only"
-                  />
-                  <div className={`p-4 rounded-xl border transition-all duration-300 flex items-center gap-4
-                    ${values.type === t.id 
-                      ? 'bg-primary/10 border-primary ring-1 ring-primary/30 shadow-[0_0_15px_rgba(139,92,246,0.1)]' 
-                      : 'bg-surface-container-high border-outline-variant hover:bg-surface-container-highest hover:border-outline'}`}
+            <div className="flex flex-col gap-2">
+              {buildTypes.map(t => {
+                const active = values.type === t.id
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => onChange({ type: t.id })}
+                    className="cut-corners flex items-center justify-center gap-2 px-4 py-3 text-sm border bg-surface-container/40 border-outline-variant hover:border-outline transition-colors"
+                    style={tonePillStyle(active, 'azure')}
                   >
-                    <div className={`p-2 rounded-lg flex items-center justify-center transition-colors ${values.type === t.id ? 'bg-primary text-on-primary' : 'bg-surface text-secondary group-hover:text-on-surface'}`}>
-                      <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-                        {t.id.includes('maven') ? 'data_object' : 'build'}
-                      </span>
-                    </div>
-                    <span className={`text-sm font-bold ${values.type === t.id ? 'text-primary' : 'text-on-surface'}`}>{t.name}</span>
-                  </div>
-                </label>
-              ))}
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+                      {t.id.includes('maven') ? 'add_circle' : 'build'}
+                    </span>
+                    {t.name}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
-          <div className="space-y-3">
-            <span className={sectionLabelClass}>
-              <span className="material-symbols-outlined outline-none text-tertiary/70" style={{ fontSize: '16px' }}>code</span>
+          <div className="space-y-2">
+            <span className="label-runic-sm text-primary flex items-center gap-2">
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>code</span>
               Language
             </span>
-            <div className="flex flex-col gap-3 mt-2">
-              {languages.map(l => (
-                <label key={l.id} className="relative cursor-pointer group">
-                  <input
-                    type="radio"
-                    name="language"
-                    value={l.id}
-                    checked={values.language === l.id}
-                    onChange={() => onChange({ language: l.id })}
-                    className="sr-only"
-                  />
-                  <div className={`p-4 rounded-xl border transition-all duration-300 flex items-center gap-4
-                    ${values.language === l.id 
-                      ? 'bg-tertiary/10 border-tertiary ring-1 ring-tertiary/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
-                      : 'bg-surface-container-high border-outline-variant hover:bg-surface-container-highest hover:border-outline'}`}
+            <div className="flex flex-col gap-2">
+              {languages.map(l => {
+                const active = values.language === l.id
+                return (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => onChange({ language: l.id })}
+                    className="cut-corners flex items-center justify-center gap-2 px-4 py-3 text-sm border bg-surface-container/40 border-outline-variant hover:border-outline transition-colors"
+                    style={tonePillStyle(active, 'emerald')}
                   >
-                    <div className={`p-2 rounded-lg flex items-center justify-center transition-colors ${values.language === l.id ? 'bg-tertiary text-on-tertiary' : 'bg-surface text-secondary group-hover:text-on-surface'}`}>
-                      <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-                        {l.id === 'java' ? 'local_cafe' : l.id === 'kotlin' ? 'integration_instructions' : 'terminal'}
-                      </span>
-                    </div>
-                    <span className={`text-sm font-bold ${values.language === l.id ? 'text-tertiary' : 'text-on-surface'}`}>{l.name}</span>
-                  </div>
-                </label>
-              ))}
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+                      {l.id === 'java' ? 'terminal' : l.id === 'kotlin' ? 'integration_instructions' : 'data_object'}
+                    </span>
+                    {l.name}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
 
-        {/* Spring Boot version */}
-        <div className="space-y-3 pt-4 border-t border-outline-variant/50">
-          <span className={sectionLabelClass}>
-            <span className="material-symbols-outlined outline-none text-secondary/70" style={{ fontSize: '16px' }}>update</span>
+        {/* Spring Boot Version */}
+        <div className="space-y-2">
+          <span className="label-runic-sm text-primary flex items-center gap-2">
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>flag</span>
             Spring Boot Version
           </span>
-          <div className="flex flex-wrap gap-1 mt-2 p-1.5 bg-surface-container-low rounded-xl border border-outline-variant w-fit shadow-inner">
+          <select
+            value={values.bootVersion}
+            onChange={e => onChange({ bootVersion: e.target.value })}
+            className="w-full bg-surface-container/40 border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all appearance-none"
+            style={{
+              backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238fa6cf' d='M6 8L0 0h12z'/></svg>")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 1rem center',
+              paddingRight: '2.5rem',
+            }}
+          >
             {bootVersions.map(v => (
-              <button
-                key={v.id}
-                type="button"
-                onClick={() => onChange({ bootVersion: v.id })}
-                className={`px-4 py-2 text-xs font-bold transition-all rounded-lg ${
-                  values.bootVersion === v.id
-                    ? 'bg-surface border border-outline-variant shadow-sm text-on-surface'
-                    : 'text-secondary hover:text-on-surface hover:bg-surface border border-transparent hover:border-outline-variant/50'
-                }`}
-              >
-                {v.name}
-              </button>
+              <option key={v.id} value={v.id}>{v.name}</option>
             ))}
-          </div>
+          </select>
         </div>
       </div>
     )
@@ -114,55 +110,49 @@ export function OptionsPanel({ metadata, values, onChange, section }: OptionsPan
 
   if (section === 'lower') {
     return (
-      <div className="grid grid-cols-2 gap-8 pt-8 pb-4 mt-8 border-t border-outline-variant/50">
-        <div className="space-y-3">
-          <span className={sectionLabelClass}>Packaging</span>
-          <div className="flex gap-2 mt-2 p-1 bg-surface-container-low rounded-lg border border-outline-variant w-fit">
-            {packagings.map(p => (
-              <label key={p.id} className="relative cursor-pointer">
-                <input
-                  type="radio"
-                  name="packaging"
-                  value={p.id}
-                  checked={values.packaging === p.id}
-                  onChange={() => onChange({ packaging: p.id })}
-                  className="sr-only"
-                />
-                <div className={`px-4 py-1.5 text-xs font-bold transition-all rounded-md ${
-                  values.packaging === p.id
-                    ? 'bg-surface border border-outline-variant shadow-sm text-on-surface'
-                    : 'text-secondary hover:text-on-surface'
-                }`}>
-                  {p.name}
-                </div>
-              </label>
+      <div className="grid grid-cols-2 gap-4 pt-4">
+        <div className="space-y-2">
+          <span className="label-runic-sm text-primary flex items-center gap-2">
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>code_blocks</span>
+            Java Version
+          </span>
+          <select
+            value={values.javaVersion}
+            onChange={e => onChange({ javaVersion: e.target.value })}
+            className="w-full bg-surface-container/40 border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all appearance-none"
+            style={{
+              backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238fa6cf' d='M6 8L0 0h12z'/></svg>")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 1rem center',
+              paddingRight: '2.5rem',
+            }}
+          >
+            {javaVersions.map(v => (
+              <option key={v.id} value={v.id}>{v.name}</option>
             ))}
-          </div>
+          </select>
         </div>
 
-        <div className="space-y-3">
-          <span className={sectionLabelClass}>Java Version</span>
-          <div className="flex gap-2 mt-2 p-1 bg-surface-container-low rounded-lg border border-outline-variant w-fit">
-            {javaVersions.map(v => (
-              <label key={v.id} className="relative cursor-pointer">
-                <input
-                  type="radio"
-                  name="java-version"
-                  value={v.id}
-                  checked={values.javaVersion === v.id}
-                  onChange={() => onChange({ javaVersion: v.id })}
-                  className="sr-only"
-                />
-                <div className={`px-4 py-1.5 text-xs font-bold transition-all rounded-md ${
-                  values.javaVersion === v.id
-                    ? 'bg-surface border border-outline-variant shadow-sm text-on-surface'
-                    : 'text-secondary hover:text-on-surface'
-                }`}>
-                  {v.name}
-                </div>
-              </label>
+        <div className="space-y-2">
+          <span className="label-runic-sm text-primary flex items-center gap-2">
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>package_2</span>
+            Packaging
+          </span>
+          <select
+            value={values.packaging}
+            onChange={e => onChange({ packaging: e.target.value })}
+            className="w-full bg-surface-container/40 border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all appearance-none"
+            style={{
+              backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238fa6cf' d='M6 8L0 0h12z'/></svg>")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 1rem center',
+              paddingRight: '2.5rem',
+            }}
+          >
+            {packagings.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
             ))}
-          </div>
+          </select>
         </div>
       </div>
     )
