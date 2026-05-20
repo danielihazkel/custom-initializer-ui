@@ -21,7 +21,6 @@ const TutorialView = lazy(() => import('./components/tutorial/TutorialView').the
 const AdminPage = lazy(() => import('./components/admin/AdminPage').then(m => ({ default: m.AdminPage })))
 const GuideView = lazy(() => import('./components/guide/GuideView').then(m => ({ default: m.GuideView })))
 const FrontendView = lazy(() => import('./components/FrontendView').then(m => ({ default: m.FrontendView })))
-const PairedView = lazy(() => import('./components/PairedView').then(m => ({ default: m.PairedView })))
 import { CommandPalette } from './components/CommandPalette'
 import { AppToast } from './components/AppToast'
 
@@ -29,10 +28,9 @@ import { triggerDownload, captureSnapshot } from './utils/projectUtils'
 import type { Toast } from './types'
 
 export default function App() {
-  const [view, setView] = useState<'initializr' | 'tutorial' | 'admin' | 'guide' | 'frontend' | 'paired'>(() => {
+  const [view, setView] = useState<'initializr' | 'tutorial' | 'admin' | 'guide' | 'frontend'>(() => {
     const tab = new URLSearchParams(window.location.search).get('tab')
     if (tab === 'frontend') return 'frontend'
-    if (tab === 'paired') return 'paired'
     return 'initializr'
   })
 
@@ -180,12 +178,6 @@ export default function App() {
               Frontend
             </button>
             <button
-              onClick={() => setView('paired')}
-              className={`text-sm transition-colors duration-200 ${view === 'paired' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
-            >
-              Paired
-            </button>
-            <button
               onClick={() => setView(v => v === 'tutorial' ? 'initializr' : 'tutorial')}
               className={`text-sm transition-colors duration-200 ${view === 'tutorial' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
             >
@@ -254,7 +246,7 @@ export default function App() {
             </AnimatePresence>
           </button>
           {/* Reset button — backend views only; FrontendView portals its own reset into header-frontend-reset (same slot) */}
-          {view !== 'frontend' && view !== 'paired' && (
+          {view !== 'frontend' && (
           <button
             onClick={handleReset}
             className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
@@ -276,7 +268,7 @@ export default function App() {
               {isDark ? 'light_mode' : 'dark_mode'}
             </span>
           </button>
-          {view !== 'frontend' && view !== 'paired' && (
+          {view !== 'frontend' && (
           <button
             onClick={() => { fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep); pushRecent(currentSnapshot) }}
             disabled={previewLoading}
@@ -288,7 +280,7 @@ export default function App() {
               : 'Explore'}
           </button>
           )}
-          {view !== 'frontend' && view !== 'paired' && (
+          {view !== 'frontend' && (
           <button
             onClick={handleGenerate}
             className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn ${generateSuccess ? 'generate-success' : ''}`}
@@ -338,12 +330,6 @@ export default function App() {
                 onGenerated={() => setAppToast({ message: 'Frontend project downloaded!', type: 'success' })}
                 onReset={() => setAppToast({ message: 'Project reset to defaults', type: 'success' })}
               />
-            </Suspense>
-          </div>
-        ) : view === 'paired' ? (
-          <div className="relative z-10 animate-fade-in-up">
-            <Suspense fallback={<div className="flex items-center justify-center p-16 text-secondary text-sm">Loading Paired Generator...</div>}>
-              <PairedView />
             </Suspense>
           </div>
         ) : view === 'tutorial' ? (
