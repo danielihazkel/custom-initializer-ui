@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react'
-import type { AdminDependencyEntry, AdminEntityTemplateSet, EntityTemplateSetKind } from '../../../types'
+import type {
+  AdminColorPalette, AdminDependencyEntry, AdminEntityTemplateSet, DesignSystem, EntityTemplateSetKind,
+} from '../../../types'
+import { useAdminMetadata } from '../../../hooks/useAdminMetadata'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 
 interface Props {
@@ -9,6 +12,7 @@ interface Props {
   defaultDeps: string[]
   onDefaultDepsChange: (next: string[]) => void
   catalogDeps: AdminDependencyEntry[]
+  palettes: AdminColorPalette[]
 }
 
 const KINDS: { value: EntityTemplateSetKind; label: string }[] = [
@@ -16,9 +20,24 @@ const KINDS: { value: EntityTemplateSetKind; label: string }[] = [
   { value: 'FRONTEND_REACT', label: 'Frontend (React)' },
 ]
 
+const DESIGN_SYSTEMS: { value: DesignSystem; label: string }[] = [
+  { value: 'TAILWIND', label: 'Tailwind CSS' },
+  { value: 'MUI', label: 'Material UI' },
+  { value: 'CHAKRA', label: 'Chakra UI' },
+  { value: 'MANTINE', label: 'Mantine' },
+  { value: 'SHADCN', label: 'shadcn/ui' },
+  { value: 'NONE', label: 'None / Plain CSS' },
+]
+
+// Design systems for which a color palette is meaningfully applied at generation
+// time. Tailwind / shadcn / none don't consume palette tokens — the field stays
+// editable but the form hints that it'll be ignored.
+const PALETTE_AWARE: ReadonlySet<DesignSystem> = new Set(['MUI', 'CHAKRA', 'MANTINE'])
+
 export function EntityTemplateSetForm({
-  data, errors, onChange, defaultDeps, onDefaultDepsChange, catalogDeps,
+  data, errors, onChange, defaultDeps, onDefaultDepsChange, catalogDeps, palettes,
 }: Props) {
+  const { bootVersions, javaVersions } = useAdminMetadata()
   const [depQuery, setDepQuery] = useState('')
   const selectedSet = useMemo(() => new Set(defaultDeps), [defaultDeps])
 
@@ -44,6 +63,7 @@ export function EntityTemplateSetForm({
   }
 
   const isBackend = data.kind === 'BACKEND_JAVA'
+  const isFrontend = data.kind === 'FRONTEND_REACT'
 
   return (
     <>
@@ -101,6 +121,77 @@ export function EntityTemplateSetForm({
           onChange={e => onChange({ sortOrder: Number(e.target.value) })}
         />
       </FieldRow>
+
+      {isFrontend && (
+        <FieldRow
+          label="Design System"
+          hint="Descriptive tag for the wizard. Choosing MUI here doesn't auto-rewrite Tailwind templates — that's a separate set."
+        >
+          <select
+            className={selectClass}
+            value={data.designSystem ?? ''}
+            onChange={e => onChange({ designSystem: (e.target.value || null) as DesignSystem | null })}
+          >
+            <option value="">— Unspecified —</option>
+            {DESIGN_SYSTEMS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+          </select>
+        </FieldRow>
+      )}
+
+      {isFrontend && (
+        <FieldRow
+          label="Default Color Palette"
+          hint={
+            data.designSystem && !PALETTE_AWARE.has(data.designSystem)
+              ? `Palettes are ignored by ${data.designSystem} — set is purely informational.`
+              : 'Pre-selected in the wizard. Applied by palette-aware design systems (MUI / Chakra / Mantine).'
+          }
+        >
+          <select
+            className={selectClass}
+            value={data.defaultPaletteId ?? ''}
+            onChange={e => onChange({ defaultPaletteId: e.target.value || null })}
+          >
+            <option value="">— Use whichever palette is marked default —</option>
+            {palettes.map(p => (
+              <option key={p.paletteId} value={p.paletteId}>
+                {p.name} ({p.paletteId}){p.isDefault ? ' ★' : ''}
+              </option>
+            ))}
+          </select>
+        </FieldRow>
+      )}
+
+      {isBackend && (
+        <>
+          <FieldRow
+            label="Boot Version"
+            hint="Optional. When set, the wizard pre-fills its Boot Version dropdown when this set is chosen. Users can still override."
+          >
+            <select
+              className={selectClass}
+              value={data.bootVersion ?? ''}
+              onChange={e => onChange({ bootVersion: e.target.value || null })}
+            >
+              <option value="">— Use wizard default —</option>
+              {bootVersions.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </FieldRow>
+          <FieldRow
+            label="Java Version"
+            hint="Optional. When set, the wizard pre-fills its Java Version dropdown when this set is chosen. Users can still override."
+          >
+            <select
+              className={selectClass}
+              value={data.javaVersion ?? ''}
+              onChange={e => onChange({ javaVersion: e.target.value || null })}
+            >
+              <option value="">— Use wizard default —</option>
+              {javaVersions.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </FieldRow>
+        </>
+      )}
 
       {isBackend && (
         <FieldRow

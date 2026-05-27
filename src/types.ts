@@ -266,6 +266,8 @@ export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' 
 
 export type EntityTemplateSetKind = 'BACKEND_JAVA' | 'FRONTEND_REACT'
 
+export type DesignSystem = 'TAILWIND' | 'MUI' | 'CHAKRA' | 'MANTINE' | 'SHADCN' | 'NONE'
+
 export interface AdminEntityTemplateSet {
   id: number
   setKey: string
@@ -274,6 +276,10 @@ export interface AdminEntityTemplateSet {
   kind: EntityTemplateSetKind
   enabled: boolean
   sortOrder: number
+  designSystem: DesignSystem | null
+  bootVersion: string | null
+  javaVersion: string | null
+  defaultPaletteId: string | null
 }
 
 export type EntityTemplateFileType = 'TEMPLATE' | 'STATIC_COPY'
@@ -316,6 +322,10 @@ export interface EntityTemplateSetSummary {
   description: string | null
   kind: EntityTemplateSetKind
   defaultDeps: string[]
+  designSystem: DesignSystem | null
+  bootVersion: string | null
+  javaVersion: string | null
+  defaultPaletteId: string | null
 }
 
 export interface FullstackStarterRequest {

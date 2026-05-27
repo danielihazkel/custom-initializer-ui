@@ -9,6 +9,7 @@ import { ImportFromDdlDrawer, type ImportMode } from './ImportFromDdlDrawer'
 import { ProjectPreview } from '../ProjectPreview'
 import { StatusToast } from '../admin/shared/StatusToast'
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
+import { useAdminMetadata } from '../../hooks/useAdminMetadata'
 
 interface ProjectMeta {
   groupId: string
@@ -53,17 +54,33 @@ export function FullstackView() {
     fetchPreview, clearPreview,
   } = useFullstackPreview()
 
+  const { bootVersions, javaVersions } = useAdminMetadata()
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
+  const currentFrontendSet = availableSets.find(s => s.setKey === frontendSet)
   const currentDefaults = currentBackendSet?.defaultDeps ?? []
 
-  // Reseed deps from the chosen set's defaults whenever the set changes.
-  // v1 behavior: always reseed (user can hit "Reset to defaults" too).
+  // Reseed deps + pre-fill Boot/Java versions from the chosen backend set's
+  // pins whenever the set changes. The pins are advisory — user can still
+  // override the version dropdowns after the set is selected.
   useEffect(() => {
     if (currentBackendSet) {
       setSelectedDeps([...currentBackendSet.defaultDeps])
+      setMeta(prev => ({
+        ...prev,
+        bootVersion: currentBackendSet.bootVersion ?? prev.bootVersion,
+        javaVersion: currentBackendSet.javaVersion ?? prev.javaVersion,
+      }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendSet, currentBackendSet?.setKey])
+
+  // Frontend sets can also declare a javaVersion (rare). Apply on change.
+  useEffect(() => {
+    if (currentFrontendSet?.javaVersion) {
+      setMeta(prev => ({ ...prev, javaVersion: currentFrontendSet.javaVersion! }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frontendSet, currentFrontendSet?.setKey])
 
   function handleImport(imported: FullstackEntityDef[], mode: ImportMode) {
     setEntities(mode === 'replace' ? imported : [...entities, ...imported])
@@ -173,8 +190,15 @@ export function FullstackView() {
           <Labeled label="Java Version">
             <select className={inputClass} value={meta.javaVersion}
                     onChange={e => updateMeta({ javaVersion: e.target.value })}>
-              <option value="17">17</option>
-              <option value="21">21</option>
+              {javaVersions.length === 0 && <option value={meta.javaVersion}>{meta.javaVersion}</option>}
+              {javaVersions.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </Labeled>
+          <Labeled label="Boot Version">
+            <select className={inputClass} value={meta.bootVersion}
+                    onChange={e => updateMeta({ bootVersion: e.target.value })}>
+              {bootVersions.length === 0 && <option value={meta.bootVersion}>{meta.bootVersion}</option>}
+              {bootVersions.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </Labeled>
         </div>

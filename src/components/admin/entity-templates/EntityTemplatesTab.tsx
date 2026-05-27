@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import type { AdminDependencyEntry, AdminEntityTemplateFile, AdminEntityTemplateSet, Toast } from '../../../types'
+import type { AdminColorPalette, AdminDependencyEntry, AdminEntityTemplateFile, AdminEntityTemplateSet, Toast } from '../../../types'
 import { useAdminResource, adminFetch } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
@@ -10,6 +10,7 @@ import { EntityTemplateFileForm } from './EntityTemplateFileForm'
 
 const EMPTY_SET: Partial<AdminEntityTemplateSet> = {
   setKey: '', name: '', description: '', kind: 'BACKEND_JAVA', enabled: true, sortOrder: 0,
+  designSystem: null, bootVersion: null, javaVersion: null, defaultPaletteId: null,
 }
 
 function emptyFile(setId: number): Partial<AdminEntityTemplateFile> {
@@ -23,6 +24,7 @@ function emptyFile(setId: number): Partial<AdminEntityTemplateFile> {
 export function EntityTemplatesTab() {
   const sets = useAdminResource<AdminEntityTemplateSet>('/admin/entity-template-sets')
   const { items: allDepEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
+  const { items: allPalettes } = useAdminResource<AdminColorPalette>('/admin/color-palettes')
   const [selectedSetId, setSelectedSetId] = useState<number | null>(null)
   const filesPath = selectedSetId == null ? null : `/admin/entity-template-files?setId=${selectedSetId}`
   const files = useAdminResource<AdminEntityTemplateFile>(filesPath ?? '/admin/entity-template-files?setId=-1')
@@ -186,6 +188,7 @@ export function EntityTemplatesTab() {
           { label: 'Key', render: r => <code className="text-xs bg-surface-container-high px-1.5 py-0.5 rounded">{r.setKey}</code> },
           { label: 'Name', render: r => <span className="font-medium">{r.name}</span> },
           { label: 'Kind', render: r => <span className="text-xs text-secondary">{r.kind}</span> },
+          { label: 'Design System', render: r => r.designSystem ? <span className="text-xs text-secondary">{r.designSystem}</span> : <span className="text-secondary">—</span> },
           { label: 'Enabled', render: r => r.enabled ? <span className="text-emerald-600">●</span> : <span className="text-secondary">○</span>, width: '70px' },
           { label: 'Sort', render: r => r.sortOrder, width: '60px' },
         ]}
@@ -263,6 +266,7 @@ export function EntityTemplatesTab() {
             defaultDeps={editingDefaultDeps}
             onDefaultDepsChange={setEditingDefaultDeps}
             catalogDeps={allDepEntries}
+            palettes={allPalettes}
           />
         )}
       </AdminFormDrawer>
