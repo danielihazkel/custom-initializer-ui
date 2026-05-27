@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
 } from '../../types'
 import { EntitiesEditor } from './EntitiesEditor'
 import { FullstackDepPicker } from './FullstackDepPicker'
 import { ImportFromDdlDrawer, type ImportMode } from './ImportFromDdlDrawer'
+import { ProjectPreview } from '../ProjectPreview'
 import { StatusToast } from '../admin/shared/StatusToast'
+import { useFullstackPreview } from '../../hooks/useFullstackPreview'
 
 interface ProjectMeta {
   groupId: string
@@ -45,6 +48,10 @@ export function FullstackView() {
   const [toast, setToast] = useState<Toast | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [selectedDeps, setSelectedDeps] = useState<string[]>([])
+  const {
+    preview, previousPreview, loading: previewLoading, error: previewError,
+    fetchPreview, clearPreview,
+  } = useFullstackPreview()
 
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
   const currentDefaults = currentBackendSet?.defaultDeps ?? []
@@ -75,24 +82,38 @@ export function FullstackView() {
   const backendSets = availableSets.filter(s => s.kind === 'BACKEND_JAVA')
   const frontendSets = availableSets.filter(s => s.kind === 'FRONTEND_REACT')
 
-  async function generate() {
+  function buildBody(): FullstackStarterRequest {
+    return {
+      ...meta,
+      backendTemplateSet: backendSet,
+      frontendTemplateSet: frontendSet,
+      dependencies: selectedDeps,
+      entities,
+    }
+  }
+
+  function validateBeforeSubmit(): boolean {
     if (!meta.artifactId.trim()) {
       setToast({ message: 'Artifact ID is required', type: 'error' })
-      return
+      return false
     }
     if (entities.length === 0) {
       setToast({ message: 'Add at least one entity', type: 'error' })
-      return
+      return false
     }
+    return true
+  }
+
+  function explore() {
+    if (!validateBeforeSubmit()) return
+    fetchPreview(buildBody())
+  }
+
+  async function generate() {
+    if (!validateBeforeSubmit()) return
     setGenerating(true)
     try {
-      const body: FullstackStarterRequest = {
-        ...meta,
-        backendTemplateSet: backendSet,
-        frontendTemplateSet: frontendSet,
-        dependencies: selectedDeps,
-        entities,
-      }
+      const body = buildBody()
       const res = await fetch('/starter-fullstack.zip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -217,7 +238,17 @@ export function FullstackView() {
         <EntitiesEditor entities={entities} onChange={setEntities} />
       </section>
 
-      <section className="border-t border-outline-variant pt-6 flex items-center justify-end">
+      <section className="border-t border-outline-variant pt-6 flex items-center justify-end gap-3">
+        <button
+          onClick={explore}
+          disabled={previewLoading}
+          title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview the generated file tree before downloading'}
+          className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
+        >
+          {previewLoading
+            ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }}>progress_activity</span>
+            : 'Explore'}
+        </button>
         <button
           onClick={generate}
           disabled={generating}
@@ -235,6 +266,17 @@ export function FullstackView() {
         hasExisting={entities.length > 0}
         onImport={handleImport}
       />
+
+      {preview && createPortal(
+        <ProjectPreview
+          preview={preview}
+          previousPreview={previousPreview}
+          artifactId={meta.artifactId || 'demo'}
+          onClose={clearPreview}
+          onDownload={() => { generate(); clearPreview() }}
+        />,
+        document.body,
+      )}
     </div>
   )
 }
