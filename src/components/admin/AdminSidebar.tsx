@@ -14,6 +14,7 @@ const TABS: { id: AdminTab; label: string; icon: string; desc: string }[] = [
   { id: 'compatibility', label: 'Compatibility', icon: 'compare_arrows', desc: 'Version rules' },
   { id: 'templates',     label: 'Templates',     icon: 'view_cozy',      desc: 'Starter bundles' },
   { id: 'modules',       label: 'Modules',       icon: 'account_tree',   desc: 'Multi-module setup' },
+  { id: 'entity-templates', label: 'Entity CRUD',  icon: 'table_view',   desc: 'Fullstack scaffold templates' },
   { id: 'palettes',      label: 'Palettes',      icon: 'palette',        desc: 'Frontend color schemes' },
 ]
 
@@ -27,6 +28,7 @@ export function AdminSidebar({ activeTab, onTabChange }: AdminSidebarProps) {
   const { kind } = useAdminKind()
   const visibleTabs = TABS.filter(t => {
     if (t.id === 'modules' && kind === 'FRONTEND') return false
+    if (t.id === 'entity-templates' && kind === 'FRONTEND') return false
     if (t.id === 'palettes' && kind === 'BACKEND') return false
     return true
   })

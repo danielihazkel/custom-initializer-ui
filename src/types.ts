@@ -260,7 +260,77 @@ export interface AdminDependencyCompatibility {
   projectKind?: ProjectKind
 }
 
-export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes'
+export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates'
+
+// ── Fullstack CRUD scaffolding ────────────────────────────────────────────────
+
+export type EntityTemplateSetKind = 'BACKEND_JAVA' | 'FRONTEND_REACT'
+
+export interface AdminEntityTemplateSet {
+  id: number
+  setKey: string
+  name: string
+  description: string | null
+  kind: EntityTemplateSetKind
+  enabled: boolean
+  sortOrder: number
+}
+
+export type EntityTemplateFileType = 'TEMPLATE' | 'STATIC_COPY'
+
+export interface AdminEntityTemplateFile {
+  id: number
+  setId: number
+  pathTemplate: string
+  content: string
+  substitutionType: SubstitutionType
+  fileType: EntityTemplateFileType
+  perEntity: boolean
+  sortOrder: number
+}
+
+export type FullstackFieldType =
+  | 'STRING' | 'LONG' | 'INTEGER' | 'BOOLEAN'
+  | 'LOCAL_DATE' | 'LOCAL_DATE_TIME' | 'BIG_DECIMAL' | 'ENUM'
+
+export interface FullstackFieldDef {
+  name: string
+  type: FullstackFieldType
+  primaryKey?: boolean
+  generated?: boolean
+  required?: boolean
+  unique?: boolean
+  length?: number
+  enumValues?: string[]
+}
+
+export interface FullstackEntityDef {
+  name: string
+  tableName?: string
+  fields: FullstackFieldDef[]
+}
+
+export interface EntityTemplateSetSummary {
+  setKey: string
+  name: string
+  description: string | null
+  kind: EntityTemplateSetKind
+}
+
+export interface FullstackStarterRequest {
+  groupId?: string
+  artifactId?: string
+  name?: string
+  description?: string
+  packageName?: string
+  bootVersion?: string
+  packaging?: string
+  javaVersion?: string
+  dependencies?: string[]
+  backendTemplateSet?: string
+  frontendTemplateSet?: string
+  entities: FullstackEntityDef[]
+}
 
 export interface AdminColorPalette {
   id: number

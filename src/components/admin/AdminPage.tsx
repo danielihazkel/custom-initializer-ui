@@ -17,6 +17,7 @@ import { CompatibilityTab } from './compatibility/CompatibilityTab'
 import { StarterTemplatesTab } from './starter-templates/StarterTemplatesTab'
 import { ModuleTemplatesTab } from './module-templates/ModuleTemplatesTab'
 import { ColorPalettesTab } from './color-palettes/ColorPalettesTab'
+import { EntityTemplatesTab } from './entity-templates/EntityTemplatesTab'
 
 export function AdminPage() {
   const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('adminToken'))
@@ -57,6 +58,7 @@ function AdminPageInner({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     if (activeTab === 'modules' && kind === 'FRONTEND') setActiveTab('overview')
     if (activeTab === 'palettes' && kind === 'BACKEND') setActiveTab('overview')
+    if (activeTab === 'entity-templates' && kind === 'FRONTEND') setActiveTab('overview')
   }, [activeTab, kind])
 
   return (
@@ -96,6 +98,7 @@ function AdminPageInner({ onLogout }: { onLogout: () => void }) {
               {activeTab === 'templates'  && <StarterTemplatesTab />}
               {activeTab === 'modules'    && <ModuleTemplatesTab />}
               {activeTab === 'palettes'   && <ColorPalettesTab />}
+              {activeTab === 'entity-templates' && <EntityTemplatesTab />}
             </motion.div>
           </AnimatePresence>
         </main>
