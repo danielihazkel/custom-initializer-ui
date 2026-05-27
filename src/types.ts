@@ -315,6 +315,7 @@ export interface EntityTemplateSetSummary {
   name: string
   description: string | null
   kind: EntityTemplateSetKind
+  defaultDeps: string[]
 }
 
 export interface FullstackStarterRequest {

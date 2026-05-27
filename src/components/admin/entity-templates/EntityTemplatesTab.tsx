@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
-import type { AdminEntityTemplateFile, AdminEntityTemplateSet, Toast } from '../../../types'
-import { useAdminResource } from '../../../hooks/useAdminResource'
+import type { AdminDependencyEntry, AdminEntityTemplateFile, AdminEntityTemplateSet, Toast } from '../../../types'
+import { useAdminResource, adminFetch } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog } from '../shared/DeleteConfirmDialog'
@@ -22,12 +22,14 @@ function emptyFile(setId: number): Partial<AdminEntityTemplateFile> {
 
 export function EntityTemplatesTab() {
   const sets = useAdminResource<AdminEntityTemplateSet>('/admin/entity-template-sets')
+  const { items: allDepEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
   const [selectedSetId, setSelectedSetId] = useState<number | null>(null)
   const filesPath = selectedSetId == null ? null : `/admin/entity-template-files?setId=${selectedSetId}`
   const files = useAdminResource<AdminEntityTemplateFile>(filesPath ?? '/admin/entity-template-files?setId=-1')
 
   // Set drawer
   const [editingSet, setEditingSet] = useState<Partial<AdminEntityTemplateSet> | null>(null)
+  const [editingDefaultDeps, setEditingDefaultDeps] = useState<string[]>([])
   const [isNewSet, setIsNewSet] = useState(false)
   const [setDrawerOpen, setSetDrawerOpen] = useState(false)
   const [setErrors, setSetErrors] = useState<Record<string, string>>({})
@@ -50,15 +52,24 @@ export function EntityTemplatesTab() {
 
   function openNewSet() {
     setEditingSet({ ...EMPTY_SET })
+    setEditingDefaultDeps([])
     setIsNewSet(true)
     setSetErrors({})
     setSetDrawerOpen(true)
   }
-  function openEditSet(row: AdminEntityTemplateSet) {
+  async function openEditSet(row: AdminEntityTemplateSet) {
     setEditingSet({ ...row })
     setIsNewSet(false)
     setSetErrors({})
     setSetDrawerOpen(true)
+    setEditingDefaultDeps([])
+    // Load existing default-deps separately
+    try {
+      const ids = await adminFetch('GET', `/admin/entity-template-sets/${row.id}/default-deps`) as string[]
+      setEditingDefaultDeps(ids ?? [])
+    } catch {
+      setEditingDefaultDeps([])
+    }
   }
   function validateSet(data: Partial<AdminEntityTemplateSet>): Record<string, string> {
     const e: Record<string, string> = {}
@@ -73,11 +84,26 @@ export function EntityTemplatesTab() {
     if (Object.keys(e).length > 0) { setSetErrors(e); return }
     setSavingSet(true)
     try {
-      if (isNewSet) await sets.create(editingSet as Omit<AdminEntityTemplateSet, 'id'>)
-      else await sets.update(editingSet.id!, editingSet)
+      let savedId: number
+      if (isNewSet) {
+        // POST directly via adminFetch so we can read back the new id for the default-deps PUT.
+        const created = await adminFetch('POST', '/admin/entity-template-sets', editingSet) as AdminEntityTemplateSet
+        savedId = created.id
+        sets.reload()
+      } else {
+        await sets.update(editingSet.id!, editingSet)
+        savedId = editingSet.id!
+      }
+      // Persist default-deps for backend sets
+      if (editingSet.kind === 'BACKEND_JAVA') {
+        await adminFetch('PUT',
+          `/admin/entity-template-sets/${savedId}/default-deps`,
+          { depIds: editingDefaultDeps })
+      }
       setToast({ message: 'Set saved', type: 'success' })
       setSetDrawerOpen(false)
       setEditingSet(null)
+      setEditingDefaultDeps([])
     } catch (err) {
       setToast({ message: String(err), type: 'error' })
     } finally {
@@ -225,7 +251,7 @@ export function EntityTemplatesTab() {
       <AdminFormDrawer
         title={isNewSet ? 'New Template Set' : 'Edit Template Set'}
         isOpen={setDrawerOpen}
-        onClose={() => { setSetDrawerOpen(false); setEditingSet(null) }}
+        onClose={() => { setSetDrawerOpen(false); setEditingSet(null); setEditingDefaultDeps([]) }}
         onSave={saveSet}
         saving={savingSet}
       >
@@ -234,6 +260,9 @@ export function EntityTemplatesTab() {
             data={editingSet}
             errors={setErrors}
             onChange={u => setEditingSet(prev => ({ ...prev, ...u }))}
+            defaultDeps={editingDefaultDeps}
+            onDefaultDepsChange={setEditingDefaultDeps}
+            catalogDeps={allDepEntries}
           />
         )}
       </AdminFormDrawer>

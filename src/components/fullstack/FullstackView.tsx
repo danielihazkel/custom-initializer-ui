@@ -3,6 +3,7 @@ import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
 } from '../../types'
 import { EntitiesEditor } from './EntitiesEditor'
+import { FullstackDepPicker } from './FullstackDepPicker'
 import { ImportFromDdlDrawer, type ImportMode } from './ImportFromDdlDrawer'
 import { StatusToast } from '../admin/shared/StatusToast'
 
@@ -43,6 +44,19 @@ export function FullstackView() {
   const [generating, setGenerating] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [selectedDeps, setSelectedDeps] = useState<string[]>([])
+
+  const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
+  const currentDefaults = currentBackendSet?.defaultDeps ?? []
+
+  // Reseed deps from the chosen set's defaults whenever the set changes.
+  // v1 behavior: always reseed (user can hit "Reset to defaults" too).
+  useEffect(() => {
+    if (currentBackendSet) {
+      setSelectedDeps([...currentBackendSet.defaultDeps])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendSet, currentBackendSet?.setKey])
 
   function handleImport(imported: FullstackEntityDef[], mode: ImportMode) {
     setEntities(mode === 'replace' ? imported : [...entities, ...imported])
@@ -76,6 +90,7 @@ export function FullstackView() {
         ...meta,
         backendTemplateSet: backendSet,
         frontendTemplateSet: frontendSet,
+        dependencies: selectedDeps,
         entities,
       }
       const res = await fetch('/starter-fullstack.zip', {
@@ -164,6 +179,23 @@ export function FullstackView() {
             </select>
           </Labeled>
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Dependencies</h2>
+          <span className="text-[11px] text-secondary">{selectedDeps.length} selected</span>
+        </div>
+        <p className="text-[11px] text-on-surface-variant">
+          Pre-checked from the chosen backend set's defaults. You can uncheck
+          anything — the generator respects your final selection. To change what
+          a set ships pre-checked, edit it under Admin → Entity CRUD.
+        </p>
+        <FullstackDepPicker
+          selected={selectedDeps}
+          defaults={currentDefaults}
+          onChange={setSelectedDeps}
+        />
       </section>
 
       <section className="space-y-3">

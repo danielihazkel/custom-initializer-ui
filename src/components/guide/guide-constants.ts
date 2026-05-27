@@ -252,6 +252,229 @@ Sub-options follow the same \`opts-{depId}=opt1,opt2\` convention as the backend
   },
 
   // ─────────────────────────────────────────────────────────────────
+  // 2.5 FULLSTACK CRUD GENERATOR
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'fullstack-generator',
+    title: 'Fullstack CRUD Generator',
+    icon: 'dynamic_form',
+    topics: [
+      {
+        id: 'fs-what',
+        title: 'What Is the Fullstack Generator?',
+        description: 'Define entities, get a working Spring Boot backend + React frontend wired together in one ZIP.',
+        content: `### Purpose
+The **Fullstack** tab takes a list of user-defined entities (name + primitive fields) and emits a single ZIP containing a working Spring Boot backend (\`backend/\`) and a working React frontend (\`frontend/\`) — already wired together. Each entity becomes a \`@Entity\` + \`Repository\` + \`Dto\` + \`Service\` + \`@RestController\` set on the backend (with server-side pagination, sort, and search) and a Table + Form CRUD page on the frontend.
+
+Most internal Menora systems being rewritten are "frontend with table(s) + CRUD operations". This generator turns each new one from a days-of-glue task into a few minutes of clicking.
+
+### Why a Third Generator?
+The Backend generator emits Spring Boot only. The Frontend generator emits React only. Neither can loop over a user-supplied list of entities to produce N copies of \`<Entity>Controller.java\` + \`<Entity>Page.tsx\` keyed to the same domain model. Fullstack closes that loop:
+
+- **Backend** goes through the standard Spring Initializr pipeline. A new \`EntityScaffoldContributor\` (registered in \`META-INF/spring.factories\`) picks up the entity list from a \`EntityDefinitionContext\` ThreadLocal and renders per-entity files.
+- **Frontend** is rendered inline outside the pipeline. The Initializr framework is Java-project-shaped and doesn't know about Vite, so \`FullstackRenderer\` writes Mustache templates directly under \`frontend/\`.
+- Both outputs land under a temp dir, get \`README.md\` + \`.gitignore\` written at the root, then it's zipped and streamed.
+
+### What's Supported (v1)
+- **Primitive field types only**: String, Long, Integer, Boolean, LocalDate, LocalDateTime, BigDecimal, Enum (rendered as nested class on the entity).
+- **No relationships** — keep it simple. \`referencesEntity\` is on the v3 roadmap.
+- **Open CRUD endpoints** — \`@CrossOrigin\` on each controller so the Vite dev server on :5173 can hit :8080 without a proxy. Add the \`security\` dependency in the picker if you need auth.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'The Fullstack tab is independent of the Backend and Frontend tabs. It hits POST `/starter-fullstack.zip` with a JSON body and downloads the response as `{artifactId}.zip`.'
+          }
+        ]
+      },
+      {
+        id: 'fs-using',
+        title: 'Using the Fullstack Tab',
+        description: 'Step-by-step: from blank wizard to a working downloaded ZIP.',
+        content: `### Step 1 — Project Metadata
+\`groupId\`, \`artifactId\`, \`packageName\`, Java version. Standard Spring Initializr fields — pre-filled with sane defaults.
+
+### Step 2 — Template Sets
+Pick the backend and frontend template set. Two ship out of the box: **spring-jpa-crud** and **react-tailwind-crud**. Admins can clone or add more under Config → Entity CRUD.
+
+### Step 3 — Dependencies
+Pre-checked from the chosen backend set's admin-configured defaults (data-jpa, web, h2, validation, actuator for the seeded \`spring-jpa-crud\`). You can check or uncheck anything — the generator respects your final selection exactly. Nothing is forced.
+
+### Step 4 — Entities
+The entities editor lists each entity as a card with a name field and a per-field table. Each field has:
+- **Name** — Java identifier, becomes a column + a TS field.
+- **Type** — String, Long, Integer, Boolean, LocalDate, LocalDateTime, BigDecimal, Enum.
+- **PK** / **Gen** / **Req** / **Uniq** — flag toggles for primary-key, generated, required, unique.
+- **Length** — only for String (becomes \`@Column(length=…)\` + a TS UI hint).
+- **Enum values** — only for Enum (becomes a nested enum class on the entity).
+
+Two convenience buttons sit above the entity list:
+- **Import from DDL** — paste CREATE TABLE statements, pick a dialect, get the editor pre-filled.
+- **Add entity** — append a fresh card.
+
+### Step 5 — Generate
+The Generate button POSTs to \`/starter-fullstack.zip\` and streams the result. Unzip → \`cd backend && ./mvnw spring-boot:run\` → open the Vite dev server on :5173.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'The wizard reseeds the dep picker every time you change the backend template set — switching sets gives you that set\'s defaults, freshly checked. To re-apply defaults after manual edits, click "Reset to defaults" in the dep picker.'
+          }
+        ]
+      },
+      {
+        id: 'fs-import-ddl',
+        title: 'Import From DDL',
+        description: 'Pre-fill the entity editor by pasting CREATE TABLE statements — reuses the SQL wizard\'s parser.',
+        content: `### When to Use
+You already have a schema (existing DB, migration scripts, an Excel sheet you can convert) and don't want to click each field. Open the drawer, paste DDL, click Save — the editor fills in with entities, fields, types, primary keys, lengths, and required flags.
+
+### How It Works
+The drawer POSTs to \`/metadata/fullstack/import-ddl\` with the SQL + dialect. The backend reuses the existing SQL wizard's \`SqlEntityGenerator.parseTablesForImport\` and runs it through a small adapter (\`SqlToEntityDefinitionConverter\`) that maps each \`TableModel\` → \`EntityDefinition\`.
+
+Dialect-specific types just work: \`BIGSERIAL\` → Long + generated, \`NUMERIC(p,s)\` → BigDecimal, \`NVARCHAR\` → String, etc.
+
+### Replace vs Append
+If the editor already has entities, the drawer shows a **Mode** toggle (defaults to Append). Replace clears everything and uses the parsed list; Append adds to what's there.
+
+### Lossy By Design
+The mapping is a starting point — review the result before generating. Known degradations:
+
+| Source | Becomes | Why |
+|---|---|---|
+| \`UUID\` (PG), \`UNIQUEIDENTIFIER\` (MSSQL) | \`String\` | No UUID FieldType in v1 |
+| \`Short\` | \`Integer\` | No SHORT FieldType |
+| \`Float\` / \`Double\` | \`BigDecimal\` | Closest numeric in v1 |
+| \`byte[]\` (BYTEA / BLOB) | \`String\` | Binary isn't in v1 |
+| \`UNIQUE\` constraint | (not set) | Column-level UNIQUE isn't in ColumnModel — toggle manually |
+| \`CHECK (col IN (...))\` | (not parsed) | Switch the type to Enum manually after import |
+
+### Parse Errors
+Invalid DDL returns HTTP 400 with \`{error, detail, statementIndex, snippet}\`. The drawer renders these inline so you can fix the statement without losing what you've typed.`,
+        codeExamples: [
+          {
+            title: 'Example — small e-commerce schema (H2 dialect)',
+            language: 'sql',
+            code: `CREATE TABLE products (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    sku VARCHAR(64) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    price NUMERIC(10,2) NOT NULL,
+    in_stock BOOLEAN,
+    created_at TIMESTAMP
+);
+
+CREATE TABLE categories (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(120) NOT NULL,
+    description VARCHAR(500)
+);`
+          },
+          {
+            title: 'Example — PostgreSQL flavor (BIGSERIAL, UUID, TIMESTAMPTZ)',
+            language: 'sql',
+            code: `CREATE TABLE accounts (
+    id BIGSERIAL PRIMARY KEY,
+    external_ref UUID NOT NULL,
+    email VARCHAR(200) NOT NULL,
+    full_name VARCHAR(120),
+    last_login TIMESTAMPTZ
+);`
+          }
+        ]
+      },
+      {
+        id: 'fs-deps-and-defaults',
+        title: 'Dependencies & Per-Set Defaults',
+        description: 'How the dep picker is seeded, and how admins configure what gets pre-checked.',
+        content: `### Wire Semantics
+The controller's behavior depends on whether \`dependencies\` is present in the request body:
+
+| Request | Behavior |
+|---|---|
+| **\`dependencies\` omitted** | Falls back to the backend set's admin-configured default deps |
+| **\`dependencies: []\`** | Respected exactly — generated project has no extras |
+| **\`dependencies: [...]\`** | Respected exactly — no merging with defaults, no auto-additions |
+
+The UI always sends the user's final picker selection, so unchecking a default actually loses it. Previous "always-add data-jpa/web/h2" forcing has been removed — admins decide what each set ships pre-checked, and users have the final say.
+
+### Where Defaults Come From
+Each \`EntityTemplateSetEntity\` (kind=\`BACKEND_JAVA\`) carries a \`defaultDeps\` list, stored in the \`entity_template_set_default_dep\` table. The seeded \`spring-jpa-crud\` set has \`["data-jpa","web","h2","validation","actuator"]\` — the same out-of-box behavior as before, just opt-out-able now.
+
+To change what a set ships pre-checked: **Config → Entity CRUD → edit the set → Default Dependencies checkbox list → save**. The change takes effect immediately for new wizard sessions (no \`/admin/refresh\` needed; these don't affect \`/metadata/client\`).
+
+### Building a Specialized Set
+Common pattern: clone \`spring-jpa-crud\` as \`spring-jpa-crud-secured\`, swap \`h2\` for \`postgresql\`, add \`security\` to the defaults. Users picking this set in the wizard see the right deps pre-checked without thinking about it.`,
+        callouts: [
+          {
+            type: 'warning',
+            text: 'Nothing in the dep list is mandatory for the generator — but the seeded templates reference `@Entity` (data-jpa), `@RestController` (web), and assume an embedded DB if no datasource is configured. If a user unchecks those, the generated project compiles only if they bring their own equivalents.'
+          }
+        ]
+      },
+      {
+        id: 'fs-template-sets',
+        title: 'Template Sets',
+        description: 'How the per-entity files are organized, and what variables Mustache exposes to them.',
+        content: `### Anatomy
+A template set is a DB-backed bundle of Mustache files keyed by \`set_key\` and tagged with a \`kind\`:
+
+| Kind | Rendered by | Purpose |
+|---|---|---|
+| \`BACKEND_JAVA\` | \`EntityScaffoldContributor\` inside the Initializr pipeline | Per-entity \`.java\` files; gets pom assembly + dep resolution for free |
+| \`FRONTEND_REACT\` | \`FullstackRenderer\` inline | \`package.json\`, \`vite.config.ts\`, per-entity \`.tsx\` pages, shared \`Table.tsx\` / \`FormDrawer.tsx\` |
+
+Each file row has:
+- **pathTemplate** — Mustache-rendered, so \`src/main/java/{{packagePath}}/{{EntityName}}Controller.java\` becomes one file per entity.
+- **content** — the file body, either Mustache (\`substitutionType=MUSTACHE\`) or verbatim (\`NONE\`).
+- **perEntity** — \`true\` renders once per user entity; \`false\` renders once total (e.g. \`App.tsx\`, \`Table.tsx\`).
+
+### Mustache Context
+Templates see a unified context with project-wide keys plus per-entity naming and field metadata:
+
+| Key | Meaning |
+|---|---|
+| \`artifactId\`, \`groupId\`, \`packageName\`, \`packagePath\`, \`javaVersion\` | Project-wide |
+| \`entities\` | List of all entities — for \`{{#entities}}…{{/entities}}\` in non-perEntity files like \`AppRoutes.tsx\` |
+| \`EntityName\`, \`entityName\`, \`entity_name\`, \`entityNameKebab\`, \`EntityNamePlural\` | Per-entity naming variants |
+| \`tableName\` | \`entity.tableName\` or pluralized snake_case of \`EntityName\` |
+| \`fields\` | List with \`name\`, \`Name\`, \`column\`, \`javaType\`, \`tsType\`, \`isString\`, \`isPrimaryKey\`, \`isRequired\`, \`hasLength\`, \`length\`, \`enumValues\` |
+| \`stringFields\`, \`hasStringFields\` | Filtered view used for the search Specification chain |
+| \`pkField\`, \`nonPkFields\` | Convenience splits |
+| \`imports\` | De-duplicated FQN list for the import block |
+
+### Pagination / Sort / Search
+The seeded \`spring-jpa-crud\` Service template uses \`{{#hasStringFields}}\` to render a JPA \`Specification\` LIKE chain across STRING columns whenever the \`?q=\` parameter is non-blank. Entities without any STRING field fall through to \`repository.findAll(pageable)\`. The Controller binds \`?page=\`/\`?size=\`/\`?sort=\` via Spring's \`Pageable\` and defaults to \`Sort.by("{pkField.name}").ascending()\`. The matching React Table component picks up sort/search/pagination props from the seeded \`react-tailwind-crud\` files.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'Mustache and JSX both use `{{` as an opener. The seeded EntityPage template avoids `pagination={{ … }}` (which Mustache would try to parse as a tag) by lifting the pagination object to `const pagination = { … }` and passing `pagination={pagination}`.'
+          }
+        ]
+      },
+      {
+        id: 'fs-admin',
+        title: 'Admin: Managing Template Sets',
+        description: 'The Entity CRUD tab in Config — CRUD on sets, per-set files, and default deps.',
+        content: `### Where to Find It
+**Config → Entity CRUD**. Two panes:
+1. **Sets** (top) — master list, columns: \`setKey\`, \`name\`, \`kind\` (BACKEND_JAVA / FRONTEND_REACT), enabled, sort order.
+2. **Files in Selected Set** (bottom) — appears after you click a row in Sets. Columns: \`pathTemplate\`, \`perEntity\`, file type, substitution type, sort order.
+
+### Editing a Set
+The drawer exposes the standard metadata fields plus a **Default Dependencies** multi-select (only shown for BACKEND_JAVA). Search the list, tick boxes, save. Behind the scenes the UI POSTs/PUTs the set, then PUTs the dep IDs to \`/admin/entity-template-sets/{id}/default-deps\` (full replace).
+
+### Editing a File
+The drawer uses the same CodeMirror-based editor as File Contributions. The \`pathTemplate\` field is Mustache-rendered, so \`{{packagePath}}\` and \`{{EntityName}}\` work as separators. Toggle \`perEntity\` to choose whether the file is emitted once per user entity or once per project.
+
+### Export / Import
+\`/admin/export\` round-trips \`entityTemplateSets\`, \`entityTemplateFiles\`, and \`entityTemplateSetDefaultDeps\`. The export file is portable between environments — drop a JSON onto \`/admin/import\` to migrate a curated set of templates.
+
+### Orphan Detection
+If you try to delete a dependency that's referenced by a template set's defaults, the existing orphan detection flags it. \`/admin/cascade-delete\` removes the dep ID from every set's defaults too.`
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
   // 3. DEPENDENCY GROUPS
   // ─────────────────────────────────────────────────────────────────
   {
