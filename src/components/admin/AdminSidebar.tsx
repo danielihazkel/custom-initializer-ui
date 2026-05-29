@@ -16,6 +16,7 @@ const TABS: { id: AdminTab; label: string; icon: string; desc: string }[] = [
   { id: 'modules',       label: 'Modules',       icon: 'account_tree',   desc: 'Multi-module setup' },
   { id: 'entity-templates', label: 'Entity CRUD',  icon: 'table_view',   desc: 'Fullstack scaffold templates' },
   { id: 'palettes',      label: 'Palettes',      icon: 'palette',        desc: 'Frontend color schemes' },
+  { id: 'versions',      label: 'Versions',      icon: 'numbers',        desc: 'Java/Boot/React/Node lists' },
 ]
 
 interface AdminSidebarProps {

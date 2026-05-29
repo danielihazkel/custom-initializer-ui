@@ -260,7 +260,24 @@ export interface AdminDependencyCompatibility {
   projectKind?: ProjectKind
 }
 
-export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates'
+export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates' | 'versions'
+
+/** Discriminator for {@link AdminVersion} rows — backend Java/Boot plus frontend React/Node/package-manager lists. */
+export type VersionKind = 'JAVA' | 'BOOT' | 'REACT' | 'NODE' | 'PACKAGE_MANAGER'
+
+export interface AdminVersion {
+  id: number
+  kind: VersionKind
+  versionId: string
+  displayName: string
+  isDefault: boolean
+  sortOrder: number
+  enabled: boolean
+  /** npm semver range for {@code react}/{@code react-dom} — REACT rows only. */
+  npmSemver?: string | null
+  /** npm semver range for {@code @types/react}/{@code @types/react-dom} — REACT rows only. */
+  typesSemver?: string | null
+}
 
 // ── Fullstack CRUD scaffolding ────────────────────────────────────────────────
 

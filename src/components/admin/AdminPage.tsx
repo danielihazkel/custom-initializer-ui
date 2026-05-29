@@ -18,6 +18,7 @@ import { StarterTemplatesTab } from './starter-templates/StarterTemplatesTab'
 import { ModuleTemplatesTab } from './module-templates/ModuleTemplatesTab'
 import { ColorPalettesTab } from './color-palettes/ColorPalettesTab'
 import { EntityTemplatesTab } from './entity-templates/EntityTemplatesTab'
+import { VersionsTab } from './versions/VersionsTab'
 
 export function AdminPage() {
   const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('adminToken'))
@@ -99,6 +100,7 @@ function AdminPageInner({ onLogout }: { onLogout: () => void }) {
               {activeTab === 'modules'    && <ModuleTemplatesTab />}
               {activeTab === 'palettes'   && <ColorPalettesTab />}
               {activeTab === 'entity-templates' && <EntityTemplatesTab />}
+              {activeTab === 'versions'   && <VersionsTab />}
             </motion.div>
           </AnimatePresence>
         </main>
