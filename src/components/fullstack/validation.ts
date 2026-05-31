@@ -55,6 +55,7 @@ function identifierError(value: string, label: string): string | undefined {
 export interface FieldErrors {
   name?: string
   enumValues?: string
+  length?: string
 }
 
 export interface EntityErrors {
@@ -65,12 +66,22 @@ export interface EntityErrors {
 
 export interface FullstackErrors {
   entities: Record<number, EntityErrors>
+  /** True when there are no entities at all — the backend rejects an empty list. */
+  noEntities?: boolean
   /** Total number of distinct problems found — drives the Generate gate + summary. */
   count: number
 }
 
 export function validateEntities(entities: FullstackEntityDef[]): FullstackErrors {
   const result: FullstackErrors = { entities: {}, count: 0 }
+
+  // The backend requires at least one entity (FullstackRequestValidator.java).
+  if (entities.length === 0) {
+    result.noEntities = true
+    result.count += 1
+    return result
+  }
+
   const seenEntityNames = new Map<string, number[]>() // lower name → entity indexes
 
   entities.forEach((entity, eIdx) => {
@@ -109,6 +120,15 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
           const bad = values.find(v => !IDENTIFIER_RE.test(v) || RESERVED_JAVA_KEYWORDS.has(v.toLowerCase()))
           if (bad) fErr.enumValues = `Invalid value '${bad}'`
         }
+      } else if ((field.enumValues?.length ?? 0) > 0) {
+        // Mirrors the backend rule that enumValues are only allowed when type=ENUM.
+        // The editor clears these on type change; this guards stale persisted/imported state.
+        fErr.enumValues = 'Values apply to ENUM only'
+      }
+
+      if (field.length != null) {
+        if (field.type !== 'STRING') fErr.length = 'Length applies to STRING only'
+        else if (field.length <= 0) fErr.length = 'Length must be positive'
       }
 
       if (Object.keys(fErr).length > 0) {

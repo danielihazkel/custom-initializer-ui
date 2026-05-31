@@ -52,6 +52,26 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
       return { ...e, fields: e.fields.map((f, j) => j === fIdx ? { ...f, ...updates } : f) }
     }))
   }
+  // Changing a field's type clears attributes that no longer apply, so we never send
+  // an orphaned length (non-STRING) or enumValues (non-ENUM) — the backend rejects both.
+  function changeFieldType(eIdx: number, fIdx: number, type: FullstackFieldType) {
+    const updates: Partial<FullstackFieldDef> = { type }
+    if (type !== 'STRING') updates.length = undefined
+    if (type !== 'ENUM') updates.enumValues = undefined
+    updateField(eIdx, fIdx, updates)
+  }
+  function duplicateField(eIdx: number, fIdx: number) {
+    onChange(entities.map((e, i) => {
+      if (i !== eIdx) return e
+      const src = e.fields[fIdx]
+      const copy: FullstackFieldDef = {
+        ...src,
+        name: `${src.name}Copy`,
+        enumValues: src.enumValues ? [...src.enumValues] : undefined,
+      }
+      return { ...e, fields: [...e.fields.slice(0, fIdx + 1), copy, ...e.fields.slice(fIdx + 1)] }
+    }))
+  }
   function removeField(eIdx: number, fIdx: number) {
     onChange(entities.map((e, i) => {
       if (i !== eIdx) return e
@@ -159,7 +179,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                         aria-label="Field type"
                         className="w-full bg-background border border-outline-variant rounded px-2 py-1 text-xs focus:ring-1 focus:ring-primary/20 focus:border-primary outline-none"
                         value={field.type}
-                        onChange={e => updateField(eIdx, fIdx, { type: e.target.value as FullstackFieldType })}
+                        onChange={e => changeFieldType(eIdx, fIdx, e.target.value as FullstackFieldType)}
                       >
                         {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -183,13 +203,16 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                     <td className="py-1.5 px-2 align-top">
                       <input
                         type="number"
+                        min={1}
                         aria-label="Max length"
+                        aria-invalid={Boolean(fErr?.length)}
                         title={field.type !== 'STRING' ? 'Length applies to STRING fields only' : undefined}
-                        className="w-full bg-background border border-outline-variant rounded px-2 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed focus:ring-1 focus:ring-primary/20 focus:border-primary outline-none"
+                        className={`w-full bg-background border rounded px-2 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed focus:ring-1 outline-none ${fErr?.length ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
                         value={field.length ?? ''}
                         disabled={field.type !== 'STRING'}
                         onChange={e => updateField(eIdx, fIdx, { length: e.target.value === '' ? undefined : Number(e.target.value) })}
                       />
+                      {fErr?.length && <p className="mt-0.5 text-[10px] text-error">{fErr.length}</p>}
                     </td>
                     <td className="py-1.5 px-2 align-top">
                       <input
@@ -215,14 +238,24 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                       {fErr?.enumValues && <p className="mt-0.5 text-[10px] text-error">{fErr.enumValues}</p>}
                     </td>
                     <td className="py-1.5 px-2 text-right align-top">
-                      <button
-                        onClick={() => removeField(eIdx, fIdx)}
-                        className="p-1 rounded text-secondary hover:text-error hover:bg-error/10 transition-colors"
-                        title="Remove field"
-                        aria-label="Remove field"
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
-                      </button>
+                      <div className="flex items-center justify-end gap-0.5">
+                        <button
+                          onClick={() => duplicateField(eIdx, fIdx)}
+                          className="p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
+                          title="Duplicate field"
+                          aria-label="Duplicate field"
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>content_copy</span>
+                        </button>
+                        <button
+                          onClick={() => removeField(eIdx, fIdx)}
+                          className="p-1 rounded text-secondary hover:text-error hover:bg-error/10 transition-colors"
+                          title="Remove field"
+                          aria-label="Remove field"
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   )
@@ -240,6 +273,13 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
         </div>
         )
       })}
+
+      {entities.length === 0 && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
+          Add at least one entity to generate a project.
+        </div>
+      )}
 
       <button
         onClick={addEntity}

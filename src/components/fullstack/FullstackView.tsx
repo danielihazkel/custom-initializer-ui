@@ -416,6 +416,7 @@ export function FullstackView() {
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}
         hasExisting={entities.length > 0}
+        existingCount={entities.length}
         onImport={handleImport}
       />
 

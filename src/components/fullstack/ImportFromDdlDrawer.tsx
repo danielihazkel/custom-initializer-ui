@@ -6,6 +6,8 @@ interface Props {
   isOpen: boolean
   onClose: () => void
   hasExisting: boolean
+  /** Number of entities currently in the editor — drives the "Replace all" warning copy. */
+  existingCount?: number
   onImport: (entities: FullstackEntityDef[], mode: ImportMode) => void
 }
 
@@ -45,7 +47,7 @@ interface ImportError {
   snippet?: string
 }
 
-export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, onImport }: Props) {
+export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCount = 0, onImport }: Props) {
   const [sql, setSql] = useState('')
   const [dialect, setDialect] = useState('H2')
   const [mode, setMode] = useState<ImportMode>(hasExisting ? 'append' : 'replace')
@@ -167,6 +169,12 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, onImport }: 
                 <span>Replace all</span>
               </label>
             </div>
+            {mode === 'replace' && (
+              <p className="mt-2 flex items-center gap-1.5 text-[11px] text-error">
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>warning</span>
+                Discards your current {existingCount} entit{existingCount === 1 ? 'y' : 'ies'}.
+              </p>
+            )}
           </div>
         )}
 

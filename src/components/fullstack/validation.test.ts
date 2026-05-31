@@ -79,6 +79,42 @@ describe('validateEntities', () => {
     })])
     expect(reserved.entities[0]?.fields[1]?.enumValues).toContain('class')
   })
+
+  it('flags an empty entity list', () => {
+    const result = validateEntities([])
+    expect(result.noEntities).toBe(true)
+    expect(result.count).toBe(1)
+  })
+
+  it('flags length on a non-STRING field', () => {
+    const result = validateEntities([validEntity({
+      fields: [
+        { name: 'id', type: 'LONG', primaryKey: true },
+        { name: 'count', type: 'INTEGER', length: 10 },
+      ],
+    })])
+    expect(result.entities[0]?.fields[1]?.length).toBe('Length applies to STRING only')
+  })
+
+  it('flags a non-positive length on a STRING field', () => {
+    const result = validateEntities([validEntity({
+      fields: [
+        { name: 'id', type: 'LONG', primaryKey: true },
+        { name: 'code', type: 'STRING', length: 0 },
+      ],
+    })])
+    expect(result.entities[0]?.fields[1]?.length).toBe('Length must be positive')
+  })
+
+  it('flags enumValues on a non-ENUM field', () => {
+    const result = validateEntities([validEntity({
+      fields: [
+        { name: 'id', type: 'LONG', primaryKey: true },
+        { name: 'status', type: 'STRING', enumValues: ['ACTIVE'] },
+      ],
+    })])
+    expect(result.entities[0]?.fields[1]?.enumValues).toBe('Values apply to ENUM only')
+  })
 })
 
 describe('validateMeta', () => {
