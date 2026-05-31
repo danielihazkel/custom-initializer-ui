@@ -352,6 +352,7 @@ export interface FullstackStarterRequest {
   name?: string
   description?: string
   packageName?: string
+  domainPackage?: string
   bootVersion?: string
   packaging?: string
   javaVersion?: string

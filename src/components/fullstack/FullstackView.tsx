@@ -16,6 +16,7 @@ interface ProjectMeta {
   groupId: string
   artifactId: string
   packageName: string
+  domainPackage: string
   bootVersion: string
   javaVersion: string
 }
@@ -24,6 +25,7 @@ const DEFAULT_META: ProjectMeta = {
   groupId: 'com.menora',
   artifactId: 'demo',
   packageName: 'com.menora.demo',
+  domainPackage: '',
   bootVersion: '3.2.1',
   javaVersion: '21',
 }
@@ -285,6 +287,16 @@ export function FullstackView() {
             <input id="fs-packageName" className={inputClass(metaErrors.packageName)} value={meta.packageName}
                    aria-invalid={Boolean(metaErrors.packageName)}
                    onChange={e => updateMeta({ packageName: e.target.value })} />
+          </Labeled>
+          <Labeled label="Domain Package" htmlFor="fs-domainPackage" error={metaErrors.domainPackage}>
+            <input id="fs-domainPackage" className={inputClass(metaErrors.domainPackage)} value={meta.domainPackage}
+                   aria-invalid={Boolean(metaErrors.domainPackage)}
+                   placeholder={meta.packageName || 'com.menora.demo'}
+                   onChange={e => updateMeta({ domainPackage: e.target.value })} />
+            <p className="text-[11px] text-on-surface-variant">
+              Where entities/repositories/controllers go, split into <code>.entity</code>, <code>.repository</code>,
+              <code>.dto</code>, <code>.service</code>, <code>.controller</code>. Blank = same as Package Name; must be under it.
+            </p>
           </Labeled>
           <Labeled label="Java Version" htmlFor="fs-javaVersion">
             <select id="fs-javaVersion" className={inputClass()} value={meta.javaVersion}

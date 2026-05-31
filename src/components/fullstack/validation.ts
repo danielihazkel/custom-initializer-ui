@@ -28,16 +28,30 @@ export interface MetaErrors {
   groupId?: string
   artifactId?: string
   packageName?: string
+  domainPackage?: string
 }
 
 /** Validates the project-metadata fields. Mirrors the Backend tab's validateForm rules. */
-export function validateMeta(meta: { groupId: string; artifactId: string; packageName: string }): MetaErrors {
+export function validateMeta(
+  meta: { groupId: string; artifactId: string; packageName: string; domainPackage?: string },
+): MetaErrors {
   const errors: MetaErrors = {}
   if (!meta.artifactId.trim()) errors.artifactId = 'Required'
   else if (/\s/.test(meta.artifactId)) errors.artifactId = 'No spaces allowed'
   if (!meta.groupId.trim()) errors.groupId = 'Required'
   if (!meta.packageName.trim()) errors.packageName = 'Required'
   else if (!PACKAGE_NAME_RE.test(meta.packageName)) errors.packageName = 'Invalid Java package name'
+
+  // Optional: blank means "same as Package Name". When set it must be valid and live at or
+  // below the base package, mirroring the server's resolveDomainPackage check.
+  const domain = meta.domainPackage?.trim()
+  if (domain) {
+    const base = meta.packageName.trim()
+    if (!PACKAGE_NAME_RE.test(domain)) errors.domainPackage = 'Invalid Java package name'
+    else if (base && domain !== base && !domain.startsWith(base + '.')) {
+      errors.domainPackage = 'Must be the Package Name or a sub-package of it'
+    }
+  }
   return errors
 }
 
