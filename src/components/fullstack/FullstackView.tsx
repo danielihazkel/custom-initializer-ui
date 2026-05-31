@@ -108,15 +108,23 @@ export function FullstackView() {
       return
     }
     if (seededBackendSetRef.current !== currentBackendSet.setKey) {
+      const prevSet = availableSets.find(s => s.setKey === seededBackendSetRef.current)
+      const prevDefaults = new Set(prevSet?.defaultDeps ?? [])
       seededBackendSetRef.current = currentBackendSet.setKey
-      setSelectedDeps([...currentBackendSet.defaultDeps])
+      // Re-seed the new set's defaults but keep any user-added extras (deps the
+      // user selected that weren't defaults of the previous set), so switching
+      // sets doesn't silently discard their custom picks.
+      setSelectedDeps(prev => {
+        const extras = prev.filter(d => !prevDefaults.has(d))
+        return Array.from(new Set([...currentBackendSet.defaultDeps, ...extras]))
+      })
       setMeta(prev => ({
         ...prev,
         bootVersion: currentBackendSet.bootVersion ?? prev.bootVersion,
         javaVersion: currentBackendSet.javaVersion ?? prev.javaVersion,
       }))
     }
-  }, [currentBackendSet])
+  }, [currentBackendSet, availableSets])
 
   // Frontend sets can also declare a javaVersion (rare). Apply only on a genuine change.
   const seededFrontendSetRef = useRef<string | null>(null)
@@ -144,9 +152,16 @@ export function FullstackView() {
   useEffect(() => {
     setSetsLoading(true)
     fetch('/metadata/entity-template-sets')
-      .then(res => res.ok ? res.json() : [])
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
       .then((data: EntityTemplateSetSummary[]) => setAvailableSets(data))
-      .catch(() => { /* keep defaults */ })
+      .catch((err: Error) => {
+        // Keep the hardcoded fallback options so the screen still works, but tell
+        // the user the list couldn't load — otherwise they'd silently see stale defaults.
+        setToast({ message: `Couldn't load template sets (${err.message}); using defaults`, type: 'error' })
+      })
       .finally(() => setSetsLoading(false))
   }, [])
 
@@ -210,6 +225,27 @@ export function FullstackView() {
   function updateMeta(updates: Partial<ProjectMeta>) {
     setMeta(prev => ({ ...prev, ...updates }))
   }
+
+  // ── Reset ──────────────────────────────────────────────────────────────────
+  // The global Reset (App.tsx) is hidden on this tab; we portal our own, mirroring
+  // FrontendView. resetKey force-remounts children so their internal state clears.
+  const [resetKey, setResetKey] = useState(0)
+  function handleReset() {
+    if (!confirm('Reset the fullstack generator to defaults? This clears your entities and selections.')) return
+    Object.values(LS).forEach(k => localStorage.removeItem(k))
+    setMeta({ ...DEFAULT_META })
+    setEntities(DEFAULT_ENTITIES.map(e => ({ ...e, fields: e.fields.map(f => ({ ...f })) })))
+    setBackendSet('spring-jpa-crud')
+    setFrontendSet('react-tailwind-crud')
+    // Re-seed deps from whichever backend set resolves; the set-change effect won't
+    // fire if the key is unchanged, so seed explicitly here.
+    const target = availableSets.find(s => s.setKey === 'spring-jpa-crud')
+    setSelectedDeps(target ? [...target.defaultDeps] : [])
+    clearPreview()
+    setResetKey(k => k + 1)
+    setToast({ message: 'Fullstack generator reset to defaults', type: 'success' })
+  }
+  const portalTarget = typeof document !== 'undefined' ? document.body : null
 
   return (
     <div className="max-w-5xl mx-auto px-6 space-y-8">
@@ -297,6 +333,7 @@ export function FullstackView() {
           a set ships pre-checked, edit it under Admin → Entity CRUD.
         </p>
         <FullstackDepPicker
+          key={`deps-${resetKey}`}
           selected={selectedDeps}
           defaults={currentDefaults}
           onChange={setSelectedDeps}
@@ -333,11 +370,13 @@ export function FullstackView() {
           onClick={explore}
           disabled={previewLoading || hasErrors}
           title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview the generated file tree before downloading'}
-          className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
+          className={`inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError
+            ? 'border-error/50 text-error hover:bg-error/5'
+            : 'border-outline-variant text-secondary hover:text-primary hover:border-primary hover:bg-primary/5'}`}
         >
           {previewLoading
             ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }}>progress_activity</span>
-            : 'Explore'}
+            : <><span className="material-symbols-outlined" style={{ fontSize: '16px' }}>travel_explore</span>Explore</>}
         </button>
         <button
           onClick={generate}
@@ -356,6 +395,18 @@ export function FullstackView() {
         hasExisting={entities.length > 0}
         onImport={handleImport}
       />
+
+      {portalTarget && createPortal(
+        <button
+          onClick={handleReset}
+          className="fixed bottom-8 right-8 z-30 flex items-center gap-2 px-4 py-2.5 rounded-full bg-surface-container-high border border-outline-variant text-secondary hover:text-error hover:border-error/50 shadow-lg transition-all active:scale-95"
+          title="Reset the fullstack generator"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>restart_alt</span>
+          Reset
+        </button>,
+        portalTarget,
+      )}
 
       {preview && createPortal(
         <ProjectPreview

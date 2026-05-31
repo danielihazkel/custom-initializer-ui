@@ -116,6 +116,11 @@ export function FullstackDepPicker({ selected, defaults, onChange }: Props) {
                             default
                           </span>
                         )}
+                        {dep.versionRange && (
+                          <span className="text-[9px] font-bold text-secondary bg-surface-container px-1.5 py-0.5 rounded-full border border-outline-variant/50">
+                            Boot {dep.versionRange}
+                          </span>
+                        )}
                       </div>
                       {dep.description && (
                         <div className="text-[11px] text-secondary truncate">{dep.description}</div>
