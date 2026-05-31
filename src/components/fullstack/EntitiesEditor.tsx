@@ -58,6 +58,8 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
     const updates: Partial<FullstackFieldDef> = { type }
     if (type !== 'STRING') updates.length = undefined
     if (type !== 'ENUM') updates.enumValues = undefined
+    // Auto-increment is only valid on an integral key — drop it when the type can't carry it.
+    if (type !== 'LONG' && type !== 'INTEGER') updates.generated = undefined
     updateField(eIdx, fIdx, updates)
   }
   function duplicateField(eIdx: number, fIdx: number) {
@@ -160,6 +162,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
               <tbody>
                 {entity.fields.map((field, fIdx) => {
                   const fErr = eErr?.fields?.[fIdx]
+                  const canGenerate = !!field.primaryKey && (field.type === 'LONG' || field.type === 'INTEGER')
                   return (
                   <tr key={fIdx} className="border-t border-outline-variant">
                     <td className="py-1.5 px-2 align-top">
@@ -186,11 +189,15 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                     </td>
                     <td className="py-1.5 px-2 text-center align-top">
                       <input type="checkbox" aria-label="Primary key" checked={!!field.primaryKey}
-                        onChange={e => updateField(eIdx, fIdx, { primaryKey: e.target.checked })} />
+                        onChange={e => updateField(eIdx, fIdx, e.target.checked ? { primaryKey: true } : { primaryKey: false, generated: undefined })} />
                     </td>
                     <td className="py-1.5 px-2 text-center align-top">
                       <input type="checkbox" aria-label="Auto-generated value" checked={!!field.generated}
+                        disabled={!canGenerate}
+                        title={canGenerate ? undefined : 'Auto-generated applies to a LONG/INTEGER primary key only'}
+                        className="disabled:opacity-40 disabled:cursor-not-allowed"
                         onChange={e => updateField(eIdx, fIdx, { generated: e.target.checked })} />
+                      {fErr?.generated && <p className="mt-0.5 text-[10px] text-error">{fErr.generated}</p>}
                     </td>
                     <td className="py-1.5 px-2 text-center align-top">
                       <input type="checkbox" aria-label="Required (not null)" checked={!!field.required}

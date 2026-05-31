@@ -115,6 +115,25 @@ describe('validateEntities', () => {
     })])
     expect(result.entities[0]?.fields[1]?.enumValues).toBe('Values apply to ENUM only')
   })
+
+  it('flags generated on a non-primary-key field', () => {
+    const result = validateEntities([validEntity({
+      fields: [
+        { name: 'id', type: 'LONG', primaryKey: true, generated: true },
+        { name: 'code', type: 'LONG', generated: true },
+      ],
+    })])
+    expect(result.entities[0]?.fields[1]?.generated).toBe('Only the primary key can be auto-generated')
+  })
+
+  it('flags generated on a non-integral primary key', () => {
+    const result = validateEntities([validEntity({
+      fields: [
+        { name: 'id', type: 'STRING', primaryKey: true, generated: true },
+      ],
+    })])
+    expect(result.entities[0]?.fields[0]?.generated).toBe('Generated key must be LONG or INTEGER')
+  })
 })
 
 describe('validateMeta', () => {

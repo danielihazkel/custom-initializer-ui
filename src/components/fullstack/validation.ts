@@ -70,6 +70,7 @@ export interface FieldErrors {
   name?: string
   enumValues?: string
   length?: string
+  generated?: string
 }
 
 export interface EntityErrors {
@@ -143,6 +144,13 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
       if (field.length != null) {
         if (field.type !== 'STRING') fErr.length = 'Length applies to STRING only'
         else if (field.length <= 0) fErr.length = 'Length must be positive'
+      }
+
+      // 'generated' (auto-increment) only makes sense on an integral primary key. The editor
+      // disables the checkbox otherwise, but guard stale persisted/imported state too.
+      if (field.generated) {
+        if (!field.primaryKey) fErr.generated = 'Only the primary key can be auto-generated'
+        else if (field.type !== 'LONG' && field.type !== 'INTEGER') fErr.generated = 'Generated key must be LONG or INTEGER'
       }
 
       if (Object.keys(fErr).length > 0) {
