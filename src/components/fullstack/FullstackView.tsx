@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
@@ -65,6 +65,7 @@ export function FullstackView() {
   const [frontendSet, setFrontendSet] = useState(() => localStorage.getItem(LS.frontendSet) ?? 'react-tailwind-crud')
   const [availableSets, setAvailableSets] = useState<EntityTemplateSetSummary[]>([])
   const [setsLoading, setSetsLoading] = useState(true)
+  const [setsError, setSetsError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
   const [importOpen, setImportOpen] = useState(false)
@@ -153,21 +154,23 @@ export function FullstackView() {
     setToast({ message: `${verb} ${n} entit${n === 1 ? 'y' : 'ies'} from DDL`, type: 'success' })
   }
 
-  useEffect(() => {
+  // Load the template-set list. Extracted so the inline Retry can re-run it; on failure
+  // we keep the hardcoded fallback options (the screen stays usable) and surface a
+  // persistent inline notice rather than a one-shot toast the user might miss.
+  const loadTemplateSets = useCallback(() => {
     setSetsLoading(true)
+    setSetsError(null)
     fetch('/metadata/entity-template-sets')
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
       })
       .then((data: EntityTemplateSetSummary[]) => setAvailableSets(data))
-      .catch((err: Error) => {
-        // Keep the hardcoded fallback options so the screen still works, but tell
-        // the user the list couldn't load — otherwise they'd silently see stale defaults.
-        setToast({ message: `Couldn't load template sets (${err.message}); using defaults`, type: 'error' })
-      })
+      .catch((err: Error) => setSetsError(err.message))
       .finally(() => setSetsLoading(false))
   }, [])
+
+  useEffect(() => { loadTemplateSets() }, [loadTemplateSets])
 
   const backendSets = availableSets.filter(s => s.kind === 'BACKEND_JAVA')
   const frontendSets = availableSets.filter(s => s.kind === 'FRONTEND_REACT')
@@ -195,8 +198,10 @@ export function FullstackView() {
     fetchPreview(buildBody())
   }
 
-  async function generate() {
-    if (!validateBeforeSubmit()) return
+  /** Returns true when the ZIP downloaded successfully — lets the preview modal stay
+   *  open (and show the error toast) on failure, and close only on success. */
+  async function generate(): Promise<boolean> {
+    if (!validateBeforeSubmit()) return false
     setGenerating(true)
     try {
       const body = buildBody()
@@ -219,8 +224,10 @@ export function FullstackView() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       setToast({ message: 'Fullstack project downloaded', type: 'success' })
+      return true
     } catch (err) {
       setToast({ message: `Generation failed: ${(err as Error).message}`, type: 'error' })
+      return false
     } finally {
       setGenerating(false)
     }
@@ -232,8 +239,8 @@ export function FullstackView() {
 
   // ── Reset ──────────────────────────────────────────────────────────────────
   // The global Reset (App.tsx) is hidden on this tab; we portal our own, mirroring
-  // FrontendView. resetKey force-remounts children so their internal state clears.
-  const [resetKey, setResetKey] = useState(0)
+  // FrontendView. FullstackDepPicker is fully controlled, so resetting selectedDeps
+  // below re-renders it — no remount needed.
   function handleReset() {
     if (!confirm('Reset the fullstack generator to defaults? This clears your entities and selections.')) return
     Object.values(LS).forEach(k => localStorage.removeItem(k))
@@ -246,7 +253,6 @@ export function FullstackView() {
     const target = availableSets.find(s => s.setKey === 'spring-jpa-crud')
     setSelectedDeps(target ? [...target.defaultDeps] : [])
     clearPreview()
-    setResetKey(k => k + 1)
     setToast({ message: 'Fullstack generator reset to defaults', type: 'success' })
   }
   const portalTarget = typeof document !== 'undefined' ? document.body : null
@@ -303,6 +309,20 @@ export function FullstackView() {
           Generated files come from the selected backend + frontend template sets. Edit them in the
           Config admin panel under "Entity CRUD".
         </p>
+        {setsError && (
+          <div className="flex items-center justify-between gap-3 text-[11px] text-error border border-error/30 bg-error/10 rounded px-3 py-2">
+            <span>Couldn't load template sets ({setsError}); showing defaults.</span>
+            <button
+              type="button"
+              onClick={loadTemplateSets}
+              disabled={setsLoading}
+              className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-error/40 text-error hover:bg-error/10 transition-colors disabled:opacity-60"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>refresh</span>
+              Retry
+            </button>
+          </div>
+        )}
         {setsLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" aria-hidden="true">
             <div className="h-[58px] rounded bg-surface-container-low animate-pulse" />
@@ -337,7 +357,6 @@ export function FullstackView() {
           a set ships pre-checked, edit it under Admin → Entity CRUD.
         </p>
         <FullstackDepPicker
-          key={`deps-${resetKey}`}
           selected={selectedDeps}
           defaults={currentDefaults}
           onChange={setSelectedDeps}
@@ -418,7 +437,7 @@ export function FullstackView() {
           previousPreview={previousPreview}
           artifactId={meta.artifactId || 'demo'}
           onClose={clearPreview}
-          onDownload={() => { generate(); clearPreview() }}
+          onDownload={async () => { if (await generate()) clearPreview() }}
         />,
         document.body,
       )}
