@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
@@ -10,6 +10,7 @@ import { ProjectPreview } from '../ProjectPreview'
 import { StatusToast } from '../admin/shared/StatusToast'
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
+import { validateEntities, validateMeta, countMetaErrors, type MetaErrors } from './validation'
 
 interface ProjectMeta {
   groupId: string
@@ -39,16 +40,35 @@ const DEFAULT_ENTITIES: FullstackEntityDef[] = [
   },
 ]
 
+// localStorage keys — namespaced so they don't collide with the Backend/Frontend tabs.
+const LS = {
+  meta: 'fullstack:meta',
+  entities: 'fullstack:entities',
+  deps: 'fullstack:deps',
+  backendSet: 'fullstack:backendSet',
+  frontendSet: 'fullstack:frontendSet',
+} as const
+
+function loadJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) as T : fallback
+  } catch {
+    return fallback
+  }
+}
+
 export function FullstackView() {
-  const [meta, setMeta] = useState<ProjectMeta>(DEFAULT_META)
-  const [entities, setEntities] = useState<FullstackEntityDef[]>(DEFAULT_ENTITIES)
-  const [backendSet, setBackendSet] = useState('spring-jpa-crud')
-  const [frontendSet, setFrontendSet] = useState('react-tailwind-crud')
+  const [meta, setMeta] = useState<ProjectMeta>(() => loadJson(LS.meta, DEFAULT_META))
+  const [entities, setEntities] = useState<FullstackEntityDef[]>(() => loadJson(LS.entities, DEFAULT_ENTITIES))
+  const [backendSet, setBackendSet] = useState(() => localStorage.getItem(LS.backendSet) ?? 'spring-jpa-crud')
+  const [frontendSet, setFrontendSet] = useState(() => localStorage.getItem(LS.frontendSet) ?? 'react-tailwind-crud')
   const [availableSets, setAvailableSets] = useState<EntityTemplateSetSummary[]>([])
+  const [setsLoading, setSetsLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
   const [importOpen, setImportOpen] = useState(false)
-  const [selectedDeps, setSelectedDeps] = useState<string[]>([])
+  const [selectedDeps, setSelectedDeps] = useState<string[]>(() => loadJson<string[]>(LS.deps, []))
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
     fetchPreview, clearPreview,
@@ -59,11 +79,36 @@ export function FullstackView() {
   const currentFrontendSet = availableSets.find(s => s.setKey === frontendSet)
   const currentDefaults = currentBackendSet?.defaultDeps ?? []
 
-  // Reseed deps + pre-fill Boot/Java versions from the chosen backend set's
-  // pins whenever the set changes. The pins are advisory — user can still
-  // override the version dropdowns after the set is selected.
+  // Validation — mirrors the backend FullstackRequestValidator so problems surface inline
+  // before submit. The server stays the source of truth.
+  const entityErrors = useMemo(() => validateEntities(entities), [entities])
+  const metaErrors: MetaErrors = useMemo(() => validateMeta(meta), [meta])
+  const errorCount = entityErrors.count + countMetaErrors(metaErrors)
+  const hasErrors = errorCount > 0
+
+  // Persist form state so a refresh doesn't lose the user's work (mirrors useProjectState).
+  useEffect(() => { localStorage.setItem(LS.meta, JSON.stringify(meta)) }, [meta])
+  useEffect(() => { localStorage.setItem(LS.entities, JSON.stringify(entities)) }, [entities])
+  useEffect(() => { localStorage.setItem(LS.deps, JSON.stringify(selectedDeps)) }, [selectedDeps])
+  useEffect(() => { localStorage.setItem(LS.backendSet, backendSet) }, [backendSet])
+  useEffect(() => { localStorage.setItem(LS.frontendSet, frontendSet) }, [frontendSet])
+
+  // Reseed deps + pre-fill Boot/Java versions from the chosen backend set's pins. We only do
+  // this on a *genuine* user change of the backend set — never on initial hydration, so a
+  // restored selection (deps/versions) isn't clobbered when availableSets loads. The pins are
+  // advisory: the user can still override the version dropdowns afterwards.
+  const seededBackendSetRef = useRef<string | null>(null)
   useEffect(() => {
-    if (currentBackendSet) {
+    if (!currentBackendSet) return
+    if (seededBackendSetRef.current === null) {
+      // First resolution after load — adopt without overwriting restored state. Only seed
+      // defaults if we have no saved deps at all (first-ever visit).
+      seededBackendSetRef.current = currentBackendSet.setKey
+      setSelectedDeps(prev => prev.length === 0 ? [...currentBackendSet.defaultDeps] : prev)
+      return
+    }
+    if (seededBackendSetRef.current !== currentBackendSet.setKey) {
+      seededBackendSetRef.current = currentBackendSet.setKey
       setSelectedDeps([...currentBackendSet.defaultDeps])
       setMeta(prev => ({
         ...prev,
@@ -71,16 +116,23 @@ export function FullstackView() {
         javaVersion: currentBackendSet.javaVersion ?? prev.javaVersion,
       }))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendSet, currentBackendSet?.setKey])
+  }, [currentBackendSet])
 
-  // Frontend sets can also declare a javaVersion (rare). Apply on change.
+  // Frontend sets can also declare a javaVersion (rare). Apply only on a genuine change.
+  const seededFrontendSetRef = useRef<string | null>(null)
   useEffect(() => {
-    if (currentFrontendSet?.javaVersion) {
-      setMeta(prev => ({ ...prev, javaVersion: currentFrontendSet.javaVersion! }))
+    if (!currentFrontendSet) return
+    if (seededFrontendSetRef.current === null) {
+      seededFrontendSetRef.current = currentFrontendSet.setKey
+      return
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frontendSet, currentFrontendSet?.setKey])
+    if (seededFrontendSetRef.current !== currentFrontendSet.setKey) {
+      seededFrontendSetRef.current = currentFrontendSet.setKey
+      if (currentFrontendSet.javaVersion) {
+        setMeta(prev => ({ ...prev, javaVersion: currentFrontendSet.javaVersion! }))
+      }
+    }
+  }, [currentFrontendSet])
 
   function handleImport(imported: FullstackEntityDef[], mode: ImportMode) {
     setEntities(mode === 'replace' ? imported : [...entities, ...imported])
@@ -90,10 +142,12 @@ export function FullstackView() {
   }
 
   useEffect(() => {
+    setSetsLoading(true)
     fetch('/metadata/entity-template-sets')
       .then(res => res.ok ? res.json() : [])
       .then((data: EntityTemplateSetSummary[]) => setAvailableSets(data))
       .catch(() => { /* keep defaults */ })
+      .finally(() => setSetsLoading(false))
   }, [])
 
   const backendSets = availableSets.filter(s => s.kind === 'BACKEND_JAVA')
@@ -110,12 +164,8 @@ export function FullstackView() {
   }
 
   function validateBeforeSubmit(): boolean {
-    if (!meta.artifactId.trim()) {
-      setToast({ message: 'Artifact ID is required', type: 'error' })
-      return false
-    }
-    if (entities.length === 0) {
-      setToast({ message: 'Add at least one entity', type: 'error' })
+    if (hasErrors) {
+      setToast({ message: `Fix ${errorCount} validation issue${errorCount === 1 ? '' : 's'} first`, type: 'error' })
       return false
     }
     return true
@@ -175,27 +225,30 @@ export function FullstackView() {
       <section className="space-y-3">
         <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Project Metadata</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Labeled label="Group ID">
-            <input className={inputClass} value={meta.groupId}
+          <Labeled label="Group ID" htmlFor="fs-groupId" error={metaErrors.groupId}>
+            <input id="fs-groupId" className={inputClass(metaErrors.groupId)} value={meta.groupId}
+                   aria-invalid={Boolean(metaErrors.groupId)}
                    onChange={e => updateMeta({ groupId: e.target.value })} />
           </Labeled>
-          <Labeled label="Artifact ID">
-            <input className={inputClass} value={meta.artifactId}
+          <Labeled label="Artifact ID" htmlFor="fs-artifactId" error={metaErrors.artifactId}>
+            <input id="fs-artifactId" className={inputClass(metaErrors.artifactId)} value={meta.artifactId}
+                   aria-invalid={Boolean(metaErrors.artifactId)}
                    onChange={e => updateMeta({ artifactId: e.target.value })} />
           </Labeled>
-          <Labeled label="Package Name">
-            <input className={inputClass} value={meta.packageName}
+          <Labeled label="Package Name" htmlFor="fs-packageName" error={metaErrors.packageName}>
+            <input id="fs-packageName" className={inputClass(metaErrors.packageName)} value={meta.packageName}
+                   aria-invalid={Boolean(metaErrors.packageName)}
                    onChange={e => updateMeta({ packageName: e.target.value })} />
           </Labeled>
-          <Labeled label="Java Version">
-            <select className={inputClass} value={meta.javaVersion}
+          <Labeled label="Java Version" htmlFor="fs-javaVersion">
+            <select id="fs-javaVersion" className={inputClass()} value={meta.javaVersion}
                     onChange={e => updateMeta({ javaVersion: e.target.value })}>
               {javaVersions.length === 0 && <option value={meta.javaVersion}>{meta.javaVersion}</option>}
               {javaVersions.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </Labeled>
-          <Labeled label="Boot Version">
-            <select className={inputClass} value={meta.bootVersion}
+          <Labeled label="Boot Version" htmlFor="fs-bootVersion">
+            <select id="fs-bootVersion" className={inputClass()} value={meta.bootVersion}
                     onChange={e => updateMeta({ bootVersion: e.target.value })}>
               {bootVersions.length === 0 && <option value={meta.bootVersion}>{meta.bootVersion}</option>}
               {bootVersions.map(v => <option key={v} value={v}>{v}</option>)}
@@ -210,20 +263,27 @@ export function FullstackView() {
           Generated files come from the selected backend + frontend template sets. Edit them in the
           Config admin panel under "Entity CRUD".
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Labeled label="Backend">
-            <select className={inputClass} value={backendSet} onChange={e => setBackendSet(e.target.value)}>
-              {backendSets.length === 0 && <option value="spring-jpa-crud">spring-jpa-crud (default)</option>}
-              {backendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
-            </select>
-          </Labeled>
-          <Labeled label="Frontend">
-            <select className={inputClass} value={frontendSet} onChange={e => setFrontendSet(e.target.value)}>
-              {frontendSets.length === 0 && <option value="react-tailwind-crud">react-tailwind-crud (default)</option>}
-              {frontendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
-            </select>
-          </Labeled>
-        </div>
+        {setsLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" aria-hidden="true">
+            <div className="h-[58px] rounded bg-surface-container-low animate-pulse" />
+            <div className="h-[58px] rounded bg-surface-container-low animate-pulse" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Labeled label="Backend" htmlFor="fs-backendSet">
+              <select id="fs-backendSet" className={inputClass()} value={backendSet} onChange={e => setBackendSet(e.target.value)}>
+                {backendSets.length === 0 && <option value="spring-jpa-crud">spring-jpa-crud (default)</option>}
+                {backendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
+              </select>
+            </Labeled>
+            <Labeled label="Frontend" htmlFor="fs-frontendSet">
+              <select id="fs-frontendSet" className={inputClass()} value={frontendSet} onChange={e => setFrontendSet(e.target.value)}>
+                {frontendSets.length === 0 && <option value="react-tailwind-crud">react-tailwind-crud (default)</option>}
+                {frontendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
+              </select>
+            </Labeled>
+          </div>
+        )}
       </section>
 
       <section className="space-y-3">
@@ -259,13 +319,19 @@ export function FullstackView() {
             </button>
           </div>
         </div>
-        <EntitiesEditor entities={entities} onChange={setEntities} />
+        <EntitiesEditor entities={entities} onChange={setEntities} errors={entityErrors.entities} />
       </section>
 
       <section className="border-t border-outline-variant pt-6 flex items-center justify-end gap-3">
+        {hasErrors && (
+          <span className="text-[11px] text-error flex items-center gap-1 mr-auto">
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
+            {errorCount} issue{errorCount === 1 ? '' : 's'} to fix before generating
+          </span>
+        )}
         <button
           onClick={explore}
-          disabled={previewLoading}
+          disabled={previewLoading || hasErrors}
           title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview the generated file tree before downloading'}
           className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
         >
@@ -275,7 +341,7 @@ export function FullstackView() {
         </button>
         <button
           onClick={generate}
-          disabled={generating}
+          disabled={generating || hasErrors}
           className="px-8 py-3 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-md disabled:opacity-60"
         >
           {generating ? 'Generating…' : 'Generate Fullstack ZIP'}
@@ -305,14 +371,21 @@ export function FullstackView() {
   )
 }
 
-const inputClass =
-  'w-full bg-background border border-outline-variant rounded px-3 py-2 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all'
+function inputClass(error?: string): string {
+  const base = 'w-full bg-background border rounded px-3 py-2 text-sm text-on-surface outline-none transition-all'
+  return error
+    ? `${base} border-error focus:ring-2 focus:ring-error/20 focus:border-error`
+    : `${base} border-outline-variant focus:ring-2 focus:ring-primary/20 focus:border-primary`
+}
 
-function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
+function Labeled({ label, htmlFor, error, children }: {
+  label: string; htmlFor?: string; error?: string; children: React.ReactNode
+}) {
   return (
     <div className="space-y-1">
-      <label className="block text-[11px] font-semibold uppercase tracking-wider text-secondary">{label}</label>
+      <label htmlFor={htmlFor} className="block text-[11px] font-semibold uppercase tracking-wider text-secondary">{label}</label>
       {children}
+      {error && <p className="text-[11px] text-error">{error}</p>}
     </div>
   )
 }
