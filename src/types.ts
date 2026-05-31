@@ -61,6 +61,7 @@ export interface UseExtensionsResult {
 export interface ProjectFormProps {
   values:   ProjectFormValues
   onChange: (updates: Partial<ProjectFormValues>) => void
+  errors?:  Partial<Record<keyof ProjectFormValues, string>>
 }
 export interface OptionsPanelProps {
   metadata: InitializrMetadata | null

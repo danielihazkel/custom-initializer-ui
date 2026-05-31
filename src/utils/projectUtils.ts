@@ -68,6 +68,38 @@ export function defaultForm(metadata: InitializrMetadata | null): ProjectFormVal
   }
 }
 
+/** Fields the user must fill for a valid project. Mirrors ProjectForm's required set. */
+const REQUIRED_FIELDS = ['groupId', 'artifactId', 'name', 'packageName'] as const
+
+/** Valid Java package: dot-separated identifiers, each starting with a letter or underscore. */
+const PACKAGE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/
+
+export type FormErrors = Partial<Record<keyof ProjectFormValues, string>>
+
+/**
+ * Validates the user-editable project metadata. Returns per-field error messages
+ * so the form can surface specifics and the Generate/Explore actions can be gated.
+ */
+export function validateForm(form: ProjectFormValues): { valid: boolean; errors: FormErrors } {
+  const errors: FormErrors = {}
+
+  for (const field of REQUIRED_FIELDS) {
+    if (form[field].trim() === '') {
+      errors[field] = 'Required'
+    }
+  }
+
+  if (!errors.artifactId && /\s/.test(form.artifactId)) {
+    errors.artifactId = 'No spaces allowed'
+  }
+
+  if (!errors.packageName && !PACKAGE_NAME_RE.test(form.packageName)) {
+    errors.packageName = 'Invalid Java package name'
+  }
+
+  return { valid: Object.keys(errors).length === 0, errors }
+}
+
 export function triggerDownload(
   form: ProjectFormValues,
   selected: string[],

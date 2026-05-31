@@ -5,6 +5,7 @@ import { ProjectForm } from './ProjectForm'
 import { ModuleSelector } from './ModuleSelector'
 import { DependencySelector } from './DependencySelector'
 import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, PreviewError } from '../types'
+import type { FormErrors } from '../utils/projectUtils'
 
 interface InitializrViewProps {
   metadata: InitializrMetadata | null
@@ -24,6 +25,7 @@ interface InitializrViewProps {
   sqlParseError?: PreviewError | null
 
   form: ProjectFormValues
+  formErrors: FormErrors
   selectedDeps: string[]
   selectedOptions: Record<string, string[]>
   activeTemplate: string | null
@@ -64,6 +66,7 @@ export function InitializrView({
   onSoapByDepChange,
   sqlParseError,
   form,
+  formErrors,
   selectedDeps,
   selectedOptions,
   activeTemplate,
@@ -115,7 +118,7 @@ export function InitializrView({
             </p>
           </div>
           <OptionsPanel metadata={metadata} values={form} onChange={onFormChange} section="upper" />
-          <ProjectForm values={form} onChange={onFormChange} />
+          <ProjectForm values={form} onChange={onFormChange} errors={formErrors} />
           <OptionsPanel metadata={metadata} values={form} onChange={onFormChange} section="lower" />
 
           {/* Multi-Module Toggle */}

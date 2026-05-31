@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildWizardBody } from './projectUtils'
+import { buildWizardBody, validateForm } from './projectUtils'
 import type { ProjectFormValues, SqlByDep } from '../types'
 
 const form: ProjectFormValues = {
@@ -50,5 +50,50 @@ describe('buildWizardBody', () => {
     expect(body.sqlOptions).toEqual({
       'data-jpa': { subPackage: 'domain', tables: [{ name: 'users', generateRepository: true }] },
     })
+  })
+})
+
+describe('validateForm', () => {
+  it('accepts a well-formed project', () => {
+    const result = validateForm(form)
+    expect(result.valid).toBe(true)
+    expect(result.errors).toEqual({})
+  })
+
+  it.each(['groupId', 'artifactId', 'name', 'packageName'] as const)(
+    'flags %s as required when blank',
+    (field) => {
+      const result = validateForm({ ...form, [field]: '   ' })
+      expect(result.valid).toBe(false)
+      expect(result.errors[field]).toBe('Required')
+    },
+  )
+
+  it('does not require description', () => {
+    const result = validateForm({ ...form, description: '' })
+    expect(result.valid).toBe(true)
+  })
+
+  it('rejects an artifactId containing whitespace', () => {
+    const result = validateForm({ ...form, artifactId: 'my demo' })
+    expect(result.valid).toBe(false)
+    expect(result.errors.artifactId).toBe('No spaces allowed')
+  })
+
+  it('rejects a malformed package name', () => {
+    const result = validateForm({ ...form, packageName: 'com..menora' })
+    expect(result.valid).toBe(false)
+    expect(result.errors.packageName).toBe('Invalid Java package name')
+  })
+
+  it('rejects a package name starting with a digit', () => {
+    const result = validateForm({ ...form, packageName: 'com.9menora' })
+    expect(result.valid).toBe(false)
+    expect(result.errors.packageName).toBe('Invalid Java package name')
+  })
+
+  it('prefers the required message over the format message when blank', () => {
+    const result = validateForm({ ...form, packageName: '' })
+    expect(result.errors.packageName).toBe('Required')
   })
 })

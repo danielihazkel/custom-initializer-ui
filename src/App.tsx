@@ -24,8 +24,10 @@ const FrontendView = lazy(() => import('./components/FrontendView').then(m => ({
 const FullstackView = lazy(() => import('./components/fullstack/FullstackView').then(m => ({ default: m.FullstackView })))
 import { CommandPalette } from './components/CommandPalette'
 import { AppToast } from './components/AppToast'
+import { InitializrSkeleton, ViewSkeleton } from './components/Skeletons'
+import { ConfirmDialog } from './components/ConfirmDialog'
 
-import { triggerDownload, captureSnapshot } from './utils/projectUtils'
+import { triggerDownload, captureSnapshot, validateForm } from './utils/projectUtils'
 import type { Toast } from './types'
 
 export default function App() {
@@ -44,7 +46,7 @@ export default function App() {
   const { rules: compatibilityRules } = useCompatibility('BACKEND')
   const { templates } = useStarterTemplates('BACKEND')
   const { modules: moduleTemplates } = useModuleTemplates()
-  const { preview, previousPreview, loading: previewLoading, error: previewError, fetchPreview, clearPreview } = useProjectPreview()
+  const { preview, previousPreview, loading: previewLoading, error: previewError, fetchPreview, clearPreview, clearError: clearPreviewError } = useProjectPreview()
 
   const {
     form,
@@ -78,6 +80,17 @@ export default function App() {
     pushRecent,
   } = useProjectPresets()
 
+  const { valid: formValid, errors: formErrors } = validateForm(form)
+  const firstFormError = Object.values(formErrors)[0]
+
+  // A wizard error names a specific dependency (or its kind mentions SQL/OpenAPI/WSDL);
+  // those belong in the dependency selector's inline banner. Everything else is a generic
+  // preview/network failure and gets the top-level banner with Retry.
+  const isWizardPreviewError = Boolean(
+    previewError && (previewError.dep || /sql|openapi|wsdl/i.test(previewError.kind ?? ''))
+  )
+  const genericPreviewError = previewError && !isWizardPreviewError ? previewError : null
+
   const currentSnapshot = captureSnapshot({
     form,
     selected: selectedDeps,
@@ -94,12 +107,18 @@ export default function App() {
   const [appToast, setAppToast] = useState<Toast | null>(null)
   
   const [isDark, setIsDark] = useState<boolean>(() => {
+    // The inline script in index.html already resolved & applied the theme class
+    // pre-paint (localStorage → prefers-color-scheme). Mirror its decision here.
+    if (document.documentElement.classList.contains('light')) return false
+    if (document.documentElement.classList.contains('dark')) return true
     const saved = localStorage.getItem('theme')
-    return saved ? saved === 'dark' : true
+    if (saved === 'light' || saved === 'dark') return saved === 'dark'
+    return !window.matchMedia('(prefers-color-scheme: light)').matches
   })
   
   const [compareOpen, setCompareOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
 
   // Command Palette global hotkey
   useEffect(() => {
@@ -127,14 +146,36 @@ export default function App() {
   }, [isDark])
 
   function handleShare(): void {
-    navigator.clipboard.writeText(window.location.href).then(() => {
+    const url = window.location.href
+    const onCopied = (): void => {
       setShareCopied(true)
       setAppToast({ message: 'Link copied to clipboard', type: 'success' })
       setTimeout(() => setShareCopied(false), 2000)
+    }
+    navigator.clipboard?.writeText(url).then(onCopied).catch(() => {
+      // Fallback for insecure contexts / denied permission.
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = url
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        const ok = document.execCommand('copy')
+        document.body.removeChild(ta)
+        if (ok) onCopied()
+        else throw new Error('copy command rejected')
+      } catch {
+        setAppToast({ message: "Couldn't copy link — copy it from the address bar", type: 'error' })
+      }
     })
   }
 
   function handleGenerate(): void {
+    if (!formValid) {
+      setAppToast({ message: firstFormError ? `Fix project metadata: ${firstFormError}` : 'Fix project metadata before generating', type: 'error' })
+      return
+    }
     triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep)
     pushRecent(currentSnapshot)
     setGenerateSuccess(true)
@@ -142,8 +183,16 @@ export default function App() {
     setTimeout(() => setGenerateSuccess(false), 2000)
   }
 
+  function retryPreview(): void {
+    fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep)
+  }
+
   function handleReset(): void {
-    if (!window.confirm('Reset the project to defaults? Your current selections will be lost.')) return
+    setResetConfirmOpen(true)
+  }
+
+  function confirmReset(): void {
+    setResetConfirmOpen(false)
     resetAll()
     setAppToast({ message: 'Project reset to defaults', type: 'success' })
   }
@@ -279,9 +328,9 @@ export default function App() {
           {view !== 'frontend' && view !== 'fullstack' && (
           <button
             onClick={() => { fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep); pushRecent(currentSnapshot) }}
-            disabled={previewLoading}
-            title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview project files before downloading'}
-            className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
+            disabled={previewLoading || !formValid}
+            title={!formValid ? (firstFormError ? `Fix project metadata: ${firstFormError}` : 'Fix project metadata first') : previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview project files before downloading'}
+            className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${previewError && formValid ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
           >
             {previewLoading
               ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }}>progress_activity</span>
@@ -291,7 +340,10 @@ export default function App() {
           {view !== 'frontend' && view !== 'fullstack' && (
           <button
             onClick={handleGenerate}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn ${generateSuccess ? 'generate-success' : ''}`}
+            disabled={!formValid}
+            aria-disabled={!formValid}
+            title={!formValid ? (firstFormError ? `Fix project metadata: ${firstFormError}` : 'Fix project metadata first') : 'Generate and download the project'}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn ${generateSuccess ? 'generate-success' : ''} ${!formValid ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
             style={{ minWidth: '110px' }}
           >
             <AnimatePresence mode="wait">
@@ -333,7 +385,7 @@ export default function App() {
 
         {view === 'frontend' ? (
           <div className="relative z-10 animate-fade-in-up">
-            <Suspense fallback={<div className="flex items-center justify-center p-16 text-secondary text-sm">Loading Frontend Generator...</div>}>
+            <Suspense fallback={<ViewSkeleton />}>
               <FrontendView
                 onGenerated={() => setAppToast({ message: 'Frontend project downloaded!', type: 'success' })}
                 onReset={() => setAppToast({ message: 'Project reset to defaults', type: 'success' })}
@@ -342,33 +394,59 @@ export default function App() {
           </div>
         ) : view === 'fullstack' ? (
           <div className="relative z-10 animate-fade-in-up">
-            <Suspense fallback={<div className="flex items-center justify-center p-16 text-secondary text-sm">Loading Fullstack Generator...</div>}>
+            <Suspense fallback={<ViewSkeleton />}>
               <FullstackView />
             </Suspense>
           </div>
         ) : view === 'tutorial' ? (
           <div className="relative z-10 animate-fade-in-up">
-            <Suspense fallback={<div className="flex items-center justify-center p-16 text-secondary text-sm">Loading Training...</div>}>
+            <Suspense fallback={<ViewSkeleton />}>
               <TutorialView onClose={() => setView('initializr')} />
             </Suspense>
           </div>
         ) : view === 'guide' ? (
           <div className="relative z-10 animate-fade-in-up">
-            <Suspense fallback={<div className="flex items-center justify-center p-16 text-secondary text-sm">Loading Guide...</div>}>
+            <Suspense fallback={<ViewSkeleton />}>
               <GuideView onClose={() => setView('initializr')} />
             </Suspense>
           </div>
         ) : view === 'admin' ? (
           <div className="relative z-10">
-            <Suspense fallback={<div className="flex items-center justify-center p-16 text-secondary text-sm">Loading Config...</div>}>
+            <Suspense fallback={<ViewSkeleton />}>
               <AdminPage />
             </Suspense>
           </div>
         ) : loading ? (
-          <div className="flex items-center justify-center p-16 text-secondary text-sm relative z-10">
-            Loading metadata…
+          <div className="relative z-10">
+            <InitializrSkeleton />
           </div>
         ) : (
+          <>
+          {genericPreviewError && (
+            <div className="max-w-7xl mx-auto px-8 relative z-10 mb-6">
+              <div role="alert" className="glass-panel border-error-container rounded-xl px-4 py-3 flex items-start gap-3">
+                <span className="material-symbols-outlined text-error mt-0.5" style={{ fontSize: '20px' }}>error</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-on-surface">Couldn't generate preview</p>
+                  <p className="text-xs text-secondary mt-0.5 break-words">{genericPreviewError.message}</p>
+                </div>
+                <button
+                  onClick={retryPreview}
+                  disabled={previewLoading}
+                  className="px-3 py-1 rounded-lg text-xs font-medium bg-primary text-on-primary hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-60 shrink-0"
+                >
+                  {previewLoading ? 'Retrying…' : 'Retry'}
+                </button>
+                <button
+                  onClick={clearPreviewError}
+                  aria-label="Dismiss error"
+                  className="p-1 rounded text-secondary hover:text-on-surface transition-colors shrink-0"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>close</span>
+                </button>
+              </div>
+            </div>
+          )}
           <InitializrView
             metadata={metadata}
             templates={templates}
@@ -384,8 +462,9 @@ export default function App() {
             soapCapableDeps={soapCapableDeps}
             soapByDep={soapByDep}
             onSoapByDepChange={handleSoapByDepChange}
-            sqlParseError={previewError}
+            sqlParseError={isWizardPreviewError ? previewError : null}
             form={form}
+            formErrors={formErrors}
             selectedDeps={selectedDeps}
             selectedOptions={selectedOptions}
             activeTemplate={activeTemplate}
@@ -406,6 +485,7 @@ export default function App() {
             onPresetDelete={deletePreset}
             onRecentDelete={deleteRecent}
           />
+          </>
         )}
       </main>
 
@@ -448,6 +528,17 @@ export default function App() {
         }}
         onFormChange={handleFormChange}
       />
+
+      {resetConfirmOpen && (
+        <ConfirmDialog
+          title="Reset project to defaults?"
+          message="Your current form values and selected dependencies will be lost."
+          confirmLabel="Reset"
+          tone="danger"
+          onConfirm={confirmReset}
+          onCancel={() => setResetConfirmOpen(false)}
+        />
+      )}
 
       <AppToast toast={appToast} onClear={() => setAppToast(null)} />
     </div>

@@ -98,5 +98,7 @@ export function useProjectPreview() {
     // previousPreview is intentionally kept so the next fetch can diff against it
   }, [])
 
-  return { preview, previousPreview, loading, error, fetchPreview, clearPreview }
+  const clearError = useCallback(() => setError(null), [])
+
+  return { preview, previousPreview, loading, error, fetchPreview, clearPreview, clearError }
 }

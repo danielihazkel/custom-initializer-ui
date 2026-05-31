@@ -5,14 +5,16 @@ function FloatingInput({
   label,
   value,
   onChange,
+  error,
 }: {
   id: keyof ProjectFormValues,
   label: string,
   value: string,
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void,
+  error?: string,
 }) {
-  const isRequired = ['groupId', 'artifactId', 'name', 'packageName'].includes(id);
-  const showError = isRequired && value.trim() === '';
+  const showError = Boolean(error);
+  const errorId = `${id}-error`;
 
   return (
     <div className="relative group">
@@ -23,6 +25,8 @@ function FloatingInput({
         placeholder={label}
         value={value}
         onChange={onChange}
+        aria-invalid={showError}
+        aria-describedby={showError ? errorId : undefined}
       />
       <label
         htmlFor={id}
@@ -36,11 +40,14 @@ function FloatingInput({
           error
         </span>
       )}
+      {showError && (
+        <p id={errorId} className="mt-1 ml-1 text-[11px] font-medium text-error">{error}</p>
+      )}
     </div>
   )
 }
 
-export function ProjectForm({ values, onChange }: ProjectFormProps) {
+export function ProjectForm({ values, onChange, errors }: ProjectFormProps) {
   function handle(field: keyof ProjectFormValues) {
     return (e: React.ChangeEvent<HTMLInputElement>): void => {
       const val = e.target.value
@@ -66,19 +73,19 @@ export function ProjectForm({ values, onChange }: ProjectFormProps) {
       </div>
       <div className="grid grid-cols-2 gap-4 mt-4">
         <div className="col-span-1">
-          <FloatingInput id="groupId" label="Group" value={values.groupId} onChange={handle('groupId')} />
+          <FloatingInput id="groupId" label="Group" value={values.groupId} onChange={handle('groupId')} error={errors?.groupId} />
         </div>
         <div className="col-span-1">
-          <FloatingInput id="artifactId" label="Artifact" value={values.artifactId} onChange={handle('artifactId')} />
+          <FloatingInput id="artifactId" label="Artifact" value={values.artifactId} onChange={handle('artifactId')} error={errors?.artifactId} />
         </div>
         <div className="col-span-2">
-          <FloatingInput id="name" label="Name" value={values.name} onChange={handle('name')} />
+          <FloatingInput id="name" label="Name" value={values.name} onChange={handle('name')} error={errors?.name} />
         </div>
         <div className="col-span-2">
-          <FloatingInput id="description" label="Description" value={values.description} onChange={handle('description')} />
+          <FloatingInput id="description" label="Description" value={values.description} onChange={handle('description')} error={errors?.description} />
         </div>
         <div className="col-span-2">
-          <FloatingInput id="packageName" label="Package name" value={values.packageName} onChange={handle('packageName')} />
+          <FloatingInput id="packageName" label="Package name" value={values.packageName} onChange={handle('packageName')} error={errors?.packageName} />
         </div>
       </div>
     </div>
