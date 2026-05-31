@@ -71,7 +71,7 @@ export function FullstackView() {
   const [selectedDeps, setSelectedDeps] = useState<string[]>(() => loadJson<string[]>(LS.deps, []))
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
-    fetchPreview, clearPreview,
+    fetchPreview, clearPreview, clearError,
   } = useFullstackPreview()
 
   const { bootVersions, javaVersions } = useAdminMetadata()
@@ -92,6 +92,10 @@ export function FullstackView() {
   useEffect(() => { localStorage.setItem(LS.deps, JSON.stringify(selectedDeps)) }, [selectedDeps])
   useEffect(() => { localStorage.setItem(LS.backendSet, backendSet) }, [backendSet])
   useEffect(() => { localStorage.setItem(LS.frontendSet, frontendSet) }, [frontendSet])
+
+  // Drop a stale preview error once the user changes any input, so the Explore button
+  // doesn't stay error-styled (with the message hidden in a tooltip) after they've moved on.
+  useEffect(() => { clearError() }, [meta, entities, selectedDeps, backendSet, frontendSet, clearError])
 
   // Reseed deps + pre-fill Boot/Java versions from the chosen backend set's pins. We only do
   // this on a *genuine* user change of the backend set — never on initial hydration, so a

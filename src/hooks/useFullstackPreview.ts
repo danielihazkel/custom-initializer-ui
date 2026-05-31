@@ -38,5 +38,9 @@ export function useFullstackPreview() {
     setError(null)
   }, [])
 
-  return { preview, previousPreview, loading, error, fetchPreview, clearPreview }
+  // Clear only the error (keep the last preview for diffing). Used to drop a stale
+  // failure once the user edits the inputs, so the Explore button doesn't stay stuck.
+  const clearError = useCallback(() => setError(null), [])
+
+  return { preview, previousPreview, loading, error, fetchPreview, clearPreview, clearError }
 }
