@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
 import { useMetadata } from './hooks/useMetadata'
 import { useExtensions } from './hooks/useExtensions'
 import { useSqlDialects } from './hooks/useSqlDialects'
@@ -116,6 +116,12 @@ export default function App() {
     return !window.matchMedia('(prefers-color-scheme: light)').matches
   })
   
+  // The inline script in index.html already resolved the motion preference pre-paint
+  // (localStorage → prefers-reduced-motion). Mirror its decision here.
+  const [motionEnabled, setMotionEnabled] = useState<boolean>(
+    () => !document.documentElement.classList.contains('motion-off')
+  )
+
   const [compareOpen, setCompareOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
@@ -144,6 +150,12 @@ export default function App() {
     }
     localStorage.setItem('theme', isDark ? 'dark' : 'light')
   }, [isDark])
+
+  // Sync html class + storage with the motion preference
+  useEffect(() => {
+    document.documentElement.classList.toggle('motion-off', !motionEnabled)
+    localStorage.setItem('motion', motionEnabled ? 'on' : 'off')
+  }, [motionEnabled])
 
   function handleShare(): void {
     const url = window.location.href
@@ -210,11 +222,20 @@ export default function App() {
   }
 
   return (
+    <MotionConfig reducedMotion={motionEnabled ? 'user' : 'always'}>
     <div className="min-h-screen bg-background text-on-background">
       {/* Top Nav */}
       <header className="fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 glass-header">
+        {/* Conveyor belt accent running along the bottom of the header */}
+        <div className="factory-conveyor absolute bottom-0 left-0 right-0 h-[3px] pointer-events-none" aria-hidden="true" />
         <div className="flex items-center gap-8">
-          <span className="text-xl font-bold text-on-surface tracking-tighter">Menora Initializr</span>
+          <span className="flex items-center gap-2 text-xl font-bold text-on-surface tracking-tighter">
+            <span className="relative inline-flex items-center justify-center w-6 h-5 text-primary" aria-hidden="true">
+              <span className="factory-gear-cw material-symbols-outlined absolute -left-0.5" style={{ fontSize: '18px' }}>settings</span>
+              <span className="factory-gear-ccw material-symbols-outlined absolute right-0 bottom-0 text-primary/70" style={{ fontSize: '12px' }}>settings</span>
+            </span>
+            Menora Initializr
+          </span>
           <nav className="hidden md:flex items-center gap-6">
             <button
               onClick={() => setView('initializr')}
@@ -314,6 +335,18 @@ export default function App() {
           </button>
           )}
           <div id="header-frontend-reset" className="contents" />
+          {/* Animations toggle */}
+          <button
+            onClick={() => setMotionEnabled(m => !m)}
+            className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
+            aria-label="Toggle animations"
+            aria-pressed={motionEnabled}
+            title={motionEnabled ? 'Disable animations' : 'Enable animations'}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+              {motionEnabled ? 'motion_photos_on' : 'motion_photos_paused'}
+            </span>
+          </button>
           {/* Theme toggle */}
           <button
             onClick={() => setIsDark(d => !d)}
@@ -379,9 +412,12 @@ export default function App() {
 
       {/* Main Content */}
       <main className="pt-20 pb-8 min-h-screen bg-background relative overflow-hidden">
-        {/* Decorative ambient background blobs */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-tertiary/10 rounded-full blur-[120px] pointer-events-none" />
+        {/* Blueprint factory-floor grid, slowly panning behind the glow blobs */}
+        <div className="factory-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
+        {/* Decorative ambient background blobs — slowly drift/breathe (see index.css) */}
+        <div className="ambient-blob-a absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
+        <div className="ambient-blob-b absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-tertiary/10 rounded-full blur-[120px] pointer-events-none" />
+        <div className="ambient-blob-c absolute top-[30%] right-[15%] w-[28%] h-[28%] bg-secondary/10 rounded-full blur-[120px] pointer-events-none" />
 
         {view === 'frontend' ? (
           <div className="relative z-10 animate-fade-in-up">
@@ -542,5 +578,6 @@ export default function App() {
 
       <AppToast toast={appToast} onClear={() => setAppToast(null)} />
     </div>
+    </MotionConfig>
   )
 }

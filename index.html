@@ -21,6 +21,15 @@
           document.documentElement.classList.add('dark');
         }
       })();
+      // Resolve the animation preference before first paint (mirrors the theme script).
+      (function () {
+        try {
+          var m = localStorage.getItem('motion');
+          var off = m === 'off' ||
+            (m == null && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+          if (off) document.documentElement.classList.add('motion-off');
+        } catch (e) { /* leave animations enabled on failure */ }
+      })();
     </script>
   </head>
   <body>

@@ -250,6 +250,122 @@ html.dark .glass-drawer {
   animation: fade-in-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
+/* Ambient background blobs — slow, looping drift so the backdrop feels alive */
+@keyframes blob-drift-a {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(8%, 6%) scale(1.12);
+    opacity: 1;
+  }
+}
+
+@keyframes blob-drift-b {
+  0% {
+    transform: translate(0, 0) scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-7%, -5%) scale(0.92);
+    opacity: 0.7;
+  }
+}
+
+@keyframes blob-drift-c {
+  0% {
+    transform: translate(0, 0) scale(0.95);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(5%, -8%) scale(1.1);
+    opacity: 0.9;
+  }
+}
+
+.ambient-blob-a {
+  animation: blob-drift-a 22s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+.ambient-blob-b {
+  animation: blob-drift-b 26s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+.ambient-blob-c {
+  animation: blob-drift-c 19s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+/* ── "Working factory" motifs — an assembly line visibly running ───── */
+
+/* Conveyor belt: diagonal stripes scrolling sideways */
+@keyframes conveyor-scroll {
+  to { background-position-x: 44px; }
+}
+.factory-conveyor {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--color-primary) 55%, transparent) 0,
+    color-mix(in srgb, var(--color-primary) 55%, transparent) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+  background-size: 44px 3px;
+  opacity: 0.6;
+  animation: conveyor-scroll 0.9s linear infinite;
+  will-change: background-position;
+}
+
+/* Interlocking gears */
+@keyframes gear-cw { to { transform: rotate(360deg); } }
+@keyframes gear-ccw { to { transform: rotate(-360deg); } }
+.factory-gear-cw {
+  display: inline-block;
+  transform-origin: 50% 50%;
+  animation: gear-cw 8s linear infinite;
+}
+.factory-gear-ccw {
+  display: inline-block;
+  transform-origin: 50% 50%;
+  animation: gear-ccw 6s linear infinite;
+}
+
+/* Pipeline divider: a highlight sweeping along the line */
+@keyframes pipe-flow {
+  to { background-position-x: -200%; }
+}
+.factory-pipe {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-primary) 70%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: repeat;
+  animation: pipe-flow 3s linear infinite;
+  will-change: background-position;
+}
+
+/* Blueprint factory-floor grid, slowly panning diagonally */
+@keyframes grid-pan {
+  to { background-position: 40px 40px; }
+}
+.factory-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--color-outline-variant) 45%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-outline-variant) 45%, transparent) 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.5;
+  animation: grid-pan 30s linear infinite;
+  -webkit-mask-image: radial-gradient(ellipse at center, black 35%, transparent 80%);
+  mask-image: radial-gradient(ellipse at center, black 35%, transparent 80%);
+  will-change: background-position;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
@@ -285,4 +401,31 @@ html.dark .glass-drawer {
 .tutorial-scroll::-webkit-scrollbar-thumb {
   background: var(--color-outline-variant);
   border-radius: 3px;
+}
+
+/* Respect the OS "reduce motion" preference — neutralize continuous/large motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .ambient-blob-a, .ambient-blob-b, .ambient-blob-c,
+  .factory-conveyor, .factory-gear-cw, .factory-gear-ccw, .factory-pipe, .factory-grid {
+    animation: none !important;
+  }
+}
+
+/* User-controlled animation kill switch (header toggle) — stops CSS motion;
+   framer-motion is gated separately via <MotionConfig reducedMotion="always">. */
+html.motion-off *, html.motion-off *::before, html.motion-off *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+html.motion-off .ambient-blob-a, html.motion-off .ambient-blob-b, html.motion-off .ambient-blob-c,
+html.motion-off .factory-conveyor, html.motion-off .factory-gear-cw, html.motion-off .factory-gear-ccw,
+html.motion-off .factory-pipe, html.motion-off .factory-grid {
+  animation: none !important;
 }

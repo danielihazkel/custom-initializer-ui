@@ -41,6 +41,15 @@ const DB_KIND_LABELS: Record<string, string> = {
   mongodb: 'Primary MongoDB Connection',
 }
 
+// Cascade the dependency rows in when a group expands or search filters the list.
+const depGridContainer = {
+  animate: { transition: { staggerChildren: 0.03 } },
+}
+const depGridItem = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+}
+
 export function DependencySelector({
   metadata,
   selected,
@@ -198,7 +207,20 @@ export function DependencySelector({
               <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>shopping_cart</span>
               <h3 className="text-xs font-bold uppercase tracking-widest">Selected Dependencies</h3>
             </div>
-            <span className="text-xs font-bold py-1 px-3 bg-primary/10 text-primary rounded-full">{selected.length}</span>
+            <span className="text-xs font-bold py-1 px-3 bg-primary/10 text-primary rounded-full">
+              <AnimatePresence mode="popLayout" initial={false}>
+                <motion.span
+                  key={selected.length}
+                  className="inline-block"
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+                >
+                  {selected.length}
+                </motion.span>
+              </AnimatePresence>
+            </span>
           </div>
 
           {/* Single scroll container — warnings + primary DB selector + deps list */}
@@ -315,7 +337,17 @@ export function DependencySelector({
                             ? 'bg-secondary border-secondary text-on-surface'
                             : 'bg-surface-container-lowest border-secondary/40 group-hover:border-secondary'
                             }`}>
-                            {(selectedOptions[dep.id] ?? []).includes(opt.id) && <span className="material-symbols-outlined font-bold text-background" style={{ fontSize: '12px' }}>check</span>}
+                            {(selectedOptions[dep.id] ?? []).includes(opt.id) && (
+                              <motion.span
+                                className="material-symbols-outlined font-bold text-background"
+                                style={{ fontSize: '12px' }}
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: 'spring', stiffness: 600, damping: 20 }}
+                              >
+                                check
+                              </motion.span>
+                            )}
                           </div>
                           <input
                             type="checkbox"
@@ -388,9 +420,13 @@ export function DependencySelector({
                   animate={{ opacity: 1 }}
                   className="min-h-[200px] border-2 border-dashed border-outline-variant/50 rounded-2xl flex flex-col items-center justify-center text-center p-8 bg-surface-container-low/30"
                 >
-                  <div className="w-16 h-16 rounded-full bg-surface-container-highest flex items-center justify-center mb-4">
+                  <motion.div
+                    className="w-16 h-16 rounded-full bg-surface-container-highest flex items-center justify-center mb-4"
+                    animate={{ y: [0, -6, 0] }}
+                    transition={{ duration: 3, ease: 'easeInOut', repeat: Infinity }}
+                  >
                     <span className="material-symbols-outlined text-secondary opacity-50" style={{ fontSize: '32px' }}>inventory_2</span>
-                  </div>
+                  </motion.div>
                   <h4 className="text-sm font-bold text-on-surface mb-1">Your cart is empty</h4>
                   <p className="text-xs text-secondary max-w-[200px]">Search and add dependencies from the panel on the right.</p>
                 </motion.div>
@@ -455,7 +491,7 @@ export function DependencySelector({
                       aria-controls={gridId}
                       className="w-full flex items-center gap-3 cursor-pointer group/header"
                     >
-                      <div className="h-px flex-1 bg-outline-variant/50"></div>
+                      <div className="factory-pipe h-px flex-1 bg-outline-variant/50"></div>
                       <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-secondary px-2 py-1 bg-surface-container-lowest rounded-full border border-outline-variant/30 group-hover/header:border-primary/50 group-hover/header:text-on-surface transition-colors">
                         <span
                           className={`material-symbols-outlined transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`}
@@ -470,7 +506,7 @@ export function DependencySelector({
                           </span>
                         )}
                       </div>
-                      <div className="h-px flex-1 bg-outline-variant/50"></div>
+                      <div className="factory-pipe h-px flex-1 bg-outline-variant/50"></div>
                     </button>
                     <AnimatePresence initial={false}>
                       {!collapsed && (
@@ -483,12 +519,18 @@ export function DependencySelector({
                           transition={{ duration: 0.2, ease: 'easeInOut' }}
                           style={{ overflow: 'hidden' }}
                         >
-                          <div className="grid gap-2">
+                          <motion.div
+                            className="grid gap-2"
+                            variants={depGridContainer}
+                            initial="initial"
+                            animate="animate"
+                          >
                             {group.values.map(dep => {
                               const isSelected = selected.includes(dep.id)
                               return (
                                 <motion.label
                                   layout
+                                  variants={depGridItem}
                                   key={dep.id}
                                   className={`flex items-start gap-4 p-4 rounded-xl border relative cursor-pointer overflow-hidden group transition-all duration-300
                           ${isSelected
@@ -508,7 +550,17 @@ export function DependencySelector({
                           ${isSelected
                                       ? 'bg-primary border-primary text-white shadow-[0_0_10px_rgba(139,92,246,0.5)]'
                                       : 'bg-surface-container-lowest border-secondary/40 group-hover:border-primary/50'}`}>
-                                    {isSelected && <span className="material-symbols-outlined font-bold" style={{ fontSize: '14px' }}>check</span>}
+                                    {isSelected && (
+                                      <motion.span
+                                        className="material-symbols-outlined font-bold"
+                                        style={{ fontSize: '14px' }}
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        transition={{ type: 'spring', stiffness: 600, damping: 20 }}
+                                      >
+                                        check
+                                      </motion.span>
+                                    )}
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <div className="text-sm font-bold text-on-surface flex items-center flex-wrap gap-2">
@@ -526,7 +578,7 @@ export function DependencySelector({
                                 </motion.label>
                               )
                             })}
-                          </div>
+                          </motion.div>
                         </motion.div>
                       )}
                     </AnimatePresence>
