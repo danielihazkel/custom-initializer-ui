@@ -60,53 +60,81 @@
 
 /* ── Light mode color overrides ────────────────────────────── */
 html.light {
-  --color-background: #f8fafc;
-  --color-on-background: #0f172a;
+  /* Surfaces — white / cool near-white */
+  --color-background: #f6f8fc;
+  --color-on-background: #0a1f44;
   --color-surface: #ffffff;
-  --color-surface-dim: #f1f5f9;
+  --color-surface-dim: #ebf0f8;
   --color-surface-container: #ffffff;
-  --color-surface-container-low: #f8fafc;
-  --color-surface-container-high: #f1f5f9;
-  --color-surface-container-highest: #e2e8f0;
+  --color-surface-container-low: #f6f8fc;
+  --color-surface-container-high: #eef2f9;
+  --color-surface-container-highest: #e2e9f4;
   --color-surface-container-lowest: #ffffff;
   --color-surface-bright: #ffffff;
-  --color-surface-variant: #f1f5f9;
-  --color-surface-tint: #7c3aed;
-  --color-primary: #7c3aed;
-  --color-on-primary: #ffffff;
-  --color-primary-container: #8b5cf6;
-  --color-on-primary-container: #ffffff;
-  --color-primary-fixed: #ede9fe;
-  --color-primary-fixed-dim: #d0bcff;
-  --color-on-primary-fixed: #23005c;
-  --color-on-primary-fixed-variant: #5b21b6;
-  --color-inverse-primary: #d0bcff;
-  --color-secondary: #64748b;
+  --color-surface-variant: #eef2f9;
+  --color-surface-tint: #ffc700;
+
+  /* Primary — brand gold (dark navy text for contrast) */
+  --color-primary: #ffc700;
+  --color-on-primary: #1f2430;
+  --color-primary-container: #f0b400;
+  --color-on-primary-container: #2a1e00;
+  --color-primary-fixed: #fff3cc;
+  --color-primary-fixed-dim: #ffe082;
+  --color-on-primary-fixed: #2a1e00;
+  --color-on-primary-fixed-variant: #5c4400;
+  --color-inverse-primary: #ffe082;
+
+  /* Secondary — brand charcoal-navy (the dark neutral) */
+  --color-secondary: #2d3344;
   --color-on-secondary: #ffffff;
-  --color-secondary-container: #f1f5f9;
-  --color-on-secondary-container: #334155;
-  --color-secondary-fixed: #e2e8f0;
-  --color-secondary-fixed-dim: #cbd5e1;
-  --color-on-secondary-fixed: #0f172a;
-  --color-on-secondary-fixed-variant: #334155;
-  --color-tertiary: #059669;
+  --color-secondary-container: #e2e6ee;
+  --color-on-secondary-container: #2a3a57;
+  --color-secondary-fixed: #e2e6ee;
+  --color-secondary-fixed-dim: #c2cad9;
+  --color-on-secondary-fixed: #0a1f44;
+  --color-on-secondary-fixed-variant: #3a4a66;
+
+  /* Tertiary — royal blue accent */
+  --color-tertiary: #1e4fa0;
   --color-on-tertiary: #ffffff;
-  --color-tertiary-container: #10b981;
-  --color-on-tertiary-container: #ffffff;
-  --color-tertiary-fixed: #d1fae5;
-  --color-tertiary-fixed-dim: #6ee7b7;
-  --color-on-tertiary-fixed: #022c22;
-  --color-on-tertiary-fixed-variant: #047857;
+  --color-tertiary-container: #dde6f7;
+  --color-on-tertiary-container: #0a2b6b;
+  --color-tertiary-fixed: #dde6f7;
+  --color-tertiary-fixed-dim: #afc2ec;
+  --color-on-tertiary-fixed: #001a4d;
+  --color-on-tertiary-fixed-variant: #1e4fa0;
+
+  /* Error — unchanged red, light containers */
   --color-error: #ef4444;
   --color-on-error: #ffffff;
   --color-error-container: #fee2e2;
   --color-on-error-container: #991b1b;
-  --color-outline: #cbd5e1;
-  --color-outline-variant: #e2e8f0;
-  --color-on-surface: #0f172a;
-  --color-on-surface-variant: #64748b;
-  --color-inverse-surface: #1e293b;
-  --color-inverse-on-surface: #f8fafc;
+
+  /* Outline / borders — blue-gray */
+  --color-outline: #c2d0e4;
+  --color-outline-variant: #e2e9f4;
+
+  /* On-surface + inverse (inverse-surface = brand footer charcoal-navy) */
+  --color-on-surface: #0a1f44;
+  --color-on-surface-variant: #51607a;
+  --color-inverse-surface: #2d3344;
+  --color-inverse-on-surface: #f6f8fc;
+}
+
+/* Light mode: brand gold is the primary *fill* (buttons/CTAs), but gold text on
+   white is unreadable. Route accent text/icons (text|fill|stroke-primary, incl.
+   hover/group-hover/peer-focus variants) to the readable royal blue. Backgrounds,
+   borders, and on-primary button text keep their gold. The :not() guard avoids
+   touching the lighter -primary-container / -primary-fixed tokens. */
+html.light [class*="text-primary"]:not([class*="text-primary-"]) {
+  color: var(--color-tertiary);
+}
+html.light [class*="fill-primary"]:not([class*="fill-primary-"]) {
+  fill: var(--color-tertiary);
+}
+html.light [class*="stroke-primary"]:not([class*="stroke-primary-"]) {
+  stroke: var(--color-tertiary);
 }
 
 body {
