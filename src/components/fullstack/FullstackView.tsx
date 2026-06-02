@@ -343,16 +343,24 @@ export function FullstackView() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Labeled label="Backend" htmlFor="fs-backendSet">
-              <select id="fs-backendSet" className={inputClass()} value={backendSet} onChange={e => setBackendSet(e.target.value)}>
-                {backendSets.length === 0 && <option value="spring-jpa-crud">spring-jpa-crud (default)</option>}
-                {backendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
-              </select>
+              {/* Only one set per kind is seeded today, so a single-option <select> is just
+                  visual noise — show read-only text until a second set exists (then #5). */}
+              {backendSets.length > 1 ? (
+                <select id="fs-backendSet" className={inputClass()} value={backendSet} onChange={e => setBackendSet(e.target.value)}>
+                  {backendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
+                </select>
+              ) : (
+                <SetLabel name={currentBackendSet?.name} setKey={backendSet} />
+              )}
             </Labeled>
             <Labeled label="Frontend" htmlFor="fs-frontendSet">
-              <select id="fs-frontendSet" className={inputClass()} value={frontendSet} onChange={e => setFrontendSet(e.target.value)}>
-                {frontendSets.length === 0 && <option value="react-tailwind-crud">react-tailwind-crud (default)</option>}
-                {frontendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
-              </select>
+              {frontendSets.length > 1 ? (
+                <select id="fs-frontendSet" className={inputClass()} value={frontendSet} onChange={e => setFrontendSet(e.target.value)}>
+                  {frontendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
+                </select>
+              ) : (
+                <SetLabel name={currentFrontendSet?.name} setKey={frontendSet} />
+              )}
             </Labeled>
           </div>
         )}
@@ -463,6 +471,15 @@ function inputClass(error?: string): string {
   return error
     ? `${base} border-error focus:ring-2 focus:ring-error/20 focus:border-error`
     : `${base} border-outline-variant focus:ring-2 focus:ring-primary/20 focus:border-primary`
+}
+
+function SetLabel({ name, setKey }: { name?: string; setKey: string }) {
+  return (
+    <div className="w-full bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-sm text-on-surface">
+      {name ?? setKey}
+      <span className="ml-2 text-[11px] text-secondary font-mono">{setKey}</span>
+    </div>
+  )
 }
 
 function Labeled({ label, htmlFor, error, children }: {

@@ -1,5 +1,6 @@
 import type { FullstackEntityDef, FullstackFieldDef, FullstackFieldType } from '../../types'
 import type { EntityErrors } from './validation'
+import { EnumValuesEditor } from './EnumValuesEditor'
 
 const FIELD_TYPES: FullstackFieldType[] = [
   'STRING', 'LONG', 'INTEGER', 'BOOLEAN',
@@ -222,25 +223,23 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                       {fErr?.length && <p className="mt-0.5 text-[10px] text-error">{fErr.length}</p>}
                     </td>
                     <td className="py-1.5 px-2 align-top">
-                      <input
-                        type="text"
-                        aria-label="Enum values (comma separated)"
-                        aria-invalid={Boolean(fErr?.enumValues)}
-                        title={field.type !== 'ENUM' ? 'Enum values apply to ENUM fields only' : undefined}
-                        className={`w-full bg-background border rounded px-2 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed focus:ring-1 outline-none ${fErr?.enumValues ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
-                        placeholder="ACTIVE,DISABLED"
-                        value={field.enumValues?.join(',') ?? ''}
-                        disabled={field.type !== 'ENUM'}
-                        onChange={e => updateField(eIdx, fIdx, {
-                          enumValues: e.target.value.split(',').map(s => s.trim()).filter(Boolean),
-                        })}
-                      />
-                      {field.type === 'ENUM' && (field.enumValues?.length ?? 0) > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {field.enumValues!.map((v, i) => (
-                            <span key={i} className="inline-block px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-mono">{v}</span>
-                          ))}
-                        </div>
+                      {field.type === 'ENUM' ? (
+                        <EnumValuesEditor
+                          values={field.enumValues ?? []}
+                          onChange={vals => updateField(eIdx, fIdx, { enumValues: vals })}
+                          invalid={Boolean(fErr?.enumValues)}
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          aria-label="Enum values (ENUM fields only)"
+                          title="Enum values apply to ENUM fields only"
+                          className="w-full bg-background border border-outline-variant rounded px-2 py-1 text-xs opacity-40 cursor-not-allowed outline-none"
+                          placeholder="ACTIVE,DISABLED"
+                          value=""
+                          disabled
+                          readOnly
+                        />
                       )}
                       {fErr?.enumValues && <p className="mt-0.5 text-[10px] text-error">{fErr.enumValues}</p>}
                     </td>
