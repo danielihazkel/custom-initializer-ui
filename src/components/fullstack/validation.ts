@@ -71,12 +71,22 @@ export interface FieldErrors {
   enumValues?: string
   length?: string
   generated?: string
+  min?: string
+  max?: string
+  pattern?: string
+  email?: string
+}
+
+export interface RelationErrors {
+  fieldName?: string
+  targetEntity?: string
 }
 
 export interface EntityErrors {
   name?: string
   pk?: string
   fields: Record<number, FieldErrors>
+  relations?: Record<number, RelationErrors>
 }
 
 export interface FullstackErrors {
@@ -95,6 +105,14 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
     result.noEntities = true
     result.count += 1
     return result
+  }
+
+  // First pass: PK count per entity (case-insensitive), so a relation can resolve its target's
+  // key shape — a MANY_TO_ONE may not point at a composite-PK entity (mirrors the backend guard).
+  const pkCountByName = new Map<string, number>()
+  for (const e of entities) {
+    if (!e.name?.trim()) continue
+    pkCountByName.set(e.name.trim().toLowerCase(), e.fields.filter(f => f.primaryKey).length)
   }
 
   const seenEntityNames = new Map<string, number[]>() // lower name → entity indexes
@@ -153,6 +171,24 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
         else if (field.type !== 'LONG' && field.type !== 'INTEGER') fErr.generated = 'Generated key must be LONG or INTEGER'
       }
 
+      // Numeric bounds: only on numeric types, min ≤ max. Regex/email: only on STRING.
+      const isNumeric = field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'BIG_DECIMAL'
+      if (field.min != null || field.max != null) {
+        if (!isNumeric) {
+          if (field.min != null) fErr.min = 'Min applies to numeric fields only'
+          if (field.max != null) fErr.max = 'Max applies to numeric fields only'
+        } else if (field.min != null && field.max != null && field.min > field.max) {
+          fErr.min = 'Min must be ≤ Max'
+        }
+      }
+      if (field.pattern != null && field.pattern !== '') {
+        if (field.type !== 'STRING') fErr.pattern = 'Pattern applies to STRING only'
+        else {
+          try { new RegExp(field.pattern) } catch { fErr.pattern = 'Invalid regular expression' }
+        }
+      }
+      if (field.email && field.type !== 'STRING') fErr.email = 'Email applies to STRING only'
+
       if (Object.keys(fErr).length > 0) {
         eErr.fields[fIdx] = fErr
         result.count += Object.keys(fErr).length
@@ -174,15 +210,46 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
     }
 
     if (pkCount === 0) {
-      eErr.pk = 'Mark exactly one field as the primary key (PK)'
+      eErr.pk = 'Mark at least one field as the primary key (PK)'
       result.count += 1
-    } else if (pkCount > 1) {
-      eErr.pk = 'Only one field may be the primary key (PK)'
+    } else if (pkCount > 1 && entity.fields.some(f => f.primaryKey && f.generated)) {
+      // Composite keys are allowed, but a generated key requires a single PK (JPA IDENTITY).
+      eErr.pk = 'A generated key requires a single primary key'
       result.count += 1
     }
 
+    // Relations (MANY_TO_ONE). fieldName must be a unique, valid identifier across fields and
+    // relations; targetEntity must exist and not be a composite-PK entity.
+    const relations = entity.relations ?? []
+    relations.forEach((rel, rIdx) => {
+      const rErr: RelationErrors = {}
+      const nameErr = identifierError(rel.fieldName, 'Relation field name')
+      if (nameErr) {
+        rErr.fieldName = nameErr
+      } else {
+        const lower = rel.fieldName.trim().toLowerCase()
+        const clashesField = entity.fields.some(f => f.name.trim().toLowerCase() === lower)
+        const clashesRel = relations.slice(0, rIdx).some(r => r.fieldName.trim().toLowerCase() === lower)
+        if (clashesField || clashesRel) rErr.fieldName = 'Name collides with a field or relation'
+      }
+      const target = rel.targetEntity?.trim()
+      if (!target) {
+        rErr.targetEntity = 'Select a target entity'
+      } else {
+        const targetPkCount = pkCountByName.get(target.toLowerCase())
+        if (targetPkCount === undefined) rErr.targetEntity = `Unknown entity '${target}'`
+        else if (targetPkCount > 1) rErr.targetEntity = "Can't target a composite-PK entity"
+      }
+      if (Object.keys(rErr).length > 0) {
+        eErr.relations = eErr.relations ?? {}
+        eErr.relations[rIdx] = rErr
+        result.count += Object.keys(rErr).length
+      }
+    })
+
     if (eErr.name) result.count += 1
-    if (eErr.name || eErr.pk || Object.keys(eErr.fields).length > 0) {
+    const hasRelErrs = eErr.relations && Object.keys(eErr.relations).length > 0
+    if (eErr.name || eErr.pk || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
       result.entities[eIdx] = eErr
     }
   })

@@ -1,6 +1,7 @@
-import type { FullstackEntityDef, FullstackFieldDef, FullstackFieldType } from '../../types'
+import type { FullstackEntityDef, FullstackFieldDef, FullstackFieldType, FullstackRelationDef } from '../../types'
 import type { EntityErrors } from './validation'
 import { EnumValuesEditor } from './EnumValuesEditor'
+import { RelationsEditor } from './RelationsEditor'
 
 const FIELD_TYPES: FullstackFieldType[] = [
   'STRING', 'LONG', 'INTEGER', 'BOOLEAN',
@@ -44,6 +45,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
       name: `${src.name}Copy`,
       tableName: undefined,
       fields: src.fields.map(f => ({ ...f, enumValues: f.enumValues ? [...f.enumValues] : undefined })),
+      relations: src.relations ? src.relations.map(r => ({ ...r })) : undefined,
     }
     onChange([...entities.slice(0, idx + 1), copy, ...entities.slice(idx + 1)])
   }
@@ -61,8 +63,19 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
     if (type !== 'ENUM') updates.enumValues = undefined
     // Auto-increment is only valid on an integral key — drop it when the type can't carry it.
     if (type !== 'LONG' && type !== 'INTEGER') updates.generated = undefined
+    // Constraints follow the same "clear what no longer applies" rule the backend enforces:
+    // numeric bounds only on numeric types, regex/email only on STRING.
+    const numeric = type === 'LONG' || type === 'INTEGER' || type === 'BIG_DECIMAL'
+    if (!numeric) { updates.min = undefined; updates.max = undefined }
+    if (type !== 'STRING') { updates.pattern = undefined; updates.email = undefined }
     updateField(eIdx, fIdx, updates)
   }
+
+  function updateRelations(eIdx: number, relations: FullstackRelationDef[]) {
+    updateEntity(eIdx, { relations })
+  }
+  // All entity names (non-blank) — valid FK targets for the relations editor.
+  const entityNames = entities.map(e => e.name.trim()).filter(Boolean)
   function duplicateField(eIdx: number, fIdx: number) {
     onChange(entities.map((e, i) => {
       if (i !== eIdx) return e
@@ -156,6 +169,10 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                   <th className="text-center py-1.5 px-2 w-12">Req</th>
                   <th className="text-center py-1.5 px-2 w-12">Uniq</th>
                   <th className="text-left py-1.5 px-2 w-20">Length</th>
+                  <th className="text-left py-1.5 px-2 w-20">Min</th>
+                  <th className="text-left py-1.5 px-2 w-20">Max</th>
+                  <th className="text-left py-1.5 px-2 w-28">Pattern</th>
+                  <th className="text-center py-1.5 px-2 w-12">Email</th>
                   <th className="text-left py-1.5 px-2">Enum values</th>
                   <th className="w-8"></th>
                 </tr>
@@ -163,7 +180,11 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
               <tbody>
                 {entity.fields.map((field, fIdx) => {
                   const fErr = eErr?.fields?.[fIdx]
-                  const canGenerate = !!field.primaryKey && (field.type === 'LONG' || field.type === 'INTEGER')
+                  const pkCount = entity.fields.filter(f => f.primaryKey).length
+                  // A generated key requires a single PK (JPA IDENTITY can't target one column of a composite key).
+                  const canGenerate = !!field.primaryKey && pkCount === 1 && (field.type === 'LONG' || field.type === 'INTEGER')
+                  const isNumeric = field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'BIG_DECIMAL'
+                  const isString = field.type === 'STRING'
                   return (
                   <tr key={fIdx} className="border-t border-outline-variant">
                     <td className="py-1.5 px-2 align-top">
@@ -195,7 +216,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                     <td className="py-1.5 px-2 text-center align-top">
                       <input type="checkbox" aria-label="Auto-generated value" checked={!!field.generated}
                         disabled={!canGenerate}
-                        title={canGenerate ? undefined : 'Auto-generated applies to a LONG/INTEGER primary key only'}
+                        title={canGenerate ? undefined : (pkCount > 1 ? 'A generated key requires a single primary key' : 'Auto-generated applies to a LONG/INTEGER primary key only')}
                         className="disabled:opacity-40 disabled:cursor-not-allowed"
                         onChange={e => updateField(eIdx, fIdx, { generated: e.target.checked })} />
                       {fErr?.generated && <p className="mt-0.5 text-[10px] text-error">{fErr.generated}</p>}
@@ -221,6 +242,54 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                         onChange={e => updateField(eIdx, fIdx, { length: e.target.value === '' ? undefined : Number(e.target.value) })}
                       />
                       {fErr?.length && <p className="mt-0.5 text-[10px] text-error">{fErr.length}</p>}
+                    </td>
+                    <td className="py-1.5 px-2 align-top">
+                      <input
+                        type="number"
+                        aria-label="Minimum value"
+                        aria-invalid={Boolean(fErr?.min)}
+                        title={isNumeric ? undefined : 'Min applies to numeric fields only'}
+                        className={`w-full bg-background border rounded px-2 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed focus:ring-1 outline-none ${fErr?.min ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
+                        value={field.min ?? ''}
+                        disabled={!isNumeric}
+                        onChange={e => updateField(eIdx, fIdx, { min: e.target.value === '' ? undefined : Number(e.target.value) })}
+                      />
+                      {fErr?.min && <p className="mt-0.5 text-[10px] text-error">{fErr.min}</p>}
+                    </td>
+                    <td className="py-1.5 px-2 align-top">
+                      <input
+                        type="number"
+                        aria-label="Maximum value"
+                        aria-invalid={Boolean(fErr?.max)}
+                        title={isNumeric ? undefined : 'Max applies to numeric fields only'}
+                        className={`w-full bg-background border rounded px-2 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed focus:ring-1 outline-none ${fErr?.max ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
+                        value={field.max ?? ''}
+                        disabled={!isNumeric}
+                        onChange={e => updateField(eIdx, fIdx, { max: e.target.value === '' ? undefined : Number(e.target.value) })}
+                      />
+                      {fErr?.max && <p className="mt-0.5 text-[10px] text-error">{fErr.max}</p>}
+                    </td>
+                    <td className="py-1.5 px-2 align-top">
+                      <input
+                        type="text"
+                        aria-label="Regex pattern"
+                        aria-invalid={Boolean(fErr?.pattern)}
+                        title={isString ? undefined : 'Pattern applies to STRING fields only'}
+                        className={`w-full bg-background border rounded px-2 py-1 text-xs font-mono disabled:opacity-40 disabled:cursor-not-allowed focus:ring-1 outline-none ${fErr?.pattern ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
+                        value={field.pattern ?? ''}
+                        disabled={!isString}
+                        placeholder="[A-Z]{3}"
+                        onChange={e => updateField(eIdx, fIdx, { pattern: e.target.value === '' ? undefined : e.target.value })}
+                      />
+                      {fErr?.pattern && <p className="mt-0.5 text-[10px] text-error">{fErr.pattern}</p>}
+                    </td>
+                    <td className="py-1.5 px-2 text-center align-top">
+                      <input type="checkbox" aria-label="Email format" checked={!!field.email}
+                        disabled={!isString}
+                        title={isString ? undefined : 'Email applies to STRING fields only'}
+                        className="disabled:opacity-40 disabled:cursor-not-allowed"
+                        onChange={e => updateField(eIdx, fIdx, { email: e.target.checked })} />
+                      {fErr?.email && <p className="mt-0.5 text-[10px] text-error">{fErr.email}</p>}
                     </td>
                     <td className="py-1.5 px-2 align-top">
                       {field.type === 'ENUM' ? (
@@ -276,6 +345,13 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
               Add field
             </button>
           </div>
+
+          <RelationsEditor
+            relations={entity.relations ?? []}
+            entityNames={entityNames}
+            onChange={rels => updateRelations(eIdx, rels)}
+            errors={eErr?.relations}
+          />
         </div>
         )
       })}

@@ -325,13 +325,29 @@ export interface FullstackFieldDef {
   required?: boolean
   unique?: boolean
   length?: number
+  min?: number
+  max?: number
+  pattern?: string
+  email?: boolean
   enumValues?: string[]
+}
+
+// v1 supports the FK-owning side only (MANY_TO_ONE); the inverse @OneToMany is auto-derived
+// server-side via the inverseCollections opt.
+export type FullstackRelationType = 'MANY_TO_ONE'
+
+export interface FullstackRelationDef {
+  type: FullstackRelationType
+  fieldName: string
+  targetEntity: string
+  required?: boolean
 }
 
 export interface FullstackEntityDef {
   name: string
   tableName?: string
   fields: FullstackFieldDef[]
+  relations?: FullstackRelationDef[]
 }
 
 export interface EntityTemplateSetSummary {
@@ -359,6 +375,8 @@ export interface FullstackStarterRequest {
   dependencies?: string[]
   backendTemplateSet?: string
   frontendTemplateSet?: string
+  /** Opt-in scaffolding extras, e.g. { scaffold: ["audit","softDelete","inverseCollections","tests"] }. */
+  opts?: Record<string, string[]>
   entities: FullstackEntityDef[]
 }
 

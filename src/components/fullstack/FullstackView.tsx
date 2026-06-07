@@ -49,7 +49,16 @@ const LS = {
   deps: 'fullstack:deps',
   backendSet: 'fullstack:backendSet',
   frontendSet: 'fullstack:frontendSet',
+  opts: 'fullstack:opts',
 } as const
+
+// Opt-in scaffolding extras, sent as opts.scaffold. Each value matches a backend optScaffold<Option> gate.
+const SCAFFOLD_OPTIONS: { value: string; label: string; hint: string }[] = [
+  { value: 'audit', label: 'Audit timestamps', hint: 'createdAt / updatedAt via JPA auditing' },
+  { value: 'softDelete', label: 'Soft delete', hint: 'deleted flag + Hibernate @SQLDelete/@SQLRestriction' },
+  { value: 'inverseCollections', label: 'Inverse collections', hint: 'Read-only @OneToMany on the referenced side' },
+  { value: 'tests', label: 'Controller tests', hint: 'Per-entity @WebMvcTest' },
+]
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -72,6 +81,7 @@ export function FullstackView() {
   const [toast, setToast] = useState<Toast | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [selectedDeps, setSelectedDeps] = useState<string[]>(() => loadJson<string[]>(LS.deps, []))
+  const [scaffoldOpts, setScaffoldOpts] = useState<string[]>(() => loadJson<string[]>(LS.opts, []))
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
     fetchPreview, clearPreview, clearError,
@@ -95,10 +105,11 @@ export function FullstackView() {
   useEffect(() => { localStorage.setItem(LS.deps, JSON.stringify(selectedDeps)) }, [selectedDeps])
   useEffect(() => { localStorage.setItem(LS.backendSet, backendSet) }, [backendSet])
   useEffect(() => { localStorage.setItem(LS.frontendSet, frontendSet) }, [frontendSet])
+  useEffect(() => { localStorage.setItem(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
 
   // Drop a stale preview error once the user changes any input, so the Explore button
   // doesn't stay error-styled (with the message hidden in a tooltip) after they've moved on.
-  useEffect(() => { clearError() }, [meta, entities, selectedDeps, backendSet, frontendSet, clearError])
+  useEffect(() => { clearError() }, [meta, entities, selectedDeps, backendSet, frontendSet, scaffoldOpts, clearError])
 
   // Reseed deps + pre-fill Boot/Java versions from the chosen backend set's pins. We only do
   // this on a *genuine* user change of the backend set — never on initial hydration, so a
@@ -183,8 +194,13 @@ export function FullstackView() {
       backendTemplateSet: backendSet,
       frontendTemplateSet: frontendSet,
       dependencies: selectedDeps,
+      opts: scaffoldOpts.length ? { scaffold: scaffoldOpts } : undefined,
       entities,
     }
+  }
+
+  function toggleOpt(value: string) {
+    setScaffoldOpts(prev => prev.includes(value) ? prev.filter(o => o !== value) : [...prev, value])
   }
 
   function validateBeforeSubmit(): boolean {
@@ -250,6 +266,7 @@ export function FullstackView() {
     setEntities(DEFAULT_ENTITIES.map(e => ({ ...e, fields: e.fields.map(f => ({ ...f })) })))
     setBackendSet('spring-jpa-crud')
     setFrontendSet('react-tailwind-crud')
+    setScaffoldOpts([])
     // Re-seed deps from whichever backend set resolves; the set-change effect won't
     // fire if the key is unchanged, so seed explicitly here.
     const target = availableSets.find(s => s.setKey === 'spring-jpa-crud')
@@ -381,6 +398,32 @@ export function FullstackView() {
           defaults={currentDefaults}
           onChange={setSelectedDeps}
         />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Options</h2>
+        <p className="text-[11px] text-on-surface-variant">
+          Opt-in scaffolding extras applied to every entity. Off by default.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {SCAFFOLD_OPTIONS.map(opt => (
+            <label
+              key={opt.value}
+              className="flex items-start gap-2.5 p-3 rounded-lg border border-outline-variant hover:border-primary/50 cursor-pointer transition-colors"
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={scaffoldOpts.includes(opt.value)}
+                onChange={() => toggleOpt(opt.value)}
+              />
+              <span className="flex flex-col">
+                <span className="text-sm text-on-surface">{opt.label}</span>
+                <span className="text-[11px] text-secondary">{opt.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
       </section>
 
       <section className="space-y-3">
