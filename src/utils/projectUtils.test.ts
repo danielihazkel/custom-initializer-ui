@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildWizardBody, validateForm } from './projectUtils'
+import { buildWizardBody, validateForm, requiredSqlDeps, isSqlDepSatisfied } from './projectUtils'
 import type { ProjectFormValues, SqlByDep } from '../types'
 
 const form: ProjectFormValues = {
@@ -43,13 +43,38 @@ describe('buildWizardBody', () => {
         sql: 'CREATE TABLE users (id INT);',
         subPackage: 'domain',
         tables: [{ name: 'users', generateRepository: true }],
+        apiMode: 'MAPSTRUCT_DTO',
       },
     }
     const body = buildWizardBody(form, ['data-jpa'], {}, sqlByDep, {}, {})
     expect(body.sqlByDep).toEqual({ 'data-jpa': 'CREATE TABLE users (id INT);' })
     expect(body.sqlOptions).toEqual({
-      'data-jpa': { subPackage: 'domain', tables: [{ name: 'users', generateRepository: true }] },
+      'data-jpa': { subPackage: 'domain', tables: [{ name: 'users', generateRepository: true }], apiMode: 'MAPSTRUCT_DTO' },
     })
+  })
+})
+
+describe('requiredSqlDeps', () => {
+  it('requires data-jpa for entities-only mode', () => {
+    expect(requiredSqlDeps('NONE')).toEqual(['data-jpa'])
+  })
+  it('adds web for any REST api mode', () => {
+    expect(requiredSqlDeps('ENTITY_DIRECT')).toEqual(['data-jpa', 'web'])
+    expect(requiredSqlDeps('INLINE_DTO')).toEqual(['data-jpa', 'web'])
+  })
+  it('adds web + mapstruct for the MapStruct mode', () => {
+    expect(requiredSqlDeps('MAPSTRUCT_DTO')).toEqual(['data-jpa', 'web', 'mapstruct'])
+  })
+})
+
+describe('isSqlDepSatisfied', () => {
+  it('is satisfied when the dep is selected', () => {
+    expect(isSqlDepSatisfied('data-jpa', ['data-jpa'])).toBe(true)
+    expect(isSqlDepSatisfied('data-jpa', [])).toBe(false)
+  })
+  it('treats webflux as satisfying the web requirement', () => {
+    expect(isSqlDepSatisfied('web', ['webflux'])).toBe(true)
+    expect(isSqlDepSatisfied('mapstruct', ['webflux'])).toBe(false)
   })
 })
 

@@ -6,6 +6,7 @@ import { OpenApiWizardDrawer } from './OpenApiWizardDrawer'
 import { SoapWizardDrawer } from './SoapWizardDrawer'
 import { SuggestionStrip } from './SuggestionStrip'
 import { useDependencyCompatibility } from '../hooks/useDependencyCompatibility'
+import { requiredSqlDeps, isSqlDepSatisfied } from '../utils/projectUtils'
 
 const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle', 'mongodb', 'h2'] as const
 const DB_PRIMARY_OPTIONS: Record<string, string> = {
@@ -605,7 +606,15 @@ export function DependencySelector({
           depName={wizardDep.name}
           dialectName={sqlDialects[wizardDep.id] ?? ''}
           initial={sqlByDep[wizardDep.id] ?? null}
-          onSave={entry => onSqlByDepChange(wizardDep.id, entry)}
+          selected={selected}
+          onSave={entry => {
+            onSqlByDepChange(wizardDep.id, entry)
+            if (entry) {
+              const missing = requiredSqlDeps(entry.apiMode ?? 'NONE')
+                .filter(d => !isSqlDepSatisfied(d, selected))
+              if (missing.length) onChange([...selected, ...missing])
+            }
+          }}
           parseError={sqlParseError && sqlParseError.dep === wizardDep.id ? sqlParseError : null}
         />
       )}

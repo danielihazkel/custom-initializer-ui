@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AdminFormDrawer } from './admin/shared/AdminFormDrawer'
 import { CodeEditor } from './admin/file-contributions/CodeEditor'
-import type { SqlTableConfig, SqlWizardEntry } from '../types'
+import type { SqlApiMode, SqlTableConfig, SqlWizardEntry } from '../types'
+import { requiredSqlDeps, isSqlDepSatisfied } from '../utils/projectUtils'
+
+const API_MODES: { id: SqlApiMode; label: string; hint: string }[] = [
+  { id: 'NONE', label: 'Entities only', hint: 'JPA entities (+ optional repositories)' },
+  { id: 'ENTITY_DIRECT', label: 'REST API — entity', hint: 'Repository + Service + Controller, entity exposed directly' },
+  { id: 'INLINE_DTO', label: 'REST API — DTO', hint: 'Adds a record DTO with from()/toEntity() — no extra dependency' },
+  { id: 'MAPSTRUCT_DTO', label: 'REST API — MapStruct', hint: 'Adds a record DTO + @Mapper interface (auto-adds MapStruct)' },
+]
 
 interface Props {
   isOpen: boolean
@@ -10,6 +18,7 @@ interface Props {
   depName: string
   dialectName: string
   initial: SqlWizardEntry | null
+  selected: string[]
   onSave: (entry: SqlWizardEntry | null) => void
   parseError?: { message: string; snippet?: string; statementIndex?: number } | null
 }
@@ -27,10 +36,11 @@ function detectTableNames(sql: string): string[] {
   return names
 }
 
-export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, initial, onSave, parseError }: Props) {
+export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, initial, selected, onSave, parseError }: Props) {
   const [sql, setSql] = useState<string>(initial?.sql ?? '')
   const [subPackage, setSubPackage] = useState<string>(initial?.subPackage ?? 'entity')
   const [tables, setTables] = useState<SqlTableConfig[]>(initial?.tables ?? [])
+  const [apiMode, setApiMode] = useState<SqlApiMode>(initial?.apiMode ?? 'NONE')
 
   // Re-seed drawer state when it re-opens for a different dep
   useEffect(() => {
@@ -38,6 +48,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
       setSql(initial?.sql ?? '')
       setSubPackage(initial?.subPackage ?? 'entity')
       setTables(initial?.tables ?? [])
+      setApiMode(initial?.apiMode ?? 'NONE')
     }
   }, [isOpen, depId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -60,6 +71,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
         sql: trimmed,
         subPackage: subPackage.trim() || 'entity',
         tables,
+        apiMode,
       })
     }
     onClose()
@@ -104,6 +116,51 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
             />
             <span className="text-[10px] text-secondary font-mono">→ repositories go to <span className="text-on-surface-variant">repository/</span></span>
           </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
+            Generate REST API
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {API_MODES.map(m => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setApiMode(m.id)}
+                title={m.hint}
+                className={`text-left px-3 py-2 rounded-lg border text-xs transition-all ${
+                  apiMode === m.id
+                    ? 'bg-primary/10 border-primary text-primary'
+                    : 'bg-surface-container-highest border-outline-variant text-on-surface-variant hover:border-primary/50'
+                }`}
+              >
+                <div className="font-bold">{m.label}</div>
+                <div className="text-[10px] leading-tight mt-0.5 text-secondary">{m.hint}</div>
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 space-y-1">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-secondary">Required dependencies</div>
+            {requiredSqlDeps(apiMode).map(dep => {
+              const ok = isSqlDepSatisfied(dep, selected)
+              return (
+                <div key={dep} className="flex items-center gap-1.5 text-[10px]">
+                  <span className={`material-symbols-outlined ${ok ? 'text-primary' : 'text-secondary'}`} style={{ fontSize: '13px' }}>
+                    {ok ? 'check_circle' : 'add_circle'}
+                  </span>
+                  <code className="text-primary">{dep}</code>
+                  <span className="text-on-surface-variant">{ok ? 'already selected' : 'added automatically on save'}</span>
+                </div>
+              )
+            })}
+          </div>
+          {apiMode !== 'NONE' && (
+            <p className="text-[10px] text-on-surface-variant mt-1.5 leading-relaxed">
+              A Service + Controller (REST CRUD under <code className="text-primary">/api/&lt;table&gt;</code>) is generated per
+              table with a primary key. Tables without a primary key still produce an entity only.
+            </p>
+          )}
         </div>
 
         <div>

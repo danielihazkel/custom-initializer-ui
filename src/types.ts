@@ -97,10 +97,14 @@ export interface SqlTableConfig {
   generateRepository: boolean
 }
 
+// How much of a REST stack the SQL wizard generates on top of the parsed entities.
+export type SqlApiMode = 'NONE' | 'ENTITY_DIRECT' | 'INLINE_DTO' | 'MAPSTRUCT_DTO'
+
 export interface SqlWizardEntry {
   sql: string
   subPackage: string
   tables: SqlTableConfig[]
+  apiMode?: SqlApiMode  // defaults to 'NONE' (entities only) when absent
 }
 
 export type SqlByDep = Record<string, SqlWizardEntry>

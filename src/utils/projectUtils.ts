@@ -1,4 +1,19 @@
-import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlByDep, OpenApiByDep, SoapByDep } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlApiMode, SqlByDep, OpenApiByDep, SoapByDep } from '../types'
+
+// Dependencies the SQL wizard's generated code needs for a given api mode:
+// data-jpa (entities + repositories, every mode), web (REST controllers, any
+// mode != NONE), mapstruct (the @Mapper interface, MAPSTRUCT_DTO only).
+export function requiredSqlDeps(apiMode: SqlApiMode): string[] {
+  const req = ['data-jpa']
+  if (apiMode !== 'NONE') req.push('web')
+  if (apiMode === 'MAPSTRUCT_DTO') req.push('mapstruct')
+  return req
+}
+
+// A required dep is satisfied when selected; webflux also satisfies `web`.
+export function isSqlDepSatisfied(dep: string, selected: string[]): boolean {
+  return selected.includes(dep) || (dep === 'web' && selected.includes('webflux'))
+}
 
 export function captureSnapshot(args: {
   form: ProjectFormValues
@@ -206,12 +221,13 @@ export function buildWizardBody(
   }
 
   const sqlByDepBody: Record<string, string> = {}
-  const sqlOptionsBody: Record<string, { subPackage: string; tables: { name: string; generateRepository: boolean }[] }> = {}
+  const sqlOptionsBody: Record<string, { subPackage: string; tables: { name: string; generateRepository: boolean }[]; apiMode: string }> = {}
   for (const [depId, entry] of Object.entries(activeSql)) {
     sqlByDepBody[depId] = entry.sql
     sqlOptionsBody[depId] = {
       subPackage: entry.subPackage,
       tables: entry.tables.map(t => ({ name: t.name, generateRepository: t.generateRepository })),
+      apiMode: entry.apiMode ?? 'NONE',
     }
   }
 
