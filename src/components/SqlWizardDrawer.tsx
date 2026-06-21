@@ -14,7 +14,7 @@ interface Props {
   parseError?: { message: string; snippet?: string; statementIndex?: number } | null
 }
 
-const TABLE_REGEX = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([a-zA-Z_][\w$]*))/gi
+const TABLE_REGEX = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([a-zA-Z_][\w$]*(?:\.[a-zA-Z_][\w$]*)?))/gi
 
 function detectTableNames(sql: string): string[] {
   const names: string[] = []
