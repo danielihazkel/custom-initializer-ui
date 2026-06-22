@@ -25,15 +25,42 @@ interface Props {
 
 const TABLE_REGEX = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([a-zA-Z_][\w$]*(?:\.[a-zA-Z_][\w$]*)?))/gi
 
+// A SELECT (or WITH … SELECT) becomes a read-only @Subselect view. Detected so the
+// "no CREATE TABLE" hint doesn't misfire and so views surface in the detected list.
+// The authoritative parse/naming happens server-side; this is a best-effort preview.
+const SELECT_REGEX = /(^|;)\s*(?:WITH\b|SELECT\b)/i
+const FROM_REGEX = /\bFROM\s+(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([a-zA-Z_][\w$]*(?:\.[a-zA-Z_][\w$]*)?))/i
+
+function bareName(raw: string): string {
+  return raw.includes('.') ? raw.substring(raw.lastIndexOf('.') + 1) : raw
+}
+
 function detectTableNames(sql: string): string[] {
   const names: string[] = []
   for (const m of sql.matchAll(TABLE_REGEX)) {
     const raw = m[1] ?? m[2] ?? m[3] ?? m[4]
     if (!raw) continue
-    const bare = raw.includes('.') ? raw.substring(raw.lastIndexOf('.') + 1) : raw
-    names.push(bare)
+    names.push(bareName(raw))
   }
   return names
+}
+
+// One display name per SELECT statement — derived from its FROM table (matching the
+// backend's view-naming), or "view" when there's no resolvable FROM.
+function detectViewNames(sql: string): string[] {
+  const views: string[] = []
+  for (const stmt of sql.split(';')) {
+    const s = stmt.trim()
+    if (!s || !/^(?:WITH\b|SELECT\b)/i.test(s)) continue
+    const m = s.match(FROM_REGEX)
+    const raw = m ? (m[1] ?? m[2] ?? m[3] ?? m[4]) : null
+    views.push(raw ? bareName(raw) : 'view')
+  }
+  return views
+}
+
+function hasSelect(sql: string): boolean {
+  return SELECT_REGEX.test(sql)
 }
 
 export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, initial, selected, onSave, parseError }: Props) {
@@ -53,6 +80,8 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
   }, [isOpen, depId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const detected = useMemo(() => detectTableNames(sql), [sql])
+  const detectedViews = useMemo(() => detectViewNames(sql), [sql])
+  const selectPresent = useMemo(() => hasSelect(sql), [sql])
 
   // Merge detected tables with existing repo-flag state so toggles survive edits
   useEffect(() => {
@@ -166,7 +195,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-bold uppercase tracking-widest text-secondary">
-              CREATE TABLE Scripts
+              SQL Scripts
             </label>
             {sql.length > 0 && (
               <button
@@ -185,9 +214,11 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
           />
           <p className="text-[10px] text-on-surface-variant mt-1.5 leading-relaxed">
             Paste one or more <code className="text-primary">CREATE TABLE</code> statements. Entities + optional
-            JPA repositories are generated into your project when downloaded. <code className="text-primary">COMMENT ON</code>,
-            {' '}<code className="text-primary">CREATE INDEX</code>, and <code className="text-primary">GRANT</code> statements
-            are accepted and silently ignored.
+            JPA repositories are generated into your project when downloaded. A <code className="text-primary">SELECT</code>{' '}
+            becomes a read-only <code className="text-primary">@Subselect</code> view (GET-only; fields are generated as
+            {' '}<code className="text-primary">String</code> with a TODO to set the real type in source).{' '}
+            <code className="text-primary">COMMENT ON</code>, <code className="text-primary">CREATE INDEX</code>, and{' '}
+            <code className="text-primary">GRANT</code> statements are accepted and silently ignored.
           </p>
         </div>
 
@@ -205,14 +236,14 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
           </div>
         )}
 
-        {tables.length > 0 && (
+        {(tables.length > 0 || detectedViews.length > 0) && (
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold uppercase tracking-widest text-secondary">
-                Detected Tables
+                Detected Entities
               </label>
               <span className="text-[10px] font-bold py-0.5 px-2 bg-primary/10 text-primary rounded-full">
-                {tables.length}
+                {tables.length + detectedViews.length}
               </span>
             </div>
             <div className="space-y-2 border border-outline-variant rounded-lg p-3 bg-surface-container-lowest">
@@ -237,13 +268,23 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
                   </div>
                 </label>
               ))}
+              {detectedViews.map((name, i) => (
+                <div key={`view-${i}-${name}`} className="flex items-center justify-between gap-3 text-xs">
+                  <span className="font-mono text-on-surface font-semibold">{name}</span>
+                  <span className="flex items-center gap-1 text-[10px] font-medium py-0.5 px-2 bg-tertiary/10 text-tertiary rounded-full">
+                    <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>visibility</span>
+                    read-only view
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {sql.trim().length > 0 && tables.length === 0 && (
+        {sql.trim().length > 0 && tables.length === 0 && !selectPresent && (
           <div className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
-            No <code className="font-mono">CREATE TABLE</code> statements detected. Check your SQL syntax.
+            No <code className="font-mono">CREATE TABLE</code> or <code className="font-mono">SELECT</code> statements
+            detected. Check your SQL syntax.
           </div>
         )}
       </div>
