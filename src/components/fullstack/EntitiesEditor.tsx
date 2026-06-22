@@ -45,6 +45,8 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
       name: `${src.name}Copy`,
       tableName: undefined,
       schema: undefined,
+      readOnly: src.readOnly,
+      viewQuery: src.viewQuery,
       fields: src.fields.map(f => ({ ...f, enumValues: f.enumValues ? [...f.enumValues] : undefined })),
       relations: src.relations ? src.relations.map(r => ({ ...r })) : undefined,
     }
@@ -134,11 +136,26 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
               <input
                 type="text"
                 aria-label="Table name (optional)"
-                className="flex-1 max-w-xs bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                className="flex-1 max-w-xs bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-40"
                 placeholder="table_name (optional)"
                 value={entity.tableName ?? ''}
+                disabled={Boolean(entity.viewQuery)}
+                title={entity.viewQuery ? 'A SELECT-backed view maps to its query, not a table' : undefined}
                 onChange={e => updateEntity(eIdx, { tableName: e.target.value || undefined })}
               />
+              <label
+                className="flex items-center gap-1.5 text-xs text-secondary shrink-0 cursor-pointer"
+                title={entity.viewQuery ? 'A SELECT-backed view is always read-only' : 'Generate GET-only scaffolding (no create/update/delete)'}
+              >
+                <input
+                  type="checkbox"
+                  aria-label="Read-only"
+                  checked={Boolean(entity.readOnly) || Boolean(entity.viewQuery)}
+                  disabled={Boolean(entity.viewQuery)}
+                  onChange={e => updateEntity(eIdx, { readOnly: e.target.checked || undefined })}
+                />
+                Read-only
+              </label>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <button
@@ -165,6 +182,30 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
               {eErr.pk}
             </div>
+          )}
+
+          {eErr?.view && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
+              {eErr.view}
+            </div>
+          )}
+
+          {entity.viewQuery && (
+            <details className="rounded-lg border border-outline-variant bg-background/50">
+              <summary className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-secondary cursor-pointer select-none">
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>table_view</span>
+                Read-only view — mapped to this SELECT via <code className="font-mono">@Subselect</code>.
+                Field <code className="font-mono">@Column</code> names must match the projected aliases.
+              </summary>
+              <textarea
+                aria-label="View SELECT query"
+                className="w-full font-mono text-[11px] bg-background border-t border-outline-variant rounded-b p-3 min-h-[100px] focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                value={entity.viewQuery}
+                spellCheck={false}
+                onChange={e => updateEntity(eIdx, { viewQuery: e.target.value || undefined })}
+              />
+            </details>
           )}
 
           <div className="overflow-x-auto">

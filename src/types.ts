@@ -353,6 +353,10 @@ export interface FullstackEntityDef {
   schema?: string
   fields: FullstackFieldDef[]
   relations?: FullstackRelationDef[]
+  /** Read-only entity — generates GET-only scaffolding (no create/update/delete). */
+  readOnly?: boolean
+  /** Raw SELECT this entity maps to via Hibernate @Immutable/@Subselect. Implies readOnly. */
+  viewQuery?: string
 }
 
 export interface EntityTemplateSetSummary {

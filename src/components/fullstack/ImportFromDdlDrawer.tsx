@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { AdminFormDrawer } from '../admin/shared/AdminFormDrawer'
 import type { FullstackEntityDef } from '../../types'
 
@@ -8,10 +8,47 @@ interface Props {
   hasExisting: boolean
   /** Number of entities currently in the editor — drives the "Replace all" warning copy. */
   existingCount?: number
-  onImport: (entities: FullstackEntityDef[], mode: ImportMode) => void
+  /** 'ddl' parses CREATE TABLE into table-backed entities; 'select' parses a SELECT into a
+   *  single read-only @Subselect view entity (fields default to STRING for you to type). */
+  variant?: ImportVariant
+  /** note: optional server-side advisory (e.g. columns detected heuristically / add manually). */
+  onImport: (entities: FullstackEntityDef[], mode: ImportMode, note?: string) => void
 }
 
 export type ImportMode = 'replace' | 'append'
+export type ImportVariant = 'ddl' | 'select'
+
+const COPY: Record<ImportVariant, {
+  title: string; endpoint: string; emptyHint: string; emptyResult: string; placeholder: string; blurb: ReactNode
+}> = {
+  ddl: {
+    title: 'Import Entities from SQL DDL',
+    endpoint: '/metadata/fullstack/import-ddl',
+    emptyHint: 'Paste at least one CREATE TABLE statement',
+    emptyResult: 'No CREATE TABLE statements were detected',
+    placeholder: 'CREATE TABLE products (\n  id BIGINT PRIMARY KEY AUTO_INCREMENT,\n  sku VARCHAR(64) NOT NULL,\n  price NUMERIC(10,2)\n);',
+    blurb: (
+      <>Paste <code className="font-mono text-on-surface">CREATE TABLE</code> statements
+      and a starter entity list will be generated. Column types map to fullstack field
+      types — review the result in the editor before generating.</>
+    ),
+  },
+  select: {
+    title: 'Import a Read-only View from SELECT',
+    endpoint: '/metadata/fullstack/import-select',
+    emptyHint: 'Paste a SELECT query',
+    emptyResult: 'No columns were detected in the SELECT',
+    placeholder: 'SELECT u.id AS id,\n       u.full_name AS fullName,\n       o.total AS lastOrderTotal\nFROM users u\nJOIN orders o ON o.user_id = u.id;',
+    blurb: (
+      <>Paste a <code className="font-mono text-on-surface">SELECT</code> query. Its columns
+      become a single <strong>read-only view</strong> entity (mapped via Hibernate
+      <code className="font-mono text-on-surface"> @Subselect</code>, GET-only). A query has no
+      column types, so every field defaults to <code className="font-mono text-on-surface">STRING</code> —
+      set the right types and pick the primary key in the editor. Alias each column
+      (<code className="font-mono text-on-surface">AS name</code>) to control field names.</>
+    ),
+  },
+}
 
 const DIALECTS: { value: string; label: string }[] = [
   { value: 'H2', label: 'H2' },
@@ -37,9 +74,12 @@ interface WireEntity {
   tableName: string | null
   schema?: string | null
   fields: WireField[]
+  readOnly?: boolean
+  viewQuery?: string | null
 }
 interface ImportResponse {
   entities: WireEntity[]
+  note?: string | null
 }
 interface ImportError {
   error?: string
@@ -48,11 +88,12 @@ interface ImportError {
   snippet?: string
 }
 
-export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCount = 0, onImport }: Props) {
+export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCount = 0, variant = 'ddl', onImport }: Props) {
   const [sql, setSql] = useState('')
   const [dialect, setDialect] = useState('H2')
   const [mode, setMode] = useState<ImportMode>(hasExisting ? 'append' : 'replace')
   const [error, setError] = useState<ImportError | null>(null)
+  const copy = COPY[variant]
 
   useEffect(() => {
     if (isOpen) {
@@ -65,10 +106,10 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
     setError(null)
     const trimmed = sql.trim()
     if (!trimmed) {
-      setError({ detail: 'Paste at least one CREATE TABLE statement' })
+      setError({ detail: copy.emptyHint })
       throw new Error('empty')
     }
-    const res = await fetch('/metadata/fullstack/import-ddl', {
+    const res = await fetch(copy.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql: trimmed, dialect }),
@@ -83,6 +124,8 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       name: e.name,
       tableName: e.tableName ?? undefined,
       schema: e.schema ?? undefined,
+      readOnly: e.readOnly || undefined,
+      viewQuery: e.viewQuery ?? undefined,
       fields: e.fields.map(f => ({
         name: f.name,
         type: f.type,
@@ -95,17 +138,17 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       })),
     }))
     if (entities.length === 0) {
-      setError({ detail: 'No CREATE TABLE statements were detected' })
+      setError({ detail: copy.emptyResult })
       throw new Error('empty result')
     }
-    onImport(entities, mode)
+    onImport(entities, mode, body.note ?? undefined)
     setSql('')
     onClose()
   }
 
   return (
     <AdminFormDrawer
-      title="Import Entities from SQL DDL"
+      title={copy.title}
       isOpen={isOpen}
       onClose={onClose}
       onSave={handleSave}
@@ -113,9 +156,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
     >
       <div className="space-y-4">
         <p className="text-[12px] text-secondary leading-relaxed">
-          Paste <code className="font-mono text-on-surface">CREATE TABLE</code> statements
-          and a starter entity list will be generated. Column types map to fullstack field
-          types — review the result in the editor before generating.
+          {copy.blurb}
         </p>
 
         <div>
@@ -133,11 +174,11 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
 
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
-            DDL
+            {variant === 'select' ? 'SELECT query' : 'DDL'}
           </label>
           <textarea
             className="w-full font-mono text-xs bg-background border border-outline-variant rounded p-3 min-h-[260px] focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-            placeholder={'CREATE TABLE products (\n  id BIGINT PRIMARY KEY AUTO_INCREMENT,\n  sku VARCHAR(64) NOT NULL,\n  price NUMERIC(10,2)\n);'}
+            placeholder={copy.placeholder}
             value={sql}
             onChange={e => setSql(e.target.value)}
             spellCheck={false}

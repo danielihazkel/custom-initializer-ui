@@ -85,6 +85,8 @@ export interface RelationErrors {
 export interface EntityErrors {
   name?: string
   pk?: string
+  /** SELECT-backed view constraint (no generated PK, no relations). */
+  view?: string
   fields: Record<number, FieldErrors>
   relations?: Record<number, RelationErrors>
 }
@@ -110,9 +112,12 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
   // First pass: PK count per entity (case-insensitive), so a relation can resolve its target's
   // key shape — a MANY_TO_ONE may not point at a composite-PK entity (mirrors the backend guard).
   const pkCountByName = new Map<string, number>()
+  // SELECT-backed views (lower name) — a MANY_TO_ONE may not target one.
+  const viewNames = new Set<string>()
   for (const e of entities) {
     if (!e.name?.trim()) continue
     pkCountByName.set(e.name.trim().toLowerCase(), e.fields.filter(f => f.primaryKey).length)
+    if (e.viewQuery?.trim()) viewNames.add(e.name.trim().toLowerCase())
   }
 
   const seenEntityNames = new Map<string, number[]>() // lower name → entity indexes
@@ -218,6 +223,18 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
       result.count += 1
     }
 
+    // SELECT-backed view: maps to @Subselect, so no auto-generated PK and no relations (v1).
+    const isView = !!entity.viewQuery?.trim()
+    if (isView) {
+      if (entity.fields.some(f => f.generated)) {
+        eErr.view = 'A view cannot have a generated primary key'
+        result.count += 1
+      } else if ((entity.relations?.length ?? 0) > 0) {
+        eErr.view = 'A view cannot declare relations'
+        result.count += 1
+      }
+    }
+
     // Relations (MANY_TO_ONE). fieldName must be a unique, valid identifier across fields and
     // relations; targetEntity must exist and not be a composite-PK entity.
     const relations = entity.relations ?? []
@@ -239,6 +256,7 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
         const targetPkCount = pkCountByName.get(target.toLowerCase())
         if (targetPkCount === undefined) rErr.targetEntity = `Unknown entity '${target}'`
         else if (targetPkCount > 1) rErr.targetEntity = "Can't target a composite-PK entity"
+        else if (viewNames.has(target.toLowerCase())) rErr.targetEntity = "Can't target a view"
       }
       if (Object.keys(rErr).length > 0) {
         eErr.relations = eErr.relations ?? {}
@@ -249,7 +267,7 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
 
     if (eErr.name) result.count += 1
     const hasRelErrs = eErr.relations && Object.keys(eErr.relations).length > 0
-    if (eErr.name || eErr.pk || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
+    if (eErr.name || eErr.pk || eErr.view || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
       result.entities[eIdx] = eErr
     }
   })

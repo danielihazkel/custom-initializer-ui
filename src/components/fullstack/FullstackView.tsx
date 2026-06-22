@@ -5,7 +5,7 @@ import type {
 } from '../../types'
 import { EntitiesEditor } from './EntitiesEditor'
 import { FullstackDepPicker } from './FullstackDepPicker'
-import { ImportFromDdlDrawer, type ImportMode } from './ImportFromDdlDrawer'
+import { ImportFromDdlDrawer, type ImportMode, type ImportVariant } from './ImportFromDdlDrawer'
 import { ProjectPreview } from '../ProjectPreview'
 import { StatusToast } from '../admin/shared/StatusToast'
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
@@ -79,7 +79,7 @@ export function FullstackView() {
   const [setsError, setSetsError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
-  const [importOpen, setImportOpen] = useState(false)
+  const [importVariant, setImportVariant] = useState<ImportVariant | null>(null)
   const [selectedDeps, setSelectedDeps] = useState<string[]>(() => loadJson<string[]>(LS.deps, []))
   const [scaffoldOpts, setScaffoldOpts] = useState<string[]>(() => loadJson<string[]>(LS.opts, []))
   const {
@@ -160,11 +160,12 @@ export function FullstackView() {
     }
   }, [currentFrontendSet])
 
-  function handleImport(imported: FullstackEntityDef[], mode: ImportMode) {
+  function handleImport(imported: FullstackEntityDef[], mode: ImportMode, note?: string) {
     setEntities(mode === 'replace' ? imported : [...entities, ...imported])
     const verb = mode === 'replace' ? 'Replaced with' : 'Appended'
     const n = imported.length
-    setToast({ message: `${verb} ${n} entit${n === 1 ? 'y' : 'ies'} from DDL`, type: 'success' })
+    const base = `${verb} ${n} entit${n === 1 ? 'y' : 'ies'}`
+    setToast({ message: note ? `${base}. ${note}` : base, type: 'success' })
   }
 
   // Load the template-set list. Extracted so the inline Retry can re-run it; on failure
@@ -433,12 +434,21 @@ export function FullstackView() {
             <span className="text-[11px] text-secondary">{entities.length} entit{entities.length === 1 ? 'y' : 'ies'}</span>
             <button
               type="button"
-              onClick={() => setImportOpen(true)}
+              onClick={() => setImportVariant('ddl')}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-outline-variant text-secondary hover:text-primary hover:border-primary hover:bg-primary/5 transition-colors"
               title="Parse CREATE TABLE DDL into entities"
             >
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>database</span>
               Import from DDL
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportVariant('select')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-outline-variant text-secondary hover:text-primary hover:border-primary hover:bg-primary/5 transition-colors"
+              title="Parse a SELECT query into a read-only view entity"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>table_view</span>
+              Import from SELECT
             </button>
           </div>
         </div>
@@ -476,8 +486,9 @@ export function FullstackView() {
       <StatusToast toast={toast} onClear={() => setToast(null)} />
 
       <ImportFromDdlDrawer
-        isOpen={importOpen}
-        onClose={() => setImportOpen(false)}
+        isOpen={importVariant !== null}
+        variant={importVariant ?? 'ddl'}
+        onClose={() => setImportVariant(null)}
         hasExisting={entities.length > 0}
         existingCount={entities.length}
         onImport={handleImport}
