@@ -350,6 +350,7 @@ export interface FullstackRelationDef {
 export interface FullstackEntityDef {
   name: string
   tableName?: string
+  schema?: string
   fields: FullstackFieldDef[]
   relations?: FullstackRelationDef[]
 }

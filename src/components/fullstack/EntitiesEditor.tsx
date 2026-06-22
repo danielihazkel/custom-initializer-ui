@@ -44,6 +44,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
     const copy: FullstackEntityDef = {
       name: `${src.name}Copy`,
       tableName: undefined,
+      schema: undefined,
       fields: src.fields.map(f => ({ ...f, enumValues: f.enumValues ? [...f.enumValues] : undefined })),
       relations: src.relations ? src.relations.map(r => ({ ...r })) : undefined,
     }
@@ -122,6 +123,14 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                 />
                 {eErr?.name && <p className="mt-1 text-[11px] text-error">{eErr.name}</p>}
               </div>
+              <input
+                type="text"
+                aria-label="Schema (optional)"
+                className="flex-1 max-w-[10rem] bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                placeholder="schema (optional)"
+                value={entity.schema ?? ''}
+                onChange={e => updateEntity(eIdx, { schema: e.target.value || undefined })}
+              />
               <input
                 type="text"
                 aria-label="Table name (optional)"

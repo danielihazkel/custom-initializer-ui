@@ -35,6 +35,7 @@ interface WireField {
 interface WireEntity {
   name: string
   tableName: string | null
+  schema?: string | null
   fields: WireField[]
 }
 interface ImportResponse {
@@ -81,6 +82,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
     const entities: FullstackEntityDef[] = body.entities.map(e => ({
       name: e.name,
       tableName: e.tableName ?? undefined,
+      schema: e.schema ?? undefined,
       fields: e.fields.map(f => ({
         name: f.name,
         type: f.type,
