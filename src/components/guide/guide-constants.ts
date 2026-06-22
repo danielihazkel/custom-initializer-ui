@@ -666,7 +666,10 @@ The **target path** (not just the content) may contain \`{{packagePath}}\`, whic
 **Example:** target path \`src/main/java/{{packagePath}}/config/KafkaConfig.java\` becomes \`src/main/java/com/menora/demo/config/KafkaConfig.java\` for package \`com.menora.demo\`.
 
 ### Why Conditional Sections Matter
-Before Mustache sections, each variation needed its own file contribution row. A class that emits \`@EnableAsync\` only when the async sub-option was selected required two rows with the same \`targetPath\` — one with the annotation, one without. Mustache sections collapse these into one row, keeping the DB catalog simpler and easier to maintain.`,
+Before Mustache sections, each variation needed its own file contribution row. A class that emits \`@EnableAsync\` only when the async sub-option was selected required two rows with the same \`targetPath\` — one with the annotation, one without. Mustache sections collapse these into one row, keeping the DB catalog simpler and easier to maintain.
+
+### Going Deeper
+This page is the quick intro. For the full variable catalog across all three render contexts (backend dependency, fullstack entity, frontend), the path-vs-content rules, and authoring walkthroughs, see the **Mustache Templating** section.`,
         codeExamples: [
           {
             title: 'Variables — Dockerfile example',
@@ -804,6 +807,315 @@ If a file contribution has a non-blank \`subOptionId\`, it will only be included
           { name: 'javaVersion', type: 'string', required: false, description: 'If set, this contribution only applies when the project Java version matches. Leave blank for all versions.', example: '21' },
           { name: 'subOptionId', type: 'string', required: false, description: 'If set, this contribution only applies when the user selects this sub-option under the parent dependency.', example: 'consumer-example' },
           { name: 'sortOrder', type: 'integer', required: false, description: 'Processing order. Matters when multiple contributions target the same file (e.g. multiple YAML_MERGE into the same application.yaml).', example: '0' }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 4b. MUSTACHE TEMPLATING (deep reference — mirrors backend/docs/MUSTACHE_GUIDE.md)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'mustache-templating',
+    title: 'Mustache Templating',
+    icon: 'data_object',
+    topics: [
+      {
+        id: 'mustache-overview',
+        title: 'How Rendering Works',
+        description: 'The engine, the supported syntax, path-vs-content substitution, and the three contexts.',
+        content: `### The Engine
+Templates are rendered with **jmustache** (\`com.samskivert:jmustache\`), compiled once per file with HTML escaping **off** (\`Mustache.compiler().escapeHTML(false)\`). The same setup is used on every render path — backend dependency templates, frontend templates, and fullstack entity templates.
+
+Because escaping is off, we emit Java, YAML, Dockerfile, and TypeScript verbatim — characters like \`<\`, \`>\`, \`&\`, \`"\` pass through untouched. One practical consequence: **\`{{{triple}}}\` and \`{{double}}\` braces are equivalent here.** Use double braces.
+
+### Supported Syntax
+- \`{{var}}\` — interpolate a value. A **missing key renders as an empty string, not an error.**
+- \`{{#flag}}…{{/flag}}\` — section. Renders the body when \`flag\` is truthy (\`true\`, a non-empty list, a non-null non-false value).
+- \`{{^flag}}…{{/flag}}\` — inverted section. Renders the body when \`flag\` is falsy (\`false\`, \`null\`, empty list). This is the "else" branch.
+- \`{{#list}}…{{/list}}\` — iterate. The body renders once per element, with the element's own keys in scope.
+- \`{{.}}\` — the current element itself, inside a list of scalars.
+- \`{{!comment}}\` — a comment; not rendered.
+
+### Path vs. Content — Two Different Substitutions
+A file contribution has a **target path** and a **content body**, and they are rendered with different rules:
+- **Content** is rendered with the full context (when \`substitutionType = MUSTACHE\`).
+- **Target path** gets a narrow, hardcoded substitution — backend paths honor only \`{{packagePath}}\`; frontend paths only \`{{projectName}}\`. Fullstack entity-template paths are the exception: the path **is** rendered through the full entity context.
+
+So \`{{javaVersion}}\` works inside a backend file's content but **not** in its target path.
+
+### Three Contexts, Not One
+There is no single global context. Three independent builders each produce a variable map, and which one runs depends on which file you are editing — backend dependency templates, fullstack entity templates, or frontend templates. The next pages document each one.`,
+        codeExamples: [
+          {
+            title: 'Section + inverted section (the if/else pattern)',
+            language: 'java',
+            code: `package {{packageName}}.config;
+
+import org.springframework.context.annotation.Configuration;
+{{#hasKafka}}
+import org.springframework.kafka.annotation.EnableKafka;
+{{/hasKafka}}
+
+@Configuration
+{{#hasKafka}}
+@EnableKafka
+{{/hasKafka}}
+public class MessagingConfig {
+    {{^hasKafka}}
+    // Kafka not selected — nothing wired here.
+    {{/hasKafka}}
+}`
+          }
+        ],
+        callouts: [
+          {
+            type: 'warning',
+            text: 'A missing or misspelled key renders empty, silently — no error. If a value comes out blank in the generated file, suspect a typo in the variable name and check it against the catalog pages.'
+          },
+          {
+            type: 'info',
+            text: 'HTML escaping is off everywhere, so {{{triple}}} braces are never needed — {{double}} braces already emit raw text.'
+          }
+        ]
+      },
+      {
+        id: 'mustache-which-context',
+        title: 'Which Context Am I In?',
+        description: 'Find the file you are editing to know which variables are available.',
+        content: `### Pick by the file you are editing
+The available variables depend entirely on which render path the file belongs to:
+
+- **\`catalog/file-contributions.json\` content** (backend dependency files, e.g. \`templates/h2-config-primary.mustache\`) → **Backend Dependency Context** only.
+- **\`catalog/frontend/file-contributions.json\` content** (frontend dependency files) → **Frontend Context** only.
+- **\`templates/fullstack/<backend-set>/\` files** (e.g. \`spring-jpa-crud\`) → **Fullstack Entity Context** (plus \`optScaffold*\` flags and \`hasValidation\`).
+- **\`templates/fullstack/<frontend-set>/\` files** (e.g. \`react-tailwind-crud\`) → **Fullstack Entity Context merged with Frontend Context** — these templates see both entity variables and the frontend dep/palette/version variables.
+
+### Universal flags
+One convention spans every context: for each selected dependency, a boolean \`has<Dep>\` is set; for each selected sub-option, \`opt<Dep><Option>\`. These are the "is X selected?" checks everywhere.`
+      },
+      {
+        id: 'mustache-backend-context',
+        title: 'Backend Dependency Context',
+        description: 'Variables for every backend TEMPLATE file (buildBaseContext).',
+        content: `### Source
+\`DynamicProjectGenerationConfiguration.buildBaseContext(...)\`. This is the context for every backend \`TEMPLATE\` file declared in \`catalog/file-contributions.json\`, including the H2/Oracle/Postgres datasource config classes.
+
+### Dependency & sub-option flags
+For every **selected** dependency a boolean \`has<Dep>\` is set to true; for every selected sub-option, \`opt<Dep><Option>\`. Unselected deps have no key at all (so \`{{#hasKafka}}\` is simply false when kafka isn't picked). The id → flag transform is PascalCase, treating \`-\`, \`_\`, and \`.\` as word separators:
+
+- \`kafka\` → \`hasKafka\`
+- \`mail-sampler\` → \`hasMailSampler\`
+- \`spring-boot-starter\` → \`hasSpringBootStarter\`
+- sub-option \`consumer-example\` of \`kafka\` → \`optKafkaConsumerExample\`
+
+### The ds* family (scaffolded datasource)
+\`hasScaffoldedEntities\`, \`dsEntityPackage\`, and \`dsRepositoryPackage\` exist so a per-driver datasource config can scan **where generated entities actually live** instead of a hardcoded \`<packageName>.<driver>\` convention. They are populated only when the request scaffolds entities (fullstack **or** the SQL wizard); otherwise \`hasScaffoldedEntities\` is false and the two package keys are null. That is exactly why the H2 template pairs a \`{{#hasScaffoldedEntities}}\` branch with a \`{{^hasScaffoldedEntities}}\` fallback — see the H2Config walkthrough.`,
+        fields: [
+          { name: '{{artifactId}}', type: 'String', required: true, description: 'Project artifact id.', example: 'demo' },
+          { name: '{{groupId}}', type: 'String', required: true, description: 'Project group id.', example: 'com.menora' },
+          { name: '{{version}}', type: 'String', required: true, description: 'Project version.', example: '0.0.1-SNAPSHOT' },
+          { name: '{{packageName}}', type: 'String', required: true, description: 'Base package, dotted form.', example: 'com.menora.demo' },
+          { name: '{{packagePath}}', type: 'String', required: true, description: 'packageName with dots replaced by slashes. The one placeholder also allowed in target paths.', example: 'com/menora/demo' },
+          { name: '{{javaVersion}}', type: 'String', required: true, description: 'Selected JDK version.', example: '21' },
+          { name: '{{packaging}}', type: 'String', required: false, description: 'Packaging id; null if unset.', example: 'jar' },
+          { name: 'has<Dep>', type: 'boolean', required: false, description: 'True for each selected dependency (PascalCased id). Absent when not selected.', example: 'hasKafka' },
+          { name: 'opt<Dep><Option>', type: 'boolean', required: false, description: 'True for each selected sub-option (PascalCased dep + option).', example: 'optKafkaConsumerExample' },
+          { name: '{{hasScaffoldedEntities}}', type: 'boolean', required: true, description: 'True when the request scaffolds entities (fullstack or SQL wizard).', example: 'true' },
+          { name: '{{dsEntityPackage}}', type: 'String', required: false, description: 'Package the generated entities land in; null unless hasScaffoldedEntities.', example: 'com.menora.demo.entity' },
+          { name: '{{dsRepositoryPackage}}', type: 'String', required: false, description: 'Package the generated repositories land in; null unless hasScaffoldedEntities.', example: 'com.menora.demo.repository' }
+        ],
+        codeExamples: [
+          {
+            title: 'Datasource gate — scan scaffolded packages or fall back',
+            language: 'java',
+            code: `@EnableJpaRepositories(
+    basePackages = "{{#hasScaffoldedEntities}}{{dsRepositoryPackage}}{{/hasScaffoldedEntities}}{{^hasScaffoldedEntities}}{{packageName}}.h2.repository{{/hasScaffoldedEntities}}"
+)`
+          }
+        ]
+      },
+      {
+        id: 'mustache-fullstack-context',
+        title: 'Fullstack Entity Context',
+        description: 'Variables for entity template sets (EntityScaffoldContext): project, per-entity, fields, relations.',
+        content: `### Source
+\`EntityScaffoldContext\`, built in two stages — \`buildProjectContext\` (project-wide) and \`buildEntityContext\` (project-wide plus one entity). A \`perEntity: true\` file renders once per user entity; \`perEntity: false\` renders once with the project context (and can loop all entities via \`{{#entities}}\`).
+
+### Layer packages (project-wide)
+Each also has a \`…Path\` slash-form variant: \`entityPackage\` / \`entityPackagePath\`, \`repositoryPackage\`, \`dtoPackage\`, \`servicePackage\`, \`controllerPackage\`, all derived from \`domainPackage\` (defaults to \`packageName\`). The \`fields\` table below lists the per-entity keys.
+
+### Per-field variables (inside {{#fields}}, {{#pkFields}}, …)
+\`name\`, \`Name\` (PascalCase), \`column\` (snake_case), \`javaType\`, \`tsType\`, \`enumTypeName\`; predicates \`isPrimaryKey\`, \`isGenerated\`, \`isRequired\`, \`isUnique\`, \`isString\`, \`isNumeric\`, \`isIntegral\`, \`isBigDecimal\`, \`isBoolean\`, \`isTemporal\`, \`isDate\`, \`isDateTime\`, \`isEnum\`; constraints \`hasLength\`/\`length\`, \`hasMin\`/\`min\`, \`hasMax\`/\`max\`, \`hasPattern\`/\`pattern\`/\`patternEscaped\`, \`isEmail\`; \`enumValues\`; and iteration flags \`first\`/\`last\` (plus \`lastNonPk\`, \`lastString\` in their lists).
+
+### Per-relation variables (inside {{#relations}})
+\`fieldName\`, \`FieldName\`, \`fkFieldName\`, \`joinColumn\`, \`targetEntity\` (+ \`Camel\`/\`Kebab\`/\`KebabPlural\`), \`targetPkName\`/\`TargetPkName\`/\`targetPkJavaType\`/\`targetPkTsType\`, \`isTargetPkNumeric\`, \`targetLabelField\`/\`hasTargetLabel\`, \`required\`, \`isManyToOne\`, \`last\`. Inverse collections (inside \`{{#inverseRelations}}\`): \`childEntity\`, \`childEntityCamel\`, \`mappedBy\`, \`collectionField\`, \`CollectionField\`.
+
+### Opt-in scaffold flags
+\`optScaffoldTests\`, \`optScaffoldAudit\`, \`optScaffoldSoftDelete\`, \`optScaffoldInverse\` come from the request \`opts.scaffold\` list. Plus \`hasValidation\` on the backend path. The per-entity \`softDeleteApplicable\` = \`optScaffoldSoftDelete && !hasCompositePk\`.`,
+        fields: [
+          { name: '{{EntityName}} / entityName / entity_name / entityNameKebab', type: 'String', required: true, description: 'Entity name in Pascal / camel / snake / kebab case. Plural variants exist for each.', example: 'OrderItem / orderItem / order_item / order-item' },
+          { name: '{{tableName}}', type: 'String', required: true, description: 'Table name override or plural snake fallback.', example: 'order_items' },
+          { name: '{{entityPackage}} / entityPackagePath', type: 'String', required: true, description: 'Entity layer package (and slash form). Same pattern for repository/dto/service/controller.', example: 'com.menora.demo.entity' },
+          { name: '{{fields}} / nonPkFields / pkFields / stringFields', type: 'List', required: true, description: 'Field view-models to iterate; pkField is the single-PK shortcut (may be null).', example: '{{#fields}}…{{/fields}}' },
+          { name: '{{hasCompositePk}} / keyClassName / pkType / pkPath', type: 'mixed', required: true, description: 'Composite-key flag, generated <Entity>Id class name, id type, and REST path segment.', example: '/{orderId}/{lineNo}' },
+          { name: '{{relations}} / hasRelations', type: 'List / boolean', required: true, description: 'MANY_TO_ONE foreign-key relations.', example: '{{#relations}}…{{/relations}}' },
+          { name: '{{inverseRelations}} / hasInverseRelations', type: 'List / boolean', required: true, description: 'Derived @OneToMany back-references (opt-in via optScaffoldInverse).', example: '{{#inverseRelations}}…{{/inverseRelations}}' },
+          { name: 'has*Fields aggregates', type: 'boolean', required: true, description: 'hasEnumFields, hasStringFields, hasNotNullFields, hasSizeFields, hasMinFields, hasMaxFields, hasDecimalMinFields, hasDecimalMaxFields, hasPatternFields, hasEmailFields — true iff some field needs that import.', example: 'hasEmailFields' },
+          { name: '{{optScaffoldTests}} / Audit / SoftDelete / Inverse', type: 'boolean', required: false, description: 'Opt-in scaffolding flags from opts.scaffold. Must be set on both render paths.', example: 'optScaffoldAudit' }
+        ],
+        codeExamples: [
+          {
+            title: 'Manifest entry — gate a file with gatedBy',
+            language: 'json',
+            code: `{
+  "source": "EntityControllerTest.java.mustache",
+  "path": "src/test/java/{{controllerPackagePath}}/{{EntityName}}ControllerTest.java",
+  "perEntity": true,
+  "substitutionType": "MUSTACHE",
+  "fileType": "TEMPLATE",
+  "sortOrder": 60,
+  "gatedBy": "optScaffoldTests"
+}`
+          },
+          {
+            title: 'Entity template — iterate fields',
+            language: 'java',
+            code: `public class {{EntityName}}Dto {
+{{#fields}}
+    private {{javaType}} {{name}};
+{{/fields}}
+}`
+          }
+        ],
+        callouts: [
+          {
+            type: 'warning',
+            text: 'An optScaffold* flag must be set on BOTH render paths (FullstackProjectGenerationConfiguration for backend, FullstackStarterController.renderFrontend for frontend). A frontend-only opt set on just the backend silently never fires.'
+          },
+          {
+            type: 'info',
+            text: 'gatedBy accepts any truthy context flag — an opt-in like optScaffoldTests or a derived flag like hasCompositePk (used by the EntityId.java row).'
+          }
+        ]
+      },
+      {
+        id: 'mustache-frontend-context',
+        title: 'Frontend Context',
+        description: 'Variables for frontend TEMPLATE files (FrontendMustacheContext).',
+        content: `### Source
+\`FrontendMustacheContext.build(...)\`. Feeds every frontend \`TEMPLATE\` file in \`catalog/frontend/file-contributions.json\`, and is merged onto the entity context for fullstack frontend templates.
+
+### Dependency / palette flags
+Same \`has<Dep>\` / \`opt<Dep><Option>\` PascalCase convention as the backend (e.g. \`hasRouterReactRouter\`, \`optAuthMsalInitConfig\`). The color palette is a nested \`palette\` map — \`palette.primary\`, \`palette.secondary\`, \`palette.accent\`, \`palette.error\`, plus \`*Hsl\` forms for CSS variables — gated by \`hasPaletteAccent\` / \`hasPaletteError\`.
+
+### Node-version gating
+The mirror of backend \`javaVersion\` gating: a frontend file contribution with a \`nodeVersion\` is skipped unless it matches the selected Node version. A row with no \`nodeVersion\` applies to all versions. This lets one target path (e.g. \`Dockerfile\`) resolve to a different content row per Node version — and a version with no matching row generates no file at all.`,
+        fields: [
+          { name: '{{projectName}} / appTitle / packageJsonName', type: 'String', required: true, description: 'Project identity; packageJsonName is scoped or plain.', example: '@menora/demo-ui' },
+          { name: '{{reactVersion}} / reactPackageVersion / reactTypesVersion', type: 'String', required: true, description: 'React and @types versions.', example: '^19.0.0' },
+          { name: '{{nodeVersion}}', type: 'String', required: true, description: 'Selected Node major version.', example: '20' },
+          { name: '{{packageManager}} / isNpm / isPnpm', type: 'String / boolean', required: true, description: 'Package manager and convenience flags.', example: 'npm' },
+          { name: '{{typescriptVersion}} / viteVersion / basePath', type: 'String', required: true, description: 'Tooling versions and app base path.', example: '/' },
+          { name: '{{apiBaseUrl}} / backendArtifactId / hasBackendPair / hasBackendArtifactId', type: 'mixed', required: true, description: 'Paired-backend info; hasBackendPair is true when apiBaseUrl is set.', example: 'http://localhost:8080' },
+          { name: '{{palette.*}}', type: 'Map', required: true, description: 'id, name, primary, secondary, accent, error, and *Hsl forms for CSS variables.', example: '{{palette.primary}}' },
+          { name: '{{hasPaletteAccent}} / hasPaletteError', type: 'boolean', required: true, description: 'Gates for the optional accent/error colors.', example: 'true' },
+          { name: 'has<Dep> / opt<Dep><Option>', type: 'boolean', required: false, description: 'Same selection-flag convention as the backend context.', example: 'hasRouterReactRouter' }
+        ]
+      },
+      {
+        id: 'mustache-h2-walkthrough',
+        title: 'Walkthrough: Decoding H2Config',
+        description: 'Reading the real h2-config-primary.mustache line by line.',
+        content: `### The template
+\`templates/h2-config-primary.mustache\` is a backend dependency template (Backend Dependency Context), shown below.
+
+### Reading it
+- \`{{#hasScaffoldedEntities}}…{{/hasScaffoldedEntities}}\` — the **section** renders only when entities were scaffolded (a fullstack request, or the SQL wizard). In that branch it emits \`{{dsRepositoryPackage}}\` / \`{{dsEntityPackage}}\` — the packages where the generated repositories/entities actually landed (\`<domainPackage>.repository\` / \`<domainPackage>.entity\`).
+- \`{{^hasScaffoldedEntities}}…{{/hasScaffoldedEntities}}\` — the **inverted section** is the "else": when nothing was scaffolded those two keys are null, so the template falls back to the legacy convention \`{{packageName}}.h2.repository\` / \`{{packageName}}.h2\`.
+
+So a plain (non-fullstack) project gets \`com.menora.demo.h2.repository\`; a fullstack project gets the real scaffolded package. The three keys (\`hasScaffoldedEntities\`, \`dsEntityPackage\`, \`dsRepositoryPackage\`) are set together in \`buildBaseContext\`.`,
+        codeExamples: [
+          {
+            title: 'h2-config-primary.mustache (excerpt)',
+            language: 'java',
+            code: `@Configuration
+@EnableJpaRepositories(
+        basePackages = "{{#hasScaffoldedEntities}}{{dsRepositoryPackage}}{{/hasScaffoldedEntities}}{{^hasScaffoldedEntities}}{{packageName}}.h2.repository{{/hasScaffoldedEntities}}",
+        entityManagerFactoryRef = "h2EntityManagerFactory",
+        transactionManagerRef = "h2TransactionManager"
+)
+public class H2Config {
+    // ...
+    em.setPackagesToScan("{{#hasScaffoldedEntities}}{{dsEntityPackage}}{{/hasScaffoldedEntities}}{{^hasScaffoldedEntities}}{{packageName}}.h2{{/hasScaffoldedEntities}}");
+}`
+          }
+        ]
+      },
+      {
+        id: 'mustache-authoring',
+        title: 'Walkthrough: Add & Gate Templates',
+        description: 'Author a new TEMPLATE file, gate content, and version-gate a file.',
+        content: `### Gating levers (coarsest to finest)
+1. **Whole file by dependency** — a row's \`dependencyId\` scopes it to that dep (\`__common__\` = every project).
+2. **Whole file by sub-option** — set \`subOptionId\` on the row; written only when that sub-option is selected (this is how Kafka's \`KafkaConsumerExample.java\` carries \`subOptionId: "consumer-example"\`).
+3. **A block inside a file** — gate with a section using \`has<Dep>\` / \`opt<Dep><Option>\`. For fullstack entity templates the file-level gate is the manifest's \`gatedBy\` flag.
+
+### Version-gated files
+One \`targetPath\`, different content per runtime: the framework picks the row whose \`javaVersion\` (backend) or \`nodeVersion\` (frontend) matches; a null column means "all versions". E.g. two rows both targeting \`Dockerfile\`, one \`javaVersion: "17"\` and one \`"21"\`.
+
+### For a running instance
+The DB is the source of truth. Editing the catalog manifest seeds a fresh DB; for an already-seeded instance use the admin API — \`POST /admin/file-contributions\` then \`POST /admin/refresh\` to invalidate the metadata cache.`,
+        workflowSteps: [
+          { title: 'Author the content', description: 'Create src/main/resources/templates/my-feature-config.mustache using Backend Dependency Context variables ({{packageName}}, {{artifactId}}, {{javaVersion}}, has<Dep> sections).' },
+          { title: 'Register the row', description: 'Add an entry to catalog/file-contributions.json: depId, fileType TEMPLATE, contentResource, targetPath with {{packagePath}}, substitutionType MUSTACHE.' },
+          { title: 'Runtime path (optional)', description: 'For a live instance, POST /admin/file-contributions with the same fields, then POST /admin/refresh.' },
+          { title: 'Verify', description: 'curl the starter.zip with the relevant dependency and unzip the target file to confirm the rendered output.' }
+        ],
+        codeExamples: [
+          {
+            title: 'file-contributions.json — a new TEMPLATE row',
+            language: 'json',
+            code: `{ "depId": "security", "fileType": "TEMPLATE", "contentResource": "templates/my-feature-config.mustache", "targetPath": "src/main/java/{{packagePath}}/config/MyFeatureConfig.java", "substitutionType": "MUSTACHE", "sortOrder": 10 }`
+          },
+          {
+            title: 'Version gating — two rows, one Dockerfile',
+            language: 'json',
+            code: `{ "depId": "__common__", "fileType": "TEMPLATE", "contentResource": "templates/Dockerfile-java17.mustache", "targetPath": "Dockerfile", "substitutionType": "MUSTACHE", "javaVersion": "17", "sortOrder": 5 }
+{ "depId": "__common__", "fileType": "TEMPLATE", "contentResource": "templates/Dockerfile-java21.mustache", "targetPath": "Dockerfile", "substitutionType": "MUSTACHE", "javaVersion": "21", "sortOrder": 6 }`
+          }
+        ],
+        callouts: [
+          {
+            type: 'tip',
+            text: 'Block-gating with {{#hasSecurity}}…{{/hasSecurity}} collapses what used to need several near-duplicate rows into one template.'
+          }
+        ]
+      },
+      {
+        id: 'mustache-gotchas',
+        title: 'Gotchas & Source Map',
+        description: 'Sharp edges to remember, and where each context is built in the backend.',
+        content: `### Gotchas
+- **{{{ }}} equals {{ }}** — HTML escaping is off; you never need triple braces.
+- **A missing/typo'd key renders empty, silently** — no error. A blank in the output usually means a misspelled variable name.
+- **Path substitution is not content substitution** — backend target paths only honor {{packagePath}}, frontend only {{projectName}}; fullstack entity paths honor the full entity context.
+- **__-prefixed keys are internal** (__entitySummaries, __inverseRelations) — not for templates.
+- **New entity variables go in EntityScaffoldContext only** — buildProjectContext, buildEntityContext, or the per-field/-relation view-model builders. There is nowhere else to wire them.
+- **optScaffold* must be set on both render paths** — backend and frontend contexts are separate.
+- **pkField can be null** — guard with {{#pkField}}…{{/pkField}} for entities with no primary key.
+
+### Source map (backend)
+- Backend dep context — \`extension/dynamic/DynamicProjectGenerationConfiguration.java\` (buildBaseContext, toPascalCase, resolveTargetPath)
+- Fullstack entity context — \`fullstack/EntityScaffoldContext.java\`
+- Frontend context — \`extension/frontend/FrontendMustacheContext.java\`, \`FrontendProjectGenerator.java\`
+- Row model — \`db/entity/FileContributionEntity.java\`, \`db/entity/EntityTemplateFileEntity.java\`
+- Full written reference — \`backend/docs/MUSTACHE_GUIDE.md\``,
+        callouts: [
+          {
+            type: 'info',
+            text: 'This in-app guide mirrors backend/docs/MUSTACHE_GUIDE.md. If you change a variable in the backend, update both so the app and the docs do not drift.'
+          }
         ]
       }
     ]

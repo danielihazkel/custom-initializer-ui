@@ -666,7 +666,10 @@ CREATE TABLE categories (
 **דוגמה:** נתיב יעד \`src/main/java/{{packagePath}}/config/KafkaConfig.java\` הופך ל-\`src/main/java/com/menora/demo/config/KafkaConfig.java\` עבור חבילה \`com.menora.demo\`.
 
 ### למה מקטעים מותנים חשובים
-לפני מקטעי Mustache, כל וריאציה דרשה שורת תרומת קובץ משלה. מחלקה שפלטה \`@EnableAsync\` רק כאשר תת-אפשרות אסינכרונית נבחרה דרשה שתי שורות עם אותו \`targetPath\` — אחת עם ההערה, אחת בלי. מקטעי Mustache ממזגים את אלה לשורה אחת, ומפשטים את קטלוג ה-DB.`,
+לפני מקטעי Mustache, כל וריאציה דרשה שורת תרומת קובץ משלה. מחלקה שפלטה \`@EnableAsync\` רק כאשר תת-אפשרות אסינכרונית נבחרה דרשה שתי שורות עם אותו \`targetPath\` — אחת עם ההערה, אחת בלי. מקטעי Mustache ממזגים את אלה לשורה אחת, ומפשטים את קטלוג ה-DB.
+
+### העמקה
+עמוד זה הוא המבוא המהיר. לקטלוג המשתנים המלא בכל שלושת ההקשרים (תלות backend, ישות fullstack, frontend), לכללי נתיב-מול-תוכן, ולמדריכי כתיבה — ראו את הסעיף **Mustache Templating**.`,
         codeExamples: [
           {
             title: 'משתנים — דוגמת Dockerfile',
@@ -804,6 +807,315 @@ management:
           { name: 'javaVersion', type: 'string', required: false, description: 'אם מוגדר, תרומה זו חלה רק כאשר גרסת Java של הפרויקט תואמת. השאירו ריק לכל הגרסאות.', example: '21' },
           { name: 'subOptionId', type: 'string', required: false, description: 'אם מוגדר, תרומה זו חלה רק כאשר המשתמש בוחר את האפשרות המשנית הזו תחת התלות האב.', example: 'consumer-example' },
           { name: 'sortOrder', type: 'integer', required: false, description: 'סדר עיבוד. חשוב כאשר תרומות מרובות מכוונות לאותו קובץ (למשל YAML_MERGE מרובים לאותו application.yaml).', example: '0' }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 4b. Mustache Templating (מדריך מעמיק — תואם backend/docs/MUSTACHE_GUIDE.md)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'mustache-templating',
+    title: 'Mustache Templating',
+    icon: 'data_object',
+    topics: [
+      {
+        id: 'mustache-overview',
+        title: 'איך הרינדור עובד',
+        description: 'המנוע, התחביר הנתמך, החלפת נתיב-מול-תוכן, ושלושת ההקשרים.',
+        content: `### המנוע
+התבניות מרונדרות עם **jmustache** (\`com.samskivert:jmustache\`), עם בריחת HTML **כבויה** (\`Mustache.compiler().escapeHTML(false)\`). אותה הגדרה משמשת בכל נתיבי הרינדור — תבניות תלות backend, תבניות frontend, ותבניות ישות fullstack.
+
+מכיוון שהבריחה כבויה, אנו פולטים Java, YAML, Dockerfile ו-TypeScript מילולית — תווים כמו \`<\`, \`>\`, \`&\`, \`"\` עוברים כמו שהם. תוצאה מעשית אחת: **\`{{{סוגריים משולשים}}}\` ו-\`{{כפולים}}\` שקולים כאן.** השתמשו בסוגריים כפולים.
+
+### תחביר נתמך
+- \`{{var}}\` — הזרקת ערך. **מפתח חסר מרונדר כמחרוזת ריקה, לא כשגיאה.**
+- \`{{#flag}}…{{/flag}}\` — מקטע. מרונדר את הגוף כאשר \`flag\` אמיתי (\`true\`, רשימה לא ריקה, ערך לא-null ולא-false).
+- \`{{^flag}}…{{/flag}}\` — מקטע הפוך. מרונדר את הגוף כאשר \`flag\` שקרי (\`false\`, \`null\`, רשימה ריקה). זהו ענף ה-"else".
+- \`{{#list}}…{{/list}}\` — איטרציה. הגוף מרונדר פעם לכל איבר, עם המפתחות של אותו איבר בהיקף.
+- \`{{.}}\` — האיבר הנוכחי עצמו, בתוך רשימת סקלרים.
+- \`{{!comment}}\` — הערה; לא מרונדרת.
+
+### נתיב מול תוכן — שתי החלפות שונות
+לתרומת קובץ יש **נתיב יעד** ו**גוף תוכן**, והם מרונדרים בכללים שונים:
+- **תוכן** מרונדר עם ההקשר המלא (כאשר \`substitutionType = MUSTACHE\`).
+- **נתיב יעד** מקבל החלפה צרה וקשיחה — נתיבי backend מכבדים רק את \`{{packagePath}}\`; frontend רק את \`{{projectName}}\`. תבניות ישות fullstack הן היוצא מן הכלל: הנתיב **כן** מרונדר דרך הקשר הישות המלא.
+
+לכן \`{{javaVersion}}\` עובד בתוך התוכן של קובץ backend אבל **לא** בנתיב היעד שלו.
+
+### שלושה הקשרים, לא אחד
+אין הקשר גלובלי יחיד. שלושה בנאים נפרדים יוצרים כל אחד מפת משתנים, ואיזה מהם רץ תלוי באיזה קובץ אתם עורכים — תבניות תלות backend, תבניות ישות fullstack, או תבניות frontend. העמודים הבאים מתעדים כל אחד.`,
+        codeExamples: [
+          {
+            title: 'מקטע + מקטע הפוך (תבנית ה-if/else)',
+            language: 'java',
+            code: `package {{packageName}}.config;
+
+import org.springframework.context.annotation.Configuration;
+{{#hasKafka}}
+import org.springframework.kafka.annotation.EnableKafka;
+{{/hasKafka}}
+
+@Configuration
+{{#hasKafka}}
+@EnableKafka
+{{/hasKafka}}
+public class MessagingConfig {
+    {{^hasKafka}}
+    // Kafka not selected — nothing wired here.
+    {{/hasKafka}}
+}`
+          }
+        ],
+        callouts: [
+          {
+            type: 'warning',
+            text: 'מפתח חסר או מאוית שגוי מרונדר ריק, בשקט — ללא שגיאה. אם ערך יוצא ריק בקובץ שנוצר, חשדו בשגיאת כתיב בשם המשתנה ובדקו אותו מול עמודי הקטלוג.'
+          },
+          {
+            type: 'info',
+            text: 'בריחת HTML כבויה בכל מקום, כך שסוגריים {{{משולשים}}} אף פעם לא נחוצים — סוגריים {{כפולים}} כבר פולטים טקסט גולמי.'
+          }
+        ]
+      },
+      {
+        id: 'mustache-which-context',
+        title: 'באיזה הקשר אני נמצא?',
+        description: 'מצאו את הקובץ שאתם עורכים כדי לדעת אילו משתנים זמינים.',
+        content: `### בחרו לפי הקובץ שאתם עורכים
+המשתנים הזמינים תלויים לחלוטין באיזה נתיב רינדור הקובץ שייך:
+
+- **תוכן \`catalog/file-contributions.json\`** (קבצי תלות backend, למשל \`templates/h2-config-primary.mustache\`) → **הקשר תלות Backend** בלבד.
+- **תוכן \`catalog/frontend/file-contributions.json\`** (קבצי תלות frontend) → **הקשר Frontend** בלבד.
+- **קבצי \`templates/fullstack/<backend-set>/\`** (למשל \`spring-jpa-crud\`) → **הקשר ישות Fullstack** (בתוספת דגלי \`optScaffold*\` ו-\`hasValidation\`).
+- **קבצי \`templates/fullstack/<frontend-set>/\`** (למשל \`react-tailwind-crud\`) → **הקשר ישות Fullstack ממוזג עם הקשר Frontend** — תבניות אלה רואות גם משתני ישות וגם משתני dep/palette/version של frontend.
+
+### דגלים אוניברסליים
+מוסכמה אחת חוצה כל הקשר: לכל תלות שנבחרה נקבע בוליאני \`has<Dep>\`; לכל תת-אפשרות שנבחרה, \`opt<Dep><Option>\`. אלה הבדיקות "האם X נבחר?" בכל מקום.`
+      },
+      {
+        id: 'mustache-backend-context',
+        title: 'הקשר תלות Backend',
+        description: 'משתנים לכל קובץ TEMPLATE של backend (buildBaseContext).',
+        content: `### מקור
+\`DynamicProjectGenerationConfiguration.buildBaseContext(...)\`. זהו ההקשר לכל קובץ \`TEMPLATE\` של backend המוצהר ב-\`catalog/file-contributions.json\`, כולל מחלקות תצורת datasource של H2/Oracle/Postgres.
+
+### דגלי תלות ותת-אפשרות
+לכל תלות **שנבחרה** נקבע בוליאני \`has<Dep>\` ל-true; לכל תת-אפשרות שנבחרה, \`opt<Dep><Option>\`. לתלויות שלא נבחרו אין מפתח כלל (כך ש-\`{{#hasKafka}}\` פשוט שקרי כשקפקא לא נבחר). ההמרה id → דגל היא PascalCase, כשהתווים \`-\`, \`_\`, ו-\`.\` הם מפרידי מילים:
+
+- \`kafka\` → \`hasKafka\`
+- \`mail-sampler\` → \`hasMailSampler\`
+- \`spring-boot-starter\` → \`hasSpringBootStarter\`
+- תת-אפשרות \`consumer-example\` של \`kafka\` → \`optKafkaConsumerExample\`
+
+### משפחת ה-ds* (datasource מבונה)
+\`hasScaffoldedEntities\`, \`dsEntityPackage\`, ו-\`dsRepositoryPackage\` קיימים כדי שתצורת datasource לכל דרייבר תסרוק **היכן הישויות שנוצרו באמת נמצאות** במקום מוסכמת \`<packageName>.<driver>\` קשיחה. הם מאוכלסים רק כשהבקשה מבנה ישויות (fullstack **או** אשף ה-SQL); אחרת \`hasScaffoldedEntities\` שקרי ושני מפתחות החבילה הם null. זו בדיוק הסיבה שתבנית ה-H2 מזווגת ענף \`{{#hasScaffoldedEntities}}\` עם נפילה-לאחור \`{{^hasScaffoldedEntities}}\` — ראו את ההדרכה על H2Config.`,
+        fields: [
+          { name: '{{artifactId}}', type: 'String', required: true, description: 'Artifact id של הפרויקט.', example: 'demo' },
+          { name: '{{groupId}}', type: 'String', required: true, description: 'Group id של הפרויקט.', example: 'com.menora' },
+          { name: '{{version}}', type: 'String', required: true, description: 'גרסת הפרויקט.', example: '0.0.1-SNAPSHOT' },
+          { name: '{{packageName}}', type: 'String', required: true, description: 'חבילת בסיס, צורה מנוקדת.', example: 'com.menora.demo' },
+          { name: '{{packagePath}}', type: 'String', required: true, description: 'packageName עם נקודות מוחלפות בסלשים. ההצבה היחידה המותרת גם בנתיבי יעד.', example: 'com/menora/demo' },
+          { name: '{{javaVersion}}', type: 'String', required: true, description: 'גרסת ה-JDK שנבחרה.', example: '21' },
+          { name: '{{packaging}}', type: 'String', required: false, description: 'מזהה packaging; null אם לא מוגדר.', example: 'jar' },
+          { name: 'has<Dep>', type: 'boolean', required: false, description: 'true לכל תלות שנבחרה (id ב-PascalCase). נעדר כשלא נבחרה.', example: 'hasKafka' },
+          { name: 'opt<Dep><Option>', type: 'boolean', required: false, description: 'true לכל תת-אפשרות שנבחרה (dep + option ב-PascalCase).', example: 'optKafkaConsumerExample' },
+          { name: '{{hasScaffoldedEntities}}', type: 'boolean', required: true, description: 'true כשהבקשה מבנה ישויות (fullstack או אשף SQL).', example: 'true' },
+          { name: '{{dsEntityPackage}}', type: 'String', required: false, description: 'החבילה שאליה נוחתות הישויות שנוצרו; null אלא אם hasScaffoldedEntities.', example: 'com.menora.demo.entity' },
+          { name: '{{dsRepositoryPackage}}', type: 'String', required: false, description: 'החבילה שאליה נוחתים ה-repositories שנוצרו; null אלא אם hasScaffoldedEntities.', example: 'com.menora.demo.repository' }
+        ],
+        codeExamples: [
+          {
+            title: 'שער datasource — סריקת חבילות מבונות או נפילה-לאחור',
+            language: 'java',
+            code: `@EnableJpaRepositories(
+    basePackages = "{{#hasScaffoldedEntities}}{{dsRepositoryPackage}}{{/hasScaffoldedEntities}}{{^hasScaffoldedEntities}}{{packageName}}.h2.repository{{/hasScaffoldedEntities}}"
+)`
+          }
+        ]
+      },
+      {
+        id: 'mustache-fullstack-context',
+        title: 'הקשר ישות Fullstack',
+        description: 'משתנים לערכות תבנית ישות (EntityScaffoldContext): פרויקט, לכל-ישות, שדות, יחסים.',
+        content: `### מקור
+\`EntityScaffoldContext\`, נבנה בשני שלבים — \`buildProjectContext\` (כלל-פרויקט) ו-\`buildEntityContext\` (כלל-פרויקט בתוספת ישות אחת). קובץ \`perEntity: true\` מרונדר פעם לכל ישות משתמש; \`perEntity: false\` מרונדר פעם אחת עם הקשר הפרויקט (ויכול לעבור על כל הישויות דרך \`{{#entities}}\`).
+
+### חבילות שכבה (כלל-פרויקט)
+לכל אחת יש גם וריאנט צורת-סלש \`…Path\`: \`entityPackage\` / \`entityPackagePath\`, \`repositoryPackage\`, \`dtoPackage\`, \`servicePackage\`, \`controllerPackage\`, כולן נגזרות מ-\`domainPackage\` (ברירת מחדל \`packageName\`). טבלת ה-\`fields\` למטה מפרטת את מפתחות הישות.
+
+### משתנים לכל-שדה (בתוך {{#fields}}, {{#pkFields}}, …)
+\`name\`, \`Name\` (PascalCase), \`column\` (snake_case), \`javaType\`, \`tsType\`, \`enumTypeName\`; פרדיקטים \`isPrimaryKey\`, \`isGenerated\`, \`isRequired\`, \`isUnique\`, \`isString\`, \`isNumeric\`, \`isIntegral\`, \`isBigDecimal\`, \`isBoolean\`, \`isTemporal\`, \`isDate\`, \`isDateTime\`, \`isEnum\`; אילוצים \`hasLength\`/\`length\`, \`hasMin\`/\`min\`, \`hasMax\`/\`max\`, \`hasPattern\`/\`pattern\`/\`patternEscaped\`, \`isEmail\`; \`enumValues\`; ודגלי איטרציה \`first\`/\`last\` (בתוספת \`lastNonPk\`, \`lastString\` ברשימות שלהם).
+
+### משתנים לכל-יחס (בתוך {{#relations}})
+\`fieldName\`, \`FieldName\`, \`fkFieldName\`, \`joinColumn\`, \`targetEntity\` (+ \`Camel\`/\`Kebab\`/\`KebabPlural\`), \`targetPkName\`/\`TargetPkName\`/\`targetPkJavaType\`/\`targetPkTsType\`, \`isTargetPkNumeric\`, \`targetLabelField\`/\`hasTargetLabel\`, \`required\`, \`isManyToOne\`, \`last\`. אוספים הפוכים (בתוך \`{{#inverseRelations}}\`): \`childEntity\`, \`childEntityCamel\`, \`mappedBy\`, \`collectionField\`, \`CollectionField\`.
+
+### דגלי scaffold אופציונליים
+\`optScaffoldTests\`, \`optScaffoldAudit\`, \`optScaffoldSoftDelete\`, \`optScaffoldInverse\` מגיעים מרשימת \`opts.scaffold\` של הבקשה. בנוסף \`hasValidation\` בנתיב ה-backend. ה-\`softDeleteApplicable\` לכל-ישות = \`optScaffoldSoftDelete && !hasCompositePk\`.`,
+        fields: [
+          { name: '{{EntityName}} / entityName / entity_name / entityNameKebab', type: 'String', required: true, description: 'שם הישות ב-Pascal / camel / snake / kebab. וריאנטים ברבים קיימים לכל אחד.', example: 'OrderItem / orderItem / order_item / order-item' },
+          { name: '{{tableName}}', type: 'String', required: true, description: 'דריסת שם טבלה או נפילה-לאחור ל-snake ברבים.', example: 'order_items' },
+          { name: '{{entityPackage}} / entityPackagePath', type: 'String', required: true, description: 'חבילת שכבת הישות (וצורת סלש). אותה תבנית ל-repository/dto/service/controller.', example: 'com.menora.demo.entity' },
+          { name: '{{fields}} / nonPkFields / pkFields / stringFields', type: 'List', required: true, description: 'מודלי-תצוגה של שדות לאיטרציה; pkField הוא קיצור ה-PK היחיד (עשוי להיות null).', example: '{{#fields}}…{{/fields}}' },
+          { name: '{{hasCompositePk}} / keyClassName / pkType / pkPath', type: 'mixed', required: true, description: 'דגל מפתח מורכב, שם מחלקת <Entity>Id שנוצרה, טיפוס id, ומקטע נתיב REST.', example: '/{orderId}/{lineNo}' },
+          { name: '{{relations}} / hasRelations', type: 'List / boolean', required: true, description: 'יחסי מפתח-זר MANY_TO_ONE.', example: '{{#relations}}…{{/relations}}' },
+          { name: '{{inverseRelations}} / hasInverseRelations', type: 'List / boolean', required: true, description: 'הפניות @OneToMany נגזרות (אופציונלי דרך optScaffoldInverse).', example: '{{#inverseRelations}}…{{/inverseRelations}}' },
+          { name: 'אגרגטי has*Fields', type: 'boolean', required: true, description: 'hasEnumFields, hasStringFields, hasNotNullFields, hasSizeFields, hasMinFields, hasMaxFields, hasDecimalMinFields, hasDecimalMaxFields, hasPatternFields, hasEmailFields — true אם שדה כלשהו זקוק לאותו import.', example: 'hasEmailFields' },
+          { name: '{{optScaffoldTests}} / Audit / SoftDelete / Inverse', type: 'boolean', required: false, description: 'דגלי scaffold אופציונליים מ-opts.scaffold. חייבים להיקבע בשני נתיבי הרינדור.', example: 'optScaffoldAudit' }
+        ],
+        codeExamples: [
+          {
+            title: 'רשומת manifest — שער קובץ עם gatedBy',
+            language: 'json',
+            code: `{
+  "source": "EntityControllerTest.java.mustache",
+  "path": "src/test/java/{{controllerPackagePath}}/{{EntityName}}ControllerTest.java",
+  "perEntity": true,
+  "substitutionType": "MUSTACHE",
+  "fileType": "TEMPLATE",
+  "sortOrder": 60,
+  "gatedBy": "optScaffoldTests"
+}`
+          },
+          {
+            title: 'תבנית ישות — איטרציה על שדות',
+            language: 'java',
+            code: `public class {{EntityName}}Dto {
+{{#fields}}
+    private {{javaType}} {{name}};
+{{/fields}}
+}`
+          }
+        ],
+        callouts: [
+          {
+            type: 'warning',
+            text: 'דגל optScaffold* חייב להיקבע בשני נתיבי הרינדור (FullstackProjectGenerationConfiguration ל-backend, FullstackStarterController.renderFrontend ל-frontend). אופציה שמשפיעה על ה-frontend אך נקבעת רק ב-backend לעולם לא תופעל, בשקט.'
+          },
+          {
+            type: 'info',
+            text: 'gatedBy מקבל כל דגל הקשר אמיתי — אופציה כמו optScaffoldTests או דגל נגזר כמו hasCompositePk (בשימוש שורת EntityId.java).'
+          }
+        ]
+      },
+      {
+        id: 'mustache-frontend-context',
+        title: 'הקשר Frontend',
+        description: 'משתנים לקבצי TEMPLATE של frontend (FrontendMustacheContext).',
+        content: `### מקור
+\`FrontendMustacheContext.build(...)\`. מזין כל קובץ \`TEMPLATE\` של frontend ב-\`catalog/frontend/file-contributions.json\`, וממוזג להקשר הישות עבור תבניות frontend של fullstack.
+
+### דגלי תלות / palette
+אותה מוסכמת \`has<Dep>\` / \`opt<Dep><Option>\` ב-PascalCase כמו ב-backend (למשל \`hasRouterReactRouter\`, \`optAuthMsalInitConfig\`). לוח הצבעים הוא מפת \`palette\` מקוננת — \`palette.primary\`, \`palette.secondary\`, \`palette.accent\`, \`palette.error\`, בתוספת צורות \`*Hsl\` למשתני CSS — מסוננת על ידי \`hasPaletteAccent\` / \`hasPaletteError\`.
+
+### שערוּר לפי גרסת Node
+המראה של שערוּר \`javaVersion\` ב-backend: תרומת קובץ frontend עם \`nodeVersion\` מדולגת אלא אם היא תואמת לגרסת ה-Node שנבחרה. שורה ללא \`nodeVersion\` חלה על כל הגרסאות. זה מאפשר לנתיב יעד אחד (למשל \`Dockerfile\`) להיפתר לשורת תוכן שונה לכל גרסת Node — וגרסה ללא שורה תואמת לא מייצרת קובץ כלל.`,
+        fields: [
+          { name: '{{projectName}} / appTitle / packageJsonName', type: 'String', required: true, description: 'זהות הפרויקט; packageJsonName הוא scoped או רגיל.', example: '@menora/demo-ui' },
+          { name: '{{reactVersion}} / reactPackageVersion / reactTypesVersion', type: 'String', required: true, description: 'גרסאות React ו-@types.', example: '^19.0.0' },
+          { name: '{{nodeVersion}}', type: 'String', required: true, description: 'גרסת ה-Node major שנבחרה.', example: '20' },
+          { name: '{{packageManager}} / isNpm / isPnpm', type: 'String / boolean', required: true, description: 'מנהל החבילות ודגלי נוחות.', example: 'npm' },
+          { name: '{{typescriptVersion}} / viteVersion / basePath', type: 'String', required: true, description: 'גרסאות כלים ונתיב בסיס של האפליקציה.', example: '/' },
+          { name: '{{apiBaseUrl}} / backendArtifactId / hasBackendPair / hasBackendArtifactId', type: 'mixed', required: true, description: 'מידע על backend מזווג; hasBackendPair אמיתי כש-apiBaseUrl מוגדר.', example: 'http://localhost:8080' },
+          { name: '{{palette.*}}', type: 'Map', required: true, description: 'id, name, primary, secondary, accent, error, וצורות *Hsl למשתני CSS.', example: '{{palette.primary}}' },
+          { name: '{{hasPaletteAccent}} / hasPaletteError', type: 'boolean', required: true, description: 'שערים לצבעי accent/error האופציונליים.', example: 'true' },
+          { name: 'has<Dep> / opt<Dep><Option>', type: 'boolean', required: false, description: 'אותה מוסכמת דגלי בחירה כמו בהקשר ה-backend.', example: 'hasRouterReactRouter' }
+        ]
+      },
+      {
+        id: 'mustache-h2-walkthrough',
+        title: 'הדרכה: פענוח H2Config',
+        description: 'קריאת h2-config-primary.mustache האמיתי שורה אחר שורה.',
+        content: `### התבנית
+\`templates/h2-config-primary.mustache\` היא תבנית תלות backend (הקשר תלות Backend), מוצגת למטה.
+
+### קריאתה
+- \`{{#hasScaffoldedEntities}}…{{/hasScaffoldedEntities}}\` — ה**מקטע** מרונדר רק כשישויות בונו (בקשת fullstack, או אשף ה-SQL). בענף הזה הוא פולט \`{{dsRepositoryPackage}}\` / \`{{dsEntityPackage}}\` — החבילות שבהן ה-repositories/ישויות שנוצרו באמת נחתו (\`<domainPackage>.repository\` / \`<domainPackage>.entity\`).
+- \`{{^hasScaffoldedEntities}}…{{/hasScaffoldedEntities}}\` — ה**מקטע ההפוך** הוא ה-"else": כשדבר לא בונה, שני המפתחות האלה הם null, אז התבנית נופלת-לאחור למוסכמה הישנה \`{{packageName}}.h2.repository\` / \`{{packageName}}.h2\`.
+
+כך פרויקט רגיל (לא-fullstack) מקבל \`com.menora.demo.h2.repository\`; פרויקט fullstack מקבל את החבילה המבונה האמיתית. שלושת המפתחות (\`hasScaffoldedEntities\`, \`dsEntityPackage\`, \`dsRepositoryPackage\`) נקבעים יחד ב-\`buildBaseContext\`.`,
+        codeExamples: [
+          {
+            title: 'h2-config-primary.mustache (קטע)',
+            language: 'java',
+            code: `@Configuration
+@EnableJpaRepositories(
+        basePackages = "{{#hasScaffoldedEntities}}{{dsRepositoryPackage}}{{/hasScaffoldedEntities}}{{^hasScaffoldedEntities}}{{packageName}}.h2.repository{{/hasScaffoldedEntities}}",
+        entityManagerFactoryRef = "h2EntityManagerFactory",
+        transactionManagerRef = "h2TransactionManager"
+)
+public class H2Config {
+    // ...
+    em.setPackagesToScan("{{#hasScaffoldedEntities}}{{dsEntityPackage}}{{/hasScaffoldedEntities}}{{^hasScaffoldedEntities}}{{packageName}}.h2{{/hasScaffoldedEntities}}");
+}`
+          }
+        ]
+      },
+      {
+        id: 'mustache-authoring',
+        title: 'הדרכה: הוספה ושערוּר של תבניות',
+        description: 'כתבו קובץ TEMPLATE חדש, שערו תוכן, ושערו קובץ לפי גרסה.',
+        content: `### מנופי שערוּר (מהגס לעדין)
+1. **קובץ שלם לפי תלות** — ה-\`dependencyId\` של שורה משייך אותה לאותה תלות (\`__common__\` = כל פרויקט).
+2. **קובץ שלם לפי תת-אפשרות** — קבעו \`subOptionId\` בשורה; נכתב רק כשאותה תת-אפשרות נבחרת (כך \`KafkaConsumerExample.java\` של קפקא נושא \`subOptionId: "consumer-example"\`).
+3. **בלוק בתוך קובץ** — שערו עם מקטע באמצעות \`has<Dep>\` / \`opt<Dep><Option>\`. עבור תבניות ישות fullstack, השער ברמת הקובץ הוא דגל ה-\`gatedBy\` ב-manifest.
+
+### קבצים משוערים לפי גרסה
+\`targetPath\` אחד, תוכן שונה לכל זמן-ריצה: ה-framework בוחר את השורה שה-\`javaVersion\` (backend) או \`nodeVersion\` (frontend) שלה תואם; עמודה null משמעה "כל הגרסאות". למשל שתי שורות שמכוונות שתיהן ל-\`Dockerfile\`, אחת \`javaVersion: "17"\` ואחת \`"21"\`.
+
+### עבור מופע פעיל
+ה-DB הוא מקור האמת. עריכת ה-manifest מזריעה DB ריק; עבור מופע שכבר הוזרע השתמשו ב-admin API — \`POST /admin/file-contributions\` ואז \`POST /admin/refresh\` כדי לבטל את מטמון המטה-דאטה.`,
+        workflowSteps: [
+          { title: 'כתבו את התוכן', description: 'צרו src/main/resources/templates/my-feature-config.mustache באמצעות משתני הקשר תלות Backend ({{packageName}}, {{artifactId}}, {{javaVersion}}, מקטעי has<Dep>).' },
+          { title: 'רשמו את השורה', description: 'הוסיפו רשומה ל-catalog/file-contributions.json: depId, fileType TEMPLATE, contentResource, targetPath עם {{packagePath}}, substitutionType MUSTACHE.' },
+          { title: 'נתיב זמן-ריצה (אופציונלי)', description: 'עבור מופע פעיל, POST /admin/file-contributions עם אותם שדות, ואז POST /admin/refresh.' },
+          { title: 'אימות', description: 'בצעו curl ל-starter.zip עם התלות הרלוונטית ופרסו את קובץ היעד כדי לאמת את הפלט המרונדר.' }
+        ],
+        codeExamples: [
+          {
+            title: 'file-contributions.json — שורת TEMPLATE חדשה',
+            language: 'json',
+            code: `{ "depId": "security", "fileType": "TEMPLATE", "contentResource": "templates/my-feature-config.mustache", "targetPath": "src/main/java/{{packagePath}}/config/MyFeatureConfig.java", "substitutionType": "MUSTACHE", "sortOrder": 10 }`
+          },
+          {
+            title: 'שערוּר לפי גרסה — שתי שורות, Dockerfile אחד',
+            language: 'json',
+            code: `{ "depId": "__common__", "fileType": "TEMPLATE", "contentResource": "templates/Dockerfile-java17.mustache", "targetPath": "Dockerfile", "substitutionType": "MUSTACHE", "javaVersion": "17", "sortOrder": 5 }
+{ "depId": "__common__", "fileType": "TEMPLATE", "contentResource": "templates/Dockerfile-java21.mustache", "targetPath": "Dockerfile", "substitutionType": "MUSTACHE", "javaVersion": "21", "sortOrder": 6 }`
+          }
+        ],
+        callouts: [
+          {
+            type: 'tip',
+            text: 'שערוּר בלוקים עם {{#hasSecurity}}…{{/hasSecurity}} מכווץ את מה שפעם דרש כמה שורות כמעט-זהות לתבנית אחת.'
+          }
+        ]
+      },
+      {
+        id: 'mustache-gotchas',
+        title: 'מלכודות ומפת מקור',
+        description: 'קצוות חדים לזכור, והיכן כל הקשר נבנה ב-backend.',
+        content: `### מלכודות
+- **{{{ }}} שווה ל-{{ }}** — בריחת HTML כבויה; אף פעם לא צריך סוגריים משולשים.
+- **מפתח חסר/מאוית שגוי מרונדר ריק, בשקט** — ללא שגיאה. ריק בפלט בדרך כלל אומר שם משתנה מאוית שגוי.
+- **החלפת נתיב אינה החלפת תוכן** — נתיבי יעד של backend מכבדים רק {{packagePath}}, frontend רק {{projectName}}; נתיבי ישות fullstack מכבדים את הקשר הישות המלא.
+- **מפתחות עם תחילית __ הם פנימיים** (__entitySummaries, __inverseRelations) — לא לתבניות.
+- **משתני ישות חדשים נכנסים רק ב-EntityScaffoldContext** — buildProjectContext, buildEntityContext, או בנאי מודל-התצוגה לכל-שדה/-יחס. אין מקום אחר לחווט אותם.
+- **optScaffold* חייב להיקבע בשני נתיבי הרינדור** — הקשרי backend ו-frontend נפרדים.
+- **pkField יכול להיות null** — הגנו עם {{#pkField}}…{{/pkField}} לישויות ללא מפתח ראשי.
+
+### מפת מקור (backend)
+- הקשר תלות backend — \`extension/dynamic/DynamicProjectGenerationConfiguration.java\` (buildBaseContext, toPascalCase, resolveTargetPath)
+- הקשר ישות fullstack — \`fullstack/EntityScaffoldContext.java\`
+- הקשר frontend — \`extension/frontend/FrontendMustacheContext.java\`, \`FrontendProjectGenerator.java\`
+- מודל השורה — \`db/entity/FileContributionEntity.java\`, \`db/entity/EntityTemplateFileEntity.java\`
+- המדריך הכתוב המלא — \`backend/docs/MUSTACHE_GUIDE.md\``,
+        callouts: [
+          {
+            type: 'info',
+            text: 'מדריך זה בתוך האפליקציה תואם את backend/docs/MUSTACHE_GUIDE.md. אם תשנו משתנה ב-backend, עדכנו את שניהם כדי שהאפליקציה והתיעוד לא יסטו.'
+          }
         ]
       }
     ]
