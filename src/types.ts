@@ -357,6 +357,9 @@ export interface FullstackEntityDef {
   readOnly?: boolean
   /** Raw SELECT this entity maps to via Hibernate @Immutable/@Subselect. Implies readOnly. */
   viewQuery?: string
+  /** Originating CREATE TABLE this entity was imported from. Informational only —
+   *  shown read-only in the editor; not used during generation. */
+  sourceSql?: string
 }
 
 export interface EntityTemplateSetSummary {

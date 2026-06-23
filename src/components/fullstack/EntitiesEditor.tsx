@@ -47,6 +47,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
       schema: undefined,
       readOnly: src.readOnly,
       viewQuery: src.viewQuery,
+      sourceSql: src.sourceSql,
       fields: src.fields.map(f => ({ ...f, enumValues: f.enumValues ? [...f.enumValues] : undefined })),
       relations: src.relations ? src.relations.map(r => ({ ...r })) : undefined,
     }
@@ -204,6 +205,22 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                 value={entity.viewQuery}
                 spellCheck={false}
                 onChange={e => updateEntity(eIdx, { viewQuery: e.target.value || undefined })}
+              />
+            </details>
+          )}
+
+          {entity.sourceSql && !entity.viewQuery && (
+            <details className="rounded-lg border border-outline-variant bg-background/50">
+              <summary className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-secondary cursor-pointer select-none">
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>code</span>
+                Imported from this <code className="font-mono">CREATE TABLE</code> (read-only — for reference).
+              </summary>
+              <textarea
+                aria-label="Source CREATE TABLE"
+                className="w-full font-mono text-[11px] bg-background border-t border-outline-variant rounded-b p-3 min-h-[100px] text-secondary outline-none resize-y"
+                value={entity.sourceSql}
+                readOnly
+                spellCheck={false}
               />
             </details>
           )}

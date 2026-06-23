@@ -76,6 +76,7 @@ interface WireEntity {
   fields: WireField[]
   readOnly?: boolean
   viewQuery?: string | null
+  sourceSql?: string | null
 }
 interface ImportResponse {
   entities: WireEntity[]
@@ -126,6 +127,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       schema: e.schema ?? undefined,
       readOnly: e.readOnly || undefined,
       viewQuery: e.viewQuery ?? undefined,
+      sourceSql: e.sourceSql ?? undefined,
       fields: e.fields.map(f => ({
         name: f.name,
         type: f.type,
