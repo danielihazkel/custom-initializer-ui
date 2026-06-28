@@ -46,6 +46,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
       tableName: undefined,
       schema: undefined,
       readOnly: src.readOnly,
+      listViews: src.listViews ? [...src.listViews] : undefined,
       listView: src.listView,
       viewQuery: src.viewQuery,
       sourceSql: src.sourceSql,
@@ -111,6 +112,31 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
     <div className="space-y-6">
       {entities.map((entity, eIdx) => {
         const eErr = errors?.[eIdx]
+        // Mirror the backend down-grade rules so the picker only offers a mode the entity supports:
+        // kanban groups by an ENUM/BOOLEAN field and writes the value back (needs a writable entity);
+        // calendar places records by a LOCAL_DATE/LOCAL_DATE_TIME field.
+        const kanbanOk = !entity.readOnly && !entity.viewQuery
+          && entity.fields.some(f => f.type === 'ENUM' || f.type === 'BOOLEAN')
+        const calendarOk = entity.fields.some(f => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME')
+        // Which list views are enabled (back-compat: fall back to the legacy single listView, else table).
+        const views: string[] = entity.listViews ?? (entity.listView ? [entity.listView] : ['table'])
+        const VIEW_ORDER = ['table', 'cards', 'kanban', 'calendar']
+        const viewOptions = [
+          { key: 'table', label: 'Table', applicable: true, hint: '' },
+          { key: 'cards', label: 'Cards', applicable: true, hint: '' },
+          { key: 'kanban', label: 'Kanban', applicable: kanbanOk, hint: 'Needs an enum/boolean field' },
+          { key: 'calendar', label: 'Calendar', applicable: calendarOk, hint: 'Needs a date field' },
+        ] as const
+        function toggleView(key: string) {
+          const has = views.includes(key)
+          // Keep at least one view selected; otherwise toggle and re-sort into canonical order so the
+          // first (= the generated page's initial mode) is deterministic regardless of click order.
+          const next = (has ? views.filter(v => v !== key) : [...views, key])
+            .filter((v, i, a) => a.indexOf(v) === i)
+          if (next.length === 0) return
+          next.sort((a, b) => VIEW_ORDER.indexOf(a) - VIEW_ORDER.indexOf(b))
+          updateEntity(eIdx, { listViews: next as FullstackEntityDef['listViews'], listView: undefined })
+        }
         return (
         <div key={eIdx} className="border border-outline-variant rounded-xl p-5 bg-surface-container-low space-y-4">
           <div className="flex items-center justify-between gap-4">
@@ -159,21 +185,33 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                 />
                 Read-only
               </label>
-              <label
+              <div
                 className="flex items-center gap-1.5 text-xs text-secondary shrink-0"
-                title="Initial list display in the generated app (it always ships a Table/Cards toggle)"
+                title="Which list views the generated page includes. A runtime toggle appears when you pick 2+; the first (Table > Cards > Kanban > Calendar) is the initial mode."
               >
-                List
-                <select
-                  aria-label="List view"
-                  className="bg-background border border-outline-variant rounded px-2 py-1.5 text-xs text-secondary focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                  value={entity.listView ?? 'table'}
-                  onChange={e => updateEntity(eIdx, { listView: e.target.value === 'cards' ? 'cards' : undefined })}
-                >
-                  <option value="table">Table</option>
-                  <option value="cards">Cards</option>
-                </select>
-              </label>
+                <span>Views</span>
+                <div className="inline-flex rounded border border-outline-variant overflow-hidden" role="group" aria-label="List views">
+                  {viewOptions.map(opt => {
+                    const selected = views.includes(opt.key)
+                    // Disabled only blocks *adding* an unsupported view — an already-selected one can
+                    // still be removed (so it never gets stuck after its field is deleted).
+                    const interactive = opt.applicable || selected
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        aria-pressed={selected}
+                        disabled={!interactive}
+                        title={opt.applicable ? undefined : opt.hint}
+                        onClick={() => toggleView(opt.key)}
+                        className={`px-2 py-1 transition-colors ${selected ? 'bg-primary text-white' : 'bg-background text-secondary hover:text-on-surface'} ${interactive ? '' : 'opacity-40 cursor-not-allowed'}`}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <button

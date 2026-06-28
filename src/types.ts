@@ -355,9 +355,14 @@ export interface FullstackEntityDef {
   relations?: FullstackRelationDef[]
   /** Read-only entity — generates GET-only scaffolding (no create/update/delete). */
   readOnly?: boolean
-  /** Initial list display for the generated entity page: 'table' (default) or 'cards'.
-   *  The generated page always ships a runtime Table/Cards toggle regardless. */
-  listView?: 'table' | 'cards'
+  /** The list-view modes the generated entity page generates (subset of table/cards/kanban/
+   *  calendar, ordered; first = initial). A runtime toggle is emitted only when 2+ are enabled,
+   *  and unsupported modes are dropped (kanban needs an ENUM/BOOLEAN field + a writable entity;
+   *  calendar needs a LOCAL_DATE/LOCAL_DATE_TIME field). Empty/absent defaults to ['table']. */
+  listViews?: Array<'table' | 'cards' | 'kanban' | 'calendar'>
+  /** @deprecated Legacy single initial view — still read for back-compat when {@link listViews}
+   *  is absent. New code should write {@link listViews}. */
+  listView?: 'table' | 'cards' | 'kanban' | 'calendar'
   /** Raw SELECT this entity maps to via Hibernate @Immutable/@Subselect. Implies readOnly. */
   viewQuery?: string
   /** Originating CREATE TABLE this entity was imported from. Informational only —
