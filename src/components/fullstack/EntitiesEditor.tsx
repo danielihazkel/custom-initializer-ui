@@ -4,8 +4,8 @@ import { EnumValuesEditor } from './EnumValuesEditor'
 import { RelationsEditor } from './RelationsEditor'
 
 const FIELD_TYPES: FullstackFieldType[] = [
-  'STRING', 'LONG', 'INTEGER', 'BOOLEAN',
-  'LOCAL_DATE', 'LOCAL_DATE_TIME', 'BIG_DECIMAL', 'ENUM',
+  'STRING', 'TEXT', 'LONG', 'INTEGER', 'BOOLEAN',
+  'LOCAL_DATE', 'LOCAL_DATE_TIME', 'BIG_DECIMAL', 'UUID', 'ENUM',
 ]
 
 interface Props {
@@ -46,6 +46,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
       tableName: undefined,
       schema: undefined,
       readOnly: src.readOnly,
+      listView: src.listView,
       viewQuery: src.viewQuery,
       sourceSql: src.sourceSql,
       fields: src.fields.map(f => ({ ...f, enumValues: f.enumValues ? [...f.enumValues] : undefined })),
@@ -65,8 +66,9 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
     const updates: Partial<FullstackFieldDef> = { type }
     if (type !== 'STRING') updates.length = undefined
     if (type !== 'ENUM') updates.enumValues = undefined
-    // Auto-increment is only valid on an integral key — drop it when the type can't carry it.
-    if (type !== 'LONG' && type !== 'INTEGER') updates.generated = undefined
+    // Auto-generated keys are valid on an integral key (IDENTITY) or a UUID (@UuidGenerator) —
+    // drop the flag when the type can't carry it.
+    if (type !== 'LONG' && type !== 'INTEGER' && type !== 'UUID') updates.generated = undefined
     // Constraints follow the same "clear what no longer applies" rule the backend enforces:
     // numeric bounds only on numeric types, regex/email only on STRING.
     const numeric = type === 'LONG' || type === 'INTEGER' || type === 'BIG_DECIMAL'
@@ -156,6 +158,21 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                   onChange={e => updateEntity(eIdx, { readOnly: e.target.checked || undefined })}
                 />
                 Read-only
+              </label>
+              <label
+                className="flex items-center gap-1.5 text-xs text-secondary shrink-0"
+                title="Initial list display in the generated app (it always ships a Table/Cards toggle)"
+              >
+                List
+                <select
+                  aria-label="List view"
+                  className="bg-background border border-outline-variant rounded px-2 py-1.5 text-xs text-secondary focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                  value={entity.listView ?? 'table'}
+                  onChange={e => updateEntity(eIdx, { listView: e.target.value === 'cards' ? 'cards' : undefined })}
+                >
+                  <option value="table">Table</option>
+                  <option value="cards">Cards</option>
+                </select>
               </label>
             </div>
             <div className="flex items-center gap-1 shrink-0">
@@ -249,7 +266,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                   const fErr = eErr?.fields?.[fIdx]
                   const pkCount = entity.fields.filter(f => f.primaryKey).length
                   // A generated key requires a single PK (JPA IDENTITY can't target one column of a composite key).
-                  const canGenerate = !!field.primaryKey && pkCount === 1 && (field.type === 'LONG' || field.type === 'INTEGER')
+                  const canGenerate = !!field.primaryKey && pkCount === 1 && (field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'UUID')
                   const isNumeric = field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'BIG_DECIMAL'
                   const isString = field.type === 'STRING'
                   return (
@@ -283,7 +300,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                     <td className="py-1.5 px-2 text-center align-top">
                       <input type="checkbox" aria-label="Auto-generated value" checked={!!field.generated}
                         disabled={!canGenerate}
-                        title={canGenerate ? undefined : (pkCount > 1 ? 'A generated key requires a single primary key' : 'Auto-generated applies to a LONG/INTEGER primary key only')}
+                        title={canGenerate ? undefined : (pkCount > 1 ? 'A generated key requires a single primary key' : 'Auto-generated applies to a LONG/INTEGER/UUID primary key only')}
                         className="disabled:opacity-40 disabled:cursor-not-allowed"
                         onChange={e => updateField(eIdx, fIdx, { generated: e.target.checked })} />
                       {fErr?.generated && <p className="mt-0.5 text-[10px] text-error">{fErr.generated}</p>}

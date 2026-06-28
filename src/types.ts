@@ -318,8 +318,8 @@ export interface AdminEntityTemplateFile {
 }
 
 export type FullstackFieldType =
-  | 'STRING' | 'LONG' | 'INTEGER' | 'BOOLEAN'
-  | 'LOCAL_DATE' | 'LOCAL_DATE_TIME' | 'BIG_DECIMAL' | 'ENUM'
+  | 'STRING' | 'TEXT' | 'LONG' | 'INTEGER' | 'BOOLEAN'
+  | 'LOCAL_DATE' | 'LOCAL_DATE_TIME' | 'BIG_DECIMAL' | 'UUID' | 'ENUM'
 
 export interface FullstackFieldDef {
   name: string
@@ -355,6 +355,9 @@ export interface FullstackEntityDef {
   relations?: FullstackRelationDef[]
   /** Read-only entity — generates GET-only scaffolding (no create/update/delete). */
   readOnly?: boolean
+  /** Initial list display for the generated entity page: 'table' (default) or 'cards'.
+   *  The generated page always ships a runtime Table/Cards toggle regardless. */
+  listView?: 'table' | 'cards'
   /** Raw SELECT this entity maps to via Hibernate @Immutable/@Subselect. Implies readOnly. */
   viewQuery?: string
   /** Originating CREATE TABLE this entity was imported from. Informational only —

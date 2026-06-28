@@ -173,7 +173,7 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
       // disables the checkbox otherwise, but guard stale persisted/imported state too.
       if (field.generated) {
         if (!field.primaryKey) fErr.generated = 'Only the primary key can be auto-generated'
-        else if (field.type !== 'LONG' && field.type !== 'INTEGER') fErr.generated = 'Generated key must be LONG or INTEGER'
+        else if (field.type !== 'LONG' && field.type !== 'INTEGER' && field.type !== 'UUID') fErr.generated = 'Generated key must be LONG, INTEGER, or UUID'
       }
 
       // Numeric bounds: only on numeric types, min ≤ max. Regex/email: only on STRING.
