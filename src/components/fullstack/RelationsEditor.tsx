@@ -32,14 +32,14 @@ export function RelationsEditor({ relations, entityNames, onChange, errors }: Pr
   return (
     <div className="space-y-2 border-t border-outline-variant pt-3">
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-secondary">Relations</span>
-        <span className="text-[10px] text-secondary/70">@ManyToOne — foreign key to another entity</span>
+        <span className="text-[11px] font-bold uppercase tracking-wider text-secondary">Relations</span>
+        <span className="text-[11px] text-secondary/70">@ManyToOne — foreign key to another entity</span>
       </div>
 
       {relations.length > 0 && (
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-[10px] font-bold uppercase tracking-wider text-secondary">
+            <tr className="text-[11px] font-bold uppercase tracking-wider text-secondary">
               <th className="text-left py-1 px-2">Field name</th>
               <th className="text-left py-1 px-2">Target entity</th>
               <th className="text-center py-1 px-2 w-12">Req</th>
@@ -61,7 +61,7 @@ export function RelationsEditor({ relations, entityNames, onChange, errors }: Pr
                       onChange={e => update(rIdx, { fieldName: e.target.value })}
                       placeholder="customer"
                     />
-                    {rErr?.fieldName && <p className="mt-0.5 text-[10px] text-error">{rErr.fieldName}</p>}
+                    {rErr?.fieldName && <p className="mt-0.5 text-[11px] text-error">{rErr.fieldName}</p>}
                   </td>
                   <td className="py-1.5 px-2 align-top">
                     <select
@@ -78,11 +78,12 @@ export function RelationsEditor({ relations, entityNames, onChange, errors }: Pr
                         <option value={rel.targetEntity}>{rel.targetEntity}</option>
                       )}
                     </select>
-                    {rErr?.targetEntity && <p className="mt-0.5 text-[10px] text-error">{rErr.targetEntity}</p>}
+                    {rErr?.targetEntity && <p className="mt-0.5 text-[11px] text-error">{rErr.targetEntity}</p>}
                   </td>
                   <td className="py-1.5 px-2 text-center align-top">
                     <input
                       type="checkbox"
+                      className="h-4 w-4 accent-primary"
                       aria-label="Required (not null)"
                       checked={!!rel.required}
                       onChange={e => update(rIdx, { required: e.target.checked })}

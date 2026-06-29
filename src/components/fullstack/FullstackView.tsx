@@ -294,7 +294,7 @@ export function FullstackView() {
       <div className="grid grid-cols-12 gap-8">
         <div className="col-span-12 lg:col-span-5 space-y-8 lg:h-[480px] lg:overflow-y-auto lg:pr-2">
       <section className="space-y-3">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Project Metadata</h2>
+        <SectionHeading icon="tune" title="Project Metadata" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Labeled label="Group ID" htmlFor="fs-groupId" error={metaErrors.groupId}>
             <input id="fs-groupId" className={inputClass(metaErrors.groupId)} value={meta.groupId}
@@ -339,7 +339,7 @@ export function FullstackView() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Template Sets</h2>
+        <SectionHeading icon="dashboard_customize" title="Template Sets" />
         <p className="text-[11px] text-on-surface-variant">
           Generated files come from the selected backend + frontend template sets. Edit them in the
           Config admin panel under "Entity CRUD".
@@ -390,7 +390,7 @@ export function FullstackView() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Options</h2>
+        <SectionHeading icon="toggle_on" title="Options" />
         <p className="text-[11px] text-on-surface-variant">
           Opt-in scaffolding extras applied to every entity. Off by default.
         </p>
@@ -402,7 +402,7 @@ export function FullstackView() {
             >
               <input
                 type="checkbox"
-                className="mt-0.5"
+                className="mt-0.5 h-4 w-4 accent-primary"
                 checked={scaffoldOpts.includes(opt.value)}
                 onChange={() => toggleOpt(opt.value)}
               />
@@ -419,7 +419,7 @@ export function FullstackView() {
         <div className="col-span-12 lg:col-span-7 lg:flex lg:flex-col lg:h-[480px]">
       <section className="space-y-3 lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Dependencies</h2>
+          <SectionHeading icon="inventory_2" title="Dependencies" />
           <span className="text-[11px] text-secondary">{selectedDeps.length} selected</span>
         </div>
         <p className="text-[11px] text-on-surface-variant">
@@ -438,7 +438,7 @@ export function FullstackView() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Entities</h2>
+          <SectionHeading icon="table" title="Entities" primary />
           <div className="flex items-center gap-3">
             <span className="text-[11px] text-secondary">{entities.length} entit{entities.length === 1 ? 'y' : 'ies'}</span>
             <button
@@ -464,7 +464,9 @@ export function FullstackView() {
         <EntitiesEditor entities={entities} onChange={setEntities} errors={entityErrors.entities} />
       </section>
 
-      <section className="border-t border-outline-variant pt-6 flex items-center justify-end gap-3">
+      {/* Pinned to the viewport bottom so Generate/Explore stay reachable while editing a long
+          entity list. The negative-margin/px pair lets the glass backdrop bleed to the column edges. */}
+      <section className="sticky bottom-0 z-20 -mx-8 px-8 py-4 flex items-center justify-end gap-3 glass-header border-t border-outline-variant">
         {hasErrors && (
           <span className="text-[11px] text-error flex items-center gap-1 mr-auto">
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
@@ -526,6 +528,19 @@ export function FullstackView() {
         document.body,
       )}
     </div>
+  )
+}
+
+/** Section label with a leading icon. `primary` bumps the weight/size so the Entities
+ *  workspace visibly outranks the surrounding config sections. */
+function SectionHeading({ icon, title, primary }: { icon: string; title: string; primary?: boolean }) {
+  return (
+    <h2 className={`flex items-center gap-2 font-bold uppercase tracking-widest ${
+      primary ? 'text-sm text-on-surface' : 'text-xs text-secondary'}`}>
+      <span className={`material-symbols-outlined ${primary ? 'text-primary' : 'text-secondary'}`}
+            style={{ fontSize: primary ? '18px' : '15px' }}>{icon}</span>
+      {title}
+    </h2>
   )
 }
 

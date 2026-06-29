@@ -138,26 +138,50 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
           updateEntity(eIdx, { listViews: next as FullstackEntityDef['listViews'], listView: undefined })
         }
         return (
-        <div key={eIdx} className="border border-outline-variant rounded-xl p-5 bg-surface-container-low space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 flex-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-secondary shrink-0">Entity</span>
-              <div className="flex-1 max-w-sm">
-                <input
-                  type="text"
-                  aria-label="Entity name"
-                  aria-invalid={Boolean(eErr?.name)}
-                  className={`w-full bg-background border rounded px-3 py-2 text-sm font-mono text-on-surface focus:ring-2 outline-none ${eErr?.name ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
-                  placeholder="User, Order, Product…"
-                  value={entity.name}
-                  onChange={e => updateEntity(eIdx, { name: e.target.value })}
-                />
-                {eErr?.name && <p className="mt-1 text-[11px] text-error">{eErr.name}</p>}
+        <div key={eIdx} className="border border-outline-variant rounded-xl p-5 bg-surface-container shadow-sm space-y-4">
+          {/* Header: identity (row 1) split from secondary attributes (row 2) so the controls
+              don't overflow a single row on laptop widths. A tinted panel marks the card title. */}
+          <div className="rounded-lg bg-primary/[0.04] border border-outline-variant px-3 py-2.5 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-secondary shrink-0">Entity</span>
+                <div className="flex-1 max-w-sm">
+                  <input
+                    type="text"
+                    aria-label="Entity name"
+                    aria-invalid={Boolean(eErr?.name)}
+                    className={`w-full bg-background border rounded px-3 py-2 text-sm font-mono text-on-surface focus:ring-2 outline-none ${eErr?.name ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
+                    placeholder="User, Order, Product…"
+                    value={entity.name}
+                    onChange={e => updateEntity(eIdx, { name: e.target.value })}
+                  />
+                  {eErr?.name && <p className="mt-1 text-[11px] text-error">{eErr.name}</p>}
+                </div>
               </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => duplicateEntity(eIdx)}
+                  className="p-1.5 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
+                  title="Duplicate entity"
+                  aria-label="Duplicate entity"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>content_copy</span>
+                </button>
+                <button
+                  onClick={() => removeEntity(eIdx)}
+                  className="p-1.5 rounded text-secondary hover:text-error hover:bg-error/10 transition-colors"
+                  title="Remove entity"
+                  aria-label="Remove entity"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>delete</span>
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <input
                 type="text"
                 aria-label="Schema (optional)"
-                className="flex-1 max-w-[10rem] bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                className="w-40 bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 placeholder="schema (optional)"
                 value={entity.schema ?? ''}
                 onChange={e => updateEntity(eIdx, { schema: e.target.value || undefined })}
@@ -165,7 +189,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
               <input
                 type="text"
                 aria-label="Table name (optional)"
-                className="flex-1 max-w-xs bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-40"
+                className="w-56 bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-40"
                 placeholder="table_name (optional)"
                 value={entity.tableName ?? ''}
                 disabled={Boolean(entity.viewQuery)}
@@ -178,6 +202,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
               >
                 <input
                   type="checkbox"
+                  className="h-4 w-4 accent-primary"
                   aria-label="Read-only"
                   checked={Boolean(entity.readOnly) || Boolean(entity.viewQuery)}
                   disabled={Boolean(entity.viewQuery)}
@@ -204,7 +229,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                         disabled={!interactive}
                         title={opt.applicable ? undefined : opt.hint}
                         onClick={() => toggleView(opt.key)}
-                        className={`px-2 py-1 transition-colors ${selected ? 'bg-primary text-white' : 'bg-background text-secondary hover:text-on-surface'} ${interactive ? '' : 'opacity-40 cursor-not-allowed'}`}
+                        className={`px-2 py-1 transition-colors ${selected ? 'bg-primary text-on-primary' : 'bg-background text-secondary hover:text-on-surface'} ${interactive ? '' : 'opacity-40 cursor-not-allowed'}`}
                       >
                         {opt.label}
                       </button>
@@ -212,24 +237,6 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                   })}
                 </div>
               </div>
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                onClick={() => duplicateEntity(eIdx)}
-                className="p-1.5 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
-                title="Duplicate entity"
-                aria-label="Duplicate entity"
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>content_copy</span>
-              </button>
-              <button
-                onClick={() => removeEntity(eIdx)}
-                className="p-1.5 rounded text-secondary hover:text-error hover:bg-error/10 transition-colors"
-                title="Remove entity"
-                aria-label="Remove entity"
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>delete</span>
-              </button>
             </div>
           </div>
 
@@ -283,7 +290,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-[10px] font-bold uppercase tracking-wider text-secondary">
+                <tr className="text-[11px] font-bold uppercase tracking-wider text-secondary">
                   <th className="text-left py-1.5 px-2">Name</th>
                   <th className="text-left py-1.5 px-2">Type</th>
                   <th className="text-center py-1.5 px-2 w-12">PK</th>
@@ -319,7 +326,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                         onChange={e => updateField(eIdx, fIdx, { name: e.target.value })}
                         placeholder="fieldName"
                       />
-                      {fErr?.name && <p className="mt-0.5 text-[10px] text-error">{fErr.name}</p>}
+                      {fErr?.name && <p className="mt-0.5 text-[11px] text-error">{fErr.name}</p>}
                     </td>
                     <td className="py-1.5 px-2 align-top">
                       <select
@@ -332,23 +339,23 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                       </select>
                     </td>
                     <td className="py-1.5 px-2 text-center align-top">
-                      <input type="checkbox" aria-label="Primary key" checked={!!field.primaryKey}
+                      <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Primary key" checked={!!field.primaryKey}
                         onChange={e => updateField(eIdx, fIdx, e.target.checked ? { primaryKey: true } : { primaryKey: false, generated: undefined })} />
                     </td>
                     <td className="py-1.5 px-2 text-center align-top">
                       <input type="checkbox" aria-label="Auto-generated value" checked={!!field.generated}
                         disabled={!canGenerate}
                         title={canGenerate ? undefined : (pkCount > 1 ? 'A generated key requires a single primary key' : 'Auto-generated applies to a LONG/INTEGER/UUID primary key only')}
-                        className="disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="h-4 w-4 accent-primary disabled:opacity-40 disabled:cursor-not-allowed"
                         onChange={e => updateField(eIdx, fIdx, { generated: e.target.checked })} />
-                      {fErr?.generated && <p className="mt-0.5 text-[10px] text-error">{fErr.generated}</p>}
+                      {fErr?.generated && <p className="mt-0.5 text-[11px] text-error">{fErr.generated}</p>}
                     </td>
                     <td className="py-1.5 px-2 text-center align-top">
-                      <input type="checkbox" aria-label="Required (not null)" checked={!!field.required}
+                      <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Required (not null)" checked={!!field.required}
                         onChange={e => updateField(eIdx, fIdx, { required: e.target.checked })} />
                     </td>
                     <td className="py-1.5 px-2 text-center align-top">
-                      <input type="checkbox" aria-label="Unique" checked={!!field.unique}
+                      <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Unique" checked={!!field.unique}
                         onChange={e => updateField(eIdx, fIdx, { unique: e.target.checked })} />
                     </td>
                     <td className="py-1.5 px-2 align-top">
@@ -363,7 +370,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                         disabled={field.type !== 'STRING'}
                         onChange={e => updateField(eIdx, fIdx, { length: e.target.value === '' ? undefined : Number(e.target.value) })}
                       />
-                      {fErr?.length && <p className="mt-0.5 text-[10px] text-error">{fErr.length}</p>}
+                      {fErr?.length && <p className="mt-0.5 text-[11px] text-error">{fErr.length}</p>}
                     </td>
                     <td className="py-1.5 px-2 align-top">
                       <input
@@ -376,7 +383,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                         disabled={!isNumeric}
                         onChange={e => updateField(eIdx, fIdx, { min: e.target.value === '' ? undefined : Number(e.target.value) })}
                       />
-                      {fErr?.min && <p className="mt-0.5 text-[10px] text-error">{fErr.min}</p>}
+                      {fErr?.min && <p className="mt-0.5 text-[11px] text-error">{fErr.min}</p>}
                     </td>
                     <td className="py-1.5 px-2 align-top">
                       <input
@@ -389,7 +396,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                         disabled={!isNumeric}
                         onChange={e => updateField(eIdx, fIdx, { max: e.target.value === '' ? undefined : Number(e.target.value) })}
                       />
-                      {fErr?.max && <p className="mt-0.5 text-[10px] text-error">{fErr.max}</p>}
+                      {fErr?.max && <p className="mt-0.5 text-[11px] text-error">{fErr.max}</p>}
                     </td>
                     <td className="py-1.5 px-2 align-top">
                       <input
@@ -403,15 +410,15 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                         placeholder="[A-Z]{3}"
                         onChange={e => updateField(eIdx, fIdx, { pattern: e.target.value === '' ? undefined : e.target.value })}
                       />
-                      {fErr?.pattern && <p className="mt-0.5 text-[10px] text-error">{fErr.pattern}</p>}
+                      {fErr?.pattern && <p className="mt-0.5 text-[11px] text-error">{fErr.pattern}</p>}
                     </td>
                     <td className="py-1.5 px-2 text-center align-top">
                       <input type="checkbox" aria-label="Email format" checked={!!field.email}
                         disabled={!isString}
                         title={isString ? undefined : 'Email applies to STRING fields only'}
-                        className="disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="h-4 w-4 accent-primary disabled:opacity-40 disabled:cursor-not-allowed"
                         onChange={e => updateField(eIdx, fIdx, { email: e.target.checked })} />
-                      {fErr?.email && <p className="mt-0.5 text-[10px] text-error">{fErr.email}</p>}
+                      {fErr?.email && <p className="mt-0.5 text-[11px] text-error">{fErr.email}</p>}
                     </td>
                     <td className="py-1.5 px-2 align-top">
                       {field.type === 'ENUM' ? (
@@ -432,7 +439,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                           readOnly
                         />
                       )}
-                      {fErr?.enumValues && <p className="mt-0.5 text-[10px] text-error">{fErr.enumValues}</p>}
+                      {fErr?.enumValues && <p className="mt-0.5 text-[11px] text-error">{fErr.enumValues}</p>}
                     </td>
                     <td className="py-1.5 px-2 text-right align-top">
                       <div className="flex items-center justify-end gap-0.5">
@@ -478,19 +485,31 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
         )
       })}
 
-      {entities.length === 0 && (
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
-          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
-          Add at least one entity to generate a project.
+      {entities.length === 0 ? (
+        <div className="flex flex-col items-center text-center gap-3 px-6 py-12 rounded-xl border-2 border-dashed border-outline-variant">
+          <span className="material-symbols-outlined text-secondary/60" style={{ fontSize: '40px' }}>table_chart</span>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-on-surface">No entities yet</p>
+            <p className="text-xs text-secondary max-w-xs">
+              Add an entity to define its fields and relations — or import one from DDL/SELECT above.
+            </p>
+          </div>
+          <button
+            onClick={addEntity}
+            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition-opacity active:scale-95"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
+            Add entity
+          </button>
         </div>
+      ) : (
+        <button
+          onClick={addEntity}
+          className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant hover:border-primary text-secondary hover:text-primary text-sm font-medium transition-colors"
+        >
+          + Add entity
+        </button>
       )}
-
-      <button
-        onClick={addEntity}
-        className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant hover:border-primary text-secondary hover:text-primary text-sm font-medium transition-colors"
-      >
-        + Add entity
-      </button>
     </div>
   )
 }

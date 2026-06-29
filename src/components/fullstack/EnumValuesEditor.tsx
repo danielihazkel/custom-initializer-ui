@@ -43,7 +43,7 @@ export function EnumValuesEditor({ values, onChange, invalid }: Props) {
       className={`w-full bg-background border rounded px-2 py-1 flex flex-wrap items-center gap-1 focus-within:ring-1 ${invalid ? 'border-error focus-within:ring-error/20' : 'border-outline-variant focus-within:ring-primary/20 focus-within:border-primary'}`}
     >
       {values.map((v, i) => (
-        <span key={i} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-mono">
+        <span key={i} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[11px] font-mono">
           {v}
           <button
             type="button"
