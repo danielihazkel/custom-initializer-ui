@@ -24,6 +24,15 @@ export function FullstackDepPicker({ selected, defaults, onChange }: Props) {
   const defaultsSet = useMemo(() => new Set(defaults), [defaults])
 
   const groups: DependencyGroup[] = metadata?.dependencies?.values ?? []
+
+  // id -> human-readable name, so the selected-chips tray can show names instead of
+  // raw ids. Falls back to the id itself for any selected dep not in the catalog
+  // (e.g. one filtered out by the current Boot version) — it still shows + removes.
+  const nameById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const g of groups) for (const v of g.values) m.set(v.id, v.name)
+    return m
+  }, [groups])
   const filteredGroups = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return groups
@@ -82,11 +91,38 @@ export function FullstackDepPicker({ selected, defaults, onChange }: Props) {
         </button>
       </div>
 
-      <p className="text-[11px] text-on-surface-variant">
-        Pre-checked items come from the chosen backend set's admin-configured
-        defaults. You can check or uncheck anything — the generator respects your
-        final selection.
-      </p>
+      {/* Pinned selection tray — always visible above the scrolling catalog so the
+          user can see (and remove) what's selected without scrolling. */}
+      <div className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+        <div className="text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
+          Selected ({selected.length})
+        </div>
+        {selected.length === 0 ? (
+          <p className="text-[11px] text-on-surface-variant">No dependencies selected yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5 max-h-[88px] overflow-y-auto pr-1" aria-live="polite">
+            {selected.map(id => {
+              const name = nameById.get(id) ?? id
+              return (
+                <span
+                  key={id}
+                  className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20"
+                >
+                  <span className="truncate max-w-[12rem]" title={name}>{name}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${name}`}
+                    onClick={() => toggle(id, false)}
+                    className="flex items-center justify-center rounded-full hover:bg-primary/20 transition-colors"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       <div className="space-y-4 max-h-[420px] overflow-y-auto pr-2 lg:max-h-none lg:flex-1 lg:min-h-0">
         {filteredGroups.map(group => (
