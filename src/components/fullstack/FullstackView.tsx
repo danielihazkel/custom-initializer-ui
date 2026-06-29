@@ -278,7 +278,7 @@ export function FullstackView() {
   const portalTarget = typeof document !== 'undefined' ? document.body : null
 
   return (
-    <div className="max-w-5xl mx-auto px-6 space-y-8">
+    <div className="max-w-7xl mx-auto px-8 space-y-8">
       <header className="space-y-2">
         <h1 className="text-2xl font-bold text-on-surface tracking-tight">Fullstack CRUD Generator</h1>
         <p className="text-sm text-secondary max-w-2xl">
@@ -288,6 +288,11 @@ export function FullstackView() {
         </p>
       </header>
 
+      {/* Two-column config row: compact settings on the left, the taller dependency
+          picker on the right. Collapses to a single column below lg (mirrors the
+          Backend/Frontend tabs) so wide screens don't leave the right half empty. */}
+      <div className="grid grid-cols-12 gap-8">
+        <div className="col-span-12 lg:col-span-5 space-y-8 lg:h-[480px] lg:overflow-y-auto lg:pr-2">
       <section className="space-y-3">
         <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Project Metadata</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -385,23 +390,6 @@ export function FullstackView() {
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Dependencies</h2>
-          <span className="text-[11px] text-secondary">{selectedDeps.length} selected</span>
-        </div>
-        <p className="text-[11px] text-on-surface-variant">
-          Pre-checked from the chosen backend set's defaults. You can uncheck
-          anything — the generator respects your final selection. To change what
-          a set ships pre-checked, edit it under Admin → Entity CRUD.
-        </p>
-        <FullstackDepPicker
-          selected={selectedDeps}
-          defaults={currentDefaults}
-          onChange={setSelectedDeps}
-        />
-      </section>
-
-      <section className="space-y-3">
         <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Options</h2>
         <p className="text-[11px] text-on-surface-variant">
           Opt-in scaffolding extras applied to every entity. Off by default.
@@ -426,6 +414,27 @@ export function FullstackView() {
           ))}
         </div>
       </section>
+        </div>
+
+        <div className="col-span-12 lg:col-span-7 lg:flex lg:flex-col lg:h-[480px]">
+      <section className="space-y-3 lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">Dependencies</h2>
+          <span className="text-[11px] text-secondary">{selectedDeps.length} selected</span>
+        </div>
+        <p className="text-[11px] text-on-surface-variant">
+          Pre-checked from the chosen backend set's defaults. You can uncheck
+          anything — the generator respects your final selection. To change what
+          a set ships pre-checked, edit it under Admin → Entity CRUD.
+        </p>
+        <FullstackDepPicker
+          selected={selectedDeps}
+          defaults={currentDefaults}
+          onChange={setSelectedDeps}
+        />
+      </section>
+        </div>
+      </div>
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-4">

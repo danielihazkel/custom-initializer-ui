@@ -63,7 +63,7 @@ export function FullstackDepPicker({ selected, defaults, onChange }: Props) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
       <div className="flex items-center justify-between gap-3">
         <input
           type="text"
@@ -87,7 +87,7 @@ export function FullstackDepPicker({ selected, defaults, onChange }: Props) {
         final selection.
       </p>
 
-      <div className="space-y-4 max-h-[420px] overflow-y-auto pr-2">
+      <div className="space-y-4 max-h-[420px] overflow-y-auto pr-2 lg:max-h-none lg:flex-1 lg:min-h-0">
         {filteredGroups.map(group => (
           <div key={group.name} className="border border-outline-variant rounded-lg bg-surface-container-low">
             <div className="px-4 py-2 border-b border-outline-variant text-[11px] font-bold uppercase tracking-widest text-secondary">
