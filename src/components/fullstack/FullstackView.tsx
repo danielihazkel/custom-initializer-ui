@@ -275,7 +275,6 @@ export function FullstackView() {
     clearPreview()
     setToast({ message: 'Fullstack generator reset to defaults', type: 'success' })
   }
-  const portalTarget = typeof document !== 'undefined' ? document.body : null
 
   return (
     <div className="max-w-7xl mx-auto px-8 space-y-8">
@@ -414,6 +413,7 @@ export function FullstackView() {
           ))}
         </div>
       </section>
+
         </div>
 
         <div className="col-span-12 lg:col-span-7 lg:flex lg:flex-col lg:h-[480px]">
@@ -466,9 +466,17 @@ export function FullstackView() {
 
       {/* Pinned to the viewport bottom so Generate/Explore stay reachable while editing a long
           entity list. The negative-margin/px pair lets the glass backdrop bleed to the column edges. */}
-      <section className="sticky bottom-0 z-20 -mx-8 px-8 py-4 flex items-center justify-end gap-3 glass-header border-t border-outline-variant">
+      <section className="sticky bottom-0 z-20 -mx-8 px-8 py-4 flex items-center gap-3 glass-header border-t border-outline-variant">
+        <button
+          onClick={handleReset}
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-error hover:border-error/50 hover:bg-error/5 transition-all active:scale-95"
+          title="Reset the fullstack generator to defaults"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>restart_alt</span>
+          Reset
+        </button>
         {hasErrors && (
-          <span className="text-[11px] text-error flex items-center gap-1 mr-auto">
+          <span className="text-[11px] text-error flex items-center gap-1">
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
             {errorCount} issue{errorCount === 1 ? '' : 's'} to fix before generating
           </span>
@@ -477,7 +485,7 @@ export function FullstackView() {
           onClick={explore}
           disabled={previewLoading || hasErrors}
           title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview the generated file tree before downloading'}
-          className={`inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError
+          className={`ml-auto inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError
             ? 'border-error/50 text-error hover:bg-error/5'
             : 'border-outline-variant text-secondary hover:text-primary hover:border-primary hover:bg-primary/5'}`}
         >
@@ -504,18 +512,6 @@ export function FullstackView() {
         existingCount={entities.length}
         onImport={handleImport}
       />
-
-      {portalTarget && createPortal(
-        <button
-          onClick={handleReset}
-          className="fixed bottom-8 right-8 z-30 flex items-center gap-2 px-4 py-2.5 rounded-full bg-surface-container-high border border-outline-variant text-secondary hover:text-error hover:border-error/50 shadow-lg transition-all active:scale-95"
-          title="Reset the fullstack generator"
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>restart_alt</span>
-          Reset
-        </button>,
-        portalTarget,
-      )}
 
       {preview && createPortal(
         <ProjectPreview

@@ -76,8 +76,9 @@ export function FullstackDepPicker({ selected, defaults, onChange }: Props) {
           type="button"
           onClick={resetToDefaults}
           className="text-xs px-3 py-1.5 rounded-lg border border-outline-variant text-secondary hover:text-primary hover:border-primary hover:bg-primary/5 transition-colors"
+          title="Reset only the dependency selection to this set's defaults"
         >
-          Reset to defaults
+          Reset dependencies
         </button>
       </div>
 

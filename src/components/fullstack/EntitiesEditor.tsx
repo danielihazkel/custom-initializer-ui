@@ -1,5 +1,6 @@
+import { Fragment, useState } from 'react'
 import type { FullstackEntityDef, FullstackFieldDef, FullstackFieldType, FullstackRelationDef } from '../../types'
-import type { EntityErrors } from './validation'
+import type { EntityErrors, FieldErrors } from './validation'
 import { EnumValuesEditor } from './EnumValuesEditor'
 import { RelationsEditor } from './RelationsEditor'
 
@@ -29,6 +30,18 @@ function newField(): FullstackFieldDef {
 }
 
 export function EntitiesEditor({ entities, onChange, errors }: Props) {
+  // Which field rows have their constraint panel expanded, keyed by `${eIdx}-${fIdx}`.
+  // Transient view-only state; index-keyed (a row may briefly toggle after an add/remove,
+  // which is harmless). Rows with a constraint error force open regardless (see isOpen).
+  const [expandedFields, setExpandedFields] = useState<Set<string>>(() => new Set())
+  function toggleExpand(key: string) {
+    setExpandedFields(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
   function updateEntity(idx: number, updates: Partial<FullstackEntityDef>) {
     onChange(entities.map((e, i) => i === idx ? { ...e, ...updates } : e))
   }
@@ -177,7 +190,9 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                 </button>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              {/* Cluster A: physical mapping (schema + table) — wraps as a unit, never mid-control. */}
+              <div className="inline-flex items-center gap-3">
               <input
                 type="text"
                 aria-label="Schema (optional)"
@@ -196,6 +211,9 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                 title={entity.viewQuery ? 'A SELECT-backed view maps to its query, not a table' : undefined}
                 onChange={e => updateEntity(eIdx, { tableName: e.target.value || undefined })}
               />
+              </div>
+              {/* Cluster B: generated-page behavior (read-only + list views) — wraps as a unit. */}
+              <div className="inline-flex items-center gap-4">
               <label
                 className="flex items-center gap-1.5 text-xs text-secondary shrink-0 cursor-pointer"
                 title={entity.viewQuery ? 'A SELECT-backed view is always read-only' : 'Generate GET-only scaffolding (no create/update/delete)'}
@@ -236,6 +254,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                     )
                   })}
                 </div>
+              </div>
               </div>
             </div>
           </div>
@@ -297,12 +316,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                   <th className="text-center py-1.5 px-2 w-12">Gen</th>
                   <th className="text-center py-1.5 px-2 w-12">Req</th>
                   <th className="text-center py-1.5 px-2 w-12">Uniq</th>
-                  <th className="text-left py-1.5 px-2 w-20">Length</th>
-                  <th className="text-left py-1.5 px-2 w-20">Min</th>
-                  <th className="text-left py-1.5 px-2 w-20">Max</th>
-                  <th className="text-left py-1.5 px-2 w-28">Pattern</th>
-                  <th className="text-center py-1.5 px-2 w-12">Email</th>
-                  <th className="text-left py-1.5 px-2">Enum values</th>
+                  <th className="text-center py-1.5 px-2 w-28">Constraints</th>
                   <th className="w-8"></th>
                 </tr>
               </thead>
@@ -314,8 +328,19 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                   const canGenerate = !!field.primaryKey && pkCount === 1 && (field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'UUID')
                   const isNumeric = field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'BIG_DECIMAL'
                   const isString = field.type === 'STRING'
+                  // Constraints are type-gated: STRING → length/pattern/email, numeric → min/max,
+                  // ENUM → values. Other types carry none, so they get no expander.
+                  const hasConstraintControls = isString || isNumeric || field.type === 'ENUM'
+                  const hasConstraintsSet = field.length != null || field.min != null || field.max != null
+                    || Boolean(field.pattern) || Boolean(field.email) || (field.enumValues?.length ?? 0) > 0
+                  const hasConstraintErr = Boolean(
+                    fErr?.length || fErr?.min || fErr?.max || fErr?.pattern || fErr?.email || fErr?.enumValues)
+                  const rowKey = `${eIdx}-${fIdx}`
+                  // Force open on error so the message is never hidden behind a collapsed panel.
+                  const isOpen = hasConstraintControls && (expandedFields.has(rowKey) || hasConstraintErr)
                   return (
-                  <tr key={fIdx} className="border-t border-outline-variant">
+                  <Fragment key={fIdx}>
+                  <tr className="border-t border-outline-variant">
                     <td className="py-1.5 px-2 align-top">
                       <input
                         type="text"
@@ -358,88 +383,31 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                       <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Unique" checked={!!field.unique}
                         onChange={e => updateField(eIdx, fIdx, { unique: e.target.checked })} />
                     </td>
-                    <td className="py-1.5 px-2 align-top">
-                      <input
-                        type="number"
-                        min={1}
-                        aria-label="Max length"
-                        aria-invalid={Boolean(fErr?.length)}
-                        title={field.type !== 'STRING' ? 'Length applies to STRING fields only' : undefined}
-                        className={`w-full bg-background border rounded px-2 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed focus:ring-1 outline-none ${fErr?.length ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
-                        value={field.length ?? ''}
-                        disabled={field.type !== 'STRING'}
-                        onChange={e => updateField(eIdx, fIdx, { length: e.target.value === '' ? undefined : Number(e.target.value) })}
-                      />
-                      {fErr?.length && <p className="mt-0.5 text-[11px] text-error">{fErr.length}</p>}
-                    </td>
-                    <td className="py-1.5 px-2 align-top">
-                      <input
-                        type="number"
-                        aria-label="Minimum value"
-                        aria-invalid={Boolean(fErr?.min)}
-                        title={isNumeric ? undefined : 'Min applies to numeric fields only'}
-                        className={`w-full bg-background border rounded px-2 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed focus:ring-1 outline-none ${fErr?.min ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
-                        value={field.min ?? ''}
-                        disabled={!isNumeric}
-                        onChange={e => updateField(eIdx, fIdx, { min: e.target.value === '' ? undefined : Number(e.target.value) })}
-                      />
-                      {fErr?.min && <p className="mt-0.5 text-[11px] text-error">{fErr.min}</p>}
-                    </td>
-                    <td className="py-1.5 px-2 align-top">
-                      <input
-                        type="number"
-                        aria-label="Maximum value"
-                        aria-invalid={Boolean(fErr?.max)}
-                        title={isNumeric ? undefined : 'Max applies to numeric fields only'}
-                        className={`w-full bg-background border rounded px-2 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed focus:ring-1 outline-none ${fErr?.max ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
-                        value={field.max ?? ''}
-                        disabled={!isNumeric}
-                        onChange={e => updateField(eIdx, fIdx, { max: e.target.value === '' ? undefined : Number(e.target.value) })}
-                      />
-                      {fErr?.max && <p className="mt-0.5 text-[11px] text-error">{fErr.max}</p>}
-                    </td>
-                    <td className="py-1.5 px-2 align-top">
-                      <input
-                        type="text"
-                        aria-label="Regex pattern"
-                        aria-invalid={Boolean(fErr?.pattern)}
-                        title={isString ? undefined : 'Pattern applies to STRING fields only'}
-                        className={`w-full bg-background border rounded px-2 py-1 text-xs font-mono disabled:opacity-40 disabled:cursor-not-allowed focus:ring-1 outline-none ${fErr?.pattern ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
-                        value={field.pattern ?? ''}
-                        disabled={!isString}
-                        placeholder="[A-Z]{3}"
-                        onChange={e => updateField(eIdx, fIdx, { pattern: e.target.value === '' ? undefined : e.target.value })}
-                      />
-                      {fErr?.pattern && <p className="mt-0.5 text-[11px] text-error">{fErr.pattern}</p>}
-                    </td>
                     <td className="py-1.5 px-2 text-center align-top">
-                      <input type="checkbox" aria-label="Email format" checked={!!field.email}
-                        disabled={!isString}
-                        title={isString ? undefined : 'Email applies to STRING fields only'}
-                        className="h-4 w-4 accent-primary disabled:opacity-40 disabled:cursor-not-allowed"
-                        onChange={e => updateField(eIdx, fIdx, { email: e.target.checked })} />
-                      {fErr?.email && <p className="mt-0.5 text-[11px] text-error">{fErr.email}</p>}
-                    </td>
-                    <td className="py-1.5 px-2 align-top">
-                      {field.type === 'ENUM' ? (
-                        <EnumValuesEditor
-                          values={field.enumValues ?? []}
-                          onChange={vals => updateField(eIdx, fIdx, { enumValues: vals })}
-                          invalid={Boolean(fErr?.enumValues)}
-                        />
+                      {hasConstraintControls ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleExpand(rowKey)}
+                          aria-expanded={isOpen}
+                          aria-label={isOpen ? 'Hide constraints' : 'Edit constraints'}
+                          title={hasConstraintErr ? 'Constraint error — fix below'
+                            : hasConstraintsSet ? 'Constraints set — edit'
+                            : 'Add constraints'}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                            hasConstraintErr ? 'text-error hover:bg-error/10'
+                              : hasConstraintsSet ? 'text-primary hover:bg-primary/10'
+                              : 'text-secondary hover:text-primary hover:bg-primary/10'}`}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
+                            {isOpen ? 'expand_less' : 'tune'}
+                          </span>
+                          {hasConstraintErr
+                            ? <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>error</span>
+                            : (hasConstraintsSet && !isOpen && <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />)}
+                        </button>
                       ) : (
-                        <input
-                          type="text"
-                          aria-label="Enum values (ENUM fields only)"
-                          title="Enum values apply to ENUM fields only"
-                          className="w-full bg-background border border-outline-variant rounded px-2 py-1 text-xs opacity-40 cursor-not-allowed outline-none"
-                          placeholder="ACTIVE,DISABLED"
-                          value=""
-                          disabled
-                          readOnly
-                        />
+                        <span className="text-secondary/40" title="No additional constraints for this type" aria-hidden="true">—</span>
                       )}
-                      {fErr?.enumValues && <p className="mt-0.5 text-[11px] text-error">{fErr.enumValues}</p>}
                     </td>
                     <td className="py-1.5 px-2 text-right align-top">
                       <div className="flex items-center justify-end gap-0.5">
@@ -462,6 +430,20 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                       </div>
                     </td>
                   </tr>
+                  {isOpen && (
+                    <tr className="bg-background/30">
+                      <td colSpan={8} className="px-2 pb-3 pt-0 align-top">
+                        <FieldConstraintsPanel
+                          field={field}
+                          fErr={fErr}
+                          isString={isString}
+                          isNumeric={isNumeric}
+                          onUpdate={updates => updateField(eIdx, fIdx, updates)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                   )
                 })}
               </tbody>
@@ -510,6 +492,110 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
           + Add entity
         </button>
       )}
+    </div>
+  )
+}
+
+/** Expanded constraint editor for a single field — shows only the constraints valid for the
+ *  field's type (STRING → length/pattern/email, numeric → min/max, ENUM → values). Replaces
+ *  the old always-on constraint columns, so no disabled cells are ever shown. */
+function FieldConstraintsPanel({ field, fErr, isString, isNumeric, onUpdate }: {
+  field: FullstackFieldDef
+  fErr?: FieldErrors
+  isString: boolean
+  isNumeric: boolean
+  onUpdate: (updates: Partial<FullstackFieldDef>) => void
+}) {
+  const inputClass = (error?: string) =>
+    `w-full bg-background border rounded px-2 py-1.5 text-xs tabular-nums focus:ring-1 outline-none ${
+      error ? 'border-error focus:ring-error/20 focus:border-error'
+        : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`
+  return (
+    <div className="flex flex-wrap items-start gap-x-5 gap-y-3 rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-3">
+      {isString && (
+        <>
+          <ConstraintBox label="Max length" error={fErr?.length}>
+            <input
+              type="number"
+              min={1}
+              aria-label="Max length"
+              aria-invalid={Boolean(fErr?.length)}
+              className={inputClass(fErr?.length)}
+              value={field.length ?? ''}
+              placeholder="e.g. 200"
+              onChange={e => onUpdate({ length: e.target.value === '' ? undefined : Number(e.target.value) })}
+            />
+          </ConstraintBox>
+          <ConstraintBox label="Pattern (regex)" error={fErr?.pattern} wide>
+            <input
+              type="text"
+              aria-label="Regex pattern"
+              aria-invalid={Boolean(fErr?.pattern)}
+              className={`${inputClass(fErr?.pattern)} font-mono`}
+              value={field.pattern ?? ''}
+              placeholder="[A-Z]{3}"
+              onChange={e => onUpdate({ pattern: e.target.value === '' ? undefined : e.target.value })}
+            />
+          </ConstraintBox>
+          <label className="flex items-center gap-1.5 text-xs text-secondary self-center cursor-pointer pt-4">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-primary"
+              aria-label="Email format"
+              checked={!!field.email}
+              onChange={e => onUpdate({ email: e.target.checked })}
+            />
+            Email format
+          </label>
+        </>
+      )}
+      {isNumeric && (
+        <>
+          <ConstraintBox label="Min" error={fErr?.min}>
+            <input
+              type="number"
+              aria-label="Minimum value"
+              aria-invalid={Boolean(fErr?.min)}
+              className={inputClass(fErr?.min)}
+              value={field.min ?? ''}
+              onChange={e => onUpdate({ min: e.target.value === '' ? undefined : Number(e.target.value) })}
+            />
+          </ConstraintBox>
+          <ConstraintBox label="Max" error={fErr?.max}>
+            <input
+              type="number"
+              aria-label="Maximum value"
+              aria-invalid={Boolean(fErr?.max)}
+              className={inputClass(fErr?.max)}
+              value={field.max ?? ''}
+              onChange={e => onUpdate({ max: e.target.value === '' ? undefined : Number(e.target.value) })}
+            />
+          </ConstraintBox>
+        </>
+      )}
+      {field.type === 'ENUM' && (
+        <ConstraintBox label="Enum values" error={fErr?.enumValues} wide>
+          <EnumValuesEditor
+            values={field.enumValues ?? []}
+            onChange={vals => onUpdate({ enumValues: vals })}
+            invalid={Boolean(fErr?.enumValues)}
+          />
+        </ConstraintBox>
+      )}
+    </div>
+  )
+}
+
+/** Labeled wrapper for one constraint control inside FieldConstraintsPanel. `wide` lets the
+ *  pattern/enum editors grow to fill remaining width. */
+function ConstraintBox({ label, error, wide, children }: {
+  label: string; error?: string; wide?: boolean; children: React.ReactNode
+}) {
+  return (
+    <div className={wide ? 'min-w-[16rem] flex-1' : 'w-28'}>
+      <label className="block text-[11px] font-semibold uppercase tracking-wider text-secondary mb-1">{label}</label>
+      {children}
+      {error && <p className="mt-1 text-[11px] text-error">{error}</p>}
     </div>
   )
 }
