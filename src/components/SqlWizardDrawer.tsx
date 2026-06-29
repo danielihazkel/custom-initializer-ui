@@ -23,16 +23,21 @@ interface Props {
   parseError?: { message: string; snippet?: string; statementIndex?: number } | null
 }
 
-const TABLE_REGEX = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([a-zA-Z_][\w$]*(?:\.[a-zA-Z_][\w$]*)?))/gi
+// The bracket alternative matches a whole SQL Server [schema].[table] chain (not just
+// the first [schema] segment) so bareName can resolve it to the table name.
+const TABLE_REGEX = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|`([^`]+)`|(\[[^\]]+\](?:\s*\.\s*\[[^\]]+\])*)|([a-zA-Z_][\w$]*(?:\.[a-zA-Z_][\w$]*)?))/gi
 
 // A SELECT (or WITH … SELECT) becomes a read-only @Subselect view. Detected so the
 // "no CREATE TABLE" hint doesn't misfire and so views surface in the detected list.
 // The authoritative parse/naming happens server-side; this is a best-effort preview.
 const SELECT_REGEX = /(^|;)\s*(?:WITH\b|SELECT\b)/i
-const FROM_REGEX = /\bFROM\s+(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([a-zA-Z_][\w$]*(?:\.[a-zA-Z_][\w$]*)?))/i
+const FROM_REGEX = /\bFROM\s+(?:"([^"]+)"|`([^`]+)`|(\[[^\]]+\](?:\s*\.\s*\[[^\]]+\])*)|([a-zA-Z_][\w$]*(?:\.[a-zA-Z_][\w$]*)?))/i
 
+// Drop SQL Server brackets, then take the last dotted segment (the table name),
+// so both `[dbo].[t]` and `dbo.t` resolve to `t`.
 function bareName(raw: string): string {
-  return raw.includes('.') ? raw.substring(raw.lastIndexOf('.') + 1) : raw
+  const cleaned = raw.replace(/[[\]]/g, '')
+  return cleaned.includes('.') ? cleaned.substring(cleaned.lastIndexOf('.') + 1) : cleaned
 }
 
 function detectTableNames(sql: string): string[] {
