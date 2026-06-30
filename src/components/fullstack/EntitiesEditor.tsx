@@ -88,6 +88,10 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
     const numeric = type === 'LONG' || type === 'INTEGER' || type === 'BIG_DECIMAL'
     if (!numeric) { updates.min = undefined; updates.max = undefined }
     if (type !== 'STRING') { updates.pattern = undefined; updates.email = undefined }
+    // The search/filter opt-out flags only apply to eligible types — clear them when leaving.
+    if (type !== 'STRING' && type !== 'TEXT') updates.searchable = undefined
+    const temporal = type === 'LOCAL_DATE' || type === 'LOCAL_DATE_TIME'
+    if (!(type === 'ENUM' || type === 'BOOLEAN' || temporal || numeric)) updates.filterable = undefined
     updateField(eIdx, fIdx, updates)
   }
 
@@ -316,6 +320,8 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                   <th className="text-center py-1.5 px-2 w-12">Gen</th>
                   <th className="text-center py-1.5 px-2 w-12">Req</th>
                   <th className="text-center py-1.5 px-2 w-12">Uniq</th>
+                  <th className="text-center py-1.5 px-2 w-12" title="Include in the text-search box (STRING/TEXT fields)">Search</th>
+                  <th className="text-center py-1.5 px-2 w-12" title="Include in the filter bar (enum/boolean/date/numeric fields)">Filter</th>
                   <th className="text-center py-1.5 px-2 w-28">Constraints</th>
                   <th className="w-8"></th>
                 </tr>
@@ -328,6 +334,12 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                   const canGenerate = !!field.primaryKey && pkCount === 1 && (field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'UUID')
                   const isNumeric = field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'BIG_DECIMAL'
                   const isString = field.type === 'STRING'
+                  // Per-field search/filter eligibility mirrors the backend collection loops:
+                  // search → STRING/TEXT; filter bar → non-PK enum/boolean/temporal/numeric.
+                  const isTextSearch = isString || field.type === 'TEXT'
+                  const isTemporal = field.type === 'LOCAL_DATE' || field.type === 'LOCAL_DATE_TIME'
+                  const isFilterableType = !field.primaryKey
+                    && (field.type === 'ENUM' || field.type === 'BOOLEAN' || isTemporal || isNumeric)
                   // Constraints are type-gated: STRING → length/pattern/email, numeric → min/max,
                   // ENUM → values. Other types carry none, so they get no expander.
                   const hasConstraintControls = isString || isNumeric || field.type === 'ENUM'
@@ -384,6 +396,24 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                         onChange={e => updateField(eIdx, fIdx, { unique: e.target.checked })} />
                     </td>
                     <td className="py-1.5 px-2 text-center align-top">
+                      {isTextSearch ? (
+                        <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Include in search" checked={field.searchable !== false}
+                          title="Include this field in the text-search box"
+                          onChange={e => updateField(eIdx, fIdx, { searchable: e.target.checked ? undefined : false })} />
+                      ) : (
+                        <span className="text-secondary/40" title="Search applies to STRING/TEXT fields only" aria-hidden="true">—</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 text-center align-top">
+                      {isFilterableType ? (
+                        <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Include in filter bar" checked={field.filterable !== false}
+                          title="Include this field in the filter bar"
+                          onChange={e => updateField(eIdx, fIdx, { filterable: e.target.checked ? undefined : false })} />
+                      ) : (
+                        <span className="text-secondary/40" title="Filters apply to non-PK enum/boolean/date/numeric fields only" aria-hidden="true">—</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 text-center align-top">
                       {hasConstraintControls ? (
                         <button
                           type="button"
@@ -432,7 +462,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                   </tr>
                   {isOpen && (
                     <tr className="bg-background/30">
-                      <td colSpan={8} className="px-2 pb-3 pt-0 align-top">
+                      <td colSpan={10} className="px-2 pb-3 pt-0 align-top">
                         <FieldConstraintsPanel
                           field={field}
                           fErr={fErr}

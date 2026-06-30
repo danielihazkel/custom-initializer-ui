@@ -334,6 +334,10 @@ export interface FullstackFieldDef {
   pattern?: string
   email?: boolean
   enumValues?: string[]
+  // Per-field search/filter opt-out (default on). searchable applies to STRING/TEXT (text-search box);
+  // filterable to enum/boolean/date/numeric (filter bar). Omitted = default true; written false to exclude.
+  searchable?: boolean
+  filterable?: boolean
 }
 
 // v1 supports the FK-owning side only (MANY_TO_ONE); the inverse @OneToMany is auto-derived
