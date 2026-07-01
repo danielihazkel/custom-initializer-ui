@@ -316,10 +316,12 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                 <tr className="text-[11px] font-bold uppercase tracking-wider text-secondary">
                   <th className="text-left py-1.5 px-2">Name</th>
                   <th className="text-left py-1.5 px-2">Type</th>
+                  <th className="text-left py-1.5 px-2" title="Display label for the generated UI (defaults to the field name)">Label</th>
                   <th className="text-center py-1.5 px-2 w-12">PK</th>
                   <th className="text-center py-1.5 px-2 w-12">Gen</th>
                   <th className="text-center py-1.5 px-2 w-12">Req</th>
                   <th className="text-center py-1.5 px-2 w-12">Uniq</th>
+                  <th className="text-center py-1.5 px-2 w-12" title="Read-only: editable on create, locked on edit">R/O</th>
                   <th className="text-center py-1.5 px-2 w-12" title="Include in the text-search box (STRING/TEXT fields)">Search</th>
                   <th className="text-center py-1.5 px-2 w-12" title="Include in the filter bar (enum/boolean/date/numeric fields)">Filter</th>
                   <th className="text-center py-1.5 px-2 w-28">Constraints</th>
@@ -375,6 +377,17 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                         {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </td>
+                    <td className="py-1.5 px-2 align-top">
+                      <input
+                        type="text"
+                        aria-label="Display label"
+                        className="w-full bg-background border border-outline-variant rounded px-2 py-1 text-xs focus:ring-1 focus:ring-primary/20 focus:border-primary outline-none"
+                        value={field.label ?? ''}
+                        onChange={e => updateField(eIdx, fIdx, { label: e.target.value || undefined })}
+                        placeholder={field.name || 'label'}
+                        title="Display label for the generated UI. Leave blank to derive from the field name."
+                      />
+                    </td>
                     <td className="py-1.5 px-2 text-center align-top">
                       <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Primary key" checked={!!field.primaryKey}
                         onChange={e => updateField(eIdx, fIdx, e.target.checked ? { primaryKey: true } : { primaryKey: false, generated: undefined })} />
@@ -394,6 +407,15 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                     <td className="py-1.5 px-2 text-center align-top">
                       <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Unique" checked={!!field.unique}
                         onChange={e => updateField(eIdx, fIdx, { unique: e.target.checked })} />
+                    </td>
+                    <td className="py-1.5 px-2 text-center align-top">
+                      {field.primaryKey ? (
+                        <span className="text-secondary/40" title="Primary keys are already locked after create" aria-hidden="true">—</span>
+                      ) : (
+                        <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Read-only" checked={!!field.readOnly}
+                          title="Read-only: editable on create, locked on edit"
+                          onChange={e => updateField(eIdx, fIdx, { readOnly: e.target.checked || undefined })} />
+                      )}
                     </td>
                     <td className="py-1.5 px-2 text-center align-top">
                       {isTextSearch ? (
@@ -462,7 +484,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                   </tr>
                   {isOpen && (
                     <tr className="bg-background/30">
-                      <td colSpan={10} className="px-2 pb-3 pt-0 align-top">
+                      <td colSpan={12} className="px-2 pb-3 pt-0 align-top">
                         <FieldConstraintsPanel
                           field={field}
                           fErr={fErr}

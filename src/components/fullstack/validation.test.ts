@@ -35,19 +35,29 @@ describe('validateEntities', () => {
     expect(result.entities[1]?.name).toBe('Duplicate entity name')
   })
 
-  it('requires exactly one primary key', () => {
+  it('requires at least one primary key and allows composite keys', () => {
     const noPk = validateEntities([validEntity({
       fields: [{ name: 'email', type: 'STRING' }],
     })])
     expect(noPk.entities[0]?.pk).toContain('primary key')
 
+    // Composite keys are supported — two plain PKs produce no PK error.
     const twoPk = validateEntities([validEntity({
       fields: [
         { name: 'id', type: 'LONG', primaryKey: true },
         { name: 'other', type: 'LONG', primaryKey: true },
       ],
     })])
-    expect(twoPk.entities[0]?.pk).toContain('Only one')
+    expect(twoPk.entities[0]?.pk).toBeUndefined()
+
+    // But a generated (auto-increment) key still requires a single PK.
+    const genComposite = validateEntities([validEntity({
+      fields: [
+        { name: 'id', type: 'LONG', primaryKey: true, generated: true },
+        { name: 'other', type: 'LONG', primaryKey: true },
+      ],
+    })])
+    expect(genComposite.entities[0]?.pk).toContain('single primary key')
   })
 
   it('flags duplicate field names within an entity', () => {
@@ -132,7 +142,7 @@ describe('validateEntities', () => {
         { name: 'id', type: 'STRING', primaryKey: true, generated: true },
       ],
     })])
-    expect(result.entities[0]?.fields[0]?.generated).toBe('Generated key must be LONG or INTEGER')
+    expect(result.entities[0]?.fields[0]?.generated).toBe('Generated key must be LONG, INTEGER, or UUID')
   })
 })
 

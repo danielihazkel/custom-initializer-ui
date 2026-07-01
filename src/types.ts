@@ -338,6 +338,12 @@ export interface FullstackFieldDef {
   // filterable to enum/boolean/date/numeric (filter bar). Omitted = default true; written false to exclude.
   searchable?: boolean
   filterable?: boolean
+  /** Human-facing display label for the generated UI (table header, form label, filter chip,
+   *  detail row). Omitted/blank falls back to the PascalCase field name. Enables e.g. Hebrew labels. */
+  label?: string
+  /** Locked-after-create: the generated form disables the field on edit and the backend
+   *  Service.update never overwrites it. Editable when creating a new row. */
+  readOnly?: boolean
 }
 
 // v1 supports the FK-owning side only (MANY_TO_ONE); the inverse @OneToMany is auto-derived
