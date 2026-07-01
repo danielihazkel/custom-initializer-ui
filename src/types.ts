@@ -363,6 +363,13 @@ export interface FullstackEntityDef {
   schema?: string
   fields: FullstackFieldDef[]
   relations?: FullstackRelationDef[]
+  /** Human-facing entity display label for the generated UI (nav, list heading, dashboard,
+   *  dialogs). Omitted/blank falls back to the PascalCase name. Enables e.g. Hebrew names. */
+  label?: string
+  /** Plural form of {@link label} used on plural surfaces (nav, list H1, dashboard). Omitted/blank
+   *  falls back to {@link label}, then the derived PascalCase plural — auto-pluralizing a localized
+   *  label is unsafe, so supply it explicitly. */
+  labelPlural?: string
   /** Read-only entity — generates GET-only scaffolding (no create/update/delete). */
   readOnly?: boolean
   /** The list-view modes the generated entity page generates (subset of table/cards/kanban/

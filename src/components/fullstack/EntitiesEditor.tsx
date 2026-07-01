@@ -58,6 +58,8 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
       name: `${src.name}Copy`,
       tableName: undefined,
       schema: undefined,
+      label: src.label,
+      labelPlural: src.labelPlural,
       readOnly: src.readOnly,
       listViews: src.listViews ? [...src.listViews] : undefined,
       listView: src.listView,
@@ -195,6 +197,27 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              {/* Cluster: display labels (optional) — user-facing names in the generated UI. */}
+              <div className="inline-flex items-center gap-3">
+              <input
+                type="text"
+                aria-label="Display label (optional)"
+                className="w-44 bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                placeholder="label (optional)"
+                title="Human-facing entity name shown in the generated UI (nav, headings, dialogs). Blank = derive from the entity name."
+                value={entity.label ?? ''}
+                onChange={e => updateEntity(eIdx, { label: e.target.value || undefined })}
+              />
+              <input
+                type="text"
+                aria-label="Plural display label (optional)"
+                className="w-44 bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                placeholder="plural label (optional)"
+                title="Plural form for nav / list heading / dashboard. Blank = falls back to the label, then the derived plural."
+                value={entity.labelPlural ?? ''}
+                onChange={e => updateEntity(eIdx, { labelPlural: e.target.value || undefined })}
+              />
+              </div>
               {/* Cluster A: physical mapping (schema + table) — wraps as a unit, never mid-control. */}
               <div className="inline-flex items-center gap-3">
               <input
