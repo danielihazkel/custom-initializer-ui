@@ -448,6 +448,7 @@ export interface GenerationEvent {
   status: GenerationEventStatus
   errorMessage: string | null
   remoteAddr: string | null
+  username: string | null
 }
 
 export interface ActivitySummary {

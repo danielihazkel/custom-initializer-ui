@@ -147,6 +147,7 @@ function RecentEventsTable({ events, loading }: { events: GenerationEvent[]; loa
           <thead>
             <tr className="bg-surface-container-low border-b border-outline-variant text-[11px] font-bold uppercase tracking-widest text-secondary">
               <th className="px-5 py-3 text-left">When</th>
+              <th className="px-5 py-3 text-left">User</th>
               <th className="px-5 py-3 text-left">Endpoint</th>
               <th className="px-5 py-3 text-left">Artifact</th>
               <th className="px-5 py-3 text-left">Boot</th>
@@ -157,14 +158,19 @@ function RecentEventsTable({ events, loading }: { events: GenerationEvent[]; loa
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="px-5 py-10 text-center text-secondary">Loading events…</td></tr>
+              <tr><td colSpan={8} className="px-5 py-10 text-center text-secondary">Loading events…</td></tr>
             ) : events.length === 0 ? (
-              <tr><td colSpan={7} className="px-5 py-10 text-center text-secondary">No events recorded yet. Generate a project and check back.</td></tr>
+              <tr><td colSpan={8} className="px-5 py-10 text-center text-secondary">No events recorded yet. Generate a project and check back.</td></tr>
             ) : events.map(ev => {
               const depList = (ev.dependencyIds || '').split(',').filter(Boolean)
               return (
                 <tr key={ev.id} className="border-t border-outline-variant hover:bg-primary/5 transition-colors">
                   <td className="px-5 py-3 text-on-surface whitespace-nowrap">{formatTimestamp(ev.eventTimestamp)}</td>
+                  <td className="px-5 py-3 whitespace-nowrap">
+                    {ev.username
+                      ? <span className="text-on-surface font-medium">{ev.username}</span>
+                      : <span className="text-secondary italic">anonymous</span>}
+                  </td>
                   <td className="px-5 py-3 text-on-surface font-mono text-xs">{ev.endpoint}</td>
                   <td className="px-5 py-3 text-on-surface">
                     <div className="flex flex-col">
