@@ -412,6 +412,9 @@ export interface FullstackStarterRequest {
   dependencies?: string[]
   backendTemplateSet?: string
   frontendTemplateSet?: string
+  /** Optional dashboard header overrides; blank falls back to the generated defaults. */
+  dashboardTitle?: string
+  dashboardOverview?: string
   /** Opt-in scaffolding extras, e.g. { scaffold: ["audit","softDelete","inverseCollections","tests"] }. */
   opts?: Record<string, string[]>
   entities: FullstackEntityDef[]
