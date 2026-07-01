@@ -58,6 +58,7 @@ const SCAFFOLD_OPTIONS: { value: string; label: string; hint: string }[] = [
   { value: 'softDelete', label: 'Soft delete', hint: 'deleted flag + Hibernate @SQLDelete/@SQLRestriction' },
   { value: 'inverseCollections', label: 'Inverse collections', hint: 'Read-only @OneToMany on the referenced side' },
   { value: 'tests', label: 'Controller tests', hint: 'Per-entity @WebMvcTest' },
+  { value: 'rtl', label: 'RTL layout', hint: 'dir="rtl" + Hebrew lang; mirrored right-to-left UI' },
 ]
 
 function loadJson<T>(key: string, fallback: T): T {

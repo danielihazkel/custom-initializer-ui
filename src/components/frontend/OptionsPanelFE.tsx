@@ -12,6 +12,7 @@ interface Props {
   colorPaletteId: string
   apiBaseUrl: string
   backendArtifactId: string
+  rtl: boolean
   onReactVersionChange: (v: string) => void
   onNodeVersionChange: (v: string) => void
   onPackageManagerChange: (v: string) => void
@@ -20,6 +21,7 @@ interface Props {
   onColorPaletteChange: (v: string) => void
   onApiBaseUrlChange: (v: string) => void
   onBackendArtifactIdChange: (v: string) => void
+  onRtlChange: (v: boolean) => void
 }
 
 // Palette injection only colorizes themed design systems (MUI / Chakra / Mantine).
@@ -148,6 +150,7 @@ export function OptionsPanelFE({
   colorPaletteId,
   apiBaseUrl,
   backendArtifactId,
+  rtl,
   onReactVersionChange,
   onNodeVersionChange,
   onPackageManagerChange,
@@ -156,6 +159,7 @@ export function OptionsPanelFE({
   onColorPaletteChange,
   onApiBaseUrlChange,
   onBackendArtifactIdChange,
+  onRtlChange,
 }: Props) {
   const designEntries = getDesignSystemEntries(metadata)
   const designOptions = designEntries.length
@@ -218,6 +222,18 @@ export function OptionsPanelFE({
           placeholder="/"
           className="w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
         />
+      </label>
+      <label className="flex items-start gap-2.5 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={rtl}
+          onChange={e => onRtlChange(e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-primary"
+        />
+        <span className="flex flex-col">
+          <span className="text-sm text-on-surface">RTL layout</span>
+          <span className="text-[11px] text-secondary">dir="rtl" + Hebrew lang; mirrored right-to-left UI</span>
+        </span>
       </label>
       <p className="text-[11px] text-secondary px-1">
         TypeScript {metadata.pinned.typescript} · Vite {metadata.pinned.vite} (pinned)

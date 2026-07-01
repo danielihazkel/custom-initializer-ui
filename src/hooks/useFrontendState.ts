@@ -21,6 +21,7 @@ export interface FeState {
   colorPaletteId: string
   apiBaseUrl: string
   backendArtifactId: string
+  rtl: boolean
 }
 
 export const DESIGN_NONE = 'design-none'
@@ -62,6 +63,7 @@ function defaultState(metadata: FrontendMetadata | null): FeState {
     colorPaletteId: defaultPalette,
     apiBaseUrl: '',
     backendArtifactId: '',
+    rtl: false,
   }
 }
 
@@ -121,6 +123,7 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
   const setColorPaletteId = useCallback((v: string) => setState(s => ({ ...s, colorPaletteId: v })), [])
   const setApiBaseUrl = useCallback((v: string) => setState(s => ({ ...s, apiBaseUrl: v })), [])
   const setBackendArtifactId = useCallback((v: string) => setState(s => ({ ...s, backendArtifactId: v })), [])
+  const setRtl = useCallback((v: boolean) => setState(s => ({ ...s, rtl: v })), [])
 
   const toggleDep = useCallback((depId: string) => {
     setActiveTemplate(null)
@@ -193,6 +196,7 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
     setColorPaletteId,
     setApiBaseUrl,
     setBackendArtifactId,
+    setRtl,
     toggleDep,
     toggleOption,
     setDesignSystem,
@@ -216,6 +220,7 @@ export function buildFrontendQuery(s: FeState): string {
   if (s.colorPaletteId) qp.set('colorPalette', s.colorPaletteId)
   if (s.apiBaseUrl) qp.set('apiBaseUrl', s.apiBaseUrl)
   if (s.backendArtifactId) qp.set('backendArtifactId', s.backendArtifactId)
+  if (s.rtl) qp.set('rtl', 'true')
   if (s.selectedDeps.length) qp.set('dependencies', s.selectedDeps.join(','))
   for (const [depId, opts] of Object.entries(s.selectedOptions)) {
     if (opts.length) qp.set(`opts-${depId}`, opts.join(','))
@@ -246,6 +251,7 @@ export function parseFrontendUrl(): Partial<FeState> | null {
   const colorPalette = p.get('colorPalette'); if (colorPalette) out.colorPaletteId = colorPalette
   const apiBaseUrl = p.get('apiBaseUrl'); if (apiBaseUrl !== null) out.apiBaseUrl = apiBaseUrl
   const backendArtifactId = p.get('backendArtifactId'); if (backendArtifactId !== null) out.backendArtifactId = backendArtifactId
+  const rtl = p.get('rtl'); if (rtl !== null) out.rtl = rtl === 'true'
 
   const deps = p.get('dependencies')
   if (deps !== null) {
