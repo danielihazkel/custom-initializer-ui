@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import type { StarterTemplate } from '../types'
 import type { ComparisonResult } from '../hooks/useTemplateComparison'
 
@@ -162,10 +162,9 @@ export function TemplateCompareTable({ templates, comparison }: Props) {
               </tr>
             ) : (
               groups.map(group => (
-                <>
+                <Fragment key={`group-${group.name}`}>
                   {/* Group header */}
                   <tr
-                    key={`group-${group.name}`}
                     className="bg-surface-container/50 cursor-pointer select-none"
                     onClick={() => toggleGroup(group.name)}
                   >
@@ -186,9 +185,8 @@ export function TemplateCompareTable({ templates, comparison }: Props) {
                   </tr>
 
                   {!collapsedGroups.has(group.name) && group.deps.map(dep => (
-                    <>
+                    <Fragment key={dep.depId}>
                       <tr
-                        key={dep.depId}
                         className={`border-b border-outline-variant/50 hover:bg-surface-container/20 transition-colors ${
                           dep.shared ? 'bg-tertiary/5' : ''
                         }`}
@@ -251,9 +249,9 @@ export function TemplateCompareTable({ templates, comparison }: Props) {
                           ))}
                         </tr>
                       ))}
-                    </>
+                    </Fragment>
                   ))}
-                </>
+                </Fragment>
               ))
             )}
           </tbody>

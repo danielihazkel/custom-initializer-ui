@@ -186,11 +186,11 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
           fErr.min = 'Min must be ≤ Max'
         }
       }
-      if (field.pattern != null && field.pattern !== '') {
-        if (field.type !== 'STRING') fErr.pattern = 'Pattern applies to STRING only'
-        else {
-          try { new RegExp(field.pattern) } catch { fErr.pattern = 'Invalid regular expression' }
-        }
+      // Regex syntax is deliberately not checked here: the server compiles it with
+      // java.util.regex.Pattern, and JS rejects Java-only constructs (possessive quantifiers,
+      // \p{Alpha} without the u flag), so a client-side RegExp check would block valid input.
+      if (field.pattern != null && field.pattern !== '' && field.type !== 'STRING') {
+        fErr.pattern = 'Pattern applies to STRING only'
       }
       if (field.email && field.type !== 'STRING') fErr.email = 'Email applies to STRING only'
 
@@ -226,12 +226,13 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
     // SELECT-backed view: maps to @Subselect, so no auto-generated PK and no relations (v1).
     const isView = !!entity.viewQuery?.trim()
     if (isView) {
-      if (entity.fields.some(f => f.generated)) {
-        eErr.view = 'A view cannot have a generated primary key'
-        result.count += 1
-      } else if ((entity.relations?.length ?? 0) > 0) {
-        eErr.view = 'A view cannot declare relations'
-        result.count += 1
+      // Both rules are independent (the backend raises each on its own), so report both.
+      const viewErrors: string[] = []
+      if (entity.fields.some(f => f.generated)) viewErrors.push('A view cannot have a generated primary key')
+      if ((entity.relations?.length ?? 0) > 0) viewErrors.push('A view cannot declare relations')
+      if (viewErrors.length > 0) {
+        eErr.view = viewErrors.join('; ')
+        result.count += viewErrors.length
       }
     }
 

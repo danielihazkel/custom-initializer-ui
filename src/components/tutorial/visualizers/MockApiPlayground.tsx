@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, Terminal, RefreshCw, Globe,
@@ -21,17 +21,27 @@ const MockApiPlayground: React.FC<Props> = ({ mockApi }) => {
     timestamp: string;
   } | null>(null);
 
-  // Reset response when mockApi changes (new lesson)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset response when mockApi changes (new lesson). A pending "send" from the previous
+  // lesson is cancelled too, otherwise its stale response would land under the new endpoint.
   useEffect(() => {
     setResponse(null);
+    setIsSending(false);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+    };
   }, [mockApi]);
 
   const handleSend = () => {
     setIsSending(true);
     setResponse(null);
+    if (timerRef.current) clearTimeout(timerRef.current);
 
     // Simulate network latency
-    setTimeout(() => {
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
       setIsSending(false);
       setResponse({
         body: mockApi.responseBody,

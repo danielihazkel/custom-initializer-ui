@@ -33,20 +33,23 @@ export function useDependencyCompatibility(
   allDeps: DependencyLike[],
 ): DependencyCompatibilityResult {
   return useMemo(() => {
-    const depName = (id: string) => allDeps.find(d => d.id === id)?.name ?? id
+    // O(1) lookups — the rule loops below run per rule, and the catalog has hundreds of deps.
+    const nameById = new Map(allDeps.map(d => [d.id, d.name]))
+    const selectedSet = new Set(selected)
+    const depName = (id: string) => nameById.get(id) ?? id
 
     const conflicts: CompatibilityWarning[] = []
     const requires: CompatibilityWarning[] = []
     for (const rule of rules) {
-      if (!selected.includes(rule.sourceDepId)) continue
-      if (rule.relationType === 'CONFLICTS' && selected.includes(rule.targetDepId)) {
+      if (!selectedSet.has(rule.sourceDepId)) continue
+      if (rule.relationType === 'CONFLICTS' && selectedSet.has(rule.targetDepId)) {
         conflicts.push({
           source: rule.sourceDepId,
           target: rule.targetDepId,
           desc: rule.description ?? `${depName(rule.sourceDepId)} conflicts with ${depName(rule.targetDepId)}`,
         })
       }
-      if (rule.relationType === 'REQUIRES' && !selected.includes(rule.targetDepId)) {
+      if (rule.relationType === 'REQUIRES' && !selectedSet.has(rule.targetDepId)) {
         requires.push({
           source: rule.sourceDepId,
           target: rule.targetDepId,
@@ -58,9 +61,9 @@ export function useDependencyCompatibility(
     const byTarget = new Map<string, Suggestion>()
     for (const rule of rules) {
       if (rule.relationType !== 'RECOMMENDS') continue
-      if (!selected.includes(rule.sourceDepId)) continue
-      if (selected.includes(rule.targetDepId)) continue
-      if (!allDeps.some(d => d.id === rule.targetDepId)) continue
+      if (!selectedSet.has(rule.sourceDepId)) continue
+      if (selectedSet.has(rule.targetDepId)) continue
+      if (!nameById.has(rule.targetDepId)) continue
       const sourceName = depName(rule.sourceDepId)
       const reason = rule.description ?? `${sourceName} recommends ${depName(rule.targetDepId)}`
       const existing = byTarget.get(rule.targetDepId)

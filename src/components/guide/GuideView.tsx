@@ -1,24 +1,24 @@
 import { useState, useRef, useEffect } from 'react'
 import { Search, Command, ChevronRight, Menu, X } from 'lucide-react'
 import { GUIDE_SECTIONS } from './guide-constants'
-import { GUIDE_SECTIONS_HE } from './guide-constants-he'
 import { UI_STRINGS, type Lang } from './guide-i18n'
 import type { GuideSection, GuideTopic } from './guide-types'
 import { GuideFieldTable } from './GuideFieldTable'
 import { GuideCallout } from './GuideCallout'
 import { GuideCodeBlock } from './GuideCodeBlock'
 import { GuideWorkflowStepper } from './GuideWorkflowStepper'
+import { parseMarkdown } from './guide-markdown'
 
 interface GuideViewProps {
   onClose?: () => void
 }
 
-export const parseMarkdown = (text: string) => {
-  let parsed = text.replace(/\*\*(.*?)\*\*/g, '<strong class="text-on-surface font-semibold">$1</strong>')
-  parsed = parsed.replace(/`([^`]+)`/g, '<code class="bg-surface-container-high border border-outline-variant px-1.5 py-0.5 rounded text-primary text-sm font-mono"><bdi>$1</bdi></code>')
-  parsed = parsed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-primary hover:underline"><bdi>$1</bdi></a>')
-  return parsed
-}
+// The Hebrew guide (~195 KB of text) is loaded on demand the first time the user switches.
+const guideCache = new Map<Lang, GuideSection[]>([['en', GUIDE_SECTIONS]])
+const loadGuide = (lang: Lang): Promise<GuideSection[]> =>
+  lang === 'he'
+    ? import('./guide-constants-he').then(m => m.GUIDE_SECTIONS_HE)
+    : Promise.resolve(GUIDE_SECTIONS)
 
 const renderContent = (content: string, isRtl: boolean) => {
   return content.split('\n\n').map((block, index) => {
@@ -79,7 +79,9 @@ const renderContent = (content: string, isRtl: boolean) => {
 }
 
 export function GuideView(_props: GuideViewProps) {
-  const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('guide-lang') as Lang) ?? 'en')
+  // Only 'he' is validated — any other persisted value would make `UI_STRINGS[lang]`
+  // undefined and crash the view.
+  const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('guide-lang') === 'he' ? 'he' : 'en'))
   const [activeSection, setActiveSection] = useState<GuideSection>(GUIDE_SECTIONS[0])
   const [activeTopic, setActiveTopic] = useState<GuideTopic>(GUIDE_SECTIONS[0].topics[0])
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -87,17 +89,26 @@ export function GuideView(_props: GuideViewProps) {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const sections = lang === 'he' ? GUIDE_SECTIONS_HE : GUIDE_SECTIONS
+  const [sections, setSections] = useState<GuideSection[]>(() => guideCache.get(lang) ?? GUIDE_SECTIONS)
   const ui = UI_STRINGS[lang]
   const isRtl = lang === 'he'
 
-  // Keep active topic in sync when language changes
+  // Load the guide for the current language (lazily, once), then keep the active topic in sync by id
   useEffect(() => {
-    const matchedSection = sections.find(s => s.id === activeSection.id) ?? sections[0]
-    const matchedTopic = matchedSection.topics.find(t => t.id === activeTopic.id) ?? matchedSection.topics[0]
-    setActiveSection(matchedSection)
-    setActiveTopic(matchedTopic)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false
+    const apply = (next: GuideSection[]) => {
+      if (cancelled) return
+      setSections(next)
+      setActiveSection(prevSection => {
+        const matchedSection = next.find(s => s.id === prevSection.id) ?? next[0]
+        setActiveTopic(prevTopic => matchedSection.topics.find(t => t.id === prevTopic.id) ?? matchedSection.topics[0])
+        return matchedSection
+      })
+    }
+    const cached = guideCache.get(lang)
+    if (cached) apply(cached)
+    else loadGuide(lang).then(loaded => { guideCache.set(lang, loaded); apply(loaded) }).catch(() => { /* keep the current sections */ })
+    return () => { cancelled = true }
   }, [lang])
 
   useEffect(() => {
@@ -159,7 +170,7 @@ export function GuideView(_props: GuideViewProps) {
 
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 ${isRtl ? 'right-0' : 'left-0'} z-40 w-80 bg-surface-container border-${isRtl ? 'l' : 'r'} border-outline-variant transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : isRtl ? 'translate-x-full' : '-translate-x-full'}`}
+        className={`fixed inset-y-0 ${isRtl ? 'right-0' : 'left-0'} z-40 w-80 bg-surface-container ${isRtl ? 'border-l' : 'border-r'} border-outline-variant transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : isRtl ? 'translate-x-full' : '-translate-x-full'}`}
         style={{ top: '4rem', height: 'calc(100vh - 4rem)' }}
       >
         {/* Header */}
@@ -218,7 +229,7 @@ export function GuideView(_props: GuideViewProps) {
                     <button
                       key={topic.id}
                       onClick={() => handleTopicSelect(topic, section)}
-                      className={`w-full text-${isRtl ? 'right' : 'left'} px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${
+                      className={`w-full ${isRtl ? 'text-right' : 'text-left'} px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${
                         activeTopic.id === topic.id
                           ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm'
                           : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'

@@ -49,6 +49,12 @@ export function ModuleTemplateForm({ data, errors, onChange, packagings }: Props
           value={data.packaging ?? 'jar'}
           onChange={e => onChange({ packaging: e.target.value })}
         >
+          {/* Metadata loads async; keep the current value selectable so the control never
+              renders blank (or warns) while `packagings` is still empty. */}
+          {packagings.length === 0 && <option value="">— loading —</option>}
+          {data.packaging && !packagings.includes(data.packaging) && (
+            <option value={data.packaging}>{data.packaging}</option>
+          )}
           {packagings.map(v => <option key={v} value={v}>{v}</option>)}
         </select>
       </FieldRow>

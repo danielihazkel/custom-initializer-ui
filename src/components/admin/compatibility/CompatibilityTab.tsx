@@ -3,7 +3,7 @@ import { List, Share2 } from 'lucide-react'
 import type { AdminDependencyCompatibility, AdminDependencyEntry, Toast } from '../../../types'
 import { useAdminResource } from '../../../hooks/useAdminResource'
 import { useAdminKind, filterByKind } from '../AdminKindContext'
-import { AdminTable } from '../shared/AdminTable'
+import { AdminTable, primitiveSearchText } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog } from '../shared/DeleteConfirmDialog'
 import { StatusToast } from '../shared/StatusToast'
@@ -34,7 +34,7 @@ export function CompatibilityTab() {
   const filteredItems = useMemo(() => {
     if (!tableQuery.trim()) return items
     const q = tableQuery.toLowerCase()
-    return items.filter(row => Object.values(row).some(val => String(val).toLowerCase().includes(q)))
+    return items.filter(row => primitiveSearchText(row).toLowerCase().includes(q))
   }, [items, tableQuery])
   const [editing, setEditing] = useState<Partial<AdminDependencyCompatibility> | null>(null)
   const [isNew, setIsNew] = useState(false)

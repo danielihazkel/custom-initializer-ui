@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Lock, User,
@@ -7,7 +7,7 @@ import {
   Play, CheckCircle2, XCircle,
   Server, Globe
 } from 'lucide-react';
-import { SECURITY_FILTERS } from '../tutorial-constants';
+import { SECURITY_FILTERS } from '../tutorial-visualizer-data';
 
 const SecurityFilterVisualizer: React.FC = () => {
   const [activeFilterIndex, setActiveFilterIndex] = useState(-1);
@@ -17,8 +17,13 @@ const SecurityFilterVisualizer: React.FC = () => {
   const [scenario, setScenario] = useState<'valid' | 'invalid-token' | 'unauthorized'>('valid');
 
   const filters = SECURITY_FILTERS;
+  // Bumped by reset()/unmount so an in-flight simulation loop stops touching state.
+  const runIdRef = useRef(0);
+
+  useEffect(() => () => { runIdRef.current++; }, []);
 
   const reset = () => {
+    runIdRef.current++;
     setActiveFilterIndex(-1);
     setIsProcessing(false);
     setRequestStatus('idle');
@@ -33,6 +38,7 @@ const SecurityFilterVisualizer: React.FC = () => {
 
   const startSimulation = async () => {
     reset();
+    const runId = runIdRef.current;
     setIsProcessing(true);
     setRequestStatus('processing');
 
@@ -42,6 +48,7 @@ const SecurityFilterVisualizer: React.FC = () => {
 
       // Simulate processing time
       await new Promise(resolve => setTimeout(resolve, 800));
+      if (runIdRef.current !== runId) return; // reset, scenario change, or unmount
 
       let result: 'passed' | 'failed' = 'passed';
 

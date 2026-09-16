@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { BookOpen, Code2, Terminal, ChevronRight, Menu, X, Layers, Search, Command, Server, Palette } from 'lucide-react';
 import { CURRICULUM } from './tutorial-constants';
-import { CURRICULUM_HE } from './tutorial-constants-he';
-import { CURRICULUM_FE } from './tutorial-constants-fe';
-import { CURRICULUM_FE_HE } from './tutorial-constants-fe-he';
 import { UI_STRINGS, type Lang } from './tutorial-i18n';
 import { Module, Lesson, LessonLanguage } from './tutorial-types';
+import { escapeHtml } from './escape-html';
 import ArchitectureVisualizer from './visualizers/ArchitectureVisualizer';
 import ProjectScaffolder from './visualizers/ProjectScaffolder';
 import MockApiPlayground from './visualizers/MockApiPlayground';
@@ -22,9 +20,25 @@ interface TutorialViewProps {
   onClose?: () => void;
 }
 
+// The English backend curriculum is the default and ships with this chunk; the other three
+// (~75% of the text) are fetched on demand so a session that never switches doesn't pay for them.
+type CurriculumKey = `${Track}-${Lang}`;
+const CURRICULUM_LOADERS: Record<Exclude<CurriculumKey, 'backend-en'>, () => Promise<Module[]>> = {
+  'backend-he':  () => import('./tutorial-constants-he').then(m => m.CURRICULUM_HE),
+  'frontend-en': () => import('./tutorial-constants-fe').then(m => m.CURRICULUM_FE),
+  'frontend-he': () => import('./tutorial-constants-fe-he').then(m => m.CURRICULUM_FE_HE),
+};
+const curriculumCache = new Map<CurriculumKey, Module[]>([['backend-en', CURRICULUM]]);
+
+function readLang(key: string): Lang {
+  // Only 'he' is validated — any other persisted value (renamed locale, corrupt entry)
+  // would make `UI_STRINGS[lang]` undefined and crash the view.
+  return localStorage.getItem(key) === 'he' ? 'he' : 'en';
+}
+
 export function TutorialView(_props: TutorialViewProps) {
-  const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('tutorial-lang') as Lang) ?? 'en');
-  const [track, setTrack] = useState<Track>(() => (localStorage.getItem('tutorial-track') as Track) ?? 'backend');
+  const [lang, setLang] = useState<Lang>(() => readLang('tutorial-lang'));
+  const [track, setTrack] = useState<Track>(() => (localStorage.getItem('tutorial-track') === 'frontend' ? 'frontend' : 'backend'));
   const [activeModule, setActiveModule] = useState<Module>(CURRICULUM[0]);
   const [activeLesson, setActiveLesson] = useState<Lesson>(CURRICULUM[0].lessons[0]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -33,22 +47,38 @@ export function TutorialView(_props: TutorialViewProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const curriculum =
-    track === 'frontend'
-      ? (lang === 'he' ? CURRICULUM_FE_HE : CURRICULUM_FE)
-      : (lang === 'he' ? CURRICULUM_HE : CURRICULUM);
+  const curriculumKey: CurriculumKey = `${track}-${lang}`;
+  const [curriculum, setCurriculum] = useState<Module[]>(() => curriculumCache.get(curriculumKey) ?? CURRICULUM);
+  const [curriculumLoading, setCurriculumLoading] = useState(!curriculumCache.has(curriculumKey));
   const ui = UI_STRINGS[lang];
   const isRtl = lang === 'he';
   const sidebarTitle = track === 'frontend' ? ui.frontendTitle : ui.sidebarTitle;
 
-  // Keep active module/lesson in sync by id when language or track changes
+  // Load the curriculum for the current [track, lang] (lazily, once per key), then keep the
+  // active module/lesson in sync by id.
   useEffect(() => {
-    const matchedModule = curriculum.find(m => m.id === activeModule.id) ?? curriculum[0];
-    const matchedLesson = matchedModule.lessons.find(l => l.id === activeLesson.id) ?? matchedModule.lessons[0];
-    setActiveModule(matchedModule);
-    setActiveLesson(matchedLesson);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lang, track]);
+    let cancelled = false;
+    const apply = (next: Module[]) => {
+      if (cancelled) return;
+      setCurriculum(next);
+      setCurriculumLoading(false);
+      setActiveModule(prevModule => {
+        const matchedModule = next.find(m => m.id === prevModule.id) ?? next[0];
+        setActiveLesson(prevLesson => matchedModule.lessons.find(l => l.id === prevLesson.id) ?? matchedModule.lessons[0]);
+        return matchedModule;
+      });
+    };
+    const cached = curriculumCache.get(curriculumKey);
+    if (cached) {
+      apply(cached);
+    } else {
+      setCurriculumLoading(true);
+      CURRICULUM_LOADERS[curriculumKey as Exclude<CurriculumKey, 'backend-en'>]()
+        .then(loaded => { curriculumCache.set(curriculumKey, loaded); apply(loaded); })
+        .catch(() => { if (!cancelled) setCurriculumLoading(false); }); // keep showing the previous curriculum
+    }
+    return () => { cancelled = true; };
+  }, [curriculumKey]);
 
   const handleTrackChange = (next: Track) => {
     if (next === track) return;
@@ -150,10 +180,7 @@ export function TutorialView(_props: TutorialViewProps) {
 
   // Syntax highlighting helper
   const highlightCode = (code: string, language: LessonLanguage = 'java') => {
-    let safeCode = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    let safeCode = escapeHtml(code);
 
     const placeholders: string[] = [];
     const pushPlaceholder = (text: string) => {
@@ -192,7 +219,8 @@ export function TutorialView(_props: TutorialViewProps) {
     }
 
     placeholders.forEach((content, index) => {
-      safeCode = safeCode.replace(`___PLACEHOLDER_${index}___`, content);
+      // Function form: a string replacement would expand `$&`, `$1`… inside the snippet.
+      safeCode = safeCode.replace(`___PLACEHOLDER_${index}___`, () => content);
     });
 
     return safeCode;
@@ -264,7 +292,7 @@ export function TutorialView(_props: TutorialViewProps) {
 
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 ${isRtl ? 'right-0' : 'left-0'} z-40 w-80 bg-surface-container border-${isRtl ? 'l' : 'r'} border-outline-variant transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : isRtl ? 'translate-x-full' : '-translate-x-full'}`}
+        className={`fixed inset-y-0 ${isRtl ? 'right-0' : 'left-0'} z-40 w-80 bg-surface-container ${isRtl ? 'border-l' : 'border-r'} border-outline-variant transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : isRtl ? 'translate-x-full' : '-translate-x-full'}`}
         style={{ top: '4rem', height: 'calc(100vh - 4rem)' }}
       >
         <div className="p-5 border-b border-outline-variant bg-surface-container">
@@ -343,8 +371,8 @@ export function TutorialView(_props: TutorialViewProps) {
           </div>
         </div>
 
-        <div className="p-4 overflow-y-auto tutorial-scroll" style={{ height: 'calc(100% - 200px)' }}>
-          <div className="space-y-8">
+        <div className="p-4 overflow-y-auto tutorial-scroll" style={{ height: 'calc(100% - 200px)' }} aria-busy={curriculumLoading}>
+          <div className={`space-y-8 transition-opacity ${curriculumLoading ? 'opacity-50 pointer-events-none' : ''}`}>
             {filteredCurriculum.length > 0 ? (
               filteredCurriculum.map((module) => (
                 <div key={module.id}>

@@ -144,6 +144,45 @@ describe('validateEntities', () => {
     })])
     expect(result.entities[0]?.fields[0]?.generated).toBe('Generated key must be LONG, INTEGER, or UUID')
   })
+
+  it('reports both view rules independently (generated PK and relations)', () => {
+    const result = validateEntities([
+      validEntity({ name: 'Customer', fields: [{ name: 'id', type: 'LONG', primaryKey: true }] }),
+      validEntity({
+        name: 'Summary',
+        viewQuery: 'SELECT id, total FROM orders',
+        fields: [{ name: 'id', type: 'LONG', primaryKey: true, generated: true }],
+        relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer' }],
+      }),
+    ])
+    const view = result.entities[1]?.view ?? ''
+    expect(view).toContain('generated primary key')
+    expect(view).toContain('relations')
+    // Both count towards the total, not just the first.
+    expect(result.count).toBeGreaterThanOrEqual(2)
+  })
+
+  it('does not reject Java-only regex syntax client-side', () => {
+    // Possessive quantifiers are valid for java.util.regex but a SyntaxError in JS.
+    const result = validateEntities([validEntity({
+      fields: [
+        { name: 'id', type: 'LONG', primaryKey: true, generated: true },
+        { name: 'code', type: 'STRING', pattern: '[A-Z]*+' },
+      ],
+    })])
+    expect(result.entities[0]?.fields[1]?.pattern).toBeUndefined()
+    expect(result.count).toBe(0)
+  })
+
+  it('still flags a pattern on a non-STRING field', () => {
+    const result = validateEntities([validEntity({
+      fields: [
+        { name: 'id', type: 'LONG', primaryKey: true, generated: true },
+        { name: 'qty', type: 'INTEGER', pattern: '[0-9]+' },
+      ],
+    })])
+    expect(result.entities[0]?.fields[1]?.pattern).toBe('Pattern applies to STRING only')
+  })
 })
 
 describe('validateMeta', () => {

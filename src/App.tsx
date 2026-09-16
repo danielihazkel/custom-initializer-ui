@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
 import { useMetadata } from './hooks/useMetadata'
 import { useExtensions } from './hooks/useExtensions'
@@ -13,10 +13,11 @@ import { useProjectState } from './hooks/useProjectState'
 import { useProjectPresets } from './hooks/useProjectPresets'
 
 import { InitializrView } from './components/InitializrView'
-import { ProjectPreview } from './components/ProjectPreview'
-import { TemplateCompare } from './components/TemplateCompare'
 import { Suspense, lazy } from 'react'
 
+// Modals opened on demand — keep CodeMirror + its grammars + the diff engine out of the initial chunk.
+const ProjectPreview = lazy(() => import('./components/ProjectPreview').then(m => ({ default: m.ProjectPreview })))
+const TemplateCompare = lazy(() => import('./components/TemplateCompare').then(m => ({ default: m.TemplateCompare })))
 const TutorialView = lazy(() => import('./components/tutorial/TutorialView').then(m => ({ default: m.TutorialView })))
 const AdminPage = lazy(() => import('./components/admin/AdminPage').then(m => ({ default: m.AdminPage })))
 const GuideView = lazy(() => import('./components/guide/GuideView').then(m => ({ default: m.GuideView })))
@@ -80,7 +81,7 @@ export default function App() {
     pushRecent,
   } = useProjectPresets()
 
-  const { valid: formValid, errors: formErrors } = validateForm(form)
+  const { valid: formValid, errors: formErrors } = useMemo(() => validateForm(form), [form])
   const firstFormError = Object.values(formErrors)[0]
 
   // A wizard error names a specific dependency (or its kind mentions SQL/OpenAPI/WSDL);
@@ -91,7 +92,8 @@ export default function App() {
   )
   const genericPreviewError = previewError && !isWizardPreviewError ? previewError : null
 
-  const currentSnapshot = captureSnapshot({
+  // Deep-clones the wizard payloads (SQL / OpenAPI / WSDL text), so only rebuild when an input changes.
+  const currentSnapshot = useMemo(() => captureSnapshot({
     form,
     selected: selectedDeps,
     selectedOptions,
@@ -100,7 +102,7 @@ export default function App() {
     soapByDep,
     multiModuleEnabled,
     selectedModules,
-  })
+  }), [form, selectedDeps, selectedOptions, sqlByDep, openApiByDep, soapByDep, multiModuleEnabled, selectedModules])
 
   const [shareCopied, setShareCopied] = useState(false)
   const [generateSuccess, setGenerateSuccess] = useState(false)
@@ -164,8 +166,9 @@ export default function App() {
       setAppToast({ message: 'Link copied to clipboard', type: 'success' })
       setTimeout(() => setShareCopied(false), 2000)
     }
-    navigator.clipboard?.writeText(url).then(onCopied).catch(() => {
-      // Fallback for insecure contexts / denied permission.
+    // Fallback for insecure contexts (plain-http intranet hosts have no navigator.clipboard)
+    // and denied permissions.
+    const fallback = (): void => {
       try {
         const ta = document.createElement('textarea')
         ta.value = url
@@ -180,23 +183,44 @@ export default function App() {
       } catch {
         setAppToast({ message: "Couldn't copy link — copy it from the address bar", type: 'error' })
       }
-    })
+    }
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(onCopied).catch(fallback)
+    } else {
+      fallback()
+    }
   }
 
-  function handleGenerate(): void {
+  const downloadArgs = () => [
+    form, selectedDeps, selectedOptions,
+    { enabled: multiModuleEnabled, modules: selectedModules },
+    sqlByDep, openApiByDep, soapByDep,
+  ] as const
+
+  async function downloadProject(): Promise<boolean> {
+    try {
+      await triggerDownload(...downloadArgs())
+      pushRecent(currentSnapshot)
+      return true
+    } catch (err) {
+      setAppToast({ message: `Couldn't generate project: ${err instanceof Error ? err.message : String(err)}`, type: 'error' })
+      return false
+    }
+  }
+
+  async function handleGenerate(): Promise<void> {
     if (!formValid) {
       setAppToast({ message: firstFormError ? `Fix project metadata: ${firstFormError}` : 'Fix project metadata before generating', type: 'error' })
       return
     }
-    triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep)
-    pushRecent(currentSnapshot)
+    if (!(await downloadProject())) return
     setGenerateSuccess(true)
     setAppToast({ message: 'Project downloaded!', type: 'success' })
     setTimeout(() => setGenerateSuccess(false), 2000)
   }
 
   function retryPreview(): void {
-    fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep)
+    void fetchPreview(...downloadArgs())
   }
 
   function handleReset(): void {
@@ -360,7 +384,7 @@ export default function App() {
           </button>
           {view !== 'frontend' && view !== 'fullstack' && (
           <button
-            onClick={() => { fetchPreview(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep); pushRecent(currentSnapshot) }}
+            onClick={() => { void fetchPreview(...downloadArgs()); pushRecent(currentSnapshot) }}
             disabled={previewLoading || !formValid}
             title={!formValid ? (firstFormError ? `Fix project metadata: ${firstFormError}` : 'Fix project metadata first') : previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview project files before downloading'}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${previewError && formValid ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
@@ -424,6 +448,7 @@ export default function App() {
             <Suspense fallback={<ViewSkeleton />}>
               <FrontendView
                 onGenerated={() => setAppToast({ message: 'Frontend project downloaded!', type: 'success' })}
+                onError={(message) => setAppToast({ message, type: 'error' })}
                 onReset={() => setAppToast({ message: 'Project reset to defaults', type: 'success' })}
               />
             </Suspense>
@@ -527,27 +552,31 @@ export default function App() {
 
       {/* Compare Templates modal */}
       {compareOpen && (
-        <TemplateCompare
-          templates={templates}
-          metadata={metadata}
-          extensions={extensions}
-          onClose={() => setCompareOpen(false)}
-        />
+        <Suspense fallback={<ViewSkeleton />}>
+          <TemplateCompare
+            templates={templates}
+            metadata={metadata}
+            extensions={extensions}
+            onClose={() => setCompareOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* Project Preview modal */}
       {preview && (
-        <ProjectPreview
-          preview={preview}
-          previousPreview={previousPreview}
-          artifactId={form.artifactId}
-          onClose={clearPreview}
-          onDownload={() => { triggerDownload(form, selectedDeps, selectedOptions, { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep); clearPreview() }}
-
-        />
+        <Suspense fallback={<ViewSkeleton />}>
+          <ProjectPreview
+            preview={preview}
+            previousPreview={previousPreview}
+            artifactId={form.artifactId}
+            onClose={clearPreview}
+            onDownload={() => { void downloadProject(); clearPreview() }}
+          />
+        </Suspense>
       )}
 
-      {/* Command Palette */}
+      {/* Command Palette — mounted only while open so its catalog memos don't run on every keystroke */}
+      {commandPaletteOpen && (
       <CommandPalette
         isOpen={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
@@ -564,6 +593,7 @@ export default function App() {
         }}
         onFormChange={handleFormChange}
       />
+      )}
 
       {resetConfirmOpen && (
         <ConfirmDialog

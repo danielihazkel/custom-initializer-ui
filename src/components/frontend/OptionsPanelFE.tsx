@@ -166,8 +166,10 @@ export function OptionsPanelFE({
     ? designEntries.map(e => ({ id: e.id, name: e.name }))
     : [{ id: DESIGN_NONE, name: 'None / Plain CSS' }]
   const showPalettePicker = PALETTE_AWARE_DESIGN_SYSTEMS.has(designSystem)
-  // Open the pair section by default when something is already set so user state is visible.
-  const [pairOpen, setPairOpen] = useState(Boolean(apiBaseUrl || backendArtifactId))
+  // The pair section follows the data (open whenever something is set — e.g. after loading a
+  // preset) until the user toggles it by hand, after which their choice wins.
+  const [pairManual, setPairManual] = useState<boolean | null>(null)
+  const pairOpen = pairManual ?? Boolean(apiBaseUrl || backendArtifactId)
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -242,7 +244,7 @@ export function OptionsPanelFE({
       <div className="border-t border-outline-variant pt-4">
         <button
           type="button"
-          onClick={() => setPairOpen(o => !o)}
+          onClick={() => setPairManual(!pairOpen)}
           aria-expanded={pairOpen}
           className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-widest text-primary hover:text-on-surface transition-colors"
         >

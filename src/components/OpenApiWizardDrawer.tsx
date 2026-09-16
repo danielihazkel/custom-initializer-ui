@@ -38,11 +38,13 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
       setClientSubPackage(initial?.clientSubPackage ?? 'client')
       setMode(initial?.mode ?? 'CONTROLLERS')
       setBaseUrlProperty(initial?.baseUrlProperty ?? 'openapi.client.base-url')
+      setPaths([])
       setParseError(null)
     }
   }, [isOpen, depId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Debounced live path detection
+  // Debounced live path detection. The controller aborts an in-flight request when the
+  // spec changes again, so a slow earlier response can never overwrite a newer one.
   useEffect(() => {
     const trimmed = spec.trim()
     if (!trimmed) {
@@ -50,11 +52,13 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
       setParseError(null)
       return
     }
+    const controller = new AbortController()
     const handle = setTimeout(() => {
       fetch('/starter-wizard.detect-paths', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spec: trimmed }),
+        signal: controller.signal,
       })
         .then(async res => {
           if (!res.ok) {
@@ -69,11 +73,15 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
           setParseError(null)
         })
         .catch(() => {
+          if (controller.signal.aborted) return
           setParseError('Could not reach backend to validate spec')
           setPaths([])
         })
     }, 400)
-    return () => clearTimeout(handle)
+    return () => {
+      clearTimeout(handle)
+      controller.abort()
+    }
   }, [spec])
 
   const emitControllers = mode === 'CONTROLLERS' || mode === 'BOTH'

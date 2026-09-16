@@ -1,5 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import * as d3 from 'd3'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+// Named submodule imports — the `d3` barrel would pull geo/chord/contour/scale/… into
+// the admin chunk for a graph that only needs force layout, zoom, drag and select.
+import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, type Simulation } from 'd3-force'
+import { zoom, zoomIdentity, type D3ZoomEvent } from 'd3-zoom'
+import { drag } from 'd3-drag'
+import { select } from 'd3-selection'
+import 'd3-transition' // side-effect: adds selection.transition() used by the dblclick zoom reset
 import { AnimatePresence, motion } from 'framer-motion'
 import type { AdminDependencyCompatibility, RelationType } from '../../../types'
 import { useCompatibilityGraphData, type GraphNode } from './useCompatibilityGraphData'
@@ -59,7 +65,7 @@ export function CompatibilityGraph({ rules, onEditRule }: Props) {
 
   const svgRef = useRef<SVGSVGElement>(null)
   const zoomGroupRef = useRef<SVGGElement>(null)
-  const simRef = useRef<d3.Simulation<SimNode, SimEdge> | null>(null)
+  const simRef = useRef<Simulation<SimNode, SimEdge> | null>(null)
   const simNodesRef = useRef<SimNode[]>([])
   const simEdgesRef = useRef<SimEdge[]>([])
   const rafRef = useRef<number | null>(null)
@@ -103,7 +109,7 @@ export function CompatibilityGraph({ rules, onEditRule }: Props) {
   }, [])
 
   const edgeNodeIds = useCallback((edgeId: number | null): Set<string> => {
-    if (!edgeId) return new Set()
+    if (edgeId == null) return new Set() // `!edgeId` would treat rule id 0 as "no selection"
     const ids = new Set<string>()
     for (const e of simEdgesRef.current) {
       if (e.id === edgeId) {
@@ -140,11 +146,11 @@ export function CompatibilityGraph({ rules, onEditRule }: Props) {
 
     if (simRef.current) simRef.current.stop()
 
-    const sim = d3.forceSimulation<SimNode>(simNodes)
-      .force('link', d3.forceLink<SimNode, SimEdge>(simEdges).id(d => d.id).distance(150).strength(0.5))
-      .force('charge', d3.forceManyBody<SimNode>().strength(-350))
-      .force('center', d3.forceCenter(W / 2, H / 2).strength(0.05))
-      .force('collision', d3.forceCollide<SimNode>(50))
+    const sim = forceSimulation<SimNode>(simNodes)
+      .force('link', forceLink<SimNode, SimEdge>(simEdges).id(d => d.id).distance(150).strength(0.5))
+      .force('charge', forceManyBody<SimNode>().strength(-350))
+      .force('center', forceCenter(W / 2, H / 2).strength(0.05))
+      .force('collision', forceCollide<SimNode>(50))
       .alphaDecay(0.02)
       .on('tick', () => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current)
@@ -154,17 +160,17 @@ export function CompatibilityGraph({ rules, onEditRule }: Props) {
     simRef.current = sim
 
     // Attach zoom behavior
-    const zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
+    const zoomBehavior = zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.2, 3])
-      .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+      .on('zoom', (event: D3ZoomEvent<SVGSVGElement, unknown>) => {
         if (zoomGroupRef.current) {
-          d3.select(zoomGroupRef.current).attr('transform', event.transform.toString())
+          select(zoomGroupRef.current).attr('transform', event.transform.toString())
         }
       })
 
-    const svgSel = d3.select<SVGSVGElement, unknown>(svg)
+    const svgSel = select<SVGSVGElement, unknown>(svg)
     svgSel.call(zoomBehavior)
-    svgSel.on('dblclick.zoom', () => svgSel.transition().duration(400).call(zoomBehavior.transform, d3.zoomIdentity))
+    svgSel.on('dblclick.zoom', () => svgSel.transition().duration(300).call(zoomBehavior.transform, zoomIdentity))
 
     return () => {
       sim.stop()
@@ -172,12 +178,13 @@ export function CompatibilityGraph({ rules, onEditRule }: Props) {
     }
   }, [nodes, edges])
 
-  // Attach drag behaviors after each render that has new nodes
+  // Attach drag behaviors whenever the node set changes. (Without a dep array this ran on
+  // every simulation tick — hundreds of data joins + listener rebinds per data load.)
   useEffect(() => {
     if (!svgRef.current || simNodesRef.current.length === 0 || !simRef.current) return
     const sim = simRef.current
 
-    const dragBehavior = d3.drag<SVGGElement, SimNode>()
+    const dragBehavior = drag<SVGGElement, SimNode>()
       .on('start', (event, d) => {
         if (!event.active) sim.alphaTarget(0.3).restart()
         d.fx = d.x
@@ -194,11 +201,11 @@ export function CompatibilityGraph({ rules, onEditRule }: Props) {
         d.fy = d.y
       })
 
-    d3.select(svgRef.current)
+    select(svgRef.current)
       .selectAll<SVGGElement, SimNode>('.graph-node')
       .data(simNodesRef.current)
       .call(dragBehavior)
-  })
+  }, [nodes, edges])
 
   const handleNodeClick = useCallback((nodeId: string) => {
     setSelectedEdgeId(null)
@@ -215,10 +222,12 @@ export function CompatibilityGraph({ rules, onEditRule }: Props) {
     setSelectedEdgeId(null)
   }, [])
 
-  // Selection sets
-  const connNodes = connectedNodeIds(selectedNodeId)
-  const connEdges = connectedEdgeIds(selectedNodeId)
-  const edgeNodes = edgeNodeIds(selectedEdgeId)
+  // Selection sets — memoized so the ~300 tick-driven renders per layout don't each
+  // rescan every edge three times. `edges` is in the deps because simEdgesRef is
+  // rebuilt from it.
+  const connNodes = useMemo(() => connectedNodeIds(selectedNodeId), [connectedNodeIds, selectedNodeId, edges])
+  const connEdges = useMemo(() => connectedEdgeIds(selectedNodeId), [connectedEdgeIds, selectedNodeId, edges])
+  const edgeNodes = useMemo(() => edgeNodeIds(selectedEdgeId), [edgeNodeIds, selectedEdgeId, edges])
   const hasSelection = selectedNodeId !== null || selectedEdgeId !== null
 
   const selectedEdgeData = selectedEdgeId != null ? simEdgesRef.current.find(e => e.id === selectedEdgeId) : null
@@ -282,7 +291,8 @@ export function CompatibilityGraph({ rules, onEditRule }: Props) {
 
               const style = EDGE_STYLES[edge.relationType]
               const isSelected = edge.id === selectedEdgeId
-              const isDimmed = hasSelection && !isSelected && !connEdges.has(edge.id) && !edgeNodes.has(typeof edge.source === 'string' ? edge.source : s.id)
+              // An edge stays lit only if it is the selected edge or touches the selected node.
+              const isDimmed = hasSelection && !isSelected && !connEdges.has(edge.id)
 
               const mx = (s.x + t.x) / 2
               const my = (s.y + t.y) / 2

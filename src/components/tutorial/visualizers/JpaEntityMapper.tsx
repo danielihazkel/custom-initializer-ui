@@ -7,14 +7,17 @@ import {
   Key, Link as LinkIcon, Hash,
   Table as TableIcon
 } from 'lucide-react';
-import { JPA_MAPPING_SCENARIOS } from '../tutorial-constants';
+import { JPA_MAPPING_SCENARIOS } from '../tutorial-visualizer-data';
+import { escapeHtml } from '../escape-html';
 
 const JpaEntityMapper: React.FC = () => {
   const [activeScenarioIndex, setActiveScenarioIndex] = useState(0);
   const scenario = JPA_MAPPING_SCENARIOS[activeScenarioIndex];
 
   const highlightJava = (code: string) => {
-    return code
+    // Escape first: the snippets contain generics (`List<Order>`) that the HTML parser
+    // would otherwise treat as tags and drop.
+    return escapeHtml(code)
       .replace(/(@\w+)/g, '<span class="text-tertiary">$1</span>')
       .replace(/\b(public|private|abstract|class|extends|implements|private|Long|String|BigDecimal|List)\b/g, '<span class="text-primary">$1</span>');
   };

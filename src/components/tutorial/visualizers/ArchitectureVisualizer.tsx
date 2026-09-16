@@ -1,13 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import * as d3 from 'd3';
 import {
   ArrowRight, Database, Globe, Layers, Server, Shield, Box, Zap,
   Radio, Router, MessageSquare, LayoutGrid, Info, X,
   Activity, Lock, Cpu
 } from 'lucide-react';
-import { ARCHITECTURE_STEPS } from '../tutorial-constants';
+import { ARCHITECTURE_STEPS } from '../tutorial-visualizer-data';
 
 interface Props {
   activeStage: string | undefined;
@@ -122,9 +121,6 @@ const getIcon = (id: string, active: boolean) => {
     default: return <Box className={`w-6 h-6 ${color}`} />;
   }
 };
-
-// d3 is imported for potential future use in layout calculations
-void d3;
 
 const ArchitectureVisualizer: React.FC<Props> = ({ activeStage }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);

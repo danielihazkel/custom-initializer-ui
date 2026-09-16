@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { DESIGN_GROUP_NAME, type FrontendMetadata, type FeGroup } from '../../hooks/useFrontendMetadata'
+import { DependencyCard } from '../DependencyCard'
 
 /**
  * Renders a Spring Initializr-style version range as a short React-version label.
@@ -38,6 +39,12 @@ export function AvailableDependenciesFE({ metadata, selectedDeps, onToggleDep }:
   }, [])
 
   const isCollapsed = (name: string) => !search.trim() && collapsedGroups.has(name)
+
+  // Stable toggle for the memoised cards (the parent's callback may change identity per render).
+  const onToggleRef = useRef(onToggleDep)
+  onToggleRef.current = onToggleDep
+  const toggle = useCallback((id: string) => onToggleRef.current(id), [])
+  const selectedSet = useMemo(() => new Set(selectedDeps), [selectedDeps])
 
   const filtered = useMemo<FeGroup[]>(() => {
     const groups = metadata.dependencies.filter(g => g.name !== DESIGN_GROUP_NAME)
@@ -88,7 +95,7 @@ export function AvailableDependenciesFE({ metadata, selectedDeps, onToggleDep }:
         <AnimatePresence>
           {filtered.map(group => {
             const collapsed = isCollapsed(group.name)
-            const selectedCount = group.entries.filter(d => selectedDeps.includes(d.id)).length
+            const selectedCount = group.entries.filter(d => selectedSet.has(d.id)).length
             const gridId = `fe-dep-group-${group.name.replace(/\s+/g, '-').toLowerCase()}`
             return (
               <motion.div
@@ -135,55 +142,18 @@ export function AvailableDependenciesFE({ metadata, selectedDeps, onToggleDep }:
                       style={{ overflow: 'hidden' }}
                     >
                       <div className="grid gap-2">
-                        {group.entries.map(dep => {
-                          const isSelected = selectedDeps.includes(dep.id)
-                          return (
-                            <motion.label
-                              layout
-                              key={dep.id}
-                              className={`flex items-start gap-4 p-4 rounded-xl border relative cursor-pointer overflow-hidden group transition-all duration-300 ${
-                                isSelected
-                                  ? 'border-primary bg-primary/10 shadow-[0_4px_20px_rgba(139,92,246,0.1)]'
-                                  : 'border-outline-variant bg-surface-container-high hover:border-primary/50 hover:bg-surface-container-highest'
-                              }`}
-                            >
-                              {isSelected && (
-                                <motion.div layoutId={`fe-active-${dep.id}`} className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
-                              )}
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => onToggleDep(dep.id)}
-                                className="sr-only"
-                              />
-                              <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all duration-300 ${
-                                isSelected
-                                  ? 'bg-primary border-primary text-white shadow-[0_0_10px_rgba(139,92,246,0.5)]'
-                                  : 'bg-surface-container-lowest border-secondary/40 group-hover:border-primary/50'
-                              }`}>
-                                {isSelected && (
-                                  <span className="material-symbols-outlined font-bold" style={{ fontSize: '14px' }}>check</span>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-bold text-on-surface flex items-center flex-wrap gap-2">
-                                  {dep.name}
-                                  {dep.versionRange && (
-                                    <span
-                                      title={dep.versionRange}
-                                      className="text-[9px] font-bold text-secondary bg-surface-container px-1.5 py-0.5 rounded-full border border-outline-variant/50"
-                                    >
-                                      {formatReactRange(dep.versionRange)}
-                                    </span>
-                                  )}
-                                </div>
-                                {dep.description && (
-                                  <div className="text-xs text-on-surface-variant leading-relaxed mt-1">{dep.description}</div>
-                                )}
-                              </div>
-                            </motion.label>
-                          )
-                        })}
+                        {group.entries.map(dep => (
+                          <DependencyCard
+                            key={dep.id}
+                            id={dep.id}
+                            name={dep.name}
+                            description={dep.description}
+                            versionBadge={dep.versionRange ? formatReactRange(dep.versionRange) : undefined}
+                            versionTitle={dep.versionRange}
+                            isSelected={selectedSet.has(dep.id)}
+                            onToggle={toggle}
+                          />
+                        ))}
                       </div>
                     </motion.div>
                   )}

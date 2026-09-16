@@ -23,7 +23,11 @@ export function AdminLogin({ onSuccess }: AdminLoginProps) {
         setError('Invalid password')
         return
       }
-      const data = await res.json()
+      const data = (await res.json().catch(() => null)) as { token?: unknown } | null
+      if (typeof data?.token !== 'string' || !data.token) {
+        setError('Invalid server response')
+        return
+      }
       onSuccess(data.token)
     } catch {
       setError('Connection error')

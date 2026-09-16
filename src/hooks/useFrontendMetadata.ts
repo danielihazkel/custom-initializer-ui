@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 export interface FeVersion { id: string; name: string; default?: boolean }
 export interface FeSubOption { id: string; label: string; description?: string }
@@ -67,24 +67,31 @@ export function useFrontendMetadata(): UseFrontendMetadataResult {
   const [tick, setTick] = useState(0)
 
   useEffect(() => {
+    let cancelled = false
     setLoading(true)
     setError(null)
-    fetch(`/frontend/metadata?r=${Math.random().toString(36).slice(2)}`, {
+    fetch('/frontend/metadata', {
       headers: { Accept: 'application/json' },
+      cache: 'no-store',
     })
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
       })
       .then((data: FrontendMetadata) => {
+        if (cancelled) return
         setMetadata(data)
         setLoading(false)
       })
       .catch((err: Error) => {
+        if (cancelled) return
         setError(err.message)
         setLoading(false)
       })
+    return () => { cancelled = true }
   }, [tick])
 
-  return { metadata, loading, error, reload: () => setTick(t => t + 1) }
+  const reload = useCallback(() => setTick(t => t + 1), [])
+
+  return { metadata, loading, error, reload }
 }

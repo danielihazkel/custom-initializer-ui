@@ -44,14 +44,16 @@ export function CommandPalette({
 
   // Reset state when opened
   useEffect(() => {
-    if (isOpen) {
-      setQuery('')
-      setSelectedIndex(0)
-      setTimeout(() => inputRef.current?.focus(), 50)
-    }
+    if (!isOpen) return
+    setQuery('')
+    setSelectedIndex(0)
+    const t = setTimeout(() => inputRef.current?.focus(), 50)
+    return () => clearTimeout(t)
   }, [isOpen])
 
-  // Build items array
+  // Build the catalog items. This depends only on the (rarely changing) metadata and
+  // templates — the per-item `active` flag is derived at render time so typing in the
+  // project form doesn't rebuild the whole list.
   const allItems = useMemo(() => {
     const items: PaletteItem[] = []
 
@@ -79,7 +81,6 @@ export function CommandPalette({
             title: dep.name,
             description: dep.description,
             icon: 'extension',
-            active: selectedDeps.includes(dep.id),
             payload: dep.id
           })
         })
@@ -97,12 +98,11 @@ export function CommandPalette({
             group: groupName,
             title: `Set ${groupName} to ${val.name}`,
             icon,
-            active: form[formKey] === val.id,
             payload: { [formKey]: val.id }
           })
         })
       }
-      
+
       addConfigs(metadata.language, 'Language', 'code', 'language')
       addConfigs(metadata.javaVersion, 'Java Version', 'coffee', 'javaVersion')
       addConfigs(metadata.bootVersion, 'Spring Boot Version', 'power', 'bootVersion')
@@ -110,7 +110,17 @@ export function CommandPalette({
     }
 
     return items
-  }, [metadata, templates, form, selectedDeps])
+  }, [metadata, templates])
+
+  const selectedSet = useMemo(() => new Set(selectedDeps), [selectedDeps])
+  function isActive(item: PaletteItem): boolean {
+    if (item.type === 'dependency') return selectedSet.has(item.payload as string)
+    if (item.type === 'config') {
+      const [key, value] = Object.entries(item.payload as Partial<ProjectFormValues>)[0] ?? []
+      return key !== undefined && form[key as keyof ProjectFormValues] === value
+    }
+    return false
+  }
 
   // Filter items
   const filteredItems = useMemo(() => {
@@ -152,7 +162,8 @@ export function CommandPalette({
     }
   }, [selectedIndex, isOpen, filteredItems])
 
-  // Click & Enter handling
+  // Click & Enter handling. Kept in a ref so the document keydown listener below always
+  // calls the latest callbacks without re-subscribing on every prop change.
   const handleSelect = (item: PaletteItem) => {
     if (item.type === 'template') {
       onSelectTemplate(item.payload)
@@ -164,23 +175,29 @@ export function CommandPalette({
       onClose()
     }
   }
+  const handleSelectRef = useRef(handleSelect)
+  handleSelectRef.current = handleSelect
+  const filteredItemsRef = useRef(filteredItems)
+  filteredItemsRef.current = filteredItems
+  const selectedIndexRef = useRef(selectedIndex)
+  selectedIndexRef.current = selectedIndex
 
   // Keyboard navigation
   useEffect(() => {
     if (!isOpen) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const items = filteredItemsRef.current
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSelectedIndex(prev => (prev + 1) % Math.max(1, filteredItems.length))
+        setSelectedIndex(prev => (prev + 1) % Math.max(1, items.length))
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setSelectedIndex(prev => (prev - 1 + filteredItems.length) % Math.max(1, filteredItems.length))
+        setSelectedIndex(prev => (prev - 1 + items.length) % Math.max(1, items.length))
       } else if (e.key === 'Enter') {
         e.preventDefault()
-        if (filteredItems[selectedIndex]) {
-          handleSelect(filteredItems[selectedIndex])
-        }
+        const item = items[selectedIndexRef.current]
+        if (item) handleSelectRef.current(item)
       } else if (e.key === 'Escape') {
         e.preventDefault()
         onClose()
@@ -189,20 +206,25 @@ export function CommandPalette({
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, filteredItems, selectedIndex, onClose])
+  }, [isOpen, onClose])
 
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
       {/* Backdrop */}
-      <div 
+      <div
         className="fixed inset-0 bg-background/60 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
-      
+
       {/* Search Modal */}
-      <div className="relative w-full max-w-2xl bg-surface-container/90 backdrop-blur-xl border border-outline-variant rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[60vh] animate-fade-in-up origin-top">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search dependencies, templates, or config"
+        className="relative w-full max-w-2xl bg-surface-container/90 backdrop-blur-xl border border-outline-variant rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[60vh] animate-fade-in-up origin-top"
+      >
         {/* Search Input Container */}
         <div className="flex items-center px-4 border-b border-outline-variant/50">
           <span className="material-symbols-outlined text-secondary text-2xl ml-2">search</span>
@@ -233,6 +255,7 @@ export function CommandPalette({
           ) : (
             filteredItems.map((item, index) => {
               const isSelected = index === selectedIndex
+              const active = isActive(item)
               return (
                 <div
                   key={item.id}
@@ -269,10 +292,10 @@ export function CommandPalette({
                   
                   {/* Action Icon / Status */}
                   <div className="ml-4 shrink-0 flex items-center justify-end w-8">
-                    {item.type === 'dependency' && item.active && (
+                    {item.type === 'dependency' && active && (
                       <span className="material-symbols-outlined text-primary text-[20px]">check_circle</span>
                     )}
-                    {item.type === 'config' && item.active && (
+                    {item.type === 'config' && active && (
                       <span className="material-symbols-outlined text-tertiary text-[20px]">radio_button_checked</span>
                     )}
                     {item.type === 'template' && (

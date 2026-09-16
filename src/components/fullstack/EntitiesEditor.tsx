@@ -3,6 +3,7 @@ import type { FullstackEntityDef, FullstackFieldDef, FullstackFieldType, Fullsta
 import type { EntityErrors, FieldErrors } from './validation'
 import { EnumValuesEditor } from './EnumValuesEditor'
 import { RelationsEditor } from './RelationsEditor'
+import { cloneWithNewUids, newUid } from './uid'
 
 const FIELD_TYPES: FullstackFieldType[] = [
   'STRING', 'TEXT', 'LONG', 'INTEGER', 'BOOLEAN',
@@ -17,22 +18,23 @@ interface Props {
 
 function newEntity(): FullstackEntityDef {
   return {
+    uid: newUid(),
     name: '',
     fields: [
-      { name: 'id', type: 'LONG', primaryKey: true, generated: true },
-      { name: 'name', type: 'STRING', required: true },
+      { uid: newUid(), name: 'id', type: 'LONG', primaryKey: true, generated: true },
+      { uid: newUid(), name: 'name', type: 'STRING', required: true },
     ],
   }
 }
 
 function newField(): FullstackFieldDef {
-  return { name: '', type: 'STRING' }
+  return { uid: newUid(), name: '', type: 'STRING' }
 }
 
 export function EntitiesEditor({ entities, onChange, errors }: Props) {
-  // Which field rows have their constraint panel expanded, keyed by `${eIdx}-${fIdx}`.
-  // Transient view-only state; index-keyed (a row may briefly toggle after an add/remove,
-  // which is harmless). Rows with a constraint error force open regardless (see isOpen).
+  // Which field rows have their constraint panel expanded, keyed by `${entityUid}-${fieldUid}`
+  // so the open panel follows its row through duplicate/remove. Rows with a constraint error
+  // force open regardless (see isOpen).
   const [expandedFields, setExpandedFields] = useState<Set<string>>(() => new Set())
   function toggleExpand(key: string) {
     setExpandedFields(prev => {
@@ -53,20 +55,13 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
   }
   function duplicateEntity(idx: number) {
     const src = entities[idx]
-    // Deep copy fields so edits to the clone don't mutate the original.
+    // Deep copy (fresh uids) so edits to the clone don't mutate the original; the physical
+    // mapping is intentionally dropped since two entities can't share a table.
     const copy: FullstackEntityDef = {
+      ...cloneWithNewUids(src),
       name: `${src.name}Copy`,
       tableName: undefined,
       schema: undefined,
-      label: src.label,
-      labelPlural: src.labelPlural,
-      readOnly: src.readOnly,
-      listViews: src.listViews ? [...src.listViews] : undefined,
-      listView: src.listView,
-      viewQuery: src.viewQuery,
-      sourceSql: src.sourceSql,
-      fields: src.fields.map(f => ({ ...f, enumValues: f.enumValues ? [...f.enumValues] : undefined })),
-      relations: src.relations ? src.relations.map(r => ({ ...r })) : undefined,
     }
     onChange([...entities.slice(0, idx + 1), copy, ...entities.slice(idx + 1)])
   }
@@ -108,6 +103,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
       const src = e.fields[fIdx]
       const copy: FullstackFieldDef = {
         ...src,
+        uid: newUid(),
         name: `${src.name}Copy`,
         enumValues: src.enumValues ? [...src.enumValues] : undefined,
       }
@@ -156,8 +152,11 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
           next.sort((a, b) => VIEW_ORDER.indexOf(a) - VIEW_ORDER.indexOf(b))
           updateEntity(eIdx, { listViews: next as FullstackEntityDef['listViews'], listView: undefined })
         }
+        const entityKey = entity.uid ?? `i${eIdx}`
+        // Loop-invariant: hoisted out of the per-field map below.
+        const pkCount = entity.fields.filter(f => f.primaryKey).length
         return (
-        <div key={eIdx} className="border border-outline-variant rounded-xl p-5 bg-surface-container shadow-sm space-y-4">
+        <div key={entityKey} className="border border-outline-variant rounded-xl p-5 bg-surface-container shadow-sm space-y-4">
           {/* Header: identity (row 1) split from secondary attributes (row 2) so the controls
               don't overflow a single row on laptop widths. A tinted panel marks the card title. */}
           <div className="rounded-lg bg-primary/[0.04] border border-outline-variant px-3 py-2.5 space-y-3">
@@ -354,7 +353,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
               <tbody>
                 {entity.fields.map((field, fIdx) => {
                   const fErr = eErr?.fields?.[fIdx]
-                  const pkCount = entity.fields.filter(f => f.primaryKey).length
+                  const fieldKey = field.uid ?? `i${fIdx}`
                   // A generated key requires a single PK (JPA IDENTITY can't target one column of a composite key).
                   const canGenerate = !!field.primaryKey && pkCount === 1 && (field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'UUID')
                   const isNumeric = field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'BIG_DECIMAL'
@@ -372,11 +371,11 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                     || Boolean(field.pattern) || Boolean(field.email) || (field.enumValues?.length ?? 0) > 0
                   const hasConstraintErr = Boolean(
                     fErr?.length || fErr?.min || fErr?.max || fErr?.pattern || fErr?.email || fErr?.enumValues)
-                  const rowKey = `${eIdx}-${fIdx}`
+                  const rowKey = `${entityKey}-${fieldKey}`
                   // Force open on error so the message is never hidden behind a collapsed panel.
                   const isOpen = hasConstraintControls && (expandedFields.has(rowKey) || hasConstraintErr)
                   return (
-                  <Fragment key={fIdx}>
+                  <Fragment key={fieldKey}>
                   <tr className="border-t border-outline-variant">
                     <td className="py-1.5 px-2 align-top">
                       <input

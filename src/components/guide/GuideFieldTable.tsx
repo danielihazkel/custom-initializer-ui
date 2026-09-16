@@ -1,6 +1,6 @@
 import type { GuideField } from './guide-types'
 import type { UiStrings } from './guide-i18n'
-import { parseMarkdown } from './GuideView'
+import { parseMarkdown } from './guide-markdown'
 
 interface GuideFieldTableProps {
   fields: GuideField[]

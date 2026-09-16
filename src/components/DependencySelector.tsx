@@ -1,9 +1,12 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
-import { SqlWizardDrawer } from './SqlWizardDrawer'
-import { OpenApiWizardDrawer } from './OpenApiWizardDrawer'
-import { SoapWizardDrawer } from './SoapWizardDrawer'
+import { DependencyCard } from './DependencyCard'
+// The wizard drawers embed a CodeMirror editor (~1 MB of grammars); load them only when a
+// wizard is actually opened so the editor stack stays out of the initial bundle.
+const SqlWizardDrawer = lazy(() => import('./SqlWizardDrawer').then(m => ({ default: m.SqlWizardDrawer })))
+const OpenApiWizardDrawer = lazy(() => import('./OpenApiWizardDrawer').then(m => ({ default: m.OpenApiWizardDrawer })))
+const SoapWizardDrawer = lazy(() => import('./SoapWizardDrawer').then(m => ({ default: m.SoapWizardDrawer })))
 import { SuggestionStrip } from './SuggestionStrip'
 import { useDependencyCompatibility } from '../hooks/useDependencyCompatibility'
 import { requiredSqlDeps, isSqlDepSatisfied } from '../utils/projectUtils'
@@ -107,13 +110,20 @@ export function DependencySelector({
       .filter(g => g.values.length > 0)
   }, [groups, search])
 
-  function toggle(depId: string): void {
-    if (selected.includes(depId)) {
-      onChange(selected.filter(id => id !== depId))
+  // Stable toggle (reads the latest props through refs) so the memoised DependencyCards
+  // don't all re-render whenever the selection changes.
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  const toggle = useCallback((depId: string): void => {
+    const current = selectedRef.current
+    if (current.includes(depId)) {
+      onChangeRef.current(current.filter(id => id !== depId))
     } else {
-      onChange([...selected, depId])
+      onChangeRef.current([...current, depId])
     }
-  }
+  }, [])
 
   function toggleOption(depId: string, optId: string): void {
     const current = selectedOptions[depId] ?? []
@@ -186,7 +196,8 @@ export function DependencySelector({
     return result
   }, [extensions])
 
-  const selectedDeps = allDeps.filter(d => selected.includes(d.id))
+  const selectedSet = useMemo(() => new Set(selected), [selected])
+  const selectedDeps = useMemo(() => allDeps.filter(d => selectedSet.has(d.id)), [allDeps, selectedSet])
 
   const { conflicts, requires, suggestions } = useDependencyCompatibility(
     compatibilityRules, selected, allDeps,
@@ -474,7 +485,7 @@ export function DependencySelector({
             <AnimatePresence>
               {filtered.map(group => {
                 const collapsed = isCollapsed(group.name)
-                const selectedCount = group.values.filter(d => selected.includes(d.id)).length
+                const selectedCount = group.values.filter(d => selectedSet.has(d.id)).length
                 const gridId = `dep-group-${group.name.replace(/\s+/g, '-').toLowerCase()}`
                 return (
                   <motion.div
@@ -526,59 +537,18 @@ export function DependencySelector({
                             initial="initial"
                             animate="animate"
                           >
-                            {group.values.map(dep => {
-                              const isSelected = selected.includes(dep.id)
-                              return (
-                                <motion.label
-                                  layout
-                                  variants={depGridItem}
-                                  key={dep.id}
-                                  className={`flex items-start gap-4 p-4 rounded-xl border relative cursor-pointer overflow-hidden group transition-all duration-300
-                          ${isSelected
-                                      ? 'border-primary bg-primary/10 shadow-[0_4px_20px_rgba(139,92,246,0.1)]'
-                                      : 'border-outline-variant bg-surface-container-high hover:border-primary/50 hover:bg-surface-container-highest'}`}
-                                >
-                                  {isSelected && (
-                                    <motion.div layoutId="active-indicator" className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
-                                  )}
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => toggle(dep.id)}
-                                    className="sr-only"
-                                  />
-                                  <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all duration-300
-                          ${isSelected
-                                      ? 'bg-primary border-primary text-white shadow-[0_0_10px_rgba(139,92,246,0.5)]'
-                                      : 'bg-surface-container-lowest border-secondary/40 group-hover:border-primary/50'}`}>
-                                    {isSelected && (
-                                      <motion.span
-                                        className="material-symbols-outlined font-bold"
-                                        style={{ fontSize: '14px' }}
-                                        initial={{ scale: 0 }}
-                                        animate={{ scale: 1 }}
-                                        transition={{ type: 'spring', stiffness: 600, damping: 20 }}
-                                      >
-                                        check
-                                      </motion.span>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-bold text-on-surface flex items-center flex-wrap gap-2">
-                                      {dep.name}
-                                      {dep.versionRange && (
-                                        <span className="text-[9px] font-bold text-secondary bg-surface-container px-1.5 py-0.5 rounded-full border border-outline-variant/50">
-                                          Boot {dep.versionRange}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {dep.description && (
-                                      <div className="text-xs text-on-surface-variant leading-relaxed mt-1">{dep.description}</div>
-                                    )}
-                                  </div>
-                                </motion.label>
-                              )
-                            })}
+                            {group.values.map(dep => (
+                              <DependencyCard
+                                key={dep.id}
+                                id={dep.id}
+                                name={dep.name}
+                                description={dep.description}
+                                versionBadge={dep.versionRange ? `Boot ${dep.versionRange}` : undefined}
+                                isSelected={selectedSet.has(dep.id)}
+                                onToggle={toggle}
+                                variants={depGridItem}
+                              />
+                            ))}
                           </motion.div>
                         </motion.div>
                       )}
@@ -598,6 +568,7 @@ export function DependencySelector({
         </div>
 
       </div>
+      <Suspense fallback={null}>
       {wizardDep && (
         <SqlWizardDrawer
           isOpen={wizardDepId !== null}
@@ -638,6 +609,7 @@ export function DependencySelector({
           onSave={entry => onSoapByDepChange(soapWizardDep.id, entry)}
         />
       )}
+      </Suspense>
     </>
   )
 }

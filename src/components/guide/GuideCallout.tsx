@@ -1,12 +1,11 @@
 import type { GuideCalloutData } from './guide-types'
 import type { UiStrings } from './guide-i18n'
+import { parseMarkdown } from './guide-markdown'
 
 interface GuideCalloutProps {
   callout: GuideCalloutData
   labels: UiStrings
 }
-
-import { parseMarkdown } from './GuideView'
 
 const CALLOUT_STYLES = {
   info: {

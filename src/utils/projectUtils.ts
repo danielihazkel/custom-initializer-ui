@@ -1,4 +1,5 @@
 import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlApiMode, SqlByDep, OpenApiByDep, SoapByDep } from '../types'
+import { readErrorBody } from './previewErrors'
 
 // Dependencies the SQL wizard's generated code needs for a given api mode:
 // data-jpa (entities + repositories, every mode), web (REST controllers, any
@@ -115,7 +116,12 @@ export function validateForm(form: ProjectFormValues): { valid: boolean; errors:
   return { valid: Object.keys(errors).length === 0, errors }
 }
 
-export function triggerDownload(
+/**
+ * Starts the project download. Resolves once the download has been handed to the
+ * browser; rejects (with a user-facing message) when a wizard generation fails
+ * server-side, so callers can report the failure instead of a false success.
+ */
+export async function triggerDownload(
   form: ProjectFormValues,
   selected: string[],
   selectedOptions: Record<string, string[]>,
@@ -123,7 +129,7 @@ export function triggerDownload(
   sqlByDep?: SqlByDep,
   openApiByDep?: OpenApiByDep,
   soapByDep?: SoapByDep,
-): void {
+): Promise<void> {
   const activeSql = sqlByDep
     ? Object.fromEntries(Object.entries(sqlByDep).filter(([id]) => selected.includes(id)))
     : {}
@@ -139,7 +145,7 @@ export function triggerDownload(
 
   // Branch: any wizard active → single POST carrying all payloads.
   if (hasWizard) {
-    void triggerWizardDownload(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap)
+    await triggerWizardDownload(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap)
     return
   }
 
@@ -192,17 +198,24 @@ async function triggerWizardDownload(
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    throw new Error(`Wizard generation failed: HTTP ${res.status}`)
+    const err = await readErrorBody(res)
+    throw new Error(err.kind ? `${err.kind}: ${err.message}` : err.message)
   }
   const blob = await res.blob()
+  downloadBlob(blob, `${form.artifactId}.zip`)
+}
+
+/** Hands a Blob to the browser as a file download (anchor click) and releases the object URL. */
+export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `${form.artifactId}.zip`
+  a.download = filename
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  // Revoking synchronously can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 export function buildWizardBody(

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import type { AdminColorPalette, AdminDependencyEntry, AdminEntityTemplateFile, AdminEntityTemplateSet, Toast } from '../../../types'
 import { useAdminResource, adminFetch } from '../../../hooks/useAdminResource'
 import { AdminTable } from '../shared/AdminTable'
@@ -26,17 +26,25 @@ export function EntityTemplatesTab() {
   const { items: allDepEntries } = useAdminResource<AdminDependencyEntry>('/admin/dependency-entries')
   const { items: allPalettes } = useAdminResource<AdminColorPalette>('/admin/color-palettes')
   const [selectedSetId, setSelectedSetId] = useState<number | null>(null)
-  const filesPath = selectedSetId == null ? null : `/admin/entity-template-files?setId=${selectedSetId}`
-  const files = useAdminResource<AdminEntityTemplateFile>(filesPath ?? '/admin/entity-template-files?setId=-1')
+  // The query is passed separately so mutations hit `/admin/entity-template-files/{id}`
+  // (the backend maps PUT/DELETE on the bare path only).
+  const files = useAdminResource<AdminEntityTemplateFile>('/admin/entity-template-files', {
+    query: { setId: selectedSetId ?? -1 },
+  })
 
   // Set drawer
   const [editingSet, setEditingSet] = useState<Partial<AdminEntityTemplateSet> | null>(null)
   const [editingDefaultDeps, setEditingDefaultDeps] = useState<string[]>([])
+  const [loadingDeps, setLoadingDeps] = useState(false)
+  // Which set's default-deps GET is the one we're waiting on; a late response for a
+  // different set (or a closed drawer) must not overwrite the list.
+  const depsRequestSetId = useRef<number | null>(null)
   const [isNewSet, setIsNewSet] = useState(false)
   const [setDrawerOpen, setSetDrawerOpen] = useState(false)
   const [setErrors, setSetErrors] = useState<Record<string, string>>({})
   const [savingSet, setSavingSet] = useState(false)
   const [deleteSet, setDeleteSet] = useState<AdminEntityTemplateSet | null>(null)
+  const [deletingSet, setDeletingSet] = useState(false)
 
   // File drawer
   const [editingFile, setEditingFile] = useState<Partial<AdminEntityTemplateFile> | null>(null)
@@ -45,6 +53,7 @@ export function EntityTemplatesTab() {
   const [fileErrors, setFileErrors] = useState<Record<string, string>>({})
   const [savingFile, setSavingFile] = useState(false)
   const [deleteFile, setDeleteFile] = useState<AdminEntityTemplateFile | null>(null)
+  const [deletingFile, setDeletingFile] = useState(false)
 
   const [toast, setToast] = useState<Toast | null>(null)
 
@@ -53,6 +62,8 @@ export function EntityTemplatesTab() {
     [sets.items, selectedSetId])
 
   function openNewSet() {
+    depsRequestSetId.current = null
+    setLoadingDeps(false)
     setEditingSet({ ...EMPTY_SET })
     setEditingDefaultDeps([])
     setIsNewSet(true)
@@ -65,13 +76,26 @@ export function EntityTemplatesTab() {
     setSetErrors({})
     setSetDrawerOpen(true)
     setEditingDefaultDeps([])
-    // Load existing default-deps separately
+    // Load existing default-deps separately. Save is blocked until this resolves so a
+    // quick Save can't PUT an empty list and wipe the set's defaults.
+    depsRequestSetId.current = row.id
+    setLoadingDeps(true)
+    let ids: string[] = []
     try {
-      const ids = await adminFetch('GET', `/admin/entity-template-sets/${row.id}/default-deps`) as string[]
-      setEditingDefaultDeps(ids ?? [])
+      ids = (await adminFetch('GET', `/admin/entity-template-sets/${row.id}/default-deps`) as string[] | null) ?? []
     } catch {
-      setEditingDefaultDeps([])
+      ids = []
     }
+    if (depsRequestSetId.current !== row.id) return // stale: another set was opened / drawer closed
+    setEditingDefaultDeps(ids)
+    setLoadingDeps(false)
+  }
+  function closeSetDrawer() {
+    depsRequestSetId.current = null
+    setLoadingDeps(false)
+    setSetDrawerOpen(false)
+    setEditingSet(null)
+    setEditingDefaultDeps([])
   }
   function validateSet(data: Partial<AdminEntityTemplateSet>): Record<string, string> {
     const e: Record<string, string> = {}
@@ -81,7 +105,7 @@ export function EntityTemplatesTab() {
     return e
   }
   async function saveSet() {
-    if (!editingSet) return
+    if (!editingSet || loadingDeps) return
     const e = validateSet(editingSet)
     if (Object.keys(e).length > 0) { setSetErrors(e); return }
     setSavingSet(true)
@@ -103,9 +127,7 @@ export function EntityTemplatesTab() {
           { depIds: editingDefaultDeps })
       }
       setToast({ message: 'Set saved', type: 'success' })
-      setSetDrawerOpen(false)
-      setEditingSet(null)
-      setEditingDefaultDeps([])
+      closeSetDrawer()
     } catch (err) {
       setToast({ message: String(err), type: 'error' })
     } finally {
@@ -113,7 +135,8 @@ export function EntityTemplatesTab() {
     }
   }
   async function doDeleteSet() {
-    if (!deleteSet) return
+    if (!deleteSet || deletingSet) return
+    setDeletingSet(true)
     try {
       await sets.remove(deleteSet.id)
       if (selectedSetId === deleteSet.id) setSelectedSetId(null)
@@ -121,6 +144,8 @@ export function EntityTemplatesTab() {
       setToast({ message: 'Set deleted', type: 'success' })
     } catch (err) {
       setToast({ message: String(err), type: 'error' })
+    } finally {
+      setDeletingSet(false)
     }
   }
 
@@ -160,13 +185,16 @@ export function EntityTemplatesTab() {
     }
   }
   async function doDeleteFile() {
-    if (!deleteFile) return
+    if (!deleteFile || deletingFile) return
+    setDeletingFile(true)
     try {
       await files.remove(deleteFile.id)
       setDeleteFile(null)
       setToast({ message: 'File deleted', type: 'success' })
     } catch (err) {
       setToast({ message: String(err), type: 'error' })
+    } finally {
+      setDeletingFile(false)
     }
   }
 
@@ -254,9 +282,9 @@ export function EntityTemplatesTab() {
       <AdminFormDrawer
         title={isNewSet ? 'New Template Set' : 'Edit Template Set'}
         isOpen={setDrawerOpen}
-        onClose={() => { setSetDrawerOpen(false); setEditingSet(null); setEditingDefaultDeps([]) }}
+        onClose={closeSetDrawer}
         onSave={saveSet}
-        saving={savingSet}
+        saving={savingSet || loadingDeps}
       >
         {editingSet && (
           <EntityTemplateSetForm
@@ -292,7 +320,7 @@ export function EntityTemplatesTab() {
           itemLabel={`"${deleteSet.name}" (${deleteSet.setKey})`}
           onConfirm={doDeleteSet}
           onCancel={() => setDeleteSet(null)}
-          deleting={false}
+          deleting={deletingSet}
         />
       )}
       {deleteFile && (
@@ -300,7 +328,7 @@ export function EntityTemplatesTab() {
           itemLabel={`"${deleteFile.pathTemplate}"`}
           onConfirm={doDeleteFile}
           onCancel={() => setDeleteFile(null)}
-          deleting={false}
+          deleting={deletingFile}
         />
       )}
 

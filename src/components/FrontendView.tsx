@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useFrontendMetadata } from '../hooks/useFrontendMetadata'
 import { useFrontendState } from '../hooks/useFrontendState'
@@ -12,14 +12,20 @@ import { ProjectFormFE } from './frontend/ProjectFormFE'
 import { OptionsPanelFE } from './frontend/OptionsPanelFE'
 import { SelectedDependenciesFE } from './frontend/SelectedDependenciesFE'
 import { AvailableDependenciesFE } from './frontend/AvailableDependenciesFE'
-import { ProjectPreview } from './ProjectPreview'
+import { ViewSkeleton } from './Skeletons'
+import { readErrorBody } from '../utils/previewErrors'
+import { downloadBlob } from '../utils/projectUtils'
+
+// Opened on demand — keeps CodeMirror + grammars out of this view's chunk.
+const ProjectPreview = lazy(() => import('./ProjectPreview').then(m => ({ default: m.ProjectPreview })))
 
 interface Props {
   onGenerated?: () => void
+  onError?: (message: string) => void
   onReset?: () => void
 }
 
-export function FrontendView({ onGenerated, onReset }: Props) {
+export function FrontendView({ onGenerated, onError, onReset }: Props) {
   const { metadata, loading, error, reload } = useFrontendMetadata()
   const fe = useFrontendState(metadata)
   const { templates } = useStarterTemplates('FRONTEND')
@@ -70,15 +76,22 @@ export function FrontendView({ onGenerated, onReset }: Props) {
     )
   }
 
-  function handleGenerate() {
-    presets.pushRecent(fe.state)
-    const a = document.createElement('a')
-    a.href = fe.downloadUrl
-    a.download = `${fe.state.form.projectName || 'demo'}.zip`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    onGenerated?.()
+  // Fetch (not an anchor GET) so a server-side failure surfaces as an error
+  // instead of a "downloaded" toast with no file.
+  async function handleGenerate(): Promise<void> {
+    try {
+      const res = await fetch(fe.downloadUrl)
+      if (!res.ok) {
+        const err = await readErrorBody(res)
+        onError?.(`Couldn't generate project: ${err.kind ? `${err.kind}: ${err.message}` : err.message}`)
+        return
+      }
+      downloadBlob(await res.blob(), `${fe.state.form.projectName || 'demo'}.zip`)
+      presets.pushRecent(fe.state)
+      onGenerated?.()
+    } catch (err) {
+      onError?.(`Couldn't generate project: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   function handleReset() {
@@ -109,7 +122,7 @@ export function FrontendView({ onGenerated, onReset }: Props) {
               : 'Explore'}
           </button>
           <button
-            onClick={handleGenerate}
+            onClick={() => { void handleGenerate() }}
             className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn"
             style={{ minWidth: '110px' }}
           >
@@ -207,13 +220,15 @@ export function FrontendView({ onGenerated, onReset }: Props) {
       </div>
 
       {preview && createPortal(
-        <ProjectPreview
-          preview={preview}
-          previousPreview={previousPreview}
-          artifactId={fe.state.form.projectName || 'demo'}
-          onClose={clearPreview}
-          onDownload={() => { handleGenerate(); clearPreview() }}
-        />,
+        <Suspense fallback={<ViewSkeleton />}>
+          <ProjectPreview
+            preview={preview}
+            previousPreview={previousPreview}
+            artifactId={fe.state.form.projectName || 'demo'}
+            onClose={clearPreview}
+            onDownload={() => { void handleGenerate(); clearPreview() }}
+          />
+        </Suspense>,
         document.body,
       )}
     </div>

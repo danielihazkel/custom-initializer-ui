@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { FullstackStarterRequest, PreviewError, PreviewResponse } from '../types'
 import { readErrorBody } from '../utils/previewErrors'
 
@@ -9,7 +9,21 @@ export function useFullstackPreview() {
   const [loading, setLoading]                 = useState(false)
   const [error,   setError]                   = useState<PreviewError | null>(null)
 
+  // Only the latest request may touch state (see useProjectPreview).
+  const reqIdRef = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
+  useEffect(() => () => {
+    reqIdRef.current += 1
+    abortRef.current?.abort()
+  }, [])
+
   const fetchPreview = useCallback(async (body: FullstackStarterRequest) => {
+    abortRef.current?.abort()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+    const reqId = ++reqIdRef.current
+    const stale = () => reqId !== reqIdRef.current
+
     setLoading(true)
     setError(null)
     try {
@@ -17,19 +31,23 @@ export function useFullstackPreview() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: ctrl.signal,
       })
       if (!res.ok) {
-        setError(await readErrorBody(res))
+        const err = await readErrorBody(res)
+        if (!stale()) setError(err)
         return
       }
       const data = await res.json() as PreviewResponse
+      if (stale()) return
       setPreviousPreview(previewRef.current)
       previewRef.current = data
       setPreview(data)
     } catch (err) {
+      if (stale() || (err instanceof Error && err.name === 'AbortError')) return
       setError({ message: err instanceof Error ? err.message : String(err) })
     } finally {
-      setLoading(false)
+      if (!stale()) setLoading(false)
     }
   }, [])
 

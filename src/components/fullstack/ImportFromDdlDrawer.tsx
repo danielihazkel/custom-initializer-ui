@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { AdminFormDrawer } from '../admin/shared/AdminFormDrawer'
 import type { FullstackEntityDef } from '../../types'
+import { newUid } from './uid'
 
 interface Props {
   isOpen: boolean
@@ -96,12 +97,15 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
   const [error, setError] = useState<ImportError | null>(null)
   const copy = COPY[variant]
 
+  // Re-seed on every open and on a variant switch: the same drawer instance serves both the
+  // DDL and SELECT imports, so leftover text from one must never be posted to the other.
   useEffect(() => {
     if (isOpen) {
+      setSql('')
       setError(null)
       setMode(hasExisting ? 'append' : 'replace')
     }
-  }, [isOpen, hasExisting])
+  }, [isOpen, hasExisting, variant])
 
   async function handleSave() {
     setError(null)
@@ -122,6 +126,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
     }
     const body = await res.json() as ImportResponse
     const entities: FullstackEntityDef[] = body.entities.map(e => ({
+      uid: newUid(),
       name: e.name,
       tableName: e.tableName ?? undefined,
       schema: e.schema ?? undefined,
@@ -129,6 +134,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       viewQuery: e.viewQuery ?? undefined,
       sourceSql: e.sourceSql ?? undefined,
       fields: e.fields.map(f => ({
+        uid: newUid(),
         name: f.name,
         type: f.type,
         primaryKey: f.primaryKey || undefined,

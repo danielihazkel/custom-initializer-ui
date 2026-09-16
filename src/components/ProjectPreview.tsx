@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback, memo } from 'react'
 import type { PreviewResponse, TreeNode, FileStatus } from '../types'
 import { usePreviewDiff } from '../hooks/usePreviewDiff'
 import { DiffContentViewer } from './DiffContentViewer'
@@ -39,14 +39,20 @@ interface NodeRowProps {
   node:        TreeNode
   depth:       number
   selected:    string
-  expanded:    Set<string>
+  /** Directories the user has collapsed. Everything else is open, so directories that
+   *  appear later (diff-mode ghost dirs) are visible without any bookkeeping. */
+  collapsed:   Set<string>
   onSelect:    (path: string) => void
   onToggle:    (path: string) => void
   fileStatuses?: Map<string, FileStatus>
+  /** Directory paths containing at least one changed file (precomputed once per diff). */
+  changedDirs?: Set<string>
 }
 
-function NodeRow({ node, depth, selected, expanded, onSelect, onToggle, fileStatuses }: NodeRowProps) {
-  const isExpanded = expanded.has(node.path)
+const NodeRow = memo(function NodeRow({
+  node, depth, selected, collapsed, onSelect, onToggle, fileStatuses, changedDirs,
+}: NodeRowProps) {
+  const isExpanded = !collapsed.has(node.path)
   const isSelected = node.path === selected
   const indent     = 8 + depth * 14
 
@@ -54,11 +60,7 @@ function NodeRow({ node, depth, selected, expanded, onSelect, onToggle, fileStat
   const statusColor = status && status !== 'unchanged' ? STATUS_COLORS[status] : ''
 
   if (node.type === 'directory') {
-    const dirHasChanges = fileStatuses
-      ? [...fileStatuses.entries()].some(
-          ([path, s]) => s !== 'unchanged' && path.startsWith(node.path + '/')
-        )
-      : false
+    const dirHasChanges = changedDirs?.has(node.path) ?? false
 
     return (
       <div>
@@ -77,9 +79,9 @@ function NodeRow({ node, depth, selected, expanded, onSelect, onToggle, fileStat
         </button>
         {isExpanded && node.children.map(child => (
           <NodeRow key={child.path} node={child} depth={depth + 1}
-            selected={selected} expanded={expanded}
+            selected={selected} collapsed={collapsed}
             onSelect={onSelect} onToggle={onToggle}
-            fileStatuses={fileStatuses}
+            fileStatuses={fileStatuses} changedDirs={changedDirs}
           />
         ))}
       </div>
@@ -109,6 +111,21 @@ function NodeRow({ node, depth, selected, expanded, onSelect, onToggle, fileStat
       )}
     </button>
   )
+})
+
+/** Every ancestor directory of each changed file, so directory rows can show their
+ *  "has changes" dot with a Set lookup instead of scanning the whole status map. */
+function collectChangedDirs(fileStatuses: Map<string, FileStatus>): Set<string> {
+  const dirs = new Set<string>()
+  for (const [path, s] of fileStatuses) {
+    if (s === 'unchanged') continue
+    let idx = path.lastIndexOf('/')
+    while (idx > 0) {
+      dirs.add(path.slice(0, idx))
+      idx = path.lastIndexOf('/', idx - 1)
+    }
+  }
+  return dirs
 }
 
 /** Insert removed-file paths as ghost nodes into the new tree */
@@ -166,27 +183,24 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
     return mergeRemovedIntoTree(preview.tree, removedPaths)
   }, [showDiff, diffResult, preview.tree])
 
-  const allDirPaths = useMemo(() => {
-    const dirs = new Set<string>()
-    function collect(nodes: TreeNode[]) {
-      for (const n of nodes) {
-        if (n.type === 'directory') { dirs.add(n.path); collect(n.children) }
-      }
-    }
-    collect(mergedTree)
-    return dirs
-  }, [mergedTree])
+  const fileStatuses = showDiff ? diffResult.fileStatuses : undefined
+  const changedDirs = useMemo(
+    () => (fileStatuses ? collectChangedDirs(fileStatuses) : undefined),
+    [fileStatuses],
+  )
 
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(allDirPaths))
+  // Tracked as "collapsed" rather than "expanded": the tree is fully open by default, and
+  // directories synthesised later (diff-mode ghost dirs for removed files) inherit that.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [selected, setSelected] = useState<string>(preview.files[0]?.path ?? '')
 
-  function toggleDir(path: string) {
-    setExpanded(prev => {
+  const toggleDir = useCallback((path: string) => {
+    setCollapsed(prev => {
       const next = new Set(prev)
       if (next.has(path)) next.delete(path); else next.add(path)
       return next
     })
-  }
+  }, [])
 
   const selectedStatus = diffResult?.fileStatuses.get(selected)
   const content    = fileMap.get(selected) ?? oldFileMap.get(selected) ?? ''
@@ -256,9 +270,9 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
           <div className="w-60 flex-shrink-0 border-r border-outline-variant overflow-y-auto p-1.5 bg-surface-container-low">
             {mergedTree.map(node => (
               <NodeRow key={node.path} node={node} depth={0}
-                selected={selected} expanded={expanded}
+                selected={selected} collapsed={collapsed}
                 onSelect={setSelected} onToggle={toggleDir}
-                fileStatuses={showDiff ? diffResult.fileStatuses : undefined}
+                fileStatuses={fileStatuses} changedDirs={changedDirs}
               />
             ))}
           </div>

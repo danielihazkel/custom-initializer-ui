@@ -53,12 +53,17 @@ export function ProjectForm({ values, onChange, errors }: ProjectFormProps) {
       const val = e.target.value
       const updates: Partial<ProjectFormValues> = { [field]: val }
 
+      // Name and package are derived from group/artifact, but only while they still equal
+      // the previous derivation (or are blank) — a hand-typed value is never clobbered.
+      // Mirrors the appTitle guard in frontend/ProjectFormFE.
+      const prevPackage = `${values.groupId}.${values.artifactId}`.replace(/-/g, '_')
+      const packageUntouched = values.packageName === prevPackage || values.packageName === ''
       if (field === 'artifactId') {
-        updates.name = val
-        updates.packageName = `${values.groupId}.${val}`.replace(/-/g, '_')
+        if (values.name === values.artifactId || values.name === '') updates.name = val
+        if (packageUntouched) updates.packageName = `${values.groupId}.${val}`.replace(/-/g, '_')
       }
       if (field === 'groupId') {
-        updates.packageName = `${val}.${values.artifactId}`.replace(/-/g, '_')
+        if (packageUntouched) updates.packageName = `${val}.${values.artifactId}`.replace(/-/g, '_')
       }
 
       onChange(updates)

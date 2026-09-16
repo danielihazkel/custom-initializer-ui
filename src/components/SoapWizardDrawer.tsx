@@ -40,11 +40,13 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
       setMode(initial?.mode ?? 'ENDPOINTS')
       setBaseUrlProperty(initial?.baseUrlProperty ?? 'soap.client.base-url')
       setContextPath(initial?.contextPath ?? '/ws')
+      setServices([])
       setParseError(null)
     }
   }, [isOpen, depId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Debounced live service detection
+  // Debounced live service detection. The controller aborts an in-flight request when the
+  // WSDL changes again, so a slow earlier response can never overwrite a newer one.
   useEffect(() => {
     const trimmed = wsdl.trim()
     if (!trimmed) {
@@ -52,11 +54,13 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
       setParseError(null)
       return
     }
+    const controller = new AbortController()
     const handle = setTimeout(() => {
       fetch('/starter-wizard.detect-services', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wsdl: trimmed }),
+        signal: controller.signal,
       })
         .then(async res => {
           if (!res.ok) {
@@ -71,11 +75,15 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
           setParseError(null)
         })
         .catch(() => {
+          if (controller.signal.aborted) return
           setParseError('Could not reach backend to validate WSDL')
           setServices([])
         })
     }, 400)
-    return () => clearTimeout(handle)
+    return () => {
+      clearTimeout(handle)
+      controller.abort()
+    }
   }, [wsdl])
 
   const emitEndpoints = mode === 'ENDPOINTS' || mode === 'BOTH'

@@ -322,6 +322,8 @@ export type FullstackFieldType =
   | 'LOCAL_DATE' | 'LOCAL_DATE_TIME' | 'BIG_DECIMAL' | 'UUID' | 'ENUM'
 
 export interface FullstackFieldDef {
+  /** Client-only editor row identity (React key); stripped before the request is sent. */
+  uid?: string
   name: string
   type: FullstackFieldType
   primaryKey?: boolean
@@ -351,6 +353,8 @@ export interface FullstackFieldDef {
 export type FullstackRelationType = 'MANY_TO_ONE'
 
 export interface FullstackRelationDef {
+  /** Client-only editor row identity (React key); stripped before the request is sent. */
+  uid?: string
   type: FullstackRelationType
   fieldName: string
   targetEntity: string
@@ -358,6 +362,8 @@ export interface FullstackRelationDef {
 }
 
 export interface FullstackEntityDef {
+  /** Client-only editor row identity (React key); stripped before the request is sent. */
+  uid?: string
   name: string
   tableName?: string
   schema?: string

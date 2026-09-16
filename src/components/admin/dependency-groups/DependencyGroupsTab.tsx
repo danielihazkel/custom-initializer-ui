@@ -32,7 +32,10 @@ export function DependencyGroupsTab() {
   async function handleSaveOrder() {
     setSaving(true)
     try {
-      const orderings = localItems.map((item, i) => ({ id: item.id, sortOrder: i + 1 }))
+      // Reuse the sortOrder slots this kind's rows already occupy in the full table, so a
+      // FRONTEND reorder can't renumber into 1..n and collide with the BACKEND groups.
+      const slots = items.map(g => g.sortOrder).sort((a, b) => a - b)
+      const orderings = localItems.map((item, i) => ({ id: item.id, sortOrder: slots[i] ?? i + 1 }))
       await adminFetch('PUT', '/admin/dependency-groups/reorder', orderings)
       reload()
       setToast({ message: 'Order saved successfully', type: 'success' })

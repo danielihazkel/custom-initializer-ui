@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FrontendMetadata } from './useFrontendMetadata'
 import type { StarterTemplate } from '../types'
 
@@ -67,50 +67,75 @@ function defaultState(metadata: FrontendMetadata | null): FeState {
   }
 }
 
+const PERSIST_DEBOUNCE_MS = 300
+
+interface InitialFeState {
+  state: FeState
+  /** True when a stored/URL state existed at mount — server defaults must not replace it. */
+  hadPersisted: boolean
+}
+
+// Computed exactly once per mount. Re-reading localStorage later is unreliable
+// because the persist effect writes on mount, which previously made the
+// "apply server defaults" branch unreachable for first-time visitors.
+function readInitial(metadata: FrontendMetadata | null): InitialFeState {
+  const stored = readStored()
+  const fromUrl = parseFrontendUrl()
+  const base = defaultState(metadata)
+  const merged: FeState = {
+    ...base,
+    ...stored,
+    ...fromUrl,
+    form: { ...base.form, ...(stored?.form ?? {}), ...(fromUrl?.form ?? {}) },
+  }
+  // Always re-derive designSystem from selectedDeps so the picker stays in sync
+  // with the source of truth even after older state shapes are loaded.
+  merged.designSystem = deriveDesignSystem(merged.selectedDeps)
+  return { state: merged, hadPersisted: stored !== null || fromUrl !== null }
+}
+
 export function useFrontendState(metadata: FrontendMetadata | null, active: boolean = true) {
-  const [state, setState] = useState<FeState>(() => {
-    const stored = readStored()
-    const fromUrl = parseFrontendUrl()
-    const base = defaultState(metadata)
-    const merged: FeState = {
-      ...base,
-      ...stored,
-      ...fromUrl,
-      form: { ...base.form, ...(stored?.form ?? {}), ...(fromUrl?.form ?? {}) },
-    }
-    // Always re-derive designSystem from selectedDeps so the picker stays in sync
-    // with the source of truth even after older state shapes are loaded.
-    merged.designSystem = deriveDesignSystem(merged.selectedDeps)
-    return merged
-  })
+  const [init] = useState(() => readInitial(metadata))
+  const [state, setState] = useState<FeState>(init.state)
+  const defaultsApplied = useRef(init.hadPersisted || metadata !== null)
 
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null)
 
-  // Apply server defaults once metadata loads, but only for fields the user hasn't touched.
+  // Apply server defaults once metadata loads for a first-time visitor (no stored
+  // state, no share URL). Pure: the decision was captured at mount, not re-read here.
   useEffect(() => {
-    if (!metadata) return
-    setState(prev => {
-      const stored = readStored()
-      const fromUrl = parseFrontendUrl()
-      if (stored || fromUrl) return prev
-      return defaultState(metadata)
-    })
+    if (!metadata || defaultsApplied.current) return
+    defaultsApplied.current = true
+    setState(defaultState(metadata))
   }, [metadata])
 
-  // Persist on every change.
+  // Persist + URL sync, debounced so a keystroke doesn't serialize the whole state
+  // synchronously; flushed on unmount / page hide.
+  const persistRef = useRef<() => void>(() => {})
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-    } catch {
-      /* quota — ignore */
+    const write = () => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+      } catch {
+        /* quota — ignore */
+      }
+      if (active) {
+        window.history.replaceState(null, '', '?tab=frontend&' + buildFrontendQuery(state))
+      }
     }
-  }, [state])
-
-  // Sync state into the URL so the Frontend tab is shareable.
-  useEffect(() => {
-    if (!active) return
-    window.history.replaceState(null, '', '?tab=frontend&' + buildFrontendQuery(state))
+    persistRef.current = write
+    const handle = setTimeout(write, PERSIST_DEBOUNCE_MS)
+    return () => clearTimeout(handle)
   }, [state, active])
+
+  useEffect(() => {
+    const flush = () => persistRef.current()
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
 
   const updateForm = useCallback((patch: Partial<FeForm>) => {
     setState(s => ({ ...s, form: { ...s.form, ...patch } }))

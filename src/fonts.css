@@ -1,0 +1,24 @@
+/*
+ * Self-hosted fonts. The UI is deployed on-prem without internet access, so nothing may
+ * be loaded from Google Fonts / jsdelivr. Font files come from the `geist` and
+ * `material-symbols` npm packages and are bundled by Vite into dist/assets.
+ */
+
+/* Material Symbols (variable: wght 100-700, FILL, GRAD, opsz) + the .material-symbols-outlined class */
+@import "material-symbols/outlined.css";
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2') format('woff2');
+}

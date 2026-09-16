@@ -6,7 +6,7 @@ import {
   Play, CheckCircle2, Trash2, Info,
   ChevronRight, ChevronLeft
 } from 'lucide-react';
-import { BEAN_LIFECYCLE_STEPS } from '../tutorial-constants';
+import { BEAN_LIFECYCLE_STEPS } from '../tutorial-visualizer-data';
 
 const BeanLifecycleVisualizer: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);

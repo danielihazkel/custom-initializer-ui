@@ -1,5 +1,6 @@
 import type { FullstackRelationDef } from '../../types'
 import type { RelationErrors } from './validation'
+import { newUid } from './uid'
 
 interface Props {
   relations: FullstackRelationDef[]
@@ -10,7 +11,7 @@ interface Props {
 }
 
 function newRelation(defaultTarget: string): FullstackRelationDef {
-  return { type: 'MANY_TO_ONE', fieldName: '', targetEntity: defaultTarget, required: false }
+  return { uid: newUid(), type: 'MANY_TO_ONE', fieldName: '', targetEntity: defaultTarget, required: false }
 }
 
 /**
@@ -50,7 +51,7 @@ export function RelationsEditor({ relations, entityNames, onChange, errors }: Pr
             {relations.map((rel, rIdx) => {
               const rErr = errors?.[rIdx]
               return (
-                <tr key={rIdx} className="border-t border-outline-variant">
+                <tr key={rel.uid ?? `i${rIdx}`} className="border-t border-outline-variant">
                   <td className="py-1.5 px-2 align-top">
                     <input
                       type="text"

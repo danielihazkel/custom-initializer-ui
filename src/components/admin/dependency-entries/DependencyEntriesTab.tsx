@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import type { AdminDependencyEntry, AdminDependencyGroup, AdminBuildCustomization, Toast } from '../../../types'
 import { useAdminResource, AdminApiError } from '../../../hooks/useAdminResource'
-import { AdminTable } from '../shared/AdminTable'
+import { AdminTable, primitiveSearchText } from '../shared/AdminTable'
 import { AdminFormDrawer } from '../shared/AdminFormDrawer'
 import { DeleteConfirmDialog, type OrphanDetails } from '../shared/DeleteConfirmDialog'
 import { StatusToast } from '../shared/StatusToast'
@@ -121,6 +121,7 @@ export function DependencyEntriesTab() {
         ]}
         rows={items}
         loading={loading}
+        searchText={r => `${primitiveSearchText(r)} ${groupName(r.group?.id)}`}
         onEdit={openEdit}
         onDelete={setDeleteTarget}
         addButton={

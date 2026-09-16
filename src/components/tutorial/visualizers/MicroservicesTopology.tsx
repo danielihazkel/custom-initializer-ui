@@ -6,7 +6,7 @@ import {
   Shield, Zap, Settings,
   Activity, Share2
 } from 'lucide-react';
-import { TOPOLOGY_DATA } from '../tutorial-constants';
+import { TOPOLOGY_DATA } from '../tutorial-visualizer-data';
 
 const MicroservicesTopology: React.FC = () => {
   const [selectedNode, setSelectedNode] = useState<string | null>(null);

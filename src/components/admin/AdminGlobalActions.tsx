@@ -2,7 +2,8 @@ import { useState, useRef } from 'react'
 import type { Toast } from '../../types'
 import { StatusToast } from './shared/StatusToast'
 import { ImportConfirmDialog } from './shared/ImportConfirmDialog'
-import { getAuthHeaders } from '../../hooks/useAdminResource'
+import { getAuthHeaders, invalidateAdminCache } from '../../hooks/useAdminResource'
+import { invalidateMetadata } from '../../hooks/useMetadata'
 
 interface AdminGlobalActionsProps {
   onImportComplete?: () => void
@@ -25,6 +26,9 @@ export function AdminGlobalActions({ onImportComplete, onLogout }: AdminGlobalAc
       // A dependency that fails to build is skipped rather than failing the refresh — it
       // then silently disappears from the wizard, so surface the skipped rows here.
       const body = (await res.json()) as { message?: string; failed?: { depId: string; reason: string }[] }
+      // The server rebuilt its catalog; drop the client-side copies so the next mount refetches.
+      invalidateAdminCache()
+      invalidateMetadata()
       const failed = body.failed ?? []
       if (failed.length > 0) {
         setToast({
@@ -54,8 +58,11 @@ export function AdminGlobalActions({ onImportComplete, onLogout }: AdminGlobalAc
       const a = document.createElement('a')
       a.href = url
       a.download = `initializr-config-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
       a.click()
-      URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      // Revoking synchronously can abort the download in some browsers (Firefox).
+      setTimeout(() => URL.revokeObjectURL(url), 0)
       setToast({ message: 'Configuration exported', type: 'success' })
     } catch (err) {
       setToast({ message: String(err), type: 'error' })
@@ -69,7 +76,17 @@ export function AdminGlobalActions({ onImportComplete, onLogout }: AdminGlobalAc
     if (!file) return
     const reader = new FileReader()
     reader.onload = () => {
-      setImportFile({ name: file.name, content: reader.result as string })
+      const content = reader.result as string
+      try {
+        JSON.parse(content)
+      } catch {
+        setToast({ message: `"${file.name}" is not valid JSON`, type: 'error' })
+        return
+      }
+      setImportFile({ name: file.name, content })
+    }
+    reader.onerror = () => {
+      setToast({ message: `Couldn't read "${file.name}"`, type: 'error' })
     }
     reader.readAsText(file)
     e.target.value = ''
@@ -94,6 +111,8 @@ export function AdminGlobalActions({ onImportComplete, onLogout }: AdminGlobalAc
       const total = Object.values(counts).reduce((a, b) => a + b, 0)
       setToast({ message: `Imported ${total} records successfully`, type: 'success' })
       setImportFile(null)
+      invalidateAdminCache()
+      invalidateMetadata()
       onImportComplete?.()
     } catch (err) {
       setToast({ message: `Import failed: ${(err as Error).message}`, type: 'error' })

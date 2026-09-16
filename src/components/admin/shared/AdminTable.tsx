@@ -15,8 +15,19 @@ interface AdminTableProps<T extends { id: number }> {
   loading: boolean
   searchable?: boolean
   searchPlaceholder?: string
+  /** Text to search a row by. Defaults to the row's primitive (string/number/boolean) values. */
+  searchText?: (row: T) => string
   onReorder?: (newOrder: T[]) => void
   addButton?: ReactNode
+}
+
+/** Joins a row's primitive values; nested objects (e.g. `group: { id }`) are skipped so they
+ *  don't match as "[object Object]". */
+export function primitiveSearchText(row: object): string {
+  return Object.values(row)
+    .filter(v => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
+    .map(v => String(v))
+    .join(' ')
 }
 
 function DraggableRow<T extends { id: number }>({ row, columns, onEdit, onDelete }: { row: T, columns: ColumnDef<T>[], onEdit: (row: T) => void, onDelete: (row: T) => void }) {
@@ -66,20 +77,16 @@ function DraggableRow<T extends { id: number }>({ row, columns, onEdit, onDelete
 }
 
 export function AdminTable<T extends { id: number }>({
-  columns, rows, onEdit, onDelete, loading, searchable = true, searchPlaceholder = 'Search...', onReorder, addButton
+  columns, rows, onEdit, onDelete, loading, searchable = true, searchPlaceholder = 'Search...', searchText, onReorder, addButton
 }: AdminTableProps<T>) {
   const [query, setQuery] = useState('')
 
   const filteredRows = useMemo(() => {
     if (!searchable || !query.trim()) return rows;
     const lowerQuery = query.toLowerCase()
-    return rows.filter(row => {
-      // Very naive text-search across all values
-      return Object.values(row).some(val => 
-        String(val).toLowerCase().includes(lowerQuery)
-      )
-    })
-  }, [rows, query, searchable])
+    const textOf = searchText ?? primitiveSearchText
+    return rows.filter(row => textOf(row).toLowerCase().includes(lowerQuery))
+  }, [rows, query, searchable, searchText])
 
   // Disable dragging when a search is active to prevent weird reordering states
   const isDragEnabled = !!onReorder && !query.trim()

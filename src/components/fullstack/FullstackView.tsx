@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
@@ -6,8 +6,12 @@ import type {
 import { EntitiesEditor } from './EntitiesEditor'
 import { FullstackDepPicker } from './FullstackDepPicker'
 import { ImportFromDdlDrawer, type ImportMode, type ImportVariant } from './ImportFromDdlDrawer'
-import { ProjectPreview } from '../ProjectPreview'
+import { ViewSkeleton } from '../Skeletons'
 import { StatusToast } from '../admin/shared/StatusToast'
+import { stripUids, withUids } from './uid'
+
+// The preview modal drags in CodeMirror + every language grammar; load it on first Explore.
+const ProjectPreview = lazy(() => import('../ProjectPreview').then(m => ({ default: m.ProjectPreview })))
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
 import { validateEntities, validateMeta, countMetaErrors, type MetaErrors } from './validation'
@@ -77,7 +81,7 @@ function loadJson<T>(key: string, fallback: T): T {
 
 export function FullstackView() {
   const [meta, setMeta] = useState<ProjectMeta>(() => loadJson(LS.meta, DEFAULT_META))
-  const [entities, setEntities] = useState<FullstackEntityDef[]>(() => loadJson(LS.entities, DEFAULT_ENTITIES))
+  const [entities, setEntities] = useState<FullstackEntityDef[]>(() => withUids(loadJson(LS.entities, DEFAULT_ENTITIES)))
   const [backendSet, setBackendSet] = useState(() => localStorage.getItem(LS.backendSet) ?? 'spring-jpa-crud')
   const [frontendSet, setFrontendSet] = useState(() => localStorage.getItem(LS.frontendSet) ?? 'react-tailwind-crud')
   const [availableSets, setAvailableSets] = useState<EntityTemplateSetSummary[]>([])
@@ -167,7 +171,8 @@ export function FullstackView() {
   }, [currentFrontendSet])
 
   function handleImport(imported: FullstackEntityDef[], mode: ImportMode, note?: string) {
-    setEntities(mode === 'replace' ? imported : [...entities, ...imported])
+    const stamped = withUids(imported)
+    setEntities(prev => (mode === 'replace' ? stamped : [...prev, ...stamped]))
     const verb = mode === 'replace' ? 'Replaced with' : 'Appended'
     const n = imported.length
     const base = `${verb} ${n} entit${n === 1 ? 'y' : 'ies'}`
@@ -177,20 +182,29 @@ export function FullstackView() {
   // Load the template-set list. Extracted so the inline Retry can re-run it; on failure
   // we keep the hardcoded fallback options (the screen stays usable) and surface a
   // persistent inline notice rather than a one-shot toast the user might miss.
+  // Each call aborts the previous in-flight request (Retry while loading, or unmount), so a
+  // slow earlier response can't land after a newer one or after the view is gone.
+  const setsAbortRef = useRef<AbortController | null>(null)
   const loadTemplateSets = useCallback(() => {
+    setsAbortRef.current?.abort()
+    const controller = new AbortController()
+    setsAbortRef.current = controller
     setSetsLoading(true)
     setSetsError(null)
-    fetch('/metadata/entity-template-sets')
+    fetch('/metadata/entity-template-sets', { signal: controller.signal })
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
       })
-      .then((data: EntityTemplateSetSummary[]) => setAvailableSets(data))
-      .catch((err: Error) => setSetsError(err.message))
-      .finally(() => setSetsLoading(false))
+      .then((data: EntityTemplateSetSummary[]) => { if (!controller.signal.aborted) setAvailableSets(data) })
+      .catch((err: Error) => { if (!controller.signal.aborted) setSetsError(err.message) })
+      .finally(() => { if (!controller.signal.aborted) setSetsLoading(false) })
   }, [])
 
-  useEffect(() => { loadTemplateSets() }, [loadTemplateSets])
+  useEffect(() => {
+    loadTemplateSets()
+    return () => setsAbortRef.current?.abort()
+  }, [loadTemplateSets])
 
   const backendSets = availableSets.filter(s => s.kind === 'BACKEND_JAVA')
   const frontendSets = availableSets.filter(s => s.kind === 'FRONTEND_REACT')
@@ -202,7 +216,7 @@ export function FullstackView() {
       frontendTemplateSet: frontendSet,
       dependencies: selectedDeps,
       opts: scaffoldOpts.length ? { scaffold: scaffoldOpts } : undefined,
-      entities,
+      entities: stripUids(entities),
     }
   }
 
@@ -270,7 +284,7 @@ export function FullstackView() {
     if (!confirm('Reset the fullstack generator to defaults? This clears your entities and selections.')) return
     Object.values(LS).forEach(k => localStorage.removeItem(k))
     setMeta({ ...DEFAULT_META })
-    setEntities(DEFAULT_ENTITIES.map(e => ({ ...e, fields: e.fields.map(f => ({ ...f })) })))
+    setEntities(withUids(DEFAULT_ENTITIES.map(e => ({ ...e, fields: e.fields.map(f => ({ ...f })) }))))
     setBackendSet('spring-jpa-crud')
     setFrontendSet('react-tailwind-crud')
     setScaffoldOpts([])
@@ -530,13 +544,15 @@ export function FullstackView() {
       />
 
       {preview && createPortal(
-        <ProjectPreview
-          preview={preview}
-          previousPreview={previousPreview}
-          artifactId={meta.artifactId || 'demo'}
-          onClose={clearPreview}
-          onDownload={async () => { if (await generate()) clearPreview() }}
-        />,
+        <Suspense fallback={<ViewSkeleton />}>
+          <ProjectPreview
+            preview={preview}
+            previousPreview={previousPreview}
+            artifactId={meta.artifactId || 'demo'}
+            onClose={clearPreview}
+            onDownload={async () => { if (await generate()) clearPreview() }}
+          />
+        </Suspense>,
         document.body,
       )}
     </div>
