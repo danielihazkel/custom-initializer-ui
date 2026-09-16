@@ -34,7 +34,20 @@ export function AdminTabBar({ activeTab, onTabChange, onImportComplete }: AdminT
     try {
       const res = await fetch('/admin/refresh', { method: 'POST', headers: getAuthHeaders() })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setToast({ message: 'Metadata cache refreshed', type: 'success' })
+      // A dependency that fails to build is skipped rather than failing the refresh — it
+      // then silently disappears from the wizard, so surface the skipped rows here.
+      const body = (await res.json()) as { message?: string; failed?: { depId: string; reason: string }[] }
+      const failed = body.failed ?? []
+      if (failed.length > 0) {
+        setToast({
+          message: `Refreshed, but ${failed.length} dependency(ies) were skipped: ${failed
+            .map((f) => `${f.depId} (${f.reason})`)
+            .join('; ')}`,
+          type: 'error',
+        })
+      } else {
+        setToast({ message: 'Metadata cache refreshed', type: 'success' })
+      }
     } catch (err) {
       setToast({ message: String(err), type: 'error' })
     } finally {
