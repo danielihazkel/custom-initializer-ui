@@ -25,6 +25,8 @@ export interface FeState {
 }
 
 export const DESIGN_NONE = 'design-none'
+/** The RTL-first Menora Mivtachim brand system — selecting it defaults the RTL toggle on. */
+export const DESIGN_MENORA_DIGITAL = 'design-menora-digital'
 
 function deriveDesignSystem(deps: string[]): string {
   return deps.find(d => d.startsWith('design-')) ?? DESIGN_NONE
@@ -166,7 +168,10 @@ export function useFrontendState(metadata: FrontendMetadata | null, active: bool
     setState(s => {
       let deps = s.selectedDeps.filter(d => !d.startsWith('design-'))
       if (id !== DESIGN_NONE) deps = [...deps, id]
-      return { ...s, selectedDeps: deps, designSystem: id }
+      // Menora Digital is an RTL-first (Hebrew) brand system — turn RTL on when it is picked.
+      // Only on an explicit pick (not on load / template apply), and the user can still turn it off.
+      const rtl = id === DESIGN_MENORA_DIGITAL ? true : s.rtl
+      return { ...s, selectedDeps: deps, designSystem: id, rtl }
     })
   }, [])
 

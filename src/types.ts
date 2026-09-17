@@ -288,7 +288,7 @@ export interface AdminVersion {
 
 export type EntityTemplateSetKind = 'BACKEND_JAVA' | 'FRONTEND_REACT'
 
-export type DesignSystem = 'TAILWIND' | 'MUI' | 'CHAKRA' | 'MANTINE' | 'SHADCN' | 'NONE'
+export type DesignSystem = 'TAILWIND' | 'MUI' | 'CHAKRA' | 'MANTINE' | 'SHADCN' | 'MENORA_DIGITAL' | 'NONE'
 
 export interface AdminEntityTemplateSet {
   id: number

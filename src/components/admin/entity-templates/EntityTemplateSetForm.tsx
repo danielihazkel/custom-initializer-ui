@@ -26,6 +26,7 @@ const DESIGN_SYSTEMS: { value: DesignSystem; label: string }[] = [
   { value: 'CHAKRA', label: 'Chakra UI' },
   { value: 'MANTINE', label: 'Mantine' },
   { value: 'SHADCN', label: 'shadcn/ui' },
+  { value: 'MENORA_DIGITAL', label: 'Menora Digital' },
   { value: 'NONE', label: 'None / Plain CSS' },
 ]
 
