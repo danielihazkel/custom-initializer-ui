@@ -14,6 +14,28 @@ interface Props {
   entities: FullstackEntityDef[]
   onChange: (entities: FullstackEntityDef[]) => void
   errors?: Record<number, EntityErrors>
+  /** True when the model has no entities at all — rendered as an error in the empty state. */
+  noEntities?: boolean
+  /** Entity uids whose card is collapsed to its header (owned by the parent so "jump to first
+   *  error" and collapse-all can drive it). Absent = nothing collapsible. */
+  collapsed?: Set<string>
+  onToggleCollapsed?: (uid: string) => void
+  /** Called just before an entity or field is removed, so the parent can snapshot for Undo. */
+  onDestructive?: (label: string) => void
+}
+
+/** Number of distinct problems on one entity (its own + every field's + every relation's) —
+ *  shown as a badge on the card header so a collapsed card never hides an issue. */
+export function countEntityErrors(e?: EntityErrors): number {
+  if (!e) return 0
+  let n = 0
+  if (e.name) n += 1
+  if (e.noFields) n += 1
+  if (e.pk) n += 1
+  if (e.view) n += 1
+  for (const f of Object.values(e.fields ?? {})) n += Object.values(f).filter(Boolean).length
+  for (const r of Object.values(e.relations ?? {})) n += Object.values(r).filter(Boolean).length
+  return n
 }
 
 function newEntity(): FullstackEntityDef {
@@ -31,7 +53,7 @@ function newField(): FullstackFieldDef {
   return { uid: newUid(), name: '', type: 'STRING' }
 }
 
-export function EntitiesEditor({ entities, onChange, errors }: Props) {
+export function EntitiesEditor({ entities, onChange, errors, noEntities, collapsed, onToggleCollapsed, onDestructive }: Props) {
   // Which field rows have their constraint panel expanded, keyed by `${entityUid}-${fieldUid}`
   // so the open panel follows its row through duplicate/remove. Rows with a constraint error
   // force open regardless (see isOpen).
@@ -48,6 +70,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
     onChange(entities.map((e, i) => i === idx ? { ...e, ...updates } : e))
   }
   function removeEntity(idx: number) {
+    onDestructive?.(`Removed entity ${entities[idx]?.name.trim() || '(unnamed)'}`)
     onChange(entities.filter((_, i) => i !== idx))
   }
   function addEntity() {
@@ -111,6 +134,8 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
     }))
   }
   function removeField(eIdx: number, fIdx: number) {
+    const owner = entities[eIdx]
+    onDestructive?.(`Removed field ${owner?.fields[fIdx]?.name.trim() || '(unnamed)'} from ${owner?.name.trim() || '(unnamed)'}`)
     onChange(entities.map((e, i) => {
       if (i !== eIdx) return e
       return { ...e, fields: e.fields.filter((_, j) => j !== fIdx) }
@@ -155,13 +180,34 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
         const entityKey = entity.uid ?? `i${eIdx}`
         // Loop-invariant: hoisted out of the per-field map below.
         const pkCount = entity.fields.filter(f => f.primaryKey).length
+        const errCount = countEntityErrors(eErr)
+        const isCollapsed = Boolean(collapsed?.has(entityKey))
+        const relCount = entity.relations?.length ?? 0
         return (
-        <div key={entityKey} className="border border-outline-variant rounded-xl p-5 bg-surface-container shadow-sm space-y-4">
+        <div
+          key={entityKey}
+          data-entity-index={eIdx}
+          className={`border rounded-xl p-5 bg-surface-container shadow-sm space-y-4 ${errCount > 0 ? 'border-error/40' : 'border-outline-variant'}`}
+        >
           {/* Header: identity (row 1) split from secondary attributes (row 2) so the controls
               don't overflow a single row on laptop widths. A tinted panel marks the card title. */}
           <div className="rounded-lg bg-primary/[0.04] border border-outline-variant px-3 py-2.5 space-y-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 flex-1 min-w-0">
+                {onToggleCollapsed && (
+                  <button
+                    type="button"
+                    onClick={() => onToggleCollapsed(entityKey)}
+                    aria-expanded={!isCollapsed}
+                    aria-label={isCollapsed ? 'Expand entity' : 'Collapse entity'}
+                    title={isCollapsed ? 'Expand' : 'Collapse'}
+                    className="p-0.5 -ml-1 rounded text-secondary hover:text-on-surface hover:bg-primary/10 transition-colors shrink-0"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+                      {isCollapsed ? 'chevron_right' : 'expand_more'}
+                    </span>
+                  </button>
+                )}
                 <span className="text-[11px] font-bold uppercase tracking-wider text-secondary shrink-0">Entity</span>
                 <div className="flex-1 max-w-sm">
                   <input
@@ -175,6 +221,22 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                   />
                   {eErr?.name && <p className="mt-1 text-[11px] text-error">{eErr.name}</p>}
                 </div>
+                {isCollapsed && (
+                  <span className="hidden sm:inline-flex items-center gap-2 text-[11px] text-secondary shrink-0">
+                    <span>{entity.fields.length} field{entity.fields.length === 1 ? '' : 's'}</span>
+                    {relCount > 0 && <span>· {relCount} relation{relCount === 1 ? '' : 's'}</span>}
+                    {(entity.readOnly || entity.viewQuery) && <span>· read-only</span>}
+                  </span>
+                )}
+                {errCount > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-error/10 text-error text-[11px] font-semibold shrink-0"
+                    title={`${errCount} issue${errCount === 1 ? '' : 's'} on this entity`}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>error</span>
+                    {errCount}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button
@@ -195,6 +257,7 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
                 </button>
               </div>
             </div>
+            {!isCollapsed && (
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               {/* Cluster: display labels (optional) — user-facing names in the generated UI. */}
               <div className="inline-flex items-center gap-3">
@@ -283,24 +346,26 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
               </div>
               </div>
             </div>
+            )}
           </div>
 
+          {!isCollapsed && (<>
           {eErr?.noFields && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
+            <div data-error className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
               {eErr.noFields}
             </div>
           )}
 
           {eErr?.pk && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
+            <div data-error className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
               {eErr.pk}
             </div>
           )}
 
           {eErr?.view && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
+            <div data-error className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
               {eErr.view}
             </div>
@@ -544,18 +609,28 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
             onChange={rels => updateRelations(eIdx, rels)}
             errors={eErr?.relations}
           />
+          </>)}
         </div>
         )
       })}
 
       {entities.length === 0 ? (
-        <div className="flex flex-col items-center text-center gap-3 px-6 py-12 rounded-xl border-2 border-dashed border-outline-variant">
+        <div
+          data-error={noEntities ? '' : undefined}
+          className={`flex flex-col items-center text-center gap-3 px-6 py-12 rounded-xl border-2 border-dashed ${noEntities ? 'border-error/40' : 'border-outline-variant'}`}
+        >
           <span className="material-symbols-outlined text-secondary/60" style={{ fontSize: '40px' }}>table_chart</span>
           <div className="space-y-1">
             <p className="text-sm font-semibold text-on-surface">No entities yet</p>
             <p className="text-xs text-secondary max-w-xs">
-              Add an entity to define its fields and relations — or import one from DDL/SELECT above.
+              Add an entity to define its fields and relations — pick an example above, or import from DDL/SELECT.
             </p>
+            {noEntities && (
+              <p className="text-[11px] text-error flex items-center justify-center gap-1" role="alert">
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
+                At least one entity is required to generate.
+              </p>
+            )}
           </div>
           <button
             onClick={addEntity}

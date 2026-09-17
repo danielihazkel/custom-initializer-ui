@@ -5,27 +5,23 @@ import type {
 } from '../../types'
 import { EntitiesEditor } from './EntitiesEditor'
 import { FullstackDepPicker } from './FullstackDepPicker'
+import { FullstackPresets } from './FullstackPresets'
 import { ImportFromDdlDrawer, type ImportMode, type ImportVariant } from './ImportFromDdlDrawer'
 import { ViewSkeleton } from '../Skeletons'
+import { ConfirmDialog } from '../ConfirmDialog'
 import { StatusToast } from '../admin/shared/StatusToast'
 import { stripUids, withUids } from './uid'
+import { makeSnapshot, type FullstackSnapshot, type ProjectMeta } from './snapshot'
+import { readShareFromLocation, writeShareToLocation } from './shareLink'
+import { isTypingTarget, popUndo, pushUndo, type UndoEntry } from './undo'
+import { cloneExample, type ExampleModel } from './examples'
 
 // The preview modal drags in CodeMirror + every language grammar; load it on first Explore.
 const ProjectPreview = lazy(() => import('../ProjectPreview').then(m => ({ default: m.ProjectPreview })))
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
+import { useFullstackPresets } from '../../hooks/useFullstackPresets'
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
 import { validateEntities, validateMeta, countMetaErrors, type MetaErrors } from './validation'
-
-interface ProjectMeta {
-  groupId: string
-  artifactId: string
-  packageName: string
-  domainPackage: string
-  bootVersion: string
-  javaVersion: string
-  dashboardTitle: string
-  dashboardOverview: string
-}
 
 const DEFAULT_META: ProjectMeta = {
   groupId: 'com.menora',
@@ -65,7 +61,7 @@ const LS = {
 // FullstackStarterController.renderFrontend (frontend): an opt missing here is unreachable from the UI.
 const SCAFFOLD_OPTIONS: { value: string; label: string; hint: string }[] = [
   { value: 'audit', label: 'Audit timestamps', hint: 'createdAt / updatedAt via JPA auditing' },
-  { value: 'softDelete', label: 'Soft delete', hint: 'deleted flag + Hibernate @SQLDelete/@SQLRestriction' },
+  { value: 'softDelete', label: 'Soft delete', hint: 'deleted flag + Hibernate @SQLDelete/@SQLRestriction; delete toast gets a real Undo' },
   { value: 'inverseCollections', label: 'Inverse collections', hint: 'Read-only @OneToMany on the referenced side' },
   { value: 'tests', label: 'Controller tests', hint: 'Per-entity @WebMvcTest' },
   { value: 'openapi', label: 'OpenAPI annotations', hint: 'springdoc @Tag/@Operation on every controller; adds the openapi starter' },
@@ -87,22 +83,31 @@ function loadJson<T>(key: string, fallback: T): T {
 }
 
 export function FullstackView() {
-  const [meta, setMeta] = useState<ProjectMeta>(() => loadJson(LS.meta, DEFAULT_META))
-  const [entities, setEntities] = useState<FullstackEntityDef[]>(() => withUids(loadJson(LS.entities, DEFAULT_ENTITIES)))
-  const [backendSet, setBackendSet] = useState(() => localStorage.getItem(LS.backendSet) ?? 'spring-jpa-crud')
-  const [frontendSet, setFrontendSet] = useState(() => localStorage.getItem(LS.frontendSet) ?? 'react-tailwind-crud')
+  // A share link (?fs=…) beats localStorage on first render — that is the whole point of the link.
+  const sharedRef = useRef<FullstackSnapshot | null | undefined>(undefined)
+  if (sharedRef.current === undefined) sharedRef.current = readShareFromLocation()
+  const shared = sharedRef.current
+
+  const [meta, setMeta] = useState<ProjectMeta>(() => shared?.meta ?? loadJson(LS.meta, DEFAULT_META))
+  const [entities, setEntities] = useState<FullstackEntityDef[]>(() => withUids(shared?.entities ?? loadJson(LS.entities, DEFAULT_ENTITIES)))
+  const [backendSet, setBackendSet] = useState(() => shared?.backendSet ?? localStorage.getItem(LS.backendSet) ?? 'spring-jpa-crud')
+  const [frontendSet, setFrontendSet] = useState(() => shared?.frontendSet ?? localStorage.getItem(LS.frontendSet) ?? 'react-tailwind-crud')
   const [availableSets, setAvailableSets] = useState<EntityTemplateSetSummary[]>([])
   const [setsLoading, setSetsLoading] = useState(true)
   const [setsError, setSetsError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
   const [importVariant, setImportVariant] = useState<ImportVariant | null>(null)
-  const [selectedDeps, setSelectedDeps] = useState<string[]>(() => loadJson<string[]>(LS.deps, []))
-  const [scaffoldOpts, setScaffoldOpts] = useState<string[]>(() => loadJson<string[]>(LS.opts, []))
+  const [selectedDeps, setSelectedDeps] = useState<string[]>(() => shared?.selectedDeps ?? loadJson<string[]>(LS.deps, []))
+  const [scaffoldOpts, setScaffoldOpts] = useState<string[]>(() => shared?.scaffoldOpts ?? loadJson<string[]>(LS.opts, []))
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const [undoStack, setUndoStack] = useState<UndoEntry<FullstackSnapshot>[]>([])
+  const [confirmReset, setConfirmReset] = useState(false)
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
     fetchPreview, clearPreview, clearError,
   } = useFullstackPreview()
+  const { presets, recents, savePreset, deletePreset, deleteRecent, pushRecent } = useFullstackPresets()
 
   const { bootVersions, javaVersions } = useAdminMetadata()
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
@@ -123,6 +128,22 @@ export function FullstackView() {
   useEffect(() => { localStorage.setItem(LS.backendSet, backendSet) }, [backendSet])
   useEffect(() => { localStorage.setItem(LS.frontendSet, frontendSet) }, [frontendSet])
   useEffect(() => { localStorage.setItem(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
+
+  // The whole editor state as one detached value — what presets/recents/undo/share links carry.
+  const currentSnapshot = useMemo(
+    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet }),
+    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet],
+  )
+  const snapshotRef = useRef(currentSnapshot)
+  snapshotRef.current = currentSnapshot
+
+  // Keep the URL in step (debounced) so the header's Share button copies a link that reproduces
+  // this model elsewhere. The frontend tab does the same with plain query params; the entity
+  // model is too rich for that, so it rides as one encoded `fs` param.
+  useEffect(() => {
+    const t = setTimeout(() => writeShareToLocation(currentSnapshot), 400)
+    return () => clearTimeout(t)
+  }, [currentSnapshot])
 
   // Drop a stale preview error once the user changes any input, so the Explore button
   // doesn't stay error-styled (with the message hidden in a tooltip) after they've moved on.
@@ -177,13 +198,70 @@ export function FullstackView() {
     }
   }, [currentFrontendSet])
 
+  // ── Undo ───────────────────────────────────────────────────────────────────
+  // Every destructive edit (remove entity/field, import-replace, reset, loading a preset or
+  // example) first pushes the current snapshot; Undo (button or Ctrl+Z outside an input)
+  // restores the most recent one.
+  const pushUndoEntry = useCallback((label: string) => {
+    setUndoStack(stack => pushUndo(stack, { label, snapshot: snapshotRef.current }))
+  }, [])
+
+  const applySnapshot = useCallback((s: FullstackSnapshot) => {
+    // Adopt the snapshot's sets as "already seeded" so the set-change effects above don't
+    // re-seed deps/versions over the snapshot's own values.
+    seededBackendSetRef.current = s.backendSet
+    seededFrontendSetRef.current = s.frontendSet
+    setMeta({ ...s.meta })
+    setEntities(withUids(JSON.parse(JSON.stringify(s.entities)) as FullstackEntityDef[]))
+    setSelectedDeps([...s.selectedDeps])
+    setScaffoldOpts([...s.scaffoldOpts])
+    setBackendSet(s.backendSet)
+    setFrontendSet(s.frontendSet)
+    setCollapsed(new Set())
+  }, [])
+
+  const undo = useCallback(() => {
+    setUndoStack(stack => {
+      const { entry, rest } = popUndo(stack)
+      if (!entry) return stack
+      applySnapshot(entry.snapshot)
+      setToast({ message: `Undid: ${entry.label}`, type: 'success' })
+      return rest
+    })
+  }, [applySnapshot])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !isTypingTarget(e.target)) {
+        e.preventDefault()
+        undo()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [undo])
+
   function handleImport(imported: FullstackEntityDef[], mode: ImportMode, note?: string) {
+    pushUndoEntry(mode === 'replace' ? 'Replaced entities from import' : 'Appended imported entities')
     const stamped = withUids(imported)
     setEntities(prev => (mode === 'replace' ? stamped : [...prev, ...stamped]))
     const verb = mode === 'replace' ? 'Replaced with' : 'Appended'
     const n = imported.length
     const base = `${verb} ${n} entit${n === 1 ? 'y' : 'ies'}`
     setToast({ message: note ? `${base}. ${note}` : base, type: 'success' })
+  }
+
+  function loadExample(example: ExampleModel) {
+    pushUndoEntry(`Loaded the ${example.name} example`)
+    setEntities(withUids(cloneExample(example)))
+    setCollapsed(new Set())
+    setToast({ message: `Loaded the ${example.name} example (${example.entities.length} entities)`, type: 'success' })
+  }
+
+  function loadPreset(snapshot: FullstackSnapshot) {
+    pushUndoEntry('Loaded a preset')
+    applySnapshot(snapshot)
+    setToast({ message: `Loaded ${snapshot.meta.artifactId || 'preset'}`, type: 'success' })
   }
 
   // Load the template-set list. Extracted so the inline Retry can re-run it; on failure
@@ -231,9 +309,34 @@ export function FullstackView() {
     setScaffoldOpts(prev => prev.includes(value) ? prev.filter(o => o !== value) : [...prev, value])
   }
 
+  // ── Jump to the first problem ──────────────────────────────────────────────
+  // The sticky bar's issue count is a button: metadata errors focus their input; entity errors
+  // expand the offending card (if collapsed) and scroll its first flagged control/banner into view.
+  function jumpToFirstError() {
+    const metaInvalid = document.querySelector<HTMLElement>('#fs-meta [aria-invalid="true"]')
+    if (metaInvalid) {
+      metaInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      metaInvalid.focus()
+      return
+    }
+    const firstIdx = Object.keys(entityErrors.entities).map(Number).sort((a, b) => a - b)[0]
+    const uid = firstIdx == null ? undefined : entities[firstIdx]?.uid
+    if (uid && collapsed.has(uid)) {
+      setCollapsed(prev => { const next = new Set(prev); next.delete(uid); return next })
+    }
+    requestAnimationFrame(() => {
+      const scope = firstIdx == null ? '#fs-entities' : `[data-entity-index="${firstIdx}"]`
+      const target = document.querySelector<HTMLElement>(`${scope} [aria-invalid="true"], ${scope} [data-error]`)
+        ?? document.querySelector<HTMLElement>('#fs-entities')
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      if (target?.matches('input, select, textarea')) target.focus()
+    })
+  }
+
   function validateBeforeSubmit(): boolean {
     if (hasErrors) {
       setToast({ message: `Fix ${errorCount} validation issue${errorCount === 1 ? '' : 's'} first`, type: 'error' })
+      jumpToFirstError()
       return false
     }
     return true
@@ -241,6 +344,7 @@ export function FullstackView() {
 
   function explore() {
     if (!validateBeforeSubmit()) return
+    pushRecent(currentSnapshot)
     fetchPreview(buildBody())
   }
 
@@ -269,6 +373,7 @@ export function FullstackView() {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
+      pushRecent(currentSnapshot)
       setToast({ message: 'Fullstack project downloaded', type: 'success' })
       return true
     } catch (err) {
@@ -286,15 +391,17 @@ export function FullstackView() {
   // ── Reset ──────────────────────────────────────────────────────────────────
   // The global Reset (App.tsx) is hidden on this tab; we portal our own, mirroring
   // FrontendView. FullstackDepPicker is fully controlled, so resetting selectedDeps
-  // below re-renders it — no remount needed.
-  function handleReset() {
-    if (!confirm('Reset the fullstack generator to defaults? This clears your entities and selections.')) return
+  // below re-renders it — no remount needed. Confirmed in-app (ConfirmDialog) and undoable.
+  function doReset() {
+    setConfirmReset(false)
+    pushUndoEntry('Reset to defaults')
     Object.values(LS).forEach(k => localStorage.removeItem(k))
     setMeta({ ...DEFAULT_META })
     setEntities(withUids(DEFAULT_ENTITIES.map(e => ({ ...e, fields: e.fields.map(f => ({ ...f })) }))))
     setBackendSet('spring-jpa-crud')
     setFrontendSet('react-tailwind-crud')
     setScaffoldOpts([])
+    setCollapsed(new Set())
     // Re-seed deps from whichever backend set resolves; the set-change effect won't
     // fire if the key is unchanged, so seed explicitly here.
     const target = availableSets.find(s => s.setKey === 'spring-jpa-crud')
@@ -302,6 +409,17 @@ export function FullstackView() {
     clearPreview()
     setToast({ message: 'Fullstack generator reset to defaults', type: 'success' })
   }
+
+  function toggleCollapsed(uid: string) {
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      next.has(uid) ? next.delete(uid) : next.add(uid)
+      return next
+    })
+  }
+  const allCollapsed = entities.length > 0 && entities.every(e => e.uid && collapsed.has(e.uid))
+
+  const lastUndo = undoStack[undoStack.length - 1]
 
   return (
     <div className="max-w-7xl mx-auto px-8 space-y-8">
@@ -314,12 +432,23 @@ export function FullstackView() {
         </p>
       </header>
 
+      <FullstackPresets
+        presets={presets}
+        recents={recents}
+        currentSnapshot={currentSnapshot}
+        onLoad={loadPreset}
+        onLoadExample={loadExample}
+        onSave={(name, snapshot) => { savePreset(name, snapshot); setToast({ message: `Saved preset "${name}"`, type: 'success' }) }}
+        onDeletePreset={deletePreset}
+        onDeleteRecent={deleteRecent}
+      />
+
       {/* Two-column config row: compact settings on the left, the taller dependency
           picker on the right. Collapses to a single column below lg (mirrors the
           Backend/Frontend tabs) so wide screens don't leave the right half empty. */}
       <div className="grid grid-cols-12 gap-8">
         <div className="col-span-12 lg:col-span-5 space-y-8 lg:h-[480px] lg:overflow-y-auto lg:pr-2">
-      <section className="space-y-3">
+      <section id="fs-meta" className="space-y-3">
         <SectionHeading icon="tune" title="Project Metadata" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Labeled label="Group ID" htmlFor="fs-groupId" error={metaErrors.groupId}>
@@ -473,11 +602,22 @@ export function FullstackView() {
         </div>
       </div>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-4">
+      <section id="fs-entities" className="space-y-3">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <SectionHeading icon="table" title="Entities" primary />
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="text-[11px] text-secondary">{entities.length} entit{entities.length === 1 ? 'y' : 'ies'}</span>
+            {entities.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(entities.map(e => e.uid).filter((u): u is string => Boolean(u))))}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium text-secondary hover:text-primary hover:bg-primary/5 transition-colors"
+                title={allCollapsed ? 'Expand every entity card' : 'Collapse every entity card to its header'}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{allCollapsed ? 'unfold_more' : 'unfold_less'}</span>
+                {allCollapsed ? 'Expand all' : 'Collapse all'}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setImportVariant('ddl')}
@@ -498,25 +638,50 @@ export function FullstackView() {
             </button>
           </div>
         </div>
-        <EntitiesEditor entities={entities} onChange={setEntities} errors={entityErrors.entities} />
+        <EntitiesEditor
+          entities={entities}
+          onChange={setEntities}
+          errors={entityErrors.entities}
+          noEntities={entityErrors.noEntities}
+          collapsed={collapsed}
+          onToggleCollapsed={toggleCollapsed}
+          onDestructive={pushUndoEntry}
+        />
       </section>
 
       {/* Pinned to the viewport bottom so Generate/Explore stay reachable while editing a long
           entity list. The negative-margin/px pair lets the glass backdrop bleed to the column edges. */}
       <section className="sticky bottom-0 z-20 -mx-8 px-8 py-4 flex items-center gap-3 glass-header border-t border-outline-variant">
         <button
-          onClick={handleReset}
+          onClick={() => setConfirmReset(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-error hover:border-error/50 hover:bg-error/5 transition-all active:scale-95"
           title="Reset the fullstack generator to defaults"
         >
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>restart_alt</span>
           Reset
         </button>
+        <button
+          type="button"
+          onClick={undo}
+          disabled={!lastUndo}
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all active:scale-95 disabled:opacity-40 disabled:hover:text-secondary disabled:hover:border-outline-variant disabled:hover:bg-transparent"
+          title={lastUndo ? `Undo: ${lastUndo.label} (Ctrl+Z)` : 'Nothing to undo'}
+          aria-label={lastUndo ? `Undo: ${lastUndo.label}` : 'Undo (nothing to undo)'}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>undo</span>
+          Undo
+        </button>
         {hasErrors && (
-          <span className="text-[11px] text-error flex items-center gap-1">
+          <button
+            type="button"
+            onClick={jumpToFirstError}
+            className="text-[11px] text-error flex items-center gap-1 rounded px-1.5 py-1 hover:bg-error/10 transition-colors"
+            title="Jump to the first problem"
+          >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
             {errorCount} issue{errorCount === 1 ? '' : 's'} to fix before generating
-          </span>
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>arrow_forward</span>
+          </button>
         )}
         <button
           onClick={explore}
@@ -540,6 +705,17 @@ export function FullstackView() {
       </section>
 
       <StatusToast toast={toast} onClear={() => setToast(null)} />
+
+      {confirmReset && (
+        <ConfirmDialog
+          title="Reset the fullstack generator?"
+          message="This clears your entities, dependencies and options back to the defaults. You can undo it afterwards."
+          confirmLabel="Reset"
+          tone="danger"
+          onConfirm={doReset}
+          onCancel={() => setConfirmReset(false)}
+        />
+      )}
 
       <ImportFromDdlDrawer
         isOpen={importVariant !== null}

@@ -41,6 +41,21 @@ src/
     └── GenerateButton.jsx         Builds /starter.zip?... URL, triggers native browser download (no fetch/blob)
 ```
 
+## Fullstack editor (`src/components/fullstack/`)
+
+`FullstackView.tsx` owns the whole editor state and wires: `FullstackPresets` (built-in example models
+from `examples.ts` — every example must pass `validateEntities`, pinned by `examples.test.ts` — plus
+saved presets/recents via `hooks/useFullstackPresets`), an **undo stack** (`undo.ts`; every destructive
+edit — remove entity/field via `EntitiesEditor.onDestructive`, import-replace, reset, loading a
+preset/example — pushes a `FullstackSnapshot` first; the sticky bar's Undo and Ctrl+Z outside inputs pop
+it), the in-app `ConfirmDialog` for Reset (no `window.confirm`), **collapsible entity cards** (uids in
+`collapsed`, error-count badge on every header, Collapse/Expand all), a clickable issue count that
+jumps to the first problem (`#fs-meta`/`[data-entity-index]` + `[aria-invalid]`/`[data-error]`), and a
+**share link**: the editor state is written to the `?fs=` param (`shareLink.ts`, base64url JSON,
+debounced) so the header's Share button reproduces the model; on load `?fs=` beats localStorage.
+`snapshot.ts` defines `FullstackSnapshot`/`ProjectMeta` (uids stripped) — the unit presets, recents,
+undo and share links carry.
+
 ## Data Flow
 
 1. `useMetadata` fetches `/metadata/client` → raw Initializr metadata JSON
