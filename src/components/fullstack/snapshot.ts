@@ -43,6 +43,29 @@ export function snapshotsEqual(a: FullstackSnapshot, b: FullstackSnapshot): bool
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
+/** A short human label for the difference between two snapshots — the undo history's entry
+ *  names for edits recorded automatically (typing, toggles) rather than through an explicit,
+ *  already-labelled action. Names the first thing that differs. */
+export function describeSnapshotChange(prev: FullstackSnapshot, next: FullstackSnapshot): string {
+  if (prev.entities.length < next.entities.length) return 'Added an entity'
+  if (prev.entities.length > next.entities.length) return 'Removed an entity'
+  for (let i = 0; i < next.entities.length; i++) {
+    const a = prev.entities[i]; const b = next.entities[i]
+    if (JSON.stringify(a) === JSON.stringify(b)) continue
+    const name = (b.name || a.name).trim() || 'an entity'
+    if (a.name !== b.name && a.fields === b.fields) return `Renamed ${name}`
+    if (a.fields.length < b.fields.length) return `Added a field to ${name}`
+    if (a.fields.length > b.fields.length) return `Removed a field from ${name}`
+    return `Edited ${name}`
+  }
+  if (JSON.stringify(prev.meta) !== JSON.stringify(next.meta)) return 'Edited project settings'
+  if (JSON.stringify(prev.selectedDeps) !== JSON.stringify(next.selectedDeps)) return 'Changed dependencies'
+  if (JSON.stringify(prev.scaffoldOpts) !== JSON.stringify(next.scaffoldOpts)) return 'Changed options'
+  if (prev.backendSet !== next.backendSet || prev.frontendSet !== next.frontendSet) return 'Changed template set'
+  if (prev.colorPalette !== next.colorPalette) return 'Changed colour palette'
+  return 'Edit'
+}
+
 /** Minimal shape check for data that arrived from storage, a URL or an imported file. */
 export function isSnapshot(v: unknown): v is FullstackSnapshot {
   if (!v || typeof v !== 'object') return false

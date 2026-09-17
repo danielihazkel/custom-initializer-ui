@@ -12,10 +12,11 @@ import { ConfirmDialog } from '../ConfirmDialog'
 import { StatusToast } from '../admin/shared/StatusToast'
 import { stripUids, withUids } from './uid'
 import {
-  makeSnapshot, parseExportedModel, snapshotsEqual, toExportedModel, type FullstackSnapshot, type ProjectMeta,
+  describeSnapshotChange, makeSnapshot, parseExportedModel, snapshotsEqual, toExportedModel,
+  type FullstackSnapshot, type ProjectMeta,
 } from './snapshot'
 import { clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
-import { isTypingTarget, popUndo, pushUndo, type UndoEntry } from './undo'
+import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, type ExampleModel } from './examples'
 import { PalettePicker } from '../shared/PalettePicker'
 import { downloadBlob } from '../../utils/projectUtils'
@@ -133,7 +134,7 @@ export function FullstackView() {
   const [colorPalette, setColorPalette] = useState<string>(() => shared ? (shared.colorPalette ?? '') : (localStorage.getItem(LS.palette) ?? ''))
   // Collapsed cards survive a refresh: entities persist with their uids, so the uid set stays valid.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(shared ? [] : loadJson<string[]>(LS.collapsed, [])))
-  const [undoStack, setUndoStack] = useState<UndoEntry<FullstackSnapshot>[]>([])
+  const [history, setHistory] = useState<History<FullstackSnapshot>>(() => emptyHistory())
   const [confirmReset, setConfirmReset] = useState(false)
   const [pendingLoad, setPendingLoad] = useState<PendingLoad | null>(null)
   const [shareStatus, setShareStatus] = useState<ShareWriteStatus>('written')
@@ -218,9 +219,13 @@ export function FullstackView() {
     if (!currentBackendSet) return
     if (seededBackendSetRef.current === null) {
       // First resolution after load — adopt without overwriting restored state. Only seed
-      // defaults if we have no saved deps at all (first-ever visit).
+      // defaults if we have no saved deps at all (first-ever visit). That seeding is setup,
+      // not a user edit, so it must not become an undo step.
       seededBackendSetRef.current = currentBackendSet.setKey
-      setSelectedDeps(prev => prev.length === 0 ? [...currentBackendSet.defaultDeps] : prev)
+      if (snapshotRef.current.selectedDeps.length === 0) {
+        silentFromRef.current = snapshotRef.current
+        setSelectedDeps([...currentBackendSet.defaultDeps])
+      }
       return
     }
     if (seededBackendSetRef.current !== currentBackendSet.setKey) {
@@ -258,13 +263,50 @@ export function FullstackView() {
     }
   }, [currentFrontendSet])
 
-  // ── Undo ───────────────────────────────────────────────────────────────────
-  // Every destructive edit (remove entity/field, import-replace, reset, loading a preset or
-  // example) first pushes the current snapshot; Undo (button or Ctrl+Z outside an input)
-  // restores the most recent one.
-  const pushUndoEntry = useCallback((label: string) => {
-    setUndoStack(stack => pushUndo(stack, { label, snapshot: snapshotRef.current }))
+  // ── Undo / redo ────────────────────────────────────────────────────────────
+  // Every change to the snapshot is recorded automatically: the effect below sees the new
+  // snapshot, and files the *previous* one as the "before" state. Rapid successive changes
+  // (typing a name, ticking a few boxes) coalesce into one entry — a burst stays open while
+  // changes keep arriving within BURST_IDLE_MS and is committed when they stop. Destructive
+  // actions (remove, import, load, reset) still push an explicitly labelled entry first via
+  // pushUndoEntry; the state change they cause is then skipped so it isn't recorded twice.
+  // Undo/redo restore through applySnapshot and are skipped the same way.
+  const BURST_IDLE_MS = 600
+  const historyRef = useRef(history)
+  historyRef.current = history
+  const lastSnapshotRef = useRef(currentSnapshot)
+  // The snapshot a silent (already-recorded, or non-user) change starts from — matched by
+  // identity in the recording effect, then cleared.
+  const silentFromRef = useRef<FullstackSnapshot | null>(null)
+  const burstRef = useRef<{ before: FullstackSnapshot; label: string } | null>(null)
+  const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const flushBurst = useCallback(() => {
+    if (burstTimerRef.current) { clearTimeout(burstTimerRef.current); burstTimerRef.current = null }
+    const burst = burstRef.current
+    if (!burst) return
+    burstRef.current = null
+    setHistory(h => record(h, { label: burst.label, snapshot: burst.before }))
   }, [])
+
+  useEffect(() => {
+    const prev = lastSnapshotRef.current
+    if (prev === currentSnapshot) return
+    lastSnapshotRef.current = currentSnapshot
+    if (silentFromRef.current === prev) { silentFromRef.current = null; return }
+    if (snapshotsEqual(prev, currentSnapshot)) return
+    if (!burstRef.current) burstRef.current = { before: prev, label: describeSnapshotChange(prev, currentSnapshot) }
+    if (burstTimerRef.current) clearTimeout(burstTimerRef.current)
+    burstTimerRef.current = setTimeout(flushBurst, BURST_IDLE_MS)
+  }, [currentSnapshot, flushBurst])
+  useEffect(() => () => { if (burstTimerRef.current) clearTimeout(burstTimerRef.current) }, [])
+
+  const pushUndoEntry = useCallback((label: string) => {
+    flushBurst()
+    const before = snapshotRef.current
+    silentFromRef.current = before
+    setHistory(h => record(h, { label, snapshot: before }))
+  }, [flushBurst])
 
   const applySnapshot = useCallback((s: FullstackSnapshot) => {
     // Adopt the snapshot's sets as "already seeded" so the set-change effects above don't
@@ -283,25 +325,35 @@ export function FullstackView() {
   }, [])
 
   const undo = useCallback(() => {
-    setUndoStack(stack => {
-      const { entry, rest } = popUndo(stack)
-      if (!entry) return stack
-      applySnapshot(entry.snapshot)
-      setToast({ message: `Undid: ${entry.label}`, type: 'success' })
-      return rest
-    })
-  }, [applySnapshot])
+    flushBurst()
+    const step = undoStep(historyRef.current, snapshotRef.current)
+    if (!step) return
+    silentFromRef.current = snapshotRef.current
+    setHistory(step.history)
+    applySnapshot(step.restore.snapshot)
+    setToast({ message: `Undid: ${step.restore.label}`, type: 'success' })
+  }, [applySnapshot, flushBurst])
+
+  const redo = useCallback(() => {
+    flushBurst()
+    const step = redoStep(historyRef.current, snapshotRef.current)
+    if (!step) return
+    silentFromRef.current = snapshotRef.current
+    setHistory(step.history)
+    applySnapshot(step.restore.snapshot)
+    setToast({ message: `Redid: ${step.restore.label}`, type: 'success' })
+  }, [applySnapshot, flushBurst])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !isTypingTarget(e.target)) {
-        e.preventDefault()
-        undo()
-      }
+      if (!(e.ctrlKey || e.metaKey) || isTypingTarget(e.target)) return
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
+      else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [undo])
+  }, [undo, redo])
 
   function handleImport(imported: FullstackEntityDef[], mode: ImportMode, note?: string) {
     pushUndoEntry(mode === 'replace' ? 'Replaced entities from import' : 'Appended imported entities')
@@ -528,7 +580,8 @@ export function FullstackView() {
   }
   const allCollapsed = entities.length > 0 && entities.every(e => e.uid && collapsed.has(e.uid))
 
-  const lastUndo = undoStack[undoStack.length - 1]
+  const lastUndo = history.past[history.past.length - 1]
+  const nextRedo = history.future[history.future.length - 1]
   const blockedReason = `Fix ${errorCount} issue${errorCount === 1 ? '' : 's'} first (see the list to the left)`
 
   return (
@@ -853,6 +906,16 @@ export function FullstackView() {
         >
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>undo</span>
           Undo
+        </button>
+        <button
+          type="button"
+          onClick={redo}
+          disabled={!nextRedo}
+          className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all active:scale-95 disabled:opacity-40 disabled:hover:text-secondary disabled:hover:border-outline-variant disabled:hover:bg-transparent"
+          title={nextRedo ? `Redo: ${nextRedo.label} (Ctrl+Shift+Z / Ctrl+Y)` : 'Nothing to redo'}
+          aria-label={nextRedo ? `Redo: ${nextRedo.label}` : 'Redo (nothing to redo)'}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>redo</span>
         </button>
         {hasErrors && (
           <button
