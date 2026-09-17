@@ -95,6 +95,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
   const [dialect, setDialect] = useState('H2')
   const [mode, setMode] = useState<ImportMode>(hasExisting ? 'append' : 'replace')
   const [error, setError] = useState<ImportError | null>(null)
+  const [parsing, setParsing] = useState(false)
   const copy = COPY[variant]
 
   // Re-seed on every open and on a variant switch: the same drawer instance serves both the
@@ -103,6 +104,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
     if (isOpen) {
       setSql('')
       setError(null)
+      setParsing(false)
       setMode(hasExisting ? 'append' : 'replace')
     }
   }, [isOpen, hasExisting, variant])
@@ -114,17 +116,28 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       setError({ detail: copy.emptyHint })
       throw new Error('empty')
     }
-    const res = await fetch(copy.endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sql: trimmed, dialect }),
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => null) as ImportError | null
-      setError(body ?? { detail: `HTTP ${res.status}` })
-      throw new Error(body?.detail ?? `HTTP ${res.status}`)
+    setParsing(true)
+    let body: ImportResponse
+    try {
+      const res = await fetch(copy.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: trimmed, dialect }),
+      })
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null) as ImportError | null
+        setError(errBody ?? { detail: `HTTP ${res.status}` })
+        throw new Error(errBody?.detail ?? `HTTP ${res.status}`)
+      }
+      body = await res.json() as ImportResponse
+    } catch (err) {
+      // A network failure has no response body — surface it in the same error box. (An HTTP
+      // error already set a richer one above; the functional update keeps it.)
+      setError(prev => prev ?? { detail: err instanceof Error ? err.message : String(err) })
+      throw err
+    } finally {
+      setParsing(false)
     }
-    const body = await res.json() as ImportResponse
     const entities: FullstackEntityDef[] = body.entities.map(e => ({
       uid: newUid(),
       name: e.name,
@@ -160,7 +173,9 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       isOpen={isOpen}
       onClose={onClose}
       onSave={handleSave}
-      saving={false}
+      saving={parsing}
+      saveLabel="Import"
+      savingLabel="Parsing…"
     >
       <div className="space-y-4">
         <p className="text-[12px] text-secondary leading-relaxed">

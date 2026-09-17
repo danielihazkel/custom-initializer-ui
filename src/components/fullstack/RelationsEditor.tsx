@@ -1,6 +1,7 @@
 import type { FullstackRelationDef } from '../../types'
 import type { RelationErrors } from './validation'
 import { newUid } from './uid'
+import { focusRowWhenRendered } from './focus'
 
 interface Props {
   relations: FullstackRelationDef[]
@@ -8,6 +9,9 @@ interface Props {
   entityNames: string[]
   onChange: (relations: FullstackRelationDef[]) => void
   errors?: Record<number, RelationErrors>
+  /** When set, adding a relation is not offered and this text explains why (e.g. a SELECT-backed
+   *  view can't declare relations). Existing rows stay editable/removable so validation can clear. */
+  addDisabledReason?: string
 }
 
 function newRelation(defaultTarget: string): FullstackRelationDef {
@@ -19,7 +23,7 @@ function newRelation(defaultTarget: string): FullstackRelationDef {
  * MANY_TO_ONE — the inverse `@OneToMany` is auto-derived server-side via the
  * `inverseCollections` opt, so there is no inverse editor here.
  */
-export function RelationsEditor({ relations, entityNames, onChange, errors }: Props) {
+export function RelationsEditor({ relations, entityNames, onChange, errors, addDisabledReason }: Props) {
   function update(idx: number, updates: Partial<FullstackRelationDef>) {
     onChange(relations.map((r, i) => (i === idx ? { ...r, ...updates } : r)))
   }
@@ -27,7 +31,9 @@ export function RelationsEditor({ relations, entityNames, onChange, errors }: Pr
     onChange(relations.filter((_, i) => i !== idx))
   }
   function add() {
-    onChange([...relations, newRelation(entityNames[0] ?? '')])
+    const rel = newRelation(entityNames[0] ?? '')
+    onChange([...relations, rel])
+    focusRowWhenRendered(rel.uid)
   }
 
   return (
@@ -51,7 +57,7 @@ export function RelationsEditor({ relations, entityNames, onChange, errors }: Pr
             {relations.map((rel, rIdx) => {
               const rErr = errors?.[rIdx]
               return (
-                <tr key={rel.uid ?? `i${rIdx}`} className="border-t border-outline-variant">
+                <tr key={rel.uid ?? `i${rIdx}`} data-row-uid={rel.uid} className="border-t border-outline-variant">
                   <td className="py-1.5 px-2 align-top">
                     <input
                       type="text"
@@ -72,7 +78,8 @@ export function RelationsEditor({ relations, entityNames, onChange, errors }: Pr
                       value={rel.targetEntity}
                       onChange={e => update(rIdx, { targetEntity: e.target.value })}
                     >
-                      <option value="">—</option>
+                      {/* No named entity yet (the owner itself is still blank) — say so instead of a bare dash. */}
+                      <option value="">{entityNames.length === 0 ? 'Name an entity first…' : '— pick a target —'}</option>
                       {entityNames.map(n => <option key={n} value={n}>{n}</option>)}
                       {/* Keep a stale/unknown target visible so it isn't silently dropped. */}
                       {rel.targetEntity && !entityNames.includes(rel.targetEntity) && (
@@ -107,13 +114,20 @@ export function RelationsEditor({ relations, entityNames, onChange, errors }: Pr
         </table>
       )}
 
-      <button
-        onClick={add}
-        className="inline-flex items-center gap-1 px-3 py-1 rounded text-xs text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
-      >
-        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
-        Add relation
-      </button>
+      {addDisabledReason ? (
+        <p className="text-[11px] text-secondary/70 flex items-center gap-1 px-1">
+          <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>info</span>
+          {addDisabledReason}
+        </p>
+      ) : (
+        <button
+          onClick={add}
+          className="inline-flex items-center gap-1 px-3 py-1 rounded text-xs text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
+          Add relation
+        </button>
+      )}
     </div>
   )
 }

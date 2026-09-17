@@ -7,13 +7,24 @@ interface AdminFormDrawerProps {
   title: string
   isOpen: boolean
   onClose: () => void
+  /** May reject to keep the drawer open — the form is expected to have shown the error itself.
+   *  The rejection is swallowed here so it never surfaces as an unhandled promise. */
   onSave: () => Promise<void>
   saving: boolean
+  /** Primary button copy; defaults to "Save" (and "Saving…" while `saving`). */
+  saveLabel?: string
+  savingLabel?: string
   children: ReactNode
 }
 
-export function AdminFormDrawer({ title, isOpen, onClose, onSave, saving, children }: AdminFormDrawerProps) {
+export function AdminFormDrawer({
+  title, isOpen, onClose, onSave, saving, saveLabel = 'Save', savingLabel = 'Saving…', children,
+}: AdminFormDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null)
+
+  // A form that throws from onSave (validation, failed parse) has already rendered its error;
+  // without this guard the throw becomes a console "Uncaught (in promise)".
+  const runSave = () => { onSave().catch(() => { /* surfaced inline by the form */ }) }
 
   // Escape to close and Cmd/Ctrl + Enter to save
   useEffect(() => {
@@ -25,7 +36,7 @@ export function AdminFormDrawer({ title, isOpen, onClose, onSave, saving, childr
       const isCmdOrCtrl = e.metaKey || e.ctrlKey
       if (!saving && isCmdOrCtrl && e.key === 'Enter') {
         e.preventDefault()
-        onSave()
+        onSave().catch(() => { /* surfaced inline by the form */ })
       }
     }
     document.addEventListener('keydown', handleKeyDown)
@@ -109,7 +120,7 @@ export function AdminFormDrawer({ title, isOpen, onClose, onSave, saving, childr
                 Cancel
               </button>
               <button
-                onClick={onSave}
+                onClick={runSave}
                 disabled={saving}
                 className="px-5 py-2 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 disabled:cursor-not-allowed animated-gradient-btn shadow-md flex items-center justify-center min-w-[90px]"
               >
@@ -119,10 +130,10 @@ export function AdminFormDrawer({ title, isOpen, onClose, onSave, saving, childr
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Saving…
+                    {savingLabel}
                   </span>
                 ) : (
-                  <span className="flex items-center justify-center w-full">Save</span>
+                  <span className="flex items-center justify-center w-full">{saveLabel}</span>
                 )}
               </button>
             </div>

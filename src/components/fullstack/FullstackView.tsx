@@ -11,8 +11,8 @@ import { ViewSkeleton } from '../Skeletons'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { StatusToast } from '../admin/shared/StatusToast'
 import { stripUids, withUids } from './uid'
-import { makeSnapshot, type FullstackSnapshot, type ProjectMeta } from './snapshot'
-import { readShareFromLocation, writeShareToLocation } from './shareLink'
+import { makeSnapshot, snapshotsEqual, type FullstackSnapshot, type ProjectMeta } from './snapshot'
+import { clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { isTypingTarget, popUndo, pushUndo, type UndoEntry } from './undo'
 import { cloneExample, type ExampleModel } from './examples'
 
@@ -59,13 +59,15 @@ const LS = {
 // Opt-in scaffolding extras, sent as opts.scaffold. Each value matches a backend optScaffold<Option>
 // gate — keep this list in step with FullstackProjectGenerationConfiguration (backend) and
 // FullstackStarterController.renderFrontend (frontend): an opt missing here is unreachable from the UI.
-const SCAFFOLD_OPTIONS: { value: string; label: string; hint: string }[] = [
+// `requiresAnyDep`: the backend silently no-ops the opt unless one of these deps is selected, so the
+// editor warns inline instead of letting the user discover the missing scaffolding in the ZIP.
+const SCAFFOLD_OPTIONS: { value: string; label: string; hint: string; requiresAnyDep?: string[] }[] = [
   { value: 'audit', label: 'Audit timestamps', hint: 'createdAt / updatedAt via JPA auditing' },
   { value: 'softDelete', label: 'Soft delete', hint: 'deleted flag + Hibernate @SQLDelete/@SQLRestriction; delete toast gets a real Undo' },
   { value: 'inverseCollections', label: 'Inverse collections', hint: 'Read-only @OneToMany on the referenced side' },
   { value: 'tests', label: 'Controller tests', hint: 'Per-entity @WebMvcTest' },
   { value: 'openapi', label: 'OpenAPI annotations', hint: 'springdoc @Tag/@Operation on every controller; adds the openapi starter' },
-  { value: 'secured', label: 'Permission hints', hint: 'Commented @RequiresPermission per endpoint; needs ldap-auth or ldap-auth-rest selected' },
+  { value: 'secured', label: 'Permission hints', hint: 'Commented @RequiresPermission per endpoint; needs ldap-auth or ldap-auth-rest selected', requiresAnyDep: ['ldap-auth', 'ldap-auth-rest'] },
   { value: 'csvExport', label: 'CSV export', hint: 'GET /export.csv (streamed, honors search/filters/sort) + Export button' },
   { value: 'bulkDelete', label: 'Bulk delete', hint: 'Select rows, DELETE /bulk across all' },
   { value: 'bulkUpdate', label: 'Bulk edit', hint: 'Select rows, set one field, PATCH /bulk across all' },
@@ -81,6 +83,25 @@ function loadJson<T>(key: string, fallback: T): T {
     return fallback
   }
 }
+
+/** localStorage write that never throws: a model carrying imported `sourceSql` can exceed the
+ *  quota, and an exception from inside a persist effect would take the whole view down on every
+ *  keystroke. Losing the refresh-restore is the acceptable failure. */
+function persist(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    /* quota exceeded / storage disabled — keep editing, just don't restore on refresh */
+  }
+}
+
+/** The stock entity model, normalized like a snapshot so "still untouched" is a plain compare. */
+const DEFAULT_ENTITIES_JSON = JSON.stringify(stripUids(DEFAULT_ENTITIES))
+
+/** A load that replaces the editor's model, held while the user confirms it. */
+type PendingLoad =
+  | { kind: 'example'; example: ExampleModel }
+  | { kind: 'preset'; snapshot: FullstackSnapshot }
 
 export function FullstackView() {
   // A share link (?fs=…) beats localStorage on first render — that is the whole point of the link.
@@ -103,6 +124,8 @@ export function FullstackView() {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [undoStack, setUndoStack] = useState<UndoEntry<FullstackSnapshot>[]>([])
   const [confirmReset, setConfirmReset] = useState(false)
+  const [pendingLoad, setPendingLoad] = useState<PendingLoad | null>(null)
+  const [shareStatus, setShareStatus] = useState<ShareWriteStatus>('written')
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
     fetchPreview, clearPreview, clearError,
@@ -122,12 +145,12 @@ export function FullstackView() {
   const hasErrors = errorCount > 0
 
   // Persist form state so a refresh doesn't lose the user's work (mirrors useProjectState).
-  useEffect(() => { localStorage.setItem(LS.meta, JSON.stringify(meta)) }, [meta])
-  useEffect(() => { localStorage.setItem(LS.entities, JSON.stringify(entities)) }, [entities])
-  useEffect(() => { localStorage.setItem(LS.deps, JSON.stringify(selectedDeps)) }, [selectedDeps])
-  useEffect(() => { localStorage.setItem(LS.backendSet, backendSet) }, [backendSet])
-  useEffect(() => { localStorage.setItem(LS.frontendSet, frontendSet) }, [frontendSet])
-  useEffect(() => { localStorage.setItem(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
+  useEffect(() => { persist(LS.meta, JSON.stringify(meta)) }, [meta])
+  useEffect(() => { persist(LS.entities, JSON.stringify(entities)) }, [entities])
+  useEffect(() => { persist(LS.deps, JSON.stringify(selectedDeps)) }, [selectedDeps])
+  useEffect(() => { persist(LS.backendSet, backendSet) }, [backendSet])
+  useEffect(() => { persist(LS.frontendSet, frontendSet) }, [frontendSet])
+  useEffect(() => { persist(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
 
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
   const currentSnapshot = useMemo(
@@ -141,9 +164,26 @@ export function FullstackView() {
   // this model elsewhere. The frontend tab does the same with plain query params; the entity
   // model is too rich for that, so it rides as one encoded `fs` param.
   useEffect(() => {
-    const t = setTimeout(() => writeShareToLocation(currentSnapshot), 400)
+    const t = setTimeout(() => setShareStatus(writeShareToLocation(currentSnapshot)), 400)
     return () => clearTimeout(t)
   }, [currentSnapshot])
+  // Leaving the tab drops the payload from the URL so the other tabs' Share links stay short;
+  // localStorage still restores the model when the user comes back.
+  useEffect(() => () => clearShareFromLocation(), [])
+
+  // "Unsaved work" guard for the loads that replace the model (examples, presets, recents).
+  // Work counts as safe when it is the stock model, the thing most recently loaded, or already
+  // captured by a preset/recent (Explore and Generate push recents) — only genuinely unsaved
+  // edits get a confirm; the rest stays one click, with Undo as the fallback.
+  const baselineRef = useRef<FullstackSnapshot | null>(null)
+  useEffect(() => {
+    if (baselineRef.current === null) baselineRef.current = currentSnapshot
+  }, [currentSnapshot])
+  const hasUnsavedWork = useMemo(() => {
+    if (JSON.stringify(currentSnapshot.entities) === DEFAULT_ENTITIES_JSON) return false
+    if (baselineRef.current && snapshotsEqual(currentSnapshot, baselineRef.current)) return false
+    return ![...presets, ...recents].some(p => snapshotsEqual(p.snapshot, currentSnapshot))
+  }, [currentSnapshot, presets, recents])
 
   // Drop a stale preview error once the user changes any input, so the Explore button
   // doesn't stay error-styled (with the message hidden in a tooltip) after they've moved on.
@@ -218,6 +258,7 @@ export function FullstackView() {
     setBackendSet(s.backendSet)
     setFrontendSet(s.frontendSet)
     setCollapsed(new Set())
+    baselineRef.current = null // adopt the loaded state as the new "nothing unsaved" point
   }, [])
 
   const undo = useCallback(() => {
@@ -255,6 +296,7 @@ export function FullstackView() {
     pushUndoEntry(`Loaded the ${example.name} example`)
     setEntities(withUids(cloneExample(example)))
     setCollapsed(new Set())
+    baselineRef.current = null
     setToast({ message: `Loaded the ${example.name} example (${example.entities.length} entities)`, type: 'success' })
   }
 
@@ -262,6 +304,16 @@ export function FullstackView() {
     pushUndoEntry('Loaded a preset')
     applySnapshot(snapshot)
     setToast({ message: `Loaded ${snapshot.meta.artifactId || 'preset'}`, type: 'success' })
+  }
+
+  function runLoad(load: PendingLoad) {
+    if (load.kind === 'example') loadExample(load.example)
+    else loadPreset(load.snapshot)
+  }
+  /** Entry point for the presets strip: confirms first when it would discard unsaved edits. */
+  function requestLoad(load: PendingLoad) {
+    if (hasUnsavedWork) setPendingLoad(load)
+    else runLoad(load)
   }
 
   // Load the template-set list. Extracted so the inline Retry can re-run it; on failure
@@ -389,9 +441,9 @@ export function FullstackView() {
   }
 
   // ── Reset ──────────────────────────────────────────────────────────────────
-  // The global Reset (App.tsx) is hidden on this tab; we portal our own, mirroring
-  // FrontendView. FullstackDepPicker is fully controlled, so resetting selectedDeps
-  // below re-renders it — no remount needed. Confirmed in-app (ConfirmDialog) and undoable.
+  // The header's global Reset (App.tsx) is hidden on this tab; the Reset button lives in the
+  // sticky action bar below instead. FullstackDepPicker is fully controlled, so resetting
+  // selectedDeps re-renders it — no remount needed. Confirmed in-app (ConfirmDialog) and undoable.
   function doReset() {
     setConfirmReset(false)
     pushUndoEntry('Reset to defaults')
@@ -402,6 +454,7 @@ export function FullstackView() {
     setFrontendSet('react-tailwind-crud')
     setScaffoldOpts([])
     setCollapsed(new Set())
+    baselineRef.current = null
     // Re-seed deps from whichever backend set resolves; the set-change effect won't
     // fire if the key is unchanged, so seed explicitly here.
     const target = availableSets.find(s => s.setKey === 'spring-jpa-crud')
@@ -420,6 +473,7 @@ export function FullstackView() {
   const allCollapsed = entities.length > 0 && entities.every(e => e.uid && collapsed.has(e.uid))
 
   const lastUndo = undoStack[undoStack.length - 1]
+  const blockedReason = `Fix ${errorCount} issue${errorCount === 1 ? '' : 's'} first (see the list to the left)`
 
   return (
     <div className="max-w-7xl mx-auto px-8 space-y-8">
@@ -436,8 +490,8 @@ export function FullstackView() {
         presets={presets}
         recents={recents}
         currentSnapshot={currentSnapshot}
-        onLoad={loadPreset}
-        onLoadExample={loadExample}
+        onLoad={snapshot => requestLoad({ kind: 'preset', snapshot })}
+        onLoadExample={example => requestLoad({ kind: 'example', example })}
         onSave={(name, snapshot) => { savePreset(name, snapshot); setToast({ message: `Saved preset "${name}"`, type: 'success' }) }}
         onDeletePreset={deletePreset}
         onDeleteRecent={deleteRecent}
@@ -560,23 +614,40 @@ export function FullstackView() {
           Opt-in scaffolding extras applied to every entity. Off by default.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {SCAFFOLD_OPTIONS.map(opt => (
+          {SCAFFOLD_OPTIONS.map(opt => {
+            const checked = scaffoldOpts.includes(opt.value)
+            const missingDep = checked && opt.requiresAnyDep && !opt.requiresAnyDep.some(d => selectedDeps.includes(d))
+            return (
             <label
               key={opt.value}
-              className="flex items-start gap-2.5 p-3 rounded-lg border border-outline-variant hover:border-primary/50 cursor-pointer transition-colors"
+              className={`flex items-start gap-2.5 p-3 rounded-lg border hover:border-primary/50 cursor-pointer transition-colors ${missingDep ? 'border-warning/50 bg-warning/5' : 'border-outline-variant'}`}
             >
               <input
                 type="checkbox"
                 className="mt-0.5 h-4 w-4 accent-primary"
-                checked={scaffoldOpts.includes(opt.value)}
+                checked={checked}
                 onChange={() => toggleOpt(opt.value)}
               />
-              <span className="flex flex-col">
+              <span className="flex flex-col min-w-0">
                 <span className="text-sm text-on-surface">{opt.label}</span>
                 <span className="text-[11px] text-secondary">{opt.hint}</span>
+                {missingDep && opt.requiresAnyDep && (
+                  <span className="mt-1.5 flex items-center gap-1.5 text-[11px] text-warning" role="alert">
+                    <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>warning</span>
+                    <span>Has no effect without <code className="font-mono">{opt.requiresAnyDep[0]}</code>.</span>
+                    <button
+                      type="button"
+                      onClick={e => { e.preventDefault(); setSelectedDeps(prev => [...prev, opt.requiresAnyDep![0]]) }}
+                      className="font-semibold underline hover:no-underline"
+                    >
+                      Add it
+                    </button>
+                  </span>
+                )}
               </span>
             </label>
-          ))}
+            )
+          })}
         </div>
       </section>
 
@@ -651,7 +722,37 @@ export function FullstackView() {
 
       {/* Pinned to the viewport bottom so Generate/Explore stay reachable while editing a long
           entity list. The negative-margin/px pair lets the glass backdrop bleed to the column edges. */}
-      <section className="sticky bottom-0 z-20 -mx-8 px-8 py-4 flex items-center gap-3 glass-header border-t border-outline-variant">
+      <section className="sticky bottom-0 z-20 -mx-8 px-8 py-4 flex flex-col gap-3 glass-header border-t border-outline-variant">
+        {previewError && (
+          <div role="alert" className="flex items-start gap-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2">
+            <span className="material-symbols-outlined text-error mt-0.5" style={{ fontSize: '18px' }}>error</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-on-surface">Couldn't build the preview</p>
+              <p className="text-[11px] text-secondary break-words">
+                {previewError.kind ? `${previewError.kind}: ` : ''}{previewError.message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={explore}
+              disabled={previewLoading}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-primary text-on-primary hover:opacity-90 disabled:opacity-60 shrink-0"
+            >
+              Retry
+            </button>
+            <button type="button" onClick={clearError} aria-label="Dismiss preview error" className="p-0.5 rounded text-secondary hover:text-on-surface shrink-0">
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+            </button>
+          </div>
+        )}
+        {shareStatus === 'too-large' && (
+          <p className="flex items-center gap-1.5 text-[11px] text-secondary" role="status">
+            <span className="material-symbols-outlined text-warning" style={{ fontSize: '14px' }}>link_off</span>
+            This model is too large for a share link — the header's Share button copies a link without it.
+            Save it as a preset to keep it.
+          </p>
+        )}
+        <div className="flex items-center gap-3">
         <button
           onClick={() => setConfirmReset(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-error hover:border-error/50 hover:bg-error/5 transition-all active:scale-95"
@@ -686,8 +787,8 @@ export function FullstackView() {
         <button
           onClick={explore}
           disabled={previewLoading || hasErrors}
-          title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview the generated file tree before downloading'}
-          className={`ml-auto inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError
+          title={hasErrors ? blockedReason : 'Preview the generated file tree before downloading'}
+          className={`ml-auto inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${previewError
             ? 'border-error/50 text-error hover:bg-error/5'
             : 'border-outline-variant text-secondary hover:text-primary hover:border-primary hover:bg-primary/5'}`}
         >
@@ -698,10 +799,12 @@ export function FullstackView() {
         <button
           onClick={generate}
           disabled={generating || hasErrors}
-          className="px-8 py-3 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-md disabled:opacity-60"
+          title={hasErrors ? blockedReason : 'Generate and download the backend + frontend ZIP'}
+          className="px-8 py-3 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {generating ? 'Generating…' : 'Generate Fullstack ZIP'}
         </button>
+        </div>
       </section>
 
       <StatusToast toast={toast} onClear={() => setToast(null)} />
@@ -714,6 +817,20 @@ export function FullstackView() {
           tone="danger"
           onConfirm={doReset}
           onCancel={() => setConfirmReset(false)}
+        />
+      )}
+
+      {pendingLoad && (
+        <ConfirmDialog
+          title={pendingLoad.kind === 'example'
+            ? `Load the ${pendingLoad.example.name} example?`
+            : `Load ${pendingLoad.snapshot.meta.artifactId || 'this preset'}?`}
+          message={pendingLoad.kind === 'example'
+            ? 'This replaces your current entities, which aren\'t saved as a preset yet. You can undo it afterwards (Ctrl+Z).'
+            : 'This replaces your current entities, dependencies and settings, which aren\'t saved as a preset yet. You can undo it afterwards (Ctrl+Z).'}
+          confirmLabel="Load"
+          onConfirm={() => { const load = pendingLoad; setPendingLoad(null); runLoad(load) }}
+          onCancel={() => setPendingLoad(null)}
         />
       )}
 

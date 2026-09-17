@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { decodeShare, encodeShare } from './shareLink'
+import {
+  clearShareFromLocation, decodeShare, encodeShare, readShareFromLocation, writeShareToLocation, SHARE_PARAM,
+} from './shareLink'
 import type { FullstackSnapshot } from './snapshot'
 
 const snapshot: FullstackSnapshot = {
@@ -26,5 +28,26 @@ describe('shareLink', () => {
   it('returns null for garbage or a wrong shape instead of throwing', () => {
     expect(decodeShare('not base64!!')).toBeNull()
     expect(decodeShare(btoa('{"meta":{}}'))).toBeNull()
+  })
+
+  it('writes the model into the URL next to other params, reads it back, and clears only itself', () => {
+    window.history.replaceState(null, '', '/?tab=fullstack')
+    expect(writeShareToLocation(snapshot)).toBe('written')
+    expect(new URLSearchParams(window.location.search).get('tab')).toBe('fullstack')
+    expect(readShareFromLocation()).toEqual(snapshot)
+    clearShareFromLocation()
+    expect(new URLSearchParams(window.location.search).has(SHARE_PARAM)).toBe(false)
+    expect(new URLSearchParams(window.location.search).get('tab')).toBe('fullstack')
+  })
+
+  it('reports a model too large for a link and leaves the URL without it', () => {
+    window.history.replaceState(null, '', '/?tab=fullstack')
+    writeShareToLocation(snapshot)
+    const huge: FullstackSnapshot = {
+      ...snapshot,
+      entities: [{ ...snapshot.entities[0], sourceSql: 'x'.repeat(70_000) }],
+    }
+    expect(writeShareToLocation(huge)).toBe('too-large')
+    expect(new URLSearchParams(window.location.search).has(SHARE_PARAM)).toBe(false)
   })
 })

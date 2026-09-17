@@ -5,7 +5,11 @@ import { isSnapshot, type FullstackSnapshot } from './snapshot'
 export const SHARE_PARAM = 'fs'
 
 /** Links longer than this are refused by some proxies/browsers; beyond it we stop syncing. */
-const MAX_ENCODED_LENGTH = 60_000
+export const MAX_ENCODED_LENGTH = 60_000
+
+/** Outcome of a URL sync — `too-large` means the link no longer carries the model and the UI
+ *  should say so (a silently shortened link is worse than no link). */
+export type ShareWriteStatus = 'written' | 'too-large' | 'unavailable'
 
 function toBase64Url(bytes: Uint8Array): string {
   let bin = ''
@@ -49,18 +53,35 @@ export function readShareFromLocation(): FullstackSnapshot | null {
 }
 
 /** Writes the snapshot into the current URL (replaceState, other params untouched). A model too
- *  large for a sane link drops the param instead of producing a broken one. */
-export function writeShareToLocation(snapshot: FullstackSnapshot): void {
+ *  large for a sane link drops the param instead of producing a broken one, and reports it so
+ *  the editor can tell the user the Share button won't carry the model. */
+export function writeShareToLocation(snapshot: FullstackSnapshot): ShareWriteStatus {
   try {
     const url = new URL(window.location.href)
     const encoded = encodeShare(snapshot)
-    if (encoded.length > MAX_ENCODED_LENGTH) url.searchParams.delete(SHARE_PARAM)
+    const tooLarge = encoded.length > MAX_ENCODED_LENGTH
+    if (tooLarge) url.searchParams.delete(SHARE_PARAM)
     else url.searchParams.set(SHARE_PARAM, encoded)
     const next = url.pathname + url.search + url.hash
     if (next !== window.location.pathname + window.location.search + window.location.hash) {
       window.history.replaceState(window.history.state, '', next)
     }
+    return tooLarge ? 'too-large' : 'written'
   } catch {
     /* history API unavailable (tests, sandboxed frames) — the link just won't carry state */
+    return 'unavailable'
+  }
+}
+
+/** Removes the model from the URL — called when the user leaves the tab, so the Backend/Frontend
+ *  Share links don't drag a multi-KB fullstack payload along. */
+export function clearShareFromLocation(): void {
+  try {
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has(SHARE_PARAM)) return
+    url.searchParams.delete(SHARE_PARAM)
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+  } catch {
+    /* see above */
   }
 }

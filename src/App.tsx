@@ -39,6 +39,25 @@ export default function App() {
     return 'initializr'
   })
 
+  // Keep `?tab=` truthful for the Fullstack tab so its share link (the encoded `fs` model, written
+  // by FullstackView) opens on the right tab; the Frontend hook writes its own `?tab=frontend`, and
+  // the Backend hook rewrites the whole query. Leaving the Fullstack tab also drops the multi-KB
+  // `fs` payload so the other tabs' Share links don't carry it.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href)
+      if (view === 'fullstack') url.searchParams.set('tab', 'fullstack')
+      else {
+        url.searchParams.delete('fs')
+        if (url.searchParams.get('tab') === 'fullstack') url.searchParams.delete('tab')
+      }
+      const next = url.pathname + url.search + url.hash
+      if (next !== window.location.pathname + window.location.search + window.location.hash) {
+        window.history.replaceState(window.history.state, '', next)
+      }
+    } catch { /* history API unavailable */ }
+  }, [view])
+
   const { metadata, loading, error } = useMetadata()
   const { extensions } = useExtensions()
   const { dialects: sqlDialects } = useSqlDialects()
