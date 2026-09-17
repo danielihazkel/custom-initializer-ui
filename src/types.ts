@@ -423,6 +423,8 @@ export interface FullstackStarterRequest {
   dashboardOverview?: string
   /** Opt-in scaffolding extras, e.g. { scaffold: ["audit","softDelete","inverseCollections","tests"] }. */
   opts?: Record<string, string[]>
+  /** Seeded colour-palette id for the generated frontend; omitted = the frontend set's default. */
+  colorPalette?: string
   entities: FullstackEntityDef[]
 }
 

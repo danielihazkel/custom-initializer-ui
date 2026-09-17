@@ -11,10 +11,16 @@ import { ViewSkeleton } from '../Skeletons'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { StatusToast } from '../admin/shared/StatusToast'
 import { stripUids, withUids } from './uid'
-import { makeSnapshot, snapshotsEqual, type FullstackSnapshot, type ProjectMeta } from './snapshot'
+import {
+  makeSnapshot, parseExportedModel, snapshotsEqual, toExportedModel, type FullstackSnapshot, type ProjectMeta,
+} from './snapshot'
 import { clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { isTypingTarget, popUndo, pushUndo, type UndoEntry } from './undo'
 import { cloneExample, type ExampleModel } from './examples'
+import { PalettePicker } from '../shared/PalettePicker'
+import { downloadBlob } from '../../utils/projectUtils'
+import { copyToClipboard } from '../../utils/clipboard'
+import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
 
 // The preview modal drags in CodeMirror + every language grammar; load it on first Explore.
 const ProjectPreview = lazy(() => import('../ProjectPreview').then(m => ({ default: m.ProjectPreview })))
@@ -54,6 +60,8 @@ const LS = {
   backendSet: 'fullstack:backendSet',
   frontendSet: 'fullstack:frontendSet',
   opts: 'fullstack:opts',
+  palette: 'fullstack:palette',
+  collapsed: 'fullstack:collapsed',
 } as const
 
 // Opt-in scaffolding extras, sent as opts.scaffold. Each value matches a backend optScaffold<Option>
@@ -121,7 +129,10 @@ export function FullstackView() {
   const [importVariant, setImportVariant] = useState<ImportVariant | null>(null)
   const [selectedDeps, setSelectedDeps] = useState<string[]>(() => shared?.selectedDeps ?? loadJson<string[]>(LS.deps, []))
   const [scaffoldOpts, setScaffoldOpts] = useState<string[]>(() => shared?.scaffoldOpts ?? loadJson<string[]>(LS.opts, []))
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  // '' = follow the frontend set's default palette (the backend resolves it; nothing is sent).
+  const [colorPalette, setColorPalette] = useState<string>(() => shared ? (shared.colorPalette ?? '') : (localStorage.getItem(LS.palette) ?? ''))
+  // Collapsed cards survive a refresh: entities persist with their uids, so the uid set stays valid.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(shared ? [] : loadJson<string[]>(LS.collapsed, [])))
   const [undoStack, setUndoStack] = useState<UndoEntry<FullstackSnapshot>[]>([])
   const [confirmReset, setConfirmReset] = useState(false)
   const [pendingLoad, setPendingLoad] = useState<PendingLoad | null>(null)
@@ -133,9 +144,16 @@ export function FullstackView() {
   const { presets, recents, savePreset, deletePreset, deleteRecent, pushRecent } = useFullstackPresets()
 
   const { bootVersions, javaVersions } = useAdminMetadata()
+  const { metadata: feMetadata } = useFrontendMetadata()
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
   const currentFrontendSet = availableSets.find(s => s.setKey === frontendSet)
   const currentDefaults = currentBackendSet?.defaultDeps ?? []
+  const palettes = feMetadata?.colorPalettes ?? []
+  // What the generator will actually use: the explicit pick, else the set's default, else the
+  // catalog default — mirrors FullstackStarterController's resolution so the swatch is truthful.
+  const setDefaultPalette = currentFrontendSet?.defaultPaletteId
+    ?? palettes.find(p => p.isDefault)?.id ?? palettes[0]?.id ?? ''
+  const effectivePalette = colorPalette || setDefaultPalette
 
   // Validation — mirrors the backend FullstackRequestValidator so problems surface inline
   // before submit. The server stays the source of truth.
@@ -151,11 +169,13 @@ export function FullstackView() {
   useEffect(() => { persist(LS.backendSet, backendSet) }, [backendSet])
   useEffect(() => { persist(LS.frontendSet, frontendSet) }, [frontendSet])
   useEffect(() => { persist(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
+  useEffect(() => { persist(LS.palette, colorPalette) }, [colorPalette])
+  useEffect(() => { persist(LS.collapsed, JSON.stringify([...collapsed])) }, [collapsed])
 
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
   const currentSnapshot = useMemo(
-    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet }),
-    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet],
+    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette }),
+    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette],
   )
   const snapshotRef = useRef(currentSnapshot)
   snapshotRef.current = currentSnapshot
@@ -187,7 +207,7 @@ export function FullstackView() {
 
   // Drop a stale preview error once the user changes any input, so the Explore button
   // doesn't stay error-styled (with the message hidden in a tooltip) after they've moved on.
-  useEffect(() => { clearError() }, [meta, entities, selectedDeps, backendSet, frontendSet, scaffoldOpts, clearError])
+  useEffect(() => { clearError() }, [meta, entities, selectedDeps, backendSet, frontendSet, scaffoldOpts, colorPalette, clearError])
 
   // Reseed deps + pre-fill Boot/Java versions from the chosen backend set's pins. We only do
   // this on a *genuine* user change of the backend set — never on initial hydration, so a
@@ -257,6 +277,7 @@ export function FullstackView() {
     setScaffoldOpts([...s.scaffoldOpts])
     setBackendSet(s.backendSet)
     setFrontendSet(s.frontendSet)
+    setColorPalette(s.colorPalette ?? '')
     setCollapsed(new Set())
     baselineRef.current = null // adopt the loaded state as the new "nothing unsaved" point
   }, [])
@@ -316,6 +337,39 @@ export function FullstackView() {
     else runLoad(load)
   }
 
+  // ── Portable model: JSON export / import, curl ────────────────────────────
+  function exportJson() {
+    const json = JSON.stringify(toExportedModel(currentSnapshot), null, 2)
+    downloadBlob(new Blob([json], { type: 'application/json' }), `${meta.artifactId || 'model'}.fullstack.json`)
+    setToast({ message: 'Model exported', type: 'success' })
+  }
+
+  function importJson(file: File) {
+    file.text().then(text => {
+      const result = parseExportedModel(text)
+      if ('error' in result) {
+        setToast({ message: `Couldn't import ${file.name}: ${result.error}`, type: 'error' })
+        return
+      }
+      requestLoad({ kind: 'preset', snapshot: result.snapshot })
+    }).catch(() => setToast({ message: `Couldn't read ${file.name}`, type: 'error' }))
+  }
+
+  async function copyCurl() {
+    const body = JSON.stringify(buildBody())
+    // Single-quoted for POSIX shells; an embedded ' becomes '\'' so the body survives verbatim.
+    const quoted = `'${body.replace(/'/g, `'\\''`)}'`
+    const cmd = [
+      `curl -X POST ${window.location.origin}/starter-fullstack.zip`,
+      `-H 'Content-Type: application/json'`,
+      `-o ${meta.artifactId || 'project'}.zip`,
+      `-d ${quoted}`,
+    ].join(' \\\n  ')
+    setToast(await copyToClipboard(cmd)
+      ? { message: 'curl command copied to clipboard', type: 'success' }
+      : { message: "Couldn't copy — clipboard access was refused", type: 'error' })
+  }
+
   // Load the template-set list. Extracted so the inline Retry can re-run it; on failure
   // we keep the hardcoded fallback options (the screen stays usable) and surface a
   // persistent inline notice rather than a one-shot toast the user might miss.
@@ -353,6 +407,7 @@ export function FullstackView() {
       frontendTemplateSet: frontendSet,
       dependencies: selectedDeps,
       opts: scaffoldOpts.length ? { scaffold: scaffoldOpts } : undefined,
+      colorPalette: colorPalette || undefined,
       entities: stripUids(entities),
     }
   }
@@ -453,6 +508,7 @@ export function FullstackView() {
     setBackendSet('spring-jpa-crud')
     setFrontendSet('react-tailwind-crud')
     setScaffoldOpts([])
+    setColorPalette('')
     setCollapsed(new Set())
     baselineRef.current = null
     // Re-seed deps from whichever backend set resolves; the set-change effect won't
@@ -495,6 +551,9 @@ export function FullstackView() {
         onSave={(name, snapshot) => { savePreset(name, snapshot); setToast({ message: `Saved preset "${name}"`, type: 'success' }) }}
         onDeletePreset={deletePreset}
         onDeleteRecent={deleteRecent}
+        onExportJson={exportJson}
+        onImportJson={importJson}
+        onCopyCurl={copyCurl}
       />
 
       {/* Two-column config row: compact settings on the left, the taller dependency
@@ -604,6 +663,29 @@ export function FullstackView() {
                 <SetLabel name={currentFrontendSet?.name} setKey={frontendSet} />
               )}
             </Labeled>
+          </div>
+        )}
+        {palettes.length > 0 && (
+          <div className="pt-1 space-y-1.5">
+            <PalettePicker
+              label="Frontend colour palette"
+              palettes={palettes}
+              selectedId={effectivePalette}
+              onChange={id => setColorPalette(id === setDefaultPalette ? '' : id)}
+              caption={colorPalette
+                ? (
+                  <button type="button" onClick={() => setColorPalette('')} className="underline hover:no-underline">
+                    use the set's default
+                  </button>
+                )
+                : '(set default)'}
+            />
+            {currentFrontendSet?.designSystem === 'MENORA_DIGITAL' && (
+              <p className="text-[11px] text-on-surface-variant">
+                The Menora Digital set uses the fixed brand tokens for its colours; the palette only feeds
+                the success/danger accents.
+              </p>
+            )}
           </div>
         )}
       </section>
@@ -749,7 +831,7 @@ export function FullstackView() {
           <p className="flex items-center gap-1.5 text-[11px] text-secondary" role="status">
             <span className="material-symbols-outlined text-warning" style={{ fontSize: '14px' }}>link_off</span>
             This model is too large for a share link — the header's Share button copies a link without it.
-            Save it as a preset to keep it.
+            Use Export JSON (above) to hand it to someone.
           </p>
         )}
         <div className="flex items-center gap-3">

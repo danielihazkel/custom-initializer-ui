@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { FullstackPreset } from '../../hooks/useFullstackPresets'
 import type { FullstackSnapshot } from './snapshot'
@@ -13,6 +13,12 @@ interface Props {
   onSave: (name: string, snapshot: FullstackSnapshot) => void
   onDeletePreset: (id: string) => void
   onDeleteRecent: (id: string) => void
+  /** Portable model: download the whole editor state as a JSON file / load one back. Presets live
+   *  in one browser's localStorage, so this is how a model travels to a colleague or into git. */
+  onExportJson: () => void
+  onImportJson: (file: File) => void
+  /** Copies a ready-to-run curl for POST /starter-fullstack.zip with the current body. */
+  onCopyCurl: () => void
 }
 
 function relativeTime(ts: number): string {
@@ -34,10 +40,12 @@ function relativeTime(ts: number): string {
  */
 export function FullstackPresets({
   presets, recents, currentSnapshot, onLoad, onLoadExample, onSave, onDeletePreset, onDeleteRecent,
+  onExportJson, onImportJson, onCopyCurl,
 }: Props) {
   const [tab, setTab] = useState<'examples' | 'presets' | 'recents'>('examples')
   const [savePromptOpen, setSavePromptOpen] = useState(false)
   const [draftName, setDraftName] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   function commitSave() {
     const name = draftName.trim()
@@ -72,14 +80,56 @@ export function FullstackPresets({
           {tabButton('presets', 'My Presets', presets.length, 'primary')}
           {tabButton('recents', 'Recent', recents.length, 'tertiary')}
         </div>
-        <button
-          type="button"
-          onClick={() => setSavePromptOpen(v => !v)}
-          className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>bookmark_add</span>
-          Save current as preset…
-        </button>
+        <div className="flex items-center gap-4 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setSavePromptOpen(v => !v)}
+            className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>bookmark_add</span>
+            Save current as preset…
+          </button>
+          <span className="h-3 w-px bg-outline-variant" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={onExportJson}
+            className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
+            title="Download the whole model (entities, settings, dependencies) as a JSON file you can commit or send"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>download</span>
+            Export JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
+            title="Load a model exported from this tab"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>upload</span>
+            Import JSON
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            aria-label="Import model JSON"
+            onChange={e => {
+              const file = e.target.files?.[0]
+              if (file) onImportJson(file)
+              e.target.value = '' // allow re-importing the same file
+            }}
+          />
+          <button
+            type="button"
+            onClick={onCopyCurl}
+            className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
+            title="Copy a curl command that generates this exact project — handy for CI scripts"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>terminal</span>
+            Copy as curl
+          </button>
+        </div>
       </div>
 
       <AnimatePresence>

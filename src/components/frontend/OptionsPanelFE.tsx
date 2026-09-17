@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { getDesignSystemEntries, type FrontendMetadata, type FeColorPalette } from '../../hooks/useFrontendMetadata'
+import { getDesignSystemEntries, type FrontendMetadata } from '../../hooks/useFrontendMetadata'
 import { DESIGN_NONE } from '../../hooks/useFrontendState'
+import { PalettePicker } from '../shared/PalettePicker'
 
 interface Props {
   metadata: FrontendMetadata
@@ -94,48 +95,6 @@ function PillToggle({
           )
         })}
       </div>
-    </div>
-  )
-}
-
-function PalettePicker({
-  palettes,
-  selectedId,
-  onChange,
-}: {
-  palettes: FeColorPalette[]
-  selectedId: string
-  onChange: (id: string) => void
-}) {
-  if (palettes.length === 0) return null
-  const selected = palettes.find(p => p.id === selectedId) ?? palettes[0]
-  return (
-    <div>
-      <span className="block text-[10px] uppercase font-bold tracking-widest text-primary mb-1.5">
-        Color Palette
-      </span>
-      <div className="flex items-center gap-2 flex-wrap">
-        {palettes.map(p => {
-          const active = p.id === selected.id
-          return (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => onChange(p.id)}
-              title={p.name}
-              aria-label={p.name}
-              aria-pressed={active}
-              className={`relative w-9 h-9 rounded-full border border-outline-variant overflow-hidden transition-all ${
-                active ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface' : 'hover:scale-105'
-              }`}
-              style={{
-                background: `linear-gradient(135deg, ${p.primary} 0%, ${p.primary} 50%, ${p.secondary} 50%, ${p.secondary} 100%)`,
-              }}
-            />
-          )
-        })}
-      </div>
-      <p className="text-[11px] text-secondary mt-1.5 px-0.5">{selected.name}</p>
     </div>
   )
 }
