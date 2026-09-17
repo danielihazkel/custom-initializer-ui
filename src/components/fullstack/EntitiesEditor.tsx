@@ -5,6 +5,9 @@ import { EnumValuesEditor } from './EnumValuesEditor'
 import { RelationsEditor } from './RelationsEditor'
 import { cloneWithNewUids, newUid } from './uid'
 import { focusRowWhenRendered } from './focus'
+import { moveItem } from './reorder'
+import { summarizeEntity } from './summary'
+import { QuickAddFields } from './QuickAddFields'
 
 const FIELD_TYPES: FullstackFieldType[] = [
   'STRING', 'TEXT', 'LONG', 'INTEGER', 'BOOLEAN',
@@ -66,9 +69,24 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
       return next
     })
   }
+  // Which entity has its "Paste fields" panel open (one at a time is plenty).
+  const [quickAddFor, setQuickAddFor] = useState<string | null>(null)
 
   function updateEntity(idx: number, updates: Partial<FullstackEntityDef>) {
     onChange(entities.map((e, i) => i === idx ? { ...e, ...updates } : e))
+  }
+  // Order matters downstream: entity order = nav order, field order = table columns, form rows
+  // and CSV columns in the generated app. Rows are keyed by uid, so the moved row keeps its DOM
+  // node (and focus/caret) across the swap.
+  function moveEntity(idx: number, delta: -1 | 1) {
+    onChange(moveItem(entities, idx, idx + delta))
+  }
+  function moveField(eIdx: number, fIdx: number, delta: -1 | 1) {
+    onChange(entities.map((e, i) => i === eIdx ? { ...e, fields: moveItem(e.fields, fIdx, fIdx + delta) } : e))
+  }
+  function addFields(eIdx: number, fields: FullstackFieldDef[]) {
+    onChange(entities.map((e, i) => i === eIdx ? { ...e, fields: [...e.fields, ...fields] } : e))
+    focusRowWhenRendered(fields[0]?.uid)
   }
   function removeEntity(idx: number) {
     onDestructive?.(`Removed entity ${entities[idx]?.name.trim() || '(unnamed)'}`)
@@ -188,6 +206,7 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
         const errCount = countEntityErrors(eErr)
         const isCollapsed = Boolean(collapsed?.has(entityKey))
         const relCount = entity.relations?.length ?? 0
+        const summary = summarizeEntity(entity)
         return (
         <div
           key={entityKey}
@@ -232,6 +251,7 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
                     <span>{entity.fields.length} field{entity.fields.length === 1 ? '' : 's'}</span>
                     {relCount > 0 && <span>· {relCount} relation{relCount === 1 ? '' : 's'}</span>}
                     {(entity.readOnly || entity.viewQuery) && <span>· read-only</span>}
+                    <span className="font-mono">· {summary.path}</span>
                   </span>
                 )}
                 {errCount > 0 && (
@@ -245,6 +265,30 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
                 )}
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                {entities.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => moveEntity(eIdx, -1)}
+                      disabled={eIdx === 0}
+                      className="p-1.5 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary"
+                      title="Move entity up (earlier in the generated nav)"
+                      aria-label="Move entity up"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_upward</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveEntity(eIdx, 1)}
+                      disabled={eIdx === entities.length - 1}
+                      className="p-1.5 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary"
+                      title="Move entity down"
+                      aria-label="Move entity down"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_downward</span>
+                    </button>
+                  </>
+                )}
                 <button
                   onClick={() => duplicateEntity(eIdx)}
                   className="p-1.5 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
@@ -352,6 +396,24 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
               </div>
               </div>
             </div>
+            )}
+            {/* What this card will generate — derived from the same rules the backend applies, so
+                the effect of Search/Filter checkboxes and the view picker is visible without an
+                Explore round-trip. */}
+            {!isCollapsed && (
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-secondary" data-entity-summary>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>api</span>
+                <span className="font-semibold tracking-wide">{summary.verbs.join(' ')}</span>
+                <code className="font-mono text-on-surface">{summary.path}</code>
+              </span>
+              <span>·</span>
+              <span>views: {summary.views.map(v => v.by ? `${v.name} (by ${v.by})` : v.name).join(', ')}</span>
+              <span>·</span>
+              <span title="Fields included in the text-search box">search: {summary.search.length ? summary.search.join(', ') : '—'}</span>
+              <span>·</span>
+              <span title="Fields that get a filter control">filters: {summary.filters.length ? summary.filters.join(', ') : '—'}</span>
+            </p>
             )}
           </div>
 
@@ -564,6 +626,26 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
                     <td className="py-1.5 px-2 text-right align-top">
                       <div className="flex items-center justify-end gap-0.5">
                         <button
+                          type="button"
+                          onClick={() => moveField(eIdx, fIdx, -1)}
+                          disabled={fIdx === 0}
+                          className="p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary"
+                          title="Move field up (earlier column / form row)"
+                          aria-label="Move field up"
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_upward</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveField(eIdx, fIdx, 1)}
+                          disabled={fIdx === entity.fields.length - 1}
+                          className="p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary"
+                          title="Move field down"
+                          aria-label="Move field down"
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_downward</span>
+                        </button>
+                        <button
                           onClick={() => duplicateField(eIdx, fIdx)}
                           className="p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
                           title="Duplicate field"
@@ -600,13 +682,31 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
                 })}
               </tbody>
             </table>
-            <button
-              onClick={() => addField(eIdx)}
-              className="mt-2 inline-flex items-center gap-1 px-3 py-1 rounded text-xs text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
-              Add field
-            </button>
+            <div className="mt-2 flex items-center gap-1">
+              <button
+                onClick={() => addField(eIdx)}
+                className="inline-flex items-center gap-1 px-3 py-1 rounded text-xs text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
+                Add field
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickAddFor(prev => prev === entityKey ? null : entityKey)}
+                aria-expanded={quickAddFor === entityKey}
+                className="inline-flex items-center gap-1 px-3 py-1 rounded text-xs text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
+                title="Add many fields at once from a pasted list (one per line)"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>playlist_add</span>
+                Paste fields…
+              </button>
+            </div>
+            {quickAddFor === entityKey && (
+              <QuickAddFields
+                onAdd={fields => addFields(eIdx, fields)}
+                onClose={() => setQuickAddFor(null)}
+              />
+            )}
           </div>
 
           <RelationsEditor
