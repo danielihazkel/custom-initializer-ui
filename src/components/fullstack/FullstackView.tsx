@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
 } from '../../types'
-import { EntitiesEditor } from './EntitiesEditor'
+import { EntitiesEditor, newEntity } from './EntitiesEditor'
+import { focusRowWhenRendered } from './focus'
 import { FullstackDepPicker } from './FullstackDepPicker'
 import { FullstackPresets } from './FullstackPresets'
 import { ImportFromDdlDrawer, type ImportMode, type ImportVariant } from './ImportFromDdlDrawer'
@@ -22,6 +23,8 @@ import { PalettePicker } from '../shared/PalettePicker'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
+import { useCompatibility } from '../../hooks/useCompatibility'
+import { registerCommands } from '../../commands'
 
 // The preview modal drags in CodeMirror + every language grammar; load it on first Explore.
 const ProjectPreview = lazy(() => import('../ProjectPreview').then(m => ({ default: m.ProjectPreview })))
@@ -83,6 +86,9 @@ const SCAFFOLD_OPTIONS: { value: string; label: string; hint: string; requiresAn
   { value: 'seedData', label: 'Demo data', hint: 'Seeds 8 rows per entity on first start (parents before children); off via app.demo-data.enabled=false' },
   { value: 'rtl', label: 'RTL layout', hint: 'dir="rtl" + Hebrew lang; mirrored right-to-left UI' },
 ]
+// RTL only touches the generated SPA, so it renders in the Frontend section, not with the
+// per-entity scaffolding extras.
+const RTL_OPTION = SCAFFOLD_OPTIONS.find(o => o.value === 'rtl')
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -146,6 +152,7 @@ export function FullstackView() {
 
   const { bootVersions, javaVersions } = useAdminMetadata()
   const { metadata: feMetadata } = useFrontendMetadata()
+  const { rules: compatibilityRules } = useCompatibility('BACKEND')
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
   const currentFrontendSet = availableSets.find(s => s.setKey === frontendSet)
   const currentDefaults = currentBackendSet?.defaultDeps ?? []
@@ -584,6 +591,36 @@ export function FullstackView() {
   const nextRedo = history.future[history.future.length - 1]
   const blockedReason = `Fix ${errorCount} issue${errorCount === 1 ? '' : 's'} first (see the list to the left)`
 
+  // ⌘K actions for this tab. Handlers are read through a ref so the registration effect runs
+  // once per mount instead of on every render; the palette closes itself before `run`.
+  const commandHandlers = {
+    addEntity: () => {
+      const entity = newEntity()
+      setEntities(prev => [...prev, entity])
+      focusRowWhenRendered(entity.uid)
+    },
+    importDdl: () => setImportVariant('ddl'),
+    importSelect: () => setImportVariant('select'),
+    explore, generate, exportJson, copyCurl, undo, redo,
+    toggleCollapse: () => setCollapsed(allCollapsed ? new Set() : new Set(entities.map(e => e.uid).filter((u): u is string => Boolean(u)))),
+    reset: () => setConfirmReset(true),
+  }
+  const commandRef = useRef(commandHandlers)
+  commandRef.current = commandHandlers
+  useEffect(() => registerCommands([
+    { id: 'fs-add-entity', title: 'Add entity', icon: 'add_box', group: 'Fullstack', run: () => commandRef.current.addEntity() },
+    { id: 'fs-import-ddl', title: 'Import entities from DDL', icon: 'database', group: 'Fullstack', run: () => commandRef.current.importDdl() },
+    { id: 'fs-import-select', title: 'Import a view from SELECT', icon: 'table_view', group: 'Fullstack', run: () => commandRef.current.importSelect() },
+    { id: 'fs-explore', title: 'Explore generated files', description: 'Preview the file tree before downloading', icon: 'travel_explore', group: 'Fullstack', run: () => commandRef.current.explore() },
+    { id: 'fs-generate', title: 'Generate fullstack ZIP', icon: 'download', group: 'Fullstack', run: () => { void commandRef.current.generate() } },
+    { id: 'fs-export', title: 'Export model as JSON', icon: 'file_download', group: 'Fullstack', run: () => commandRef.current.exportJson() },
+    { id: 'fs-curl', title: 'Copy as curl', icon: 'terminal', group: 'Fullstack', run: () => { void commandRef.current.copyCurl() } },
+    { id: 'fs-undo', title: 'Undo', icon: 'undo', group: 'Fullstack', shortcut: 'Ctrl+Z', run: () => commandRef.current.undo() },
+    { id: 'fs-redo', title: 'Redo', icon: 'redo', group: 'Fullstack', shortcut: 'Ctrl+Shift+Z', run: () => commandRef.current.redo() },
+    { id: 'fs-collapse', title: 'Collapse / expand all entities', icon: 'unfold_less', group: 'Fullstack', run: () => commandRef.current.toggleCollapse() },
+    { id: 'fs-reset', title: 'Reset the fullstack generator', icon: 'restart_alt', group: 'Fullstack', run: () => commandRef.current.reset() },
+  ]), [])
+
   return (
     <div className="max-w-7xl mx-auto px-8 space-y-8">
       <header className="space-y-2">
@@ -609,11 +646,12 @@ export function FullstackView() {
         onCopyCurl={copyCurl}
       />
 
-      {/* Two-column config row: compact settings on the left, the taller dependency
-          picker on the right. Collapses to a single column below lg (mirrors the
-          Backend/Frontend tabs) so wide screens don't leave the right half empty. */}
-      <div className="grid grid-cols-12 gap-8">
-        <div className="col-span-12 lg:col-span-5 space-y-8 lg:h-[480px] lg:overflow-y-auto lg:pr-2">
+      {/* Two-column config row: settings on the left, the dependency picker on the right. The
+          picker column sticks to the viewport while the (taller) settings column scrolls past,
+          so the catalog stays reachable instead of being a small scroller beside a tall page.
+          Collapses to a single column below lg (mirrors the Backend/Frontend tabs). */}
+      <div className="grid grid-cols-12 gap-8 items-start">
+        <div className="col-span-12 lg:col-span-5 space-y-8">
       <section id="fs-meta" className="space-y-3">
         <SectionHeading icon="tune" title="Project Metadata" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -656,24 +694,16 @@ export function FullstackView() {
               {bootVersions.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </Labeled>
-          <Labeled label="Dashboard Title" htmlFor="fs-dashboardTitle">
-            <input id="fs-dashboardTitle" className={inputClass()} value={meta.dashboardTitle}
-                   placeholder={`Welcome to ${meta.artifactId || 'demo'}`}
-                   onChange={e => updateMeta({ dashboardTitle: e.target.value })} />
-          </Labeled>
-          <Labeled label="Dashboard Overview" htmlFor="fs-dashboardOverview">
-            <input id="fs-dashboardOverview" className={inputClass()} value={meta.dashboardOverview}
-                   placeholder="Manage your data below…"
-                   onChange={e => updateMeta({ dashboardOverview: e.target.value })} />
-          </Labeled>
         </div>
       </section>
 
+      {/* Backend: which template set renders the Spring side. Frontend (below): the React set plus
+          everything that only affects the generated SPA — palette, dashboard header, RTL. */}
       <section className="space-y-3">
-        <SectionHeading icon="dashboard_customize" title="Template Sets" />
+        <SectionHeading icon="dns" title="Backend" />
         <p className="text-[11px] text-on-surface-variant">
-          Generated files come from the selected backend + frontend template sets. Edit them in the
-          Config admin panel under "Entity CRUD".
+          Generated files come from the selected template sets. Edit them in the Config admin panel
+          under "Entity CRUD".
         </p>
         {setsError && (
           <div className="flex items-center justify-between gap-3 text-[11px] text-error border border-error/30 bg-error/10 rounded px-3 py-2">
@@ -690,33 +720,39 @@ export function FullstackView() {
           </div>
         )}
         {setsLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" aria-hidden="true">
-            <div className="h-[58px] rounded bg-surface-container-low animate-pulse" />
-            <div className="h-[58px] rounded bg-surface-container-low animate-pulse" />
-          </div>
+          <div className="h-[58px] rounded bg-surface-container-low animate-pulse" aria-hidden="true" />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Labeled label="Backend" htmlFor="fs-backendSet">
-              {/* Only one set per kind is seeded today, so a single-option <select> is just
-                  visual noise — show read-only text until a second set exists (then #5). */}
-              {backendSets.length > 1 ? (
-                <select id="fs-backendSet" className={inputClass()} value={backendSet} onChange={e => setBackendSet(e.target.value)}>
-                  {backendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
-                </select>
-              ) : (
-                <SetLabel name={currentBackendSet?.name} setKey={backendSet} />
-              )}
-            </Labeled>
-            <Labeled label="Frontend" htmlFor="fs-frontendSet">
-              {frontendSets.length > 1 ? (
-                <select id="fs-frontendSet" className={inputClass()} value={frontendSet} onChange={e => setFrontendSet(e.target.value)}>
-                  {frontendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
-                </select>
-              ) : (
-                <SetLabel name={currentFrontendSet?.name} setKey={frontendSet} />
-              )}
-            </Labeled>
-          </div>
+          <Labeled label="Template set" htmlFor="fs-backendSet">
+            {/* A single-option <select> is just visual noise — show read-only text until a
+                second set of this kind exists. */}
+            {backendSets.length > 1 ? (
+              <select id="fs-backendSet" className={inputClass()} value={backendSet} onChange={e => setBackendSet(e.target.value)}>
+                {backendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
+              </select>
+            ) : (
+              <SetLabel name={currentBackendSet?.name} setKey={backendSet} />
+            )}
+          </Labeled>
+        )}
+      </section>
+
+      <section id="fs-frontend" className="space-y-3">
+        <SectionHeading icon="web" title="Frontend" />
+        <p className="text-[11px] text-on-surface-variant">
+          Only affects the generated React app: its template set, colours, dashboard header and text direction.
+        </p>
+        {setsLoading ? (
+          <div className="h-[58px] rounded bg-surface-container-low animate-pulse" aria-hidden="true" />
+        ) : (
+          <Labeled label="Template set" htmlFor="fs-frontendSet">
+            {frontendSets.length > 1 ? (
+              <select id="fs-frontendSet" className={inputClass()} value={frontendSet} onChange={e => setFrontendSet(e.target.value)}>
+                {frontendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
+              </select>
+            ) : (
+              <SetLabel name={currentFrontendSet?.name} setKey={frontendSet} />
+            )}
+          </Labeled>
         )}
         {palettes.length > 0 && (
           <div className="pt-1 space-y-1.5">
@@ -741,6 +777,34 @@ export function FullstackView() {
             )}
           </div>
         )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Labeled label="Dashboard Title" htmlFor="fs-dashboardTitle">
+            <input id="fs-dashboardTitle" className={inputClass()} value={meta.dashboardTitle}
+                   placeholder={`Welcome to ${meta.artifactId || 'demo'}`}
+                   title="Heading of the generated dashboard (home) page"
+                   onChange={e => updateMeta({ dashboardTitle: e.target.value })} />
+          </Labeled>
+          <Labeled label="Dashboard Overview" htmlFor="fs-dashboardOverview">
+            <input id="fs-dashboardOverview" className={inputClass()} value={meta.dashboardOverview}
+                   placeholder="Manage your data below…"
+                   title="Blurb under the dashboard heading"
+                   onChange={e => updateMeta({ dashboardOverview: e.target.value })} />
+          </Labeled>
+        </div>
+        {RTL_OPTION && (
+          <label className="flex items-start gap-2.5 p-3 rounded-lg border border-outline-variant hover:border-primary/50 cursor-pointer transition-colors">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-primary"
+              checked={scaffoldOpts.includes(RTL_OPTION.value)}
+              onChange={() => toggleOpt(RTL_OPTION.value)}
+            />
+            <span className="flex flex-col">
+              <span className="text-sm text-on-surface">{RTL_OPTION.label}</span>
+              <span className="text-[11px] text-secondary">{RTL_OPTION.hint}</span>
+            </span>
+          </label>
+        )}
       </section>
 
       <section className="space-y-3">
@@ -749,7 +813,7 @@ export function FullstackView() {
           Opt-in scaffolding extras applied to every entity. Off by default.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {SCAFFOLD_OPTIONS.map(opt => {
+          {SCAFFOLD_OPTIONS.filter(opt => opt.value !== 'rtl').map(opt => {
             const checked = scaffoldOpts.includes(opt.value)
             const missingDep = checked && opt.requiresAnyDep && !opt.requiresAnyDep.some(d => selectedDeps.includes(d))
             return (
@@ -788,7 +852,7 @@ export function FullstackView() {
 
         </div>
 
-        <div className="col-span-12 lg:col-span-7 lg:flex lg:flex-col lg:h-[480px]">
+        <div className="col-span-12 lg:col-span-7 lg:sticky lg:top-24 lg:flex lg:flex-col lg:max-h-[calc(100vh-7.5rem)]">
       <section className="space-y-3 lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
         <div className="flex items-center justify-between gap-4">
           <SectionHeading icon="inventory_2" title="Dependencies" />
@@ -803,6 +867,7 @@ export function FullstackView() {
           selected={selectedDeps}
           defaults={currentDefaults}
           onChange={setSelectedDeps}
+          compatibilityRules={compatibilityRules}
         />
       </section>
         </div>

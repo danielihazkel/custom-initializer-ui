@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { InitializrMetadata, ProjectFormValues, StarterTemplate } from '../types'
+import type { PaletteAction } from '../commands'
 
 interface CommandPaletteProps {
   isOpen: boolean
@@ -11,9 +12,11 @@ interface CommandPaletteProps {
   onSelectTemplate: (template: StarterTemplate | null) => void
   onToggleDependency: (depId: string) => void
   onFormChange: (updates: Partial<ProjectFormValues>) => void
+  /** View-contributed actions (see commands.ts) — listed first, run on select, close the palette. */
+  actions?: PaletteAction[]
 }
 
-type PaletteActionType = 'template' | 'dependency' | 'config'
+type PaletteActionType = 'template' | 'dependency' | 'config' | 'action'
 
 interface PaletteItem {
   id: string
@@ -35,7 +38,8 @@ export function CommandPalette({
   selectedDeps,
   onSelectTemplate,
   onToggleDependency,
-  onFormChange
+  onFormChange,
+  actions = [],
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -56,6 +60,19 @@ export function CommandPalette({
   // project form doesn't rebuild the whole list.
   const allItems = useMemo(() => {
     const items: PaletteItem[] = []
+
+    // 0. Actions contributed by the active view (Fullstack tab: add entity, explore, …)
+    actions.forEach(a => {
+      items.push({
+        id: `act-${a.id}`,
+        type: 'action',
+        group: a.group,
+        title: a.title,
+        description: a.shortcut ? `${a.description ? a.description + ' · ' : ''}${a.shortcut}` : a.description,
+        icon: a.icon,
+        payload: a,
+      })
+    })
 
     // 1. Templates
     templates.forEach(t => {
@@ -110,7 +127,7 @@ export function CommandPalette({
     }
 
     return items
-  }, [metadata, templates])
+  }, [metadata, templates, actions])
 
   const selectedSet = useMemo(() => new Set(selectedDeps), [selectedDeps])
   function isActive(item: PaletteItem): boolean {
@@ -165,7 +182,10 @@ export function CommandPalette({
   // Click & Enter handling. Kept in a ref so the document keydown listener below always
   // calls the latest callbacks without re-subscribing on every prop change.
   const handleSelect = (item: PaletteItem) => {
-    if (item.type === 'template') {
+    if (item.type === 'action') {
+      onClose()
+      ;(item.payload as PaletteAction).run()
+    } else if (item.type === 'template') {
       onSelectTemplate(item.payload)
       onClose()
     } else if (item.type === 'dependency') {
@@ -232,7 +252,9 @@ export function CommandPalette({
             ref={inputRef}
             type="text"
             className="flex-1 bg-transparent border-none outline-none py-5 px-4 text-lg text-on-surface placeholder:text-on-surface-variant font-medium h-full"
-            placeholder="Search dependencies, templates, or config... (e.g. 'web', 'kotlin')"
+            placeholder={actions.length > 0 && !metadata
+              ? 'Search actions… (e.g. \'add entity\', \'generate\')'
+              : 'Search dependencies, templates, or config... (e.g. \'web\', \'kotlin\')'}
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
@@ -298,7 +320,7 @@ export function CommandPalette({
                     {item.type === 'config' && active && (
                       <span className="material-symbols-outlined text-tertiary text-[20px]">radio_button_checked</span>
                     )}
-                    {item.type === 'template' && (
+                    {(item.type === 'template' || item.type === 'action') && (
                       <span className={`material-symbols-outlined text-[18px] ${isSelected ? 'text-primary' : 'opacity-0'}`}>arrow_forward</span>
                     )}
                   </div>

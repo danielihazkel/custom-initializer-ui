@@ -42,7 +42,8 @@ export function countEntityErrors(e?: EntityErrors): number {
   return n
 }
 
-function newEntity(): FullstackEntityDef {
+/** A fresh entity with the usual `id` + `name` starter fields (shared with the ⌘K action). */
+export function newEntity(): FullstackEntityDef {
   return {
     uid: newUid(),
     name: '',

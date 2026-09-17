@@ -24,6 +24,7 @@ const GuideView = lazy(() => import('./components/guide/GuideView').then(m => ({
 const FrontendView = lazy(() => import('./components/FrontendView').then(m => ({ default: m.FrontendView })))
 const FullstackView = lazy(() => import('./components/fullstack/FullstackView').then(m => ({ default: m.FullstackView })))
 import { CommandPalette } from './components/CommandPalette'
+import { useRegisteredCommands } from './commands'
 import { AppToast } from './components/AppToast'
 import { InitializrSkeleton, ViewSkeleton } from './components/Skeletons'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -145,6 +146,8 @@ export default function App() {
 
   const [compareOpen, setCompareOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  // Actions the active view contributed to ⌘K (the Fullstack tab registers its own).
+  const paletteActions = useRegisteredCommands()
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
 
   // Command Palette global hotkey
@@ -599,8 +602,11 @@ export default function App() {
       <CommandPalette
         isOpen={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
-        metadata={metadata}
-        templates={templates}
+        // The catalog items (deps/templates/config) act on the Backend tab's form; on the
+        // Fullstack tab the palette lists that tab's own actions instead.
+        metadata={view === 'fullstack' ? null : metadata}
+        templates={view === 'fullstack' ? [] : templates}
+        actions={paletteActions}
         form={form}
         selectedDeps={selectedDeps}
         onSelectTemplate={handleTemplateSelect}

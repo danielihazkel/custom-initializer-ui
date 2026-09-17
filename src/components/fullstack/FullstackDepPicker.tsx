@@ -1,12 +1,19 @@
 import { useMemo, useState } from 'react'
-import type { DependencyGroup } from '../../types'
+import type { CompatibilityRule, DependencyGroup } from '../../types'
 import { useMetadata } from '../../hooks/useMetadata'
+import { useDependencyCompatibility } from '../../hooks/useDependencyCompatibility'
+import { SuggestionStrip } from '../SuggestionStrip'
 
 interface Props {
   selected: string[]
   defaults: string[]
   onChange: (next: string[]) => void
+  /** REQUIRES / CONFLICTS / RECOMMENDS rules for BACKEND deps — rendered as banners above the
+   *  selection (same semantics as the Backend and Frontend tabs via useDependencyCompatibility). */
+  compatibilityRules?: CompatibilityRule[]
 }
+
+const NO_RULES: CompatibilityRule[] = []
 
 /**
  * Lightweight dep picker for the Fullstack wizard. Deliberately separate from
@@ -16,7 +23,7 @@ interface Props {
  * Defaults are pre-checked but everything is uncheckable — the user has the final
  * say. Admin controls the defaults per template set.
  */
-export function FullstackDepPicker({ selected, defaults, onChange }: Props) {
+export function FullstackDepPicker({ selected, defaults, onChange, compatibilityRules = NO_RULES }: Props) {
   const { metadata, loading, error } = useMetadata()
   const [query, setQuery] = useState('')
 
@@ -24,6 +31,11 @@ export function FullstackDepPicker({ selected, defaults, onChange }: Props) {
   const defaultsSet = useMemo(() => new Set(defaults), [defaults])
 
   const groups: DependencyGroup[] = metadata?.dependencies?.values ?? []
+  const allDeps = useMemo(
+    () => groups.flatMap(g => g.values.map(v => ({ id: v.id, name: v.name }))),
+    [groups],
+  )
+  const { conflicts, requires, suggestions } = useDependencyCompatibility(compatibilityRules, selected, allDeps)
 
   // id -> human-readable name, so the selected-chips tray can show names instead of
   // raw ids. Falls back to the id itself for any selected dep not in the catalog
@@ -90,6 +102,38 @@ export function FullstackDepPicker({ selected, defaults, onChange }: Props) {
           Reset dependencies
         </button>
       </div>
+
+      {(conflicts.length > 0 || requires.length > 0) && (
+        <div className="space-y-2">
+          {conflicts.map((w, i) => (
+            <div key={`conflict-${i}`} role="alert" className="flex items-start gap-2 text-xs rounded-lg border border-error/30 bg-error/10 text-on-surface p-2.5">
+              <span className="material-symbols-outlined text-error mt-0.5" style={{ fontSize: '16px' }}>error</span>
+              <span className="flex-1">
+                <span className="font-semibold">{nameById.get(w.source) ?? w.source}</span> conflicts with{' '}
+                <span className="font-semibold">{nameById.get(w.target) ?? w.target}</span>
+                <span className="block text-on-surface-variant mt-0.5">{w.desc}</span>
+              </span>
+              <button type="button" onClick={() => toggle(w.target, false)} className="text-error font-semibold hover:underline shrink-0">
+                Remove {nameById.get(w.target) ?? w.target}
+              </button>
+            </div>
+          ))}
+          {requires.map((w, i) => (
+            <div key={`require-${i}`} role="alert" className="flex items-start gap-2 text-xs rounded-lg border border-warning/30 bg-warning/10 text-on-surface p-2.5">
+              <span className="material-symbols-outlined text-warning mt-0.5" style={{ fontSize: '16px' }}>info</span>
+              <span className="flex-1">
+                <span className="font-semibold">{nameById.get(w.source) ?? w.source}</span> requires{' '}
+                <span className="font-semibold">{nameById.get(w.target) ?? w.target}</span>
+                <span className="block text-on-surface-variant mt-0.5">{w.desc}</span>
+              </span>
+              <button type="button" onClick={() => toggle(w.target, true)} className="text-warning font-semibold hover:underline shrink-0">
+                Add {nameById.get(w.target) ?? w.target}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <SuggestionStrip suggestions={suggestions} onAdd={id => toggle(id, true)} />
 
       {/* Pinned selection tray — always visible above the scrolling catalog so the
           user can see (and remove) what's selected without scrolling. */}
