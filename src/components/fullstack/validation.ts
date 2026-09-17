@@ -84,6 +84,8 @@ export interface RelationErrors {
 
 export interface EntityErrors {
   name?: string
+  /** The entity has no fields at all (the backend rejects it before any PK check). */
+  noFields?: string
   pk?: string
   /** SELECT-backed view constraint (no generated PK, no relations). */
   view?: string
@@ -214,7 +216,11 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
       }
     }
 
-    if (pkCount === 0) {
+    if (entity.fields.length === 0) {
+      // Mirrors FullstackRequestValidator ("has no fields"); the PK rule would only confuse here.
+      eErr.noFields = 'Add at least one field'
+      result.count += 1
+    } else if (pkCount === 0) {
       eErr.pk = 'Mark at least one field as the primary key (PK)'
       result.count += 1
     } else if (pkCount > 1 && entity.fields.some(f => f.primaryKey && f.generated)) {
@@ -268,7 +274,7 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
 
     if (eErr.name) result.count += 1
     const hasRelErrs = eErr.relations && Object.keys(eErr.relations).length > 0
-    if (eErr.name || eErr.pk || eErr.view || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
+    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
       result.entities[eIdx] = eErr
     }
   })

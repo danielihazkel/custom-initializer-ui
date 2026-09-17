@@ -60,12 +60,18 @@ const LS = {
   opts: 'fullstack:opts',
 } as const
 
-// Opt-in scaffolding extras, sent as opts.scaffold. Each value matches a backend optScaffold<Option> gate.
+// Opt-in scaffolding extras, sent as opts.scaffold. Each value matches a backend optScaffold<Option>
+// gate — keep this list in step with FullstackProjectGenerationConfiguration (backend) and
+// FullstackStarterController.renderFrontend (frontend): an opt missing here is unreachable from the UI.
 const SCAFFOLD_OPTIONS: { value: string; label: string; hint: string }[] = [
   { value: 'audit', label: 'Audit timestamps', hint: 'createdAt / updatedAt via JPA auditing' },
   { value: 'softDelete', label: 'Soft delete', hint: 'deleted flag + Hibernate @SQLDelete/@SQLRestriction' },
   { value: 'inverseCollections', label: 'Inverse collections', hint: 'Read-only @OneToMany on the referenced side' },
   { value: 'tests', label: 'Controller tests', hint: 'Per-entity @WebMvcTest' },
+  { value: 'openapi', label: 'OpenAPI annotations', hint: 'springdoc @Tag/@Operation on every controller; adds the openapi starter' },
+  { value: 'secured', label: 'Permission hints', hint: 'Commented @RequiresPermission per endpoint; needs ldap-auth or ldap-auth-rest selected' },
+  { value: 'csvExport', label: 'CSV export', hint: 'GET /export.csv (streamed, honors search/filters/sort) + Export button' },
+  { value: 'bulkDelete', label: 'Bulk delete', hint: 'Select rows, DELETE /bulk across all' },
   { value: 'bulkUpdate', label: 'Bulk edit', hint: 'Select rows, set one field, PATCH /bulk across all' },
   { value: 'rtl', label: 'RTL layout', hint: 'dir="rtl" + Hebrew lang; mirrored right-to-left UI' },
 ]

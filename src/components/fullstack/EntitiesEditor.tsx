@@ -285,6 +285,13 @@ export function EntitiesEditor({ entities, onChange, errors }: Props) {
             </div>
           </div>
 
+          {eErr?.noFields && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
+              {eErr.noFields}
+            </div>
+          )}
+
           {eErr?.pk && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>

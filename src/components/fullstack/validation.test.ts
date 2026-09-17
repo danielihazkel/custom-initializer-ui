@@ -35,6 +35,13 @@ describe('validateEntities', () => {
     expect(result.entities[1]?.name).toBe('Duplicate entity name')
   })
 
+  it('reports a field-less entity as such, not as a missing primary key', () => {
+    const result = validateEntities([validEntity({ fields: [] })])
+    expect(result.entities[0]?.noFields).toBe('Add at least one field')
+    expect(result.entities[0]?.pk).toBeUndefined()
+    expect(result.count).toBe(1)
+  })
+
   it('requires at least one primary key and allows composite keys', () => {
     const noPk = validateEntities([validEntity({
       fields: [{ name: 'email', type: 'STRING' }],
