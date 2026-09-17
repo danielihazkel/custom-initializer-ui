@@ -4,6 +4,7 @@ import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
 } from '../../types'
 import { EntitiesEditor, newEntity } from './EntitiesEditor'
+import { EntityRelationGraph } from './EntityRelationGraph'
 import { focusRowWhenRendered } from './focus'
 import { FullstackDepPicker } from './FullstackDepPicker'
 import { FullstackPresets } from './FullstackPresets'
@@ -66,6 +67,7 @@ const LS = {
   opts: 'fullstack:opts',
   palette: 'fullstack:palette',
   collapsed: 'fullstack:collapsed',
+  graph: 'fullstack:graph',
 } as const
 
 // Opt-in scaffolding extras, sent as opts.scaffold. Each value matches a backend optScaffold<Option>
@@ -144,6 +146,7 @@ export function FullstackView() {
   const [confirmReset, setConfirmReset] = useState(false)
   const [pendingLoad, setPendingLoad] = useState<PendingLoad | null>(null)
   const [shareStatus, setShareStatus] = useState<ShareWriteStatus>('written')
+  const [showGraph, setShowGraph] = useState<boolean>(() => loadJson<boolean>(LS.graph, false))
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
     fetchPreview, clearPreview, clearError,
@@ -179,6 +182,7 @@ export function FullstackView() {
   useEffect(() => { persist(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
   useEffect(() => { persist(LS.palette, colorPalette) }, [colorPalette])
   useEffect(() => { persist(LS.collapsed, JSON.stringify([...collapsed])) }, [collapsed])
+  useEffect(() => { persist(LS.graph, JSON.stringify(showGraph)) }, [showGraph])
 
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
   const currentSnapshot = useMemo(
@@ -878,6 +882,18 @@ export function FullstackView() {
           <SectionHeading icon="table" title="Entities" primary />
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-[11px] text-secondary">{entities.length} entit{entities.length === 1 ? 'y' : 'ies'}</span>
+            {entities.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowGraph(v => !v)}
+                aria-pressed={showGraph}
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-colors ${showGraph ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/5'}`}
+                title="Show the entities and their @ManyToOne relations as a diagram"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
+                Diagram
+              </button>
+            )}
             {entities.length > 1 && (
               <button
                 type="button"
@@ -909,6 +925,20 @@ export function FullstackView() {
             </button>
           </div>
         </div>
+        {showGraph && entities.length > 0 && (
+          <EntityRelationGraph
+            entities={entities}
+            showInverse={scaffoldOpts.includes('inverseCollections')}
+            onSelect={uid => {
+              setCollapsed(prev => { if (!prev.has(uid)) return prev; const next = new Set(prev); next.delete(uid); return next })
+              requestAnimationFrame(() => {
+                const card = document.querySelector<HTMLElement>(`[data-row-uid="${CSS.escape(uid)}"]`)
+                card?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                card?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true })
+              })
+            }}
+          />
+        )}
         <EntitiesEditor
           entities={entities}
           onChange={setEntities}

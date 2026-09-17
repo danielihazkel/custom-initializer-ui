@@ -96,6 +96,9 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
   const [mode, setMode] = useState<ImportMode>(hasExisting ? 'append' : 'replace')
   const [error, setError] = useState<ImportError | null>(null)
   const [parsing, setParsing] = useState(false)
+  // Two-step flow: "Parse" fills this preview, "Import N entities" commits it. Editing the SQL
+  // or switching dialect clears it, so what gets imported is always what was reviewed.
+  const [parsed, setParsed] = useState<{ entities: FullstackEntityDef[]; note?: string } | null>(null)
   const copy = COPY[variant]
 
   // Re-seed on every open and on a variant switch: the same drawer instance serves both the
@@ -105,11 +108,19 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       setSql('')
       setError(null)
       setParsing(false)
+      setParsed(null)
       setMode(hasExisting ? 'append' : 'replace')
     }
   }, [isOpen, hasExisting, variant])
 
   async function handleSave() {
+    if (parsed) {
+      onImport(parsed.entities, mode, parsed.note)
+      setSql('')
+      setParsed(null)
+      onClose()
+      return
+    }
     setError(null)
     const trimmed = sql.trim()
     if (!trimmed) {
@@ -162,10 +173,10 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       setError({ detail: copy.emptyResult })
       throw new Error('empty result')
     }
-    onImport(entities, mode, body.note ?? undefined)
-    setSql('')
-    onClose()
+    setParsed({ entities, note: body.note ?? undefined })
   }
+
+  const n = parsed?.entities.length ?? 0
 
   return (
     <AdminFormDrawer
@@ -174,7 +185,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       onClose={onClose}
       onSave={handleSave}
       saving={parsing}
-      saveLabel="Import"
+      saveLabel={parsed ? `Import ${n} entit${n === 1 ? 'y' : 'ies'}` : 'Parse'}
       savingLabel="Parsing…"
     >
       <div className="space-y-4">
@@ -189,7 +200,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
           <select
             className="w-full bg-background border border-outline-variant rounded px-3 py-2 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
             value={dialect}
-            onChange={e => setDialect(e.target.value)}
+            onChange={e => { setDialect(e.target.value); setParsed(null) }}
           >
             {DIALECTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
           </select>
@@ -203,12 +214,51 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
             className="w-full font-mono text-xs bg-background border border-outline-variant rounded p-3 min-h-[260px] focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
             placeholder={copy.placeholder}
             value={sql}
-            onChange={e => setSql(e.target.value)}
+            onChange={e => { setSql(e.target.value); setParsed(null) }}
             spellCheck={false}
           />
         </div>
 
-        {hasExisting && (
+        {parsed && (
+          <div className="space-y-2" data-import-preview>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-secondary">
+                Preview — {n} entit{n === 1 ? 'y' : 'ies'}
+              </span>
+              <span className="text-[11px] text-secondary">Review, then import</span>
+            </div>
+            {parsed.note && (
+              <p className="flex items-start gap-1.5 text-[11px] text-secondary rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+                <span className="material-symbols-outlined mt-0.5" style={{ fontSize: '14px' }}>info</span>
+                {parsed.note}
+              </p>
+            )}
+            <ul className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+              {parsed.entities.map(e => (
+                <li key={e.uid} className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-sm font-semibold text-on-surface">{e.name}</span>
+                    {e.tableName && <span className="text-[10px] font-mono text-secondary">{e.schema ? `${e.schema}.` : ''}{e.tableName}</span>}
+                    {(e.readOnly || e.viewQuery) && (
+                      <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary/10 text-secondary font-bold">read-only</span>
+                    )}
+                    <span className="ml-auto text-[11px] text-secondary">{e.fields.length} field{e.fields.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {e.fields.map(f => (
+                      <span key={f.uid} className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${f.primaryKey ? 'border-primary/40 bg-primary/10 text-primary' : 'border-outline-variant/60 text-secondary'}`}
+                            title={[f.primaryKey && 'primary key', f.generated && 'generated', f.required && 'required', f.unique && 'unique'].filter(Boolean).join(', ') || undefined}>
+                        {f.primaryKey ? '🔑 ' : ''}{f.name}: {f.type}{f.length ? `(${f.length})` : ''}
+                      </span>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {hasExisting && parsed && (
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
               Mode
