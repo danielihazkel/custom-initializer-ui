@@ -73,6 +73,7 @@ const SCAFFOLD_OPTIONS: { value: string; label: string; hint: string }[] = [
   { value: 'csvExport', label: 'CSV export', hint: 'GET /export.csv (streamed, honors search/filters/sort) + Export button' },
   { value: 'bulkDelete', label: 'Bulk delete', hint: 'Select rows, DELETE /bulk across all' },
   { value: 'bulkUpdate', label: 'Bulk edit', hint: 'Select rows, set one field, PATCH /bulk across all' },
+  { value: 'seedData', label: 'Demo data', hint: 'Seeds 8 rows per entity on first start (parents before children); off via app.demo-data.enabled=false' },
   { value: 'rtl', label: 'RTL layout', hint: 'dir="rtl" + Hebrew lang; mirrored right-to-left UI' },
 ]
 
