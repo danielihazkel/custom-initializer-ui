@@ -6,7 +6,7 @@ import { newUid } from './uid'
  * sixty clicks. Grammar (tokens are whitespace-separated; a quoted value keeps its spaces):
  *
  *   name [TYPE] [pk] [gen] [req] [uniq] [lock] [email] [nosearch] [nofilter]
- *        [len=N] [min=N] [max=N] [pattern=RE] [values=A|B|C] [label="Shown name"]
+ *        [len=N] [min=N] [max=N] [pattern=RE] [values=A|B|C] [label="Shown name"] [default=V]
  *
  * `name:TYPE` and `name TYPE(N)` are accepted too. Type aliases follow the backend's lenient
  * `FieldType.forWireString` (int, bool, date, datetime, decimal, text, guid, …). `values=` implies
@@ -105,6 +105,7 @@ export function parseQuickAdd(text: string): QuickAddResult {
           case 'max': field.max = Number(value); break
           case 'pattern': case 'regex': field.pattern = value; break
           case 'label': field.label = value; break
+          case 'default': field.defaultValue = value; break
           case 'values': case 'enum': case 'options':
             field.enumValues = value.split(/[|,]/).map(v => v.trim()).filter(Boolean)
             field.type = 'ENUM'; typeSet = true

@@ -75,6 +75,50 @@ export interface FieldErrors {
   max?: string
   pattern?: string
   email?: string
+  defaultValue?: string
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const ISO_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?$/
+
+/** Mirrors FullstackRequestValidator.normalizeDefault: a default must parse as the field's type.
+ *  Returns a message, or undefined when the value is acceptable (or absent). */
+export function defaultValueError(field: {
+  type: FullstackEntityDef['fields'][number]['type']
+  defaultValue?: string
+  enumValues?: string[]
+  length?: number
+  generated?: boolean
+  primaryKey?: boolean
+}): string | undefined {
+  const raw = field.defaultValue
+  if (raw == null || raw.trim() === '') return undefined
+  if (field.generated && field.primaryKey) return 'A generated key cannot have a default'
+  const v = raw.trim()
+  switch (field.type) {
+    case 'LONG':
+    case 'INTEGER':
+      return /^[+-]?\d+$/.test(v) ? undefined : 'Must be a whole number'
+    case 'BIG_DECIMAL':
+      return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(v) ? undefined : 'Must be a number'
+    case 'BOOLEAN':
+      return /^(true|false)$/i.test(v) ? undefined : 'Must be true or false'
+    case 'LOCAL_DATE':
+      return ISO_DATE_RE.test(v) && !Number.isNaN(Date.parse(v)) ? undefined : 'Must be an ISO date (YYYY-MM-DD)'
+    case 'LOCAL_DATE_TIME':
+      return ISO_DATE_TIME_RE.test(v) && !Number.isNaN(Date.parse(v)) ? undefined : 'Must be an ISO date-time (YYYY-MM-DDTHH:MM[:SS])'
+    case 'UUID':
+      return UUID_RE.test(v) ? undefined : 'Must be a UUID'
+    case 'ENUM': {
+      const values = field.enumValues ?? []
+      return values.some(e => e.toUpperCase() === v.toUpperCase()) ? undefined : 'Must be one of the enum values'
+    }
+    case 'STRING':
+      return field.length != null && v.length > field.length ? `Longer than the max length (${field.length})` : undefined
+    default:
+      return undefined
+  }
 }
 
 export interface RelationErrors {
@@ -195,6 +239,9 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
         fErr.pattern = 'Pattern applies to STRING only'
       }
       if (field.email && field.type !== 'STRING') fErr.email = 'Email applies to STRING only'
+
+      const defErr = defaultValueError(field)
+      if (defErr) fErr.defaultValue = defErr
 
       if (Object.keys(fErr).length > 0) {
         eErr.fields[fIdx] = fErr

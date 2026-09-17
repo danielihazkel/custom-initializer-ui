@@ -36,7 +36,7 @@ export function QuickAddFields({ onAdd, onClose }: Props) {
           One field per line: <code className="font-mono text-on-surface">name type flags…</code> — types
           <code className="font-mono"> string text long int bool date datetime decimal uuid</code>, flags
           <code className="font-mono"> pk gen req uniq lock email nosearch nofilter</code>, options
-          <code className="font-mono"> len=N min=N max=N pattern=… values=A|B label="…"</code>.
+          <code className="font-mono"> len=N min=N max=N pattern=… values=A|B label="…" default=…</code>.
         </p>
         <button type="button" onClick={onClose} aria-label="Close quick add" className="p-0.5 rounded text-secondary hover:text-on-surface shrink-0">
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>

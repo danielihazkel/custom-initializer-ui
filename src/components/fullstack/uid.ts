@@ -38,6 +38,7 @@ export function cloneWithNewUids(e: FullstackEntityDef): FullstackEntityDef {
     fields: e.fields.map(f => ({ ...f, uid: newUid(), enumValues: f.enumValues ? [...f.enumValues] : undefined })),
     relations: e.relations?.map(r => ({ ...r, uid: newUid() })),
     listViews: e.listViews ? [...e.listViews] : undefined,
+    opts: e.opts ? { ...e.opts } : undefined,
   }
 }
 

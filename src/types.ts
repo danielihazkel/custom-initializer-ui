@@ -346,7 +346,18 @@ export interface FullstackFieldDef {
   /** Locked-after-create: the generated form disables the field on edit and the backend
    *  Service.update never overwrites it. Editable when creating a new row. */
   readOnly?: boolean
+  /** Initial value, as text, type-checked server-side per field type (integral/decimal parse,
+   *  true/false, ISO date/date-time, UUID, an enum constant). Rendered as the entity's field
+   *  initializer, the generated form's starting value and the demo-data seed. Not allowed on a
+   *  generated primary key. */
+  defaultValue?: string
 }
+
+/** Per-entity override of a project-wide scaffold opt (true = force on, false = force off;
+ *  absent = inherit). Keys: audit, softDelete, csvExport, bulkDelete, bulkUpdate, tests. */
+export type FullstackEntityOpts = Partial<Record<FullstackEntityOptKey, boolean>>
+export type FullstackEntityOptKey = 'audit' | 'softDelete' | 'csvExport' | 'bulkDelete' | 'bulkUpdate' | 'tests'
+export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests']
 
 // v1 supports the FK-owning side only (MANY_TO_ONE); the inverse @OneToMany is auto-derived
 // server-side via the inverseCollections opt.
@@ -391,6 +402,8 @@ export interface FullstackEntityDef {
   /** Originating CREATE TABLE this entity was imported from. Informational only —
    *  shown read-only in the editor; not used during generation. */
   sourceSql?: string
+  /** Per-entity overrides of the project-wide `opts.scaffold` flags (see {@link FullstackEntityOpts}). */
+  opts?: FullstackEntityOpts
 }
 
 export interface EntityTemplateSetSummary {

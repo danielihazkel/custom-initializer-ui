@@ -45,16 +45,37 @@ src/
 
 `FullstackView.tsx` owns the whole editor state and wires: `FullstackPresets` (built-in example models
 from `examples.ts` — every example must pass `validateEntities`, pinned by `examples.test.ts` — plus
-saved presets/recents via `hooks/useFullstackPresets`), an **undo stack** (`undo.ts`; every destructive
-edit — remove entity/field via `EntitiesEditor.onDestructive`, import-replace, reset, loading a
-preset/example — pushes a `FullstackSnapshot` first; the sticky bar's Undo and Ctrl+Z outside inputs pop
-it), the in-app `ConfirmDialog` for Reset (no `window.confirm`), **collapsible entity cards** (uids in
-`collapsed`, error-count badge on every header, Collapse/Expand all), a clickable issue count that
-jumps to the first problem (`#fs-meta`/`[data-entity-index]` + `[aria-invalid]`/`[data-error]`), and a
-**share link**: the editor state is written to the `?fs=` param (`shareLink.ts`, base64url JSON,
-debounced) so the header's Share button reproduces the model; on load `?fs=` beats localStorage.
-`snapshot.ts` defines `FullstackSnapshot`/`ProjectMeta` (uids stripped) — the unit presets, recents,
-undo and share links carry.
+saved presets/recents via `hooks/useFullstackPresets`, and **Export JSON / Import JSON / Copy as curl**
+— `snapshot.ts` `toExportedModel`/`parseExportedModel`), **undo/redo** (`undo.ts` `History` — every
+snapshot change is recorded automatically, coalescing a typing burst into one entry labelled by
+`describeSnapshotChange`; destructive actions push an explicit label via `pushUndoEntry` and the change
+they cause is skipped through `silentFromRef`; Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y outside inputs), the
+in-app `ConfirmDialog` for Reset and for a preset/example load that would discard unsaved edits
+(`hasUnsavedWork`: not the stock model, not the last-loaded baseline, not already a preset/recent),
+**collapsible entity cards** (uids in `collapsed`, persisted; error-count badge; Collapse/Expand all),
+a clickable issue count that jumps to the first problem (`#fs-meta`/`[data-entity-index]` +
+`[aria-invalid]`/`[data-error]`), and a **share link**: the editor state is written to the `?fs=` param
+(`shareLink.ts`, base64url JSON, debounced; `writeShareToLocation` returns `too-large` when it can't
+fit, which the sticky bar reports) so the header's Share button reproduces the model; on load `?fs=`
+beats localStorage, `App.tsx` keeps `?tab=fullstack` in step and strips `fs` when leaving the tab.
+`snapshot.ts` defines `FullstackSnapshot`/`ProjectMeta` (uids stripped; `colorPalette` optional) — the
+unit presets, recents, undo, share links and JSON files carry.
+
+Settings are grouped Project Metadata / Backend / Frontend (frontend template set, `PalettePicker` from
+`components/shared/`, dashboard title/overview, RTL) / Options (the `SCAFFOLD_OPTIONS`; `requiresAnyDep`
+warns inline when e.g. `secured` lacks an ldap-auth dep). `FullstackDepPicker` renders the BACKEND
+compatibility rules via `useDependencyCompatibility`. The tab registers its ⌘K actions through
+`src/commands.ts` (`registerCommands` / `useRegisteredCommands`); on this tab `CommandPalette` lists
+those instead of the Backend catalog.
+
+`EntitiesEditor` rows carry `data-row-uid` so `focus.ts` can focus a freshly added entity/field/relation;
+entities and fields have move up/down (`reorder.ts`); "Paste fields…" parses one field per line
+(`quickAdd.ts` — types/flags/`key=value`, incl. `default=`); each card shows a derived summary line
+(`summary.ts` + `naming.ts`, which mirrors `gen/Naming.java` — keep them in step); an "Overrides"
+panel sets per-entity `opts` (`FULLSTACK_ENTITY_OPT_KEYS` in `types.ts`, inherit/on/off vs the project
+opts) and the constraints panel carries a type-aware **Default value** (`validation.defaultValueError`
+mirrors the server check). `EntityRelationGraph.tsx` is the toggleable @ManyToOne diagram (d3-force,
+deterministic, click = jump to card). `ImportFromDdlDrawer` is two-step: Parse → preview → Import N.
 
 ## Data Flow
 

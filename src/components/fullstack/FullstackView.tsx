@@ -947,6 +947,7 @@ export function FullstackView() {
           collapsed={collapsed}
           onToggleCollapsed={toggleCollapsed}
           onDestructive={pushUndoEntry}
+          projectOpts={scaffoldOpts}
         />
       </section>
 

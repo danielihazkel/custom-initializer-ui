@@ -1,5 +1,8 @@
 import { Fragment, useState } from 'react'
-import type { FullstackEntityDef, FullstackFieldDef, FullstackFieldType, FullstackRelationDef } from '../../types'
+import {
+  FULLSTACK_ENTITY_OPT_KEYS,
+  type FullstackEntityDef, type FullstackEntityOptKey, type FullstackFieldDef, type FullstackFieldType, type FullstackRelationDef,
+} from '../../types'
 import type { EntityErrors, FieldErrors } from './validation'
 import { EnumValuesEditor } from './EnumValuesEditor'
 import { RelationsEditor } from './RelationsEditor'
@@ -26,6 +29,19 @@ interface Props {
   onToggleCollapsed?: (uid: string) => void
   /** Called just before an entity or field is removed, so the parent can snapshot for Undo. */
   onDestructive?: (label: string) => void
+  /** The project-wide `opts.scaffold` selection — shown as the "inherit" value in each entity's
+   *  per-entity overrides panel. */
+  projectOpts?: string[]
+}
+
+/** Labels for the per-entity override panel; the hint says what the flag changes on one entity. */
+const ENTITY_OPT_LABELS: Record<FullstackEntityOptKey, { label: string; hint: string }> = {
+  audit: { label: 'Audit timestamps', hint: 'createdAt / updatedAt columns' },
+  softDelete: { label: 'Soft delete', hint: 'deleted flag + restore endpoint' },
+  csvExport: { label: 'CSV export', hint: 'GET /export.csv + Export button' },
+  bulkDelete: { label: 'Bulk delete', hint: 'row selection + DELETE /bulk' },
+  bulkUpdate: { label: 'Bulk edit', hint: 'row selection + PATCH /bulk' },
+  tests: { label: 'Controller test', hint: '@WebMvcTest for this entity' },
 }
 
 /** Number of distinct problems on one entity (its own + every field's + every relation's) —
@@ -58,7 +74,20 @@ function newField(): FullstackFieldDef {
   return { uid: newUid(), name: '', type: 'STRING' }
 }
 
-export function EntitiesEditor({ entities, onChange, errors, noEntities, collapsed, onToggleCollapsed, onDestructive }: Props) {
+export function EntitiesEditor({
+  entities, onChange, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [],
+}: Props) {
+  // Which entity has its per-entity overrides panel open.
+  const [overridesFor, setOverridesFor] = useState<string | null>(null)
+  function setEntityOpt(eIdx: number, key: FullstackEntityOptKey, value: boolean | undefined) {
+    onChange(entities.map((e, i) => {
+      if (i !== eIdx) return e
+      const next = { ...(e.opts ?? {}) }
+      if (value === undefined) delete next[key]
+      else next[key] = value
+      return { ...e, opts: Object.keys(next).length > 0 ? next : undefined }
+    }))
+  }
   // Which field rows have their constraint panel expanded, keyed by `${entityUid}-${fieldUid}`
   // so the open panel follows its row through duplicate/remove. Rows with a constraint error
   // force open regardless (see isOpen).
@@ -134,6 +163,8 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
     if (type !== 'STRING' && type !== 'TEXT') updates.searchable = undefined
     const temporal = type === 'LOCAL_DATE' || type === 'LOCAL_DATE_TIME'
     if (!(type === 'ENUM' || type === 'BOOLEAN' || temporal || numeric)) updates.filterable = undefined
+    // A default is typed per field type, so it rarely survives a type change — drop it.
+    updates.defaultValue = undefined
     updateField(eIdx, fIdx, updates)
   }
 
@@ -352,8 +383,18 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
                 onChange={e => updateEntity(eIdx, { tableName: e.target.value || undefined })}
               />
               </div>
-              {/* Cluster B: generated-page behavior (read-only + list views) — wraps as a unit. */}
+              {/* Cluster B: generated-page behavior (read-only + list views + overrides) — wraps as a unit. */}
               <div className="inline-flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setOverridesFor(prev => prev === entityKey ? null : entityKey)}
+                aria-expanded={overridesFor === entityKey}
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${entity.opts && Object.keys(entity.opts).length > 0 ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/5'}`}
+                title="Turn a project-wide scaffolding option on or off for this entity only"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>tune</span>
+                Overrides{entity.opts && Object.keys(entity.opts).length > 0 ? ` (${Object.keys(entity.opts).length})` : ''}
+              </button>
               <label
                 className="flex items-center gap-1.5 text-xs text-secondary shrink-0 cursor-pointer"
                 title={entity.viewQuery ? 'A SELECT-backed view is always read-only' : 'Generate GET-only scaffolding (no create/update/delete)'}
@@ -419,6 +460,39 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
           </div>
 
           {!isCollapsed && (<>
+          {overridesFor === entityKey && (
+            <div className="rounded-lg border border-outline-variant bg-background/50 px-3 py-2.5 space-y-2" data-entity-overrides>
+              <p className="text-[11px] text-secondary">
+                Per-entity overrides of the project-wide Options. <em>Inherit</em> follows the project setting
+                (shown in brackets); <em>On</em>/<em>Off</em> forces it for this entity only.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {FULLSTACK_ENTITY_OPT_KEYS.map(key => {
+                  const projectOn = projectOpts.includes(key)
+                  const value = entity.opts?.[key]
+                  const current = value === undefined ? 'inherit' : value ? 'on' : 'off'
+                  return (
+                    <label key={key} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="flex flex-col min-w-0">
+                        <span className="text-on-surface">{ENTITY_OPT_LABELS[key].label}</span>
+                        <span className="text-[10px] text-secondary truncate">{ENTITY_OPT_LABELS[key].hint}</span>
+                      </span>
+                      <select
+                        aria-label={`${ENTITY_OPT_LABELS[key].label} override`}
+                        className={`bg-background border rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-primary/20 ${current === 'inherit' ? 'border-outline-variant text-secondary' : 'border-primary/50 text-on-surface'}`}
+                        value={current}
+                        onChange={e => setEntityOpt(eIdx, key, e.target.value === 'inherit' ? undefined : e.target.value === 'on')}
+                      >
+                        <option value="inherit">Inherit ({projectOn ? 'on' : 'off'})</option>
+                        <option value="on">On</option>
+                        <option value="off">Off</option>
+                      </select>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           {eErr?.noFields && (
             <div data-error className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
@@ -506,12 +580,14 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
                   const isFilterableType = !field.primaryKey
                     && (field.type === 'ENUM' || field.type === 'BOOLEAN' || isTemporal || isNumeric)
                   // Constraints are type-gated: STRING → length/pattern/email, numeric → min/max,
-                  // ENUM → values. Other types carry none, so they get no expander.
-                  const hasConstraintControls = isString || isNumeric || field.type === 'ENUM'
+                  // ENUM → values; every non-generated field can also carry a default value, so
+                  // only a generated key has no expander.
+                  const hasConstraintControls = !(field.primaryKey && field.generated)
                   const hasConstraintsSet = field.length != null || field.min != null || field.max != null
                     || Boolean(field.pattern) || Boolean(field.email) || (field.enumValues?.length ?? 0) > 0
+                    || Boolean(field.defaultValue)
                   const hasConstraintErr = Boolean(
-                    fErr?.length || fErr?.min || fErr?.max || fErr?.pattern || fErr?.email || fErr?.enumValues)
+                    fErr?.length || fErr?.min || fErr?.max || fErr?.pattern || fErr?.email || fErr?.enumValues || fErr?.defaultValue)
                   const rowKey = `${entityKey}-${fieldKey}`
                   // Force open on error so the message is never hidden behind a collapsed panel.
                   const isOpen = hasConstraintControls && (expandedFields.has(rowKey) || hasConstraintErr)
@@ -621,7 +697,7 @@ export function EntitiesEditor({ entities, onChange, errors, noEntities, collaps
                             : (hasConstraintsSet && !isOpen && <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />)}
                         </button>
                       ) : (
-                        <span className="text-secondary/40" title="No additional constraints for this type" aria-hidden="true">—</span>
+                        <span className="text-secondary/40" title="A generated key takes no constraints or default" aria-hidden="true">—</span>
                       )}
                     </td>
                     <td className="py-1.5 px-2 text-right align-top">
@@ -848,7 +924,47 @@ function FieldConstraintsPanel({ field, fErr, isString, isNumeric, onUpdate }: {
           />
         </ConstraintBox>
       )}
+      <ConstraintBox label="Default value" error={fErr?.defaultValue}>
+        <DefaultValueInput field={field} invalid={Boolean(fErr?.defaultValue)} className={inputClass(fErr?.defaultValue)}
+          onChange={v => onUpdate({ defaultValue: v === '' ? undefined : v })} />
+      </ConstraintBox>
     </div>
+  )
+}
+
+/** Type-aware control for a field's default: booleans and enums pick from their values, dates
+ *  use native pickers, everything else is text (the server type-checks it again). */
+function DefaultValueInput({ field, invalid, className, onChange }: {
+  field: FullstackFieldDef; invalid: boolean; className: string; onChange: (v: string) => void
+}) {
+  const value = field.defaultValue ?? ''
+  const common = { 'aria-label': 'Default value', 'aria-invalid': invalid, className, title: 'Initial value: entity field initializer, the form\'s starting value and the demo-data seed' }
+  if (field.type === 'BOOLEAN') {
+    return (
+      <select {...common} value={value.toLowerCase()} onChange={e => onChange(e.target.value)}>
+        <option value="">none</option>
+        <option value="true">true</option>
+        <option value="false">false</option>
+      </select>
+    )
+  }
+  if (field.type === 'ENUM') {
+    return (
+      <select {...common} value={value} onChange={e => onChange(e.target.value)}>
+        <option value="">none</option>
+        {(field.enumValues ?? []).map(v => <option key={v} value={v}>{v}</option>)}
+        {value && !(field.enumValues ?? []).includes(value) && <option value={value}>{value}</option>}
+      </select>
+    )
+  }
+  if (field.type === 'LOCAL_DATE') return <input {...common} type="date" value={value} onChange={e => onChange(e.target.value)} />
+  if (field.type === 'LOCAL_DATE_TIME') return <input {...common} type="datetime-local" value={value} onChange={e => onChange(e.target.value)} />
+  const placeholder = field.type === 'UUID' ? '00000000-0000-…'
+    : field.type === 'LONG' || field.type === 'INTEGER' ? '0'
+    : field.type === 'BIG_DECIMAL' ? '0.00' : 'none'
+  return (
+    <input {...common} type="text" inputMode={field.type === 'STRING' || field.type === 'TEXT' ? undefined : 'decimal'}
+      value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)} />
   )
 }
 
