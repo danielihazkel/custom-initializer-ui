@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { carryDefaultAcrossTypes, validateEntities, validateMeta, countMetaErrors } from './validation'
+import { canonicalVersion, carryDefaultAcrossTypes, validateEntities, validateMeta, countMetaErrors } from './validation'
 import type { FullstackEntityDef } from '../../types'
 
 const validEntity = (over: Partial<FullstackEntityDef> = {}): FullstackEntityDef => ({
@@ -257,5 +257,16 @@ describe('enum constants and Java keywords', () => {
       ],
     })])
     expect(r.count).toBe(0)
+  })
+})
+
+describe('Boot version spellings', () => {
+  it('treats the client metadata spelling (3.2.1.RELEASE) and the catalog id (3.2.1) as the same version', () => {
+    const meta = { groupId: 'g', artifactId: 'a', packageName: 'g.a', bootVersion: '3.2.1', javaVersion: '21' }
+    expect(validateMeta(meta, { bootVersions: ['3.2.1.RELEASE', '3.3.0.RELEASE'], javaVersions: ['21'] })).toEqual({})
+    expect(validateMeta({ ...meta, bootVersion: '3.3.0.RELEASE' }, { bootVersions: ['3.3.0'], javaVersions: ['21'] })).toEqual({})
+    expect(validateMeta({ ...meta, bootVersion: '2.7.0.RELEASE' }, { bootVersions: ['3.2.1.RELEASE'], javaVersions: ['21'] }).bootVersion).toBeTruthy()
+    expect(canonicalVersion('3.2.1.RELEASE')).toBe('3.2.1')
+    expect(canonicalVersion('3.2.1')).toBe('3.2.1')
   })
 })

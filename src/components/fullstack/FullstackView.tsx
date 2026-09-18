@@ -37,7 +37,7 @@ import { useFullstackPresets } from '../../hooks/useFullstackPresets'
 import { TeamModelError, useTeamModels } from '../../hooks/useTeamModels'
 import type { TeamModelSummary } from '../../types'
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
-import { validateEntities, validateMeta, countMetaErrors, type MetaErrors } from './validation'
+import { canonicalVersion, validateEntities, validateMeta, countMetaErrors, type MetaErrors } from './validation'
 
 const DEFAULT_META: ProjectMeta = DEFAULT_PROJECT_META
 
@@ -154,7 +154,10 @@ export function FullstackView() {
   const [teamConflict, setTeamConflict] = useState<{ name: string; description: string; existing: TeamModelSummary } | null>(null)
   const [confirmDeleteTeam, setConfirmDeleteTeam] = useState<TeamModelSummary | null>(null)
 
-  const { bootVersions, javaVersions, packagings } = useAdminMetadata()
+  const { bootVersions: rawBootVersions, javaVersions, packagings } = useAdminMetadata()
+  // The client metadata spells Boot versions "3.2.1.RELEASE"; the fullstack endpoint and the template
+  // sets pin the catalog id "3.2.1" — list and store the canonical form only.
+  const bootVersions = useMemo(() => Array.from(new Set(rawBootVersions.map(canonicalVersion))), [rawBootVersions])
   const { metadata: feMetadata } = useFrontendMetadata()
   const { rules: compatibilityRules } = useCompatibility('BACKEND')
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
@@ -818,7 +821,7 @@ export function FullstackView() {
           <Labeled label="Boot Version" htmlFor="fs-bootVersion" error={metaErrors.bootVersion}>
             <select id="fs-bootVersion" className={inputClass(metaErrors.bootVersion)} value={meta.bootVersion}
                     aria-invalid={Boolean(metaErrors.bootVersion)}
-                    onChange={e => updateMeta({ bootVersion: e.target.value })}>
+                    onChange={e => updateMeta({ bootVersion: canonicalVersion(e.target.value) })}>
               {(bootVersions.length === 0 || !bootVersions.includes(meta.bootVersion)) && (
                 <option value={meta.bootVersion}>{meta.bootVersion}{bootVersions.length > 0 ? ' (unknown)' : ''}</option>
               )}

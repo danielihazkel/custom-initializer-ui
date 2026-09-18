@@ -41,6 +41,12 @@ export interface VersionCatalog {
   javaVersions: string[]
 }
 
+/** `/metadata/client` spells Boot versions the Initializr v1 way (`3.2.1.RELEASE`); the catalog id
+ *  the fullstack endpoint stores and the templates pin is `3.2.1`. Compare and send the latter. */
+export function canonicalVersion(v: string): string {
+  return v.endsWith('.RELEASE') ? v.slice(0, -'.RELEASE'.length) : v
+}
+
 /** Validates the project-metadata fields. Mirrors the Backend tab's validateForm rules. */
 export function validateMeta(
   meta: { groupId: string; artifactId: string; packageName: string; domainPackage?: string; bootVersion?: string; javaVersion?: string },
@@ -48,7 +54,8 @@ export function validateMeta(
 ): MetaErrors {
   const errors: MetaErrors = {}
   if (catalog) {
-    if (catalog.bootVersions.length > 0 && meta.bootVersion && !catalog.bootVersions.includes(meta.bootVersion)) {
+    const boots = catalog.bootVersions.map(canonicalVersion)
+    if (boots.length > 0 && meta.bootVersion && !boots.includes(canonicalVersion(meta.bootVersion))) {
       errors.bootVersion = `Not in the catalog (${meta.bootVersion})`
     }
     if (catalog.javaVersions.length > 0 && meta.javaVersion && !catalog.javaVersions.includes(meta.javaVersion)) {
