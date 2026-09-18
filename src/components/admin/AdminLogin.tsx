@@ -2,9 +2,11 @@ import { useState, type FormEvent } from 'react'
 
 interface AdminLoginProps {
   onSuccess: (token: string) => void
+  /** Shown above the form, e.g. why the user is seeing it again (expired session). */
+  notice?: string
 }
 
-export function AdminLogin({ onSuccess }: AdminLoginProps) {
+export function AdminLogin({ onSuccess, notice }: AdminLoginProps) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -43,6 +45,9 @@ export function AdminLogin({ onSuccess }: AdminLoginProps) {
           <span className="material-symbols-outlined text-primary" style={{ fontSize: '24px' }}>lock</span>
           <h2 className="text-lg font-bold text-on-surface">Admin Access</h2>
         </div>
+        {notice && (
+          <p role="status" className="text-sm text-secondary mb-4">{notice}</p>
+        )}
         <form onSubmit={handleSubmit}>
           <label className="block text-sm font-medium text-secondary mb-1.5">Password</label>
           <input

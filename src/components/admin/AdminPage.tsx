@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { AdminTab } from '../../types'
 import { AdminLogin } from './AdminLogin'
+import { ADMIN_UNAUTHORIZED_EVENT } from '../../hooks/useAdminResource'
 import { AdminSidebar } from './AdminSidebar'
 import { AdminGlobalActions } from './AdminGlobalActions'
 import { AdminKindProvider, useAdminKind } from './AdminKindContext'
@@ -22,10 +23,23 @@ import { VersionsTab } from './versions/VersionsTab'
 
 export function AdminPage() {
   const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('adminToken'))
+  const [expired, setExpired] = useState(false)
+
+  // A 401 on any admin request (typically a token the backend forgot after a restart) drops
+  // back to the login form *here*, on the Config view, instead of reloading the whole page.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      setToken(null)
+      setExpired(true)
+    }
+    window.addEventListener(ADMIN_UNAUTHORIZED_EVENT, onUnauthorized)
+    return () => window.removeEventListener(ADMIN_UNAUTHORIZED_EVENT, onUnauthorized)
+  }, [])
 
   function handleLogin(newToken: string) {
     sessionStorage.setItem('adminToken', newToken)
     setToken(newToken)
+    setExpired(false)
   }
 
   function handleLogout() {
@@ -38,10 +52,16 @@ export function AdminPage() {
     }
     sessionStorage.removeItem('adminToken')
     setToken(null)
+    setExpired(false)
   }
 
   if (!token) {
-    return <AdminLogin onSuccess={handleLogin} />
+    return (
+      <AdminLogin
+        onSuccess={handleLogin}
+        notice={expired ? 'Your session has expired. Please sign in again.' : undefined}
+      />
+    )
   }
 
   return (

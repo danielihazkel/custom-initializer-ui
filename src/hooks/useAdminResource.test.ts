@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { adminFetch, AdminApiError, handle401, invalidateAdminCache, useAdminResource } from './useAdminResource'
+import { ADMIN_UNAUTHORIZED_EVENT, adminFetch, AdminApiError, handle401, invalidateAdminCache, useAdminResource } from './useAdminResource'
 
 function okJson(value: unknown, contentLength: string | null = null): Response {
   return {
@@ -62,7 +62,7 @@ describe('adminFetch', () => {
 })
 
 describe('handle401', () => {
-  it('clears the stored token and reloads on a 401', () => {
+  it('clears the stored token and announces the expiry instead of reloading the page', () => {
     sessionStorage.setItem('adminToken', 'tok-123')
     const reload = vi.fn()
     const original = window.location
@@ -70,14 +70,36 @@ describe('handle401', () => {
       configurable: true,
       value: { ...original, reload },
     })
+    const onUnauthorized = vi.fn()
+    window.addEventListener(ADMIN_UNAUTHORIZED_EVENT, onUnauthorized)
 
     try {
       handle401({ status: 401 } as Response)
       expect(sessionStorage.getItem('adminToken')).toBeNull()
-      expect(reload).toHaveBeenCalledOnce()
+      expect(onUnauthorized).toHaveBeenCalledOnce()
+      // A reload would land on the Backend tab (the Config view has no URL) and force a re-login.
+      expect(reload).not.toHaveBeenCalled()
     } finally {
+      window.removeEventListener(ADMIN_UNAUTHORIZED_EVENT, onUnauthorized)
       Object.defineProperty(window, 'location', { configurable: true, value: original })
     }
+  })
+
+  it('drops cached list promises on a 401 so the next login refetches', async () => {
+    sessionStorage.setItem('adminToken', 'stale')
+    fetchMock.mockResolvedValue(okJson([{ id: 1 }]))
+    const { result } = renderHook(() => useAdminResource<{ id: number }>('/admin/dependency-groups'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    handle401({ status: 401 } as Response)
+
+    sessionStorage.setItem('adminToken', 'fresh')
+    const second = renderHook(() => useAdminResource<{ id: number }>('/admin/dependency-groups'))
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const headers = (fetchMock.mock.calls[1][1] as RequestInit).headers as Record<string, string>
+    expect(headers.Authorization).toBe('Bearer fresh')
   })
 
   it('leaves the token intact on a non-401 response', () => {

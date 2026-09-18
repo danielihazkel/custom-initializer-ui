@@ -5,10 +5,19 @@ function getAuthHeaders(): Record<string, string> {
   return token ? { 'Authorization': `Bearer ${token}` } : {}
 }
 
+/**
+ * Fired on `window` when an admin request comes back 401 (stale token after a backend
+ * restart, logout in another tab, ...). `AdminPage` listens and drops back to the login
+ * form in place. This used to be a `window.location.reload()`, which sent the user to the
+ * Backend tab (the Config view has no URL representation) and forced a second login.
+ */
+export const ADMIN_UNAUTHORIZED_EVENT = 'admin-unauthorized'
+
 function handle401(res: Response): Response {
   if (res.status === 401) {
     sessionStorage.removeItem('adminToken')
-    window.location.reload()
+    invalidateAdminCache()
+    window.dispatchEvent(new Event(ADMIN_UNAUTHORIZED_EVENT))
   }
   return res
 }
