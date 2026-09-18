@@ -44,3 +44,11 @@ describe('uid helpers', () => {
     expect(ids.size).toBe(200)
   })
 })
+
+describe('stripUids drops the client-only sourceSql', () => {
+  it('keeps the imported DDL out of the wire payload, presets and share links', () => {
+    const [stripped] = stripUids(withUids([{ ...entity, sourceSql: 'CREATE TABLE orders (id BIGINT)' }]))
+    expect(stripped).not.toHaveProperty('sourceSql')
+    expect(stripped).toEqual(entity)
+  })
+})

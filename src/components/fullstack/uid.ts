@@ -42,9 +42,12 @@ export function cloneWithNewUids(e: FullstackEntityDef): FullstackEntityDef {
   }
 }
 
-/** Removes the client-only uids so the wire payload matches the backend DTOs exactly. */
+/** Removes the client-only props so the wire payload matches the backend DTOs exactly: the row
+ *  uids, and `sourceSql` (the DDL an entity was imported from — shown on the card for the
+ *  session, but the server discards it and it is large enough to blow the localStorage quota
+ *  and the share-link length when carried along). */
 export function stripUids(entities: FullstackEntityDef[]): FullstackEntityDef[] {
-  return entities.map(({ uid: _e, fields, relations, ...rest }) => ({
+  return entities.map(({ uid: _e, sourceSql: _s, fields, relations, ...rest }) => ({
     ...rest,
     fields: fields.map(({ uid: _f, ...f }) => f),
     relations: relations?.map(({ uid: _r, ...r }) => r),

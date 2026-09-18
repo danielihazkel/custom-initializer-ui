@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { FullstackPreset } from '../../hooks/useFullstackPresets'
+import type { TeamModelSummary } from '../../types'
 import type { FullstackSnapshot } from './snapshot'
 import { EXAMPLE_MODELS, type ExampleModel } from './examples'
 
@@ -19,9 +20,18 @@ interface Props {
   onImportJson: (file: File) => void
   /** Copies a ready-to-run curl for POST /starter-fullstack.zip with the current body. */
   onCopyCurl: () => void
+  /** Models saved on the server for everyone (the "Team" tab). The list is summaries only; the
+   *  parent fetches the snapshot on load and owns the confirm dialogs for delete/overwrite. */
+  teamModels: TeamModelSummary[]
+  teamLoading: boolean
+  teamError: string | null
+  onRefreshTeam: () => void
+  onLoadTeam: (model: TeamModelSummary) => void
+  onSaveTeam: (name: string, description: string, snapshot: FullstackSnapshot) => void
+  onDeleteTeam: (model: TeamModelSummary) => void
 }
 
-function relativeTime(ts: number): string {
+export function relativeTime(ts: number): string {
   const diff = Date.now() - ts
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return 'just now'
@@ -33,30 +43,46 @@ function relativeTime(ts: number): string {
   return new Date(ts).toLocaleDateString()
 }
 
+type Tab = 'examples' | 'presets' | 'recents' | 'team'
+type SaveTarget = 'browser' | 'team'
+
 /**
  * "Start from" strip for the fullstack tab: built-in example models (Blog, Orders, …), the user's
- * saved presets and recently generated models. Loading anything replaces the whole editor state
- * (the caller pushes an undo entry first).
+ * saved presets, recently generated models, and the models shared on the server for the whole
+ * team. Loading anything replaces the whole editor state (the caller pushes an undo entry first).
  */
 export function FullstackPresets({
   presets, recents, currentSnapshot, onLoad, onLoadExample, onSave, onDeletePreset, onDeleteRecent,
   onExportJson, onImportJson, onCopyCurl,
+  teamModels, teamLoading, teamError, onRefreshTeam, onLoadTeam, onSaveTeam, onDeleteTeam,
 }: Props) {
-  const [tab, setTab] = useState<'examples' | 'presets' | 'recents'>('examples')
+  const [tab, setTab] = useState<Tab>('examples')
   const [savePromptOpen, setSavePromptOpen] = useState(false)
   const [draftName, setDraftName] = useState('')
+  const [draftDescription, setDraftDescription] = useState('')
+  const [saveTarget, setSaveTarget] = useState<SaveTarget>('browser')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function closeSavePrompt() {
+    setSavePromptOpen(false)
+    setDraftName('')
+    setDraftDescription('')
+  }
 
   function commitSave() {
     const name = draftName.trim()
     if (!name) return
-    onSave(name, currentSnapshot)
-    setDraftName('')
-    setSavePromptOpen(false)
-    setTab('presets')
+    if (saveTarget === 'team') {
+      onSaveTeam(name, draftDescription, currentSnapshot)
+      setTab('team')
+    } else {
+      onSave(name, currentSnapshot)
+      setTab('presets')
+    }
+    closeSavePrompt()
   }
 
-  const tabButton = (key: typeof tab, label: string, count: number, tone: 'primary' | 'tertiary') => (
+  const tabButton = (key: Tab, label: string, count: number, tone: 'primary' | 'tertiary') => (
     <button
       type="button"
       onClick={() => setTab(key)}
@@ -78,6 +104,7 @@ export function FullstackPresets({
         <div className="flex items-center gap-4">
           {tabButton('examples', 'Examples', EXAMPLE_MODELS.length, 'primary')}
           {tabButton('presets', 'My Presets', presets.length, 'primary')}
+          {tabButton('team', 'Team', teamModels.length, 'primary')}
           {tabButton('recents', 'Recent', recents.length, 'tertiary')}
         </div>
         <div className="flex items-center gap-4 flex-wrap">
@@ -140,35 +167,66 @@ export function FullstackPresets({
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="flex items-center gap-2 p-3 rounded-lg border border-outline-variant bg-surface-container">
-              <input
-                autoFocus
-                type="text"
-                aria-label="Preset name"
-                value={draftName}
-                onChange={e => setDraftName(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') commitSave()
-                  if (e.key === 'Escape') { setSavePromptOpen(false); setDraftName('') }
-                }}
-                placeholder="Preset name (e.g. Billing domain v2)"
-                className="flex-1 bg-surface-container-lowest border border-outline-variant rounded-md px-3 py-1.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
-              />
-              <button
-                type="button"
-                onClick={commitSave}
-                disabled={!draftName.trim()}
-                className="px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-on-primary disabled:opacity-40 active:scale-95 transition-transform"
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={() => { setSavePromptOpen(false); setDraftName('') }}
-                className="px-3 py-1.5 rounded-md text-xs font-medium text-secondary hover:text-on-surface transition-colors"
-              >
-                Cancel
-              </button>
+            <div className="p-3 rounded-lg border border-outline-variant bg-surface-container space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  type="text"
+                  aria-label="Preset name"
+                  value={draftName}
+                  onChange={e => setDraftName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') commitSave()
+                    if (e.key === 'Escape') closeSavePrompt()
+                  }}
+                  placeholder="Preset name (e.g. Billing domain v2)"
+                  className="flex-1 bg-surface-container-lowest border border-outline-variant rounded-md px-3 py-1.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
+                />
+                <div className="inline-flex rounded-md border border-outline-variant overflow-hidden text-xs" role="group" aria-label="Save to">
+                  {([['browser', 'This browser', 'bookmark'], ['team', 'Team', 'groups']] as const).map(([key, label, icon]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={saveTarget === key}
+                      onClick={() => setSaveTarget(key)}
+                      title={key === 'team' ? 'Saved on the server — everyone who opens the generator sees it' : 'Saved in this browser only'}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1.5 transition-colors ${saveTarget === key ? 'bg-primary/15 text-primary font-semibold' : 'text-secondary hover:text-on-surface'}`}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{icon}</span>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={commitSave}
+                  disabled={!draftName.trim()}
+                  className="px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-on-primary disabled:opacity-40 active:scale-95 transition-transform"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={closeSavePrompt}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium text-secondary hover:text-on-surface transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              {saveTarget === 'team' && (
+                <input
+                  type="text"
+                  aria-label="Team model description"
+                  value={draftDescription}
+                  onChange={e => setDraftDescription(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') commitSave()
+                    if (e.key === 'Escape') closeSavePrompt()
+                  }}
+                  placeholder="Description for your colleagues (optional)"
+                  className="w-full bg-surface-container-lowest border border-outline-variant rounded-md px-3 py-1.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
+                />
+              )}
             </div>
           </motion.div>
         )}
@@ -199,7 +257,70 @@ export function FullstackPresets({
         </div>
       )}
 
-      {tab !== 'examples' && (() => {
+      {tab === 'team' && (
+        <div data-team-models>
+          {teamError && (
+            <div className="flex items-center justify-between gap-3 text-[11px] text-error border border-error/30 bg-error/10 rounded px-3 py-2 mb-2">
+              <span>Couldn't load the team models ({teamError}).</span>
+              <button type="button" onClick={onRefreshTeam} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-error/40 text-error hover:bg-error/10 transition-colors">
+                <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>refresh</span>
+                Retry
+              </button>
+            </div>
+          )}
+          {teamLoading && teamModels.length === 0 ? (
+            <div className="h-[104px] rounded-lg bg-surface-container-low animate-pulse" aria-hidden="true" />
+          ) : teamModels.length === 0 ? (
+            !teamError && (
+              <div className="text-xs text-secondary py-4 px-4 rounded-lg border border-dashed border-outline-variant/50 bg-surface-container-low/30">
+                Nothing shared yet. Save the current model with "Save current as preset…" → Team and everyone who opens the generator will see it here.
+              </div>
+            )
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {teamModels.map(model => (
+                <div
+                  key={model.id}
+                  className="relative flex-shrink-0 w-56 rounded-lg border-2 border-outline-variant bg-surface-container hover:border-outline group transition-all"
+                >
+                  <button type="button" onClick={() => onLoadTeam(model)} className="w-full p-4 text-left" title={model.description ?? undefined}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="material-symbols-outlined text-secondary" style={{ fontSize: '20px' }}>groups</span>
+                      <span className="font-semibold text-sm text-on-surface truncate">{model.name}</span>
+                    </div>
+                    <p className="text-[11px] text-secondary truncate">
+                      {model.description || (model.createdBy ? `by ${model.createdBy}` : 'No description')}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5 items-center">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-secondary bg-surface-container-high px-1.5 py-0.5 rounded">
+                        <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>table</span>
+                        {model.entityCount} entit{model.entityCount === 1 ? 'y' : 'ies'}
+                      </span>
+                      {model.description && model.createdBy && (
+                        <span className="text-[10px] text-secondary truncate max-w-[6rem]" title={`Saved by ${model.createdBy}`}>{model.createdBy}</span>
+                      )}
+                      <span className="text-[10px] text-secondary ml-auto" title={new Date(model.updatedAt).toLocaleString()}>
+                        {relativeTime(Date.parse(model.updatedAt))}
+                      </span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteTeam(model)}
+                    aria-label={`Delete ${model.name} for everyone`}
+                    title="Delete for everyone"
+                    className="absolute top-1.5 right-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error/10 hover:text-error transition-all"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(tab === 'presets' || tab === 'recents') && (() => {
         const list = tab === 'presets' ? presets : recents
         const onDelete = tab === 'presets' ? onDeletePreset : onDeleteRecent
         if (list.length === 0) {

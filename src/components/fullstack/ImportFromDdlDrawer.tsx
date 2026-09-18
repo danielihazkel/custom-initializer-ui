@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { AdminFormDrawer } from '../admin/shared/AdminFormDrawer'
 import type { FullstackEntityDef } from '../../types'
 import { newUid } from './uid'
+import { useSqlDialects } from '../../hooks/useSqlDialects'
 
 interface Props {
   isOpen: boolean
@@ -51,14 +52,20 @@ const COPY: Record<ImportVariant, {
   },
 }
 
-const DIALECTS: { value: string; label: string }[] = [
-  { value: 'H2', label: 'H2' },
-  { value: 'POSTGRESQL', label: 'PostgreSQL' },
-  { value: 'MYSQL', label: 'MySQL' },
-  { value: 'MSSQL', label: 'SQL Server' },
-  { value: 'ORACLE', label: 'Oracle' },
-  { value: 'DB2', label: 'DB2' },
-]
+// Display names for the dialect enum ids the server reports (`/metadata/sql-dialects`, the same
+// source the SQL wizard uses). Unknown ids fall back to the raw name.
+const DIALECT_LABELS: Record<string, string> = {
+  H2: 'H2', POSTGRESQL: 'PostgreSQL', MYSQL: 'MySQL', MSSQL: 'SQL Server', ORACLE: 'Oracle', DB2: 'DB2',
+}
+// Used until the catalog answers (or when it fails), so the drawer is never left without a dialect.
+const FALLBACK_DIALECTS = Object.keys(DIALECT_LABELS)
+
+/** Distinct dialect ids from the depId → dialect map, catalog order, H2 first when present. */
+export function dialectOptions(dialects: Record<string, string>): { value: string; label: string }[] {
+  const ids = Array.from(new Set(Object.values(dialects).filter(Boolean)))
+  const ordered = ids.includes('H2') ? ['H2', ...ids.filter(d => d !== 'H2')] : ids
+  return (ordered.length > 0 ? ordered : FALLBACK_DIALECTS).map(value => ({ value, label: DIALECT_LABELS[value] ?? value }))
+}
 
 interface WireField {
   name: string
@@ -70,6 +77,12 @@ interface WireField {
   length: number | null
   enumValues: string[]
 }
+interface WireRelation {
+  type: string
+  fieldName: string
+  targetEntity: string
+  required: boolean
+}
 interface WireEntity {
   name: string
   tableName: string | null
@@ -78,6 +91,8 @@ interface WireEntity {
   readOnly?: boolean
   viewQuery?: string | null
   sourceSql?: string | null
+  /** MANY_TO_ONEs derived from single-column foreign keys between the pasted tables. */
+  relations?: WireRelation[] | null
 }
 interface ImportResponse {
   entities: WireEntity[]
@@ -99,7 +114,19 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
   // Two-step flow: "Parse" fills this preview, "Import N entities" commits it. Editing the SQL
   // or switching dialect clears it, so what gets imported is always what was reviewed.
   const [parsed, setParsed] = useState<{ entities: FullstackEntityDef[]; note?: string } | null>(null)
+  // Which parsed entities to import (uids) — everything by default, so a paste of a whole schema
+  // can be trimmed to the tables that matter without re-pasting.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const copy = COPY[variant]
+  const { dialects: catalogDialects } = useSqlDialects()
+  const dialectChoices = dialectOptions(catalogDialects)
+  // If the catalog answers without the current pick (e.g. a dialect was removed), fall back to
+  // the first option rather than posting an id the server no longer accepts.
+  const dialectIds = dialectChoices.map(d => d.value).join(',')
+  useEffect(() => {
+    const ids = dialectIds.split(',')
+    if (!ids.includes(dialect)) setDialect(ids[0] || 'H2')
+  }, [dialectIds, dialect])
 
   // Re-seed on every open and on a variant switch: the same drawer instance serves both the
   // DDL and SELECT imports, so leftover text from one must never be posted to the other.
@@ -109,13 +136,26 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       setError(null)
       setParsing(false)
       setParsed(null)
+      setSelected(new Set())
       setMode(hasExisting ? 'append' : 'replace')
     }
   }, [isOpen, hasExisting, variant])
 
   async function handleSave() {
     if (parsed) {
-      onImport(parsed.entities, mode, parsed.note)
+      const chosen = parsed.entities.filter(e => e.uid && selected.has(e.uid))
+      if (chosen.length === 0) {
+        setError({ detail: 'Tick at least one entity to import' })
+        throw new Error('nothing selected')
+      }
+      // A relation to a table that was left out would point at nothing — drop it (the note
+      // under the chip said so before the click).
+      const kept = new Set(chosen.map(e => e.name.toLowerCase()))
+      const entities = chosen.map(e => ({
+        ...e,
+        relations: e.relations?.filter(r => kept.has(r.targetEntity.toLowerCase())),
+      }))
+      onImport(entities, mode, parsed.note)
       setSql('')
       setParsed(null)
       onClose()
@@ -168,15 +208,30 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
         length: f.length ?? undefined,
         enumValues: f.enumValues.length > 0 ? f.enumValues : undefined,
       })),
+      relations: e.relations && e.relations.length > 0
+        ? e.relations.map(r => ({
+          uid: newUid(),
+          type: 'MANY_TO_ONE' as const,
+          fieldName: r.fieldName,
+          targetEntity: r.targetEntity,
+          required: r.required || undefined,
+        }))
+        : undefined,
     }))
     if (entities.length === 0) {
       setError({ detail: copy.emptyResult })
       throw new Error('empty result')
     }
     setParsed({ entities, note: body.note ?? undefined })
+    setSelected(new Set(entities.map(e => e.uid!)))
   }
 
   const n = parsed?.entities.length ?? 0
+  const nSelected = parsed ? parsed.entities.filter(e => e.uid && selected.has(e.uid)).length : 0
+  const selectedNames = new Set(parsed?.entities.filter(e => e.uid && selected.has(e.uid)).map(e => e.name.toLowerCase()) ?? [])
+  function toggleSelected(uid: string) {
+    setSelected(prev => { const next = new Set(prev); next.has(uid) ? next.delete(uid) : next.add(uid); return next })
+  }
 
   return (
     <AdminFormDrawer
@@ -185,7 +240,9 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       onClose={onClose}
       onSave={handleSave}
       saving={parsing}
-      saveLabel={parsed ? `Import ${n} entit${n === 1 ? 'y' : 'ies'}` : 'Parse'}
+      saveLabel={parsed
+        ? (nSelected === n ? `Import ${n} entit${n === 1 ? 'y' : 'ies'}` : `Import ${nSelected} of ${n}`)
+        : 'Parse'}
       savingLabel="Parsing…"
     >
       <div className="space-y-4">
@@ -202,7 +259,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
             value={dialect}
             onChange={e => { setDialect(e.target.value); setParsed(null) }}
           >
-            {DIALECTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+            {dialectChoices.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
           </select>
         </div>
 
@@ -225,7 +282,15 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
               <span className="text-[11px] font-bold uppercase tracking-widest text-secondary">
                 Preview — {n} entit{n === 1 ? 'y' : 'ies'}
               </span>
-              <span className="text-[11px] text-secondary">Review, then import</span>
+              <span className="flex items-center gap-3 text-[11px] text-secondary">
+                {n > 1 && (
+                  <button type="button" className="underline hover:no-underline"
+                          onClick={() => setSelected(nSelected === n ? new Set() : new Set(parsed.entities.map(e => e.uid!)))}>
+                    {nSelected === n ? 'Select none' : 'Select all'}
+                  </button>
+                )}
+                <span>Tick what to import</span>
+              </span>
             </div>
             {parsed.note && (
               <p className="flex items-start gap-1.5 text-[11px] text-secondary rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
@@ -235,8 +300,15 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
             )}
             <ul className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
               {parsed.entities.map(e => (
-                <li key={e.uid} className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+                <li key={e.uid} className={`rounded-lg border bg-surface-container-low px-3 py-2 ${selected.has(e.uid!) ? 'border-outline-variant' : 'border-outline-variant/40 opacity-60'}`}>
                   <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-primary"
+                      aria-label={`Import ${e.name}`}
+                      checked={selected.has(e.uid!)}
+                      onChange={() => toggleSelected(e.uid!)}
+                    />
                     <span className="font-mono text-sm font-semibold text-on-surface">{e.name}</span>
                     {e.tableName && <span className="text-[10px] font-mono text-secondary">{e.schema ? `${e.schema}.` : ''}{e.tableName}</span>}
                     {(e.readOnly || e.viewQuery) && (
@@ -251,6 +323,19 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
                         {f.primaryKey ? '🔑 ' : ''}{f.name}: {f.type}{f.length ? `(${f.length})` : ''}
                       </span>
                     ))}
+                    {e.relations?.map(r => {
+                      const targetKept = selectedNames.has(r.targetEntity.toLowerCase())
+                      return (
+                        <span key={r.uid} data-relation-chip
+                              className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${targetKept ? 'border-tertiary/40 bg-tertiary/10 text-tertiary' : 'border-outline-variant/60 text-secondary line-through'}`}
+                              title={targetKept
+                                ? `@ManyToOne ${r.fieldName} → ${r.targetEntity}${r.required ? ' (required)' : ''} — from the table's foreign key`
+                                : `${r.targetEntity} is not being imported, so this relation is dropped`}>
+                          <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>link</span>
+                          {r.fieldName} → {r.targetEntity}
+                        </span>
+                      )
+                    })}
                   </div>
                 </li>
               ))}

@@ -29,13 +29,32 @@ export interface MetaErrors {
   artifactId?: string
   packageName?: string
   domainPackage?: string
+  bootVersion?: string
+  javaVersion?: string
+}
+
+/** The version ids the server knows. A restored preset or share link can carry a version that
+ *  has since left the catalog; the server rejects it with a 400 only at Generate, so the editor
+ *  flags it up front. An empty list means the catalog hasn't loaded — nothing is flagged. */
+export interface VersionCatalog {
+  bootVersions: string[]
+  javaVersions: string[]
 }
 
 /** Validates the project-metadata fields. Mirrors the Backend tab's validateForm rules. */
 export function validateMeta(
-  meta: { groupId: string; artifactId: string; packageName: string; domainPackage?: string },
+  meta: { groupId: string; artifactId: string; packageName: string; domainPackage?: string; bootVersion?: string; javaVersion?: string },
+  catalog?: VersionCatalog,
 ): MetaErrors {
   const errors: MetaErrors = {}
+  if (catalog) {
+    if (catalog.bootVersions.length > 0 && meta.bootVersion && !catalog.bootVersions.includes(meta.bootVersion)) {
+      errors.bootVersion = `Not in the catalog (${meta.bootVersion})`
+    }
+    if (catalog.javaVersions.length > 0 && meta.javaVersion && !catalog.javaVersions.includes(meta.javaVersion)) {
+      errors.javaVersion = `Not in the catalog (${meta.javaVersion})`
+    }
+  }
   if (!meta.artifactId.trim()) errors.artifactId = 'Required'
   else if (/\s/.test(meta.artifactId)) errors.artifactId = 'No spaces allowed'
   if (!meta.groupId.trim()) errors.groupId = 'Required'
@@ -121,6 +140,27 @@ export function defaultValueError(field: {
   }
 }
 
+/** Whether a default typed for `from` still parses as `to`, so a type change can keep it instead
+ *  of silently wiping what the user typed. Only the lossless pairs carry over (STRING↔TEXT, and
+ *  LONG↔INTEGER when the value fits an int); everything else returns undefined = clear it. */
+export function carryDefaultAcrossTypes(
+  from: FullstackEntityDef['fields'][number]['type'],
+  to: FullstackEntityDef['fields'][number]['type'],
+  value: string | undefined,
+): string | undefined {
+  if (value == null || value.trim() === '') return undefined
+  if (from === to) return value
+  const text = (from === 'STRING' || from === 'TEXT') && (to === 'STRING' || to === 'TEXT')
+  if (text) return value
+  const integral = (from === 'LONG' || from === 'INTEGER') && (to === 'LONG' || to === 'INTEGER')
+  if (integral) {
+    if (to === 'LONG') return value
+    const n = Number(value.trim())
+    return Number.isInteger(n) && n >= -2147483648 && n <= 2147483647 ? value : undefined
+  }
+  return undefined
+}
+
 export interface RelationErrors {
   fieldName?: string
   targetEntity?: string
@@ -163,7 +203,7 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
   for (const e of entities) {
     if (!e.name?.trim()) continue
     pkCountByName.set(e.name.trim().toLowerCase(), e.fields.filter(f => f.primaryKey).length)
-    if (e.viewQuery?.trim()) viewNames.add(e.name.trim().toLowerCase())
+    if (e.viewQuery != null) viewNames.add(e.name.trim().toLowerCase())
   }
 
   const seenEntityNames = new Map<string, number[]>() // lower name → entity indexes
@@ -201,7 +241,8 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
         if (values.length === 0) {
           fErr.enumValues = 'At least one value required'
         } else {
-          const bad = values.find(v => !IDENTIFIER_RE.test(v) || RESERVED_JAVA_KEYWORDS.has(v.toLowerCase()))
+          // Exact-case, like the server: Java keywords are lower-case, so NEW/DEFAULT are fine.
+          const bad = values.find(v => !IDENTIFIER_RE.test(v) || RESERVED_JAVA_KEYWORDS.has(v))
           if (bad) fErr.enumValues = `Invalid value '${bad}'`
         }
       } else if ((field.enumValues?.length ?? 0) > 0) {
@@ -228,8 +269,17 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
         if (!isNumeric) {
           if (field.min != null) fErr.min = 'Min applies to numeric fields only'
           if (field.max != null) fErr.max = 'Max applies to numeric fields only'
-        } else if (field.min != null && field.max != null && field.min > field.max) {
-          fErr.min = 'Min must be ≤ Max'
+        } else {
+          // Integral bounds must be whole (the DTO renders them into @Min/@Max, which take longs);
+          // decimals are only meaningful on BIG_DECIMAL (@DecimalMin/@DecimalMax).
+          if (field.type !== 'BIG_DECIMAL') {
+            const whole = (v: number) => Number.isInteger(v) && (field.type === 'LONG' || (v >= -2147483648 && v <= 2147483647))
+            if (field.min != null && !whole(field.min)) fErr.min = field.type === 'INTEGER' && Number.isInteger(field.min) ? 'Out of the int range' : 'Must be a whole number'
+            if (field.max != null && !whole(field.max)) fErr.max = field.type === 'INTEGER' && Number.isInteger(field.max) ? 'Out of the int range' : 'Must be a whole number'
+          }
+          if (!fErr.min && field.min != null && field.max != null && field.min > field.max) {
+            fErr.min = 'Min must be ≤ Max'
+          }
         }
       }
       // Regex syntax is deliberately not checked here: the server compiles it with
@@ -276,11 +326,14 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
       result.count += 1
     }
 
-    // SELECT-backed view: maps to @Subselect, so no auto-generated PK and no relations (v1).
-    const isView = !!entity.viewQuery?.trim()
+    // SELECT-backed view: maps to @Subselect, so no auto-generated PK and no relations (v1). The
+    // editor's "SELECT-backed view" tick sets viewQuery to '' until the query is typed; the server
+    // would quietly treat a blank query as a plain table, so block that here.
+    const isView = entity.viewQuery != null
     if (isView) {
       // Both rules are independent (the backend raises each on its own), so report both.
       const viewErrors: string[] = []
+      if (!entity.viewQuery!.trim()) viewErrors.push('Enter the SELECT query or untick "SELECT-backed view"')
       if (entity.fields.some(f => f.generated)) viewErrors.push('A view cannot have a generated primary key')
       if ((entity.relations?.length ?? 0) > 0) viewErrors.push('A view cannot declare relations')
       if (viewErrors.length > 0) {

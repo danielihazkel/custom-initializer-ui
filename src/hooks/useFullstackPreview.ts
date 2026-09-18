@@ -56,9 +56,16 @@ export function useFullstackPreview() {
     setError(null)
   }, [])
 
+  // Cancel the in-flight request: abort it and retire its id so nothing it still returns lands.
+  const cancel = useCallback(() => {
+    abortRef.current?.abort()
+    reqIdRef.current += 1
+    setLoading(false)
+  }, [])
+
   // Clear only the error (keep the last preview for diffing). Used to drop a stale
   // failure once the user edits the inputs, so the Explore button doesn't stay stuck.
   const clearError = useCallback(() => setError(null), [])
 
-  return { preview, previousPreview, loading, error, fetchPreview, clearPreview, clearError }
+  return { preview, previousPreview, loading, error, fetchPreview, clearPreview, clearError, cancel }
 }

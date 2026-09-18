@@ -14,9 +14,12 @@ import { ConfirmDialog } from '../ConfirmDialog'
 import { StatusToast } from '../admin/shared/StatusToast'
 import { stripUids, withUids } from './uid'
 import {
-  describeSnapshotChange, makeSnapshot, parseExportedModel, snapshotsEqual, toExportedModel,
+  DEFAULT_PROJECT_META, describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, snapshotsEqual, toExportedModel,
   type FullstackSnapshot, type ProjectMeta,
 } from './snapshot'
+import { lintModel, type LintIssue } from './lint'
+import { ModelLintPanel } from './ModelLintPanel'
+import { frontendSetDefaults } from './frontendSetDefaults'
 import { clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, type ExampleModel } from './examples'
@@ -31,19 +34,12 @@ import { registerCommands } from '../../commands'
 const ProjectPreview = lazy(() => import('../ProjectPreview').then(m => ({ default: m.ProjectPreview })))
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
 import { useFullstackPresets } from '../../hooks/useFullstackPresets'
+import { TeamModelError, useTeamModels } from '../../hooks/useTeamModels'
+import type { TeamModelSummary } from '../../types'
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
 import { validateEntities, validateMeta, countMetaErrors, type MetaErrors } from './validation'
 
-const DEFAULT_META: ProjectMeta = {
-  groupId: 'com.menora',
-  artifactId: 'demo',
-  packageName: 'com.menora.demo',
-  domainPackage: '',
-  bootVersion: '3.2.1',
-  javaVersion: '21',
-  dashboardTitle: '',
-  dashboardOverview: '',
-}
+const DEFAULT_META: ProjectMeta = DEFAULT_PROJECT_META
 
 const DEFAULT_ENTITIES: FullstackEntityDef[] = [
   {
@@ -126,7 +122,8 @@ export function FullstackView() {
   if (sharedRef.current === undefined) sharedRef.current = readShareFromLocation()
   const shared = sharedRef.current
 
-  const [meta, setMeta] = useState<ProjectMeta>(() => shared?.meta ?? loadJson(LS.meta, DEFAULT_META))
+  // normalizeMeta fills in settings that predate a stored model (name/version/packaging/locale…).
+  const [meta, setMeta] = useState<ProjectMeta>(() => normalizeMeta(shared?.meta ?? loadJson<Partial<ProjectMeta>>(LS.meta, DEFAULT_META)))
   const [entities, setEntities] = useState<FullstackEntityDef[]>(() => withUids(shared?.entities ?? loadJson(LS.entities, DEFAULT_ENTITIES)))
   const [backendSet, setBackendSet] = useState(() => shared?.backendSet ?? localStorage.getItem(LS.backendSet) ?? 'spring-jpa-crud')
   const [frontendSet, setFrontendSet] = useState(() => shared?.frontendSet ?? localStorage.getItem(LS.frontendSet) ?? 'react-tailwind-crud')
@@ -149,11 +146,15 @@ export function FullstackView() {
   const [showGraph, setShowGraph] = useState<boolean>(() => loadJson<boolean>(LS.graph, false))
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
-    fetchPreview, clearPreview, clearError,
+    fetchPreview, clearPreview, clearError, cancel: cancelPreview,
   } = useFullstackPreview()
   const { presets, recents, savePreset, deletePreset, deleteRecent, pushRecent } = useFullstackPresets()
+  const team = useTeamModels()
+  // A team save that hit an existing name, held while the user decides whether to overwrite it.
+  const [teamConflict, setTeamConflict] = useState<{ name: string; description: string; existing: TeamModelSummary } | null>(null)
+  const [confirmDeleteTeam, setConfirmDeleteTeam] = useState<TeamModelSummary | null>(null)
 
-  const { bootVersions, javaVersions } = useAdminMetadata()
+  const { bootVersions, javaVersions, packagings } = useAdminMetadata()
   const { metadata: feMetadata } = useFrontendMetadata()
   const { rules: compatibilityRules } = useCompatibility('BACKEND')
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
@@ -169,13 +170,18 @@ export function FullstackView() {
   // Validation — mirrors the backend FullstackRequestValidator so problems surface inline
   // before submit. The server stays the source of truth.
   const entityErrors = useMemo(() => validateEntities(entities), [entities])
-  const metaErrors: MetaErrors = useMemo(() => validateMeta(meta), [meta])
+  const metaErrors: MetaErrors = useMemo(
+    () => validateMeta(meta, { bootVersions, javaVersions }),
+    [meta, bootVersions, javaVersions],
+  )
   const errorCount = entityErrors.count + countMetaErrors(metaErrors)
   const hasErrors = errorCount > 0
 
   // Persist form state so a refresh doesn't lose the user's work (mirrors useProjectState).
   useEffect(() => { persist(LS.meta, JSON.stringify(meta)) }, [meta])
-  useEffect(() => { persist(LS.entities, JSON.stringify(entities)) }, [entities])
+  // `sourceSql` (the imported DDL) stays in memory only: it is the one prop big enough to blow
+  // the quota, and the server discards it anyway. The uids do persist — `collapsed` keys on them.
+  useEffect(() => { persist(LS.entities, JSON.stringify(entities.map(({ sourceSql: _s, ...e }) => e))) }, [entities])
   useEffect(() => { persist(LS.deps, JSON.stringify(selectedDeps)) }, [selectedDeps])
   useEffect(() => { persist(LS.backendSet, backendSet) }, [backendSet])
   useEffect(() => { persist(LS.frontendSet, frontendSet) }, [frontendSet])
@@ -271,6 +277,11 @@ export function FullstackView() {
       if (currentFrontendSet.javaVersion) {
         setMeta(prev => ({ ...prev, javaVersion: currentFrontendSet.javaVersion! }))
       }
+      // A brand set implies its language/direction (Menora Digital → Hebrew + RTL), like the
+      // standalone Frontend tab. Only on an explicit pick; the user can switch either back.
+      const defaults = frontendSetDefaults(currentFrontendSet)
+      if (defaults.locale) setMeta(prev => ({ ...prev, locale: defaults.locale! }))
+      if (defaults.rtl) setScaffoldOpts(prev => prev.includes('rtl') ? prev : [...prev, 'rtl'])
     }
   }, [currentFrontendSet])
 
@@ -324,7 +335,7 @@ export function FullstackView() {
     // re-seed deps/versions over the snapshot's own values.
     seededBackendSetRef.current = s.backendSet
     seededFrontendSetRef.current = s.frontendSet
-    setMeta({ ...s.meta })
+    setMeta(normalizeMeta(s.meta))
     setEntities(withUids(JSON.parse(JSON.stringify(s.entities)) as FullstackEntityDef[]))
     setSelectedDeps([...s.selectedDeps])
     setScaffoldOpts([...s.scaffoldOpts])
@@ -398,6 +409,54 @@ export function FullstackView() {
   function requestLoad(load: PendingLoad) {
     if (hasUnsavedWork) setPendingLoad(load)
     else runLoad(load)
+  }
+
+  // ── Team models (server-side, shared with everyone) ───────────────────────
+  async function saveToTeam(name: string, description: string) {
+    const snapshot = currentSnapshot
+    try {
+      await team.save(name, description, snapshot)
+      baselineRef.current = snapshot // now captured somewhere — no "unsaved work" prompt for it
+      setToast({ message: `Saved "${name}" for the team`, type: 'success' })
+    } catch (err) {
+      const existing = err instanceof TeamModelError && err.status === 409
+        ? team.models.find(m => m.name.toLowerCase() === name.toLowerCase())
+        : undefined
+      if (existing) {
+        setTeamConflict({ name, description, existing })
+        return
+      }
+      setToast({ message: `Couldn't save to the team: ${(err as Error).message}`, type: 'error' })
+    }
+  }
+  async function overwriteTeamModel() {
+    const conflict = teamConflict
+    if (!conflict) return
+    setTeamConflict(null)
+    const snapshot = currentSnapshot
+    try {
+      await team.update(conflict.existing.id, conflict.name, conflict.description, snapshot)
+      baselineRef.current = snapshot
+      setToast({ message: `Updated "${conflict.name}" for the team`, type: 'success' })
+    } catch (err) {
+      setToast({ message: `Couldn't update the team model: ${(err as Error).message}`, type: 'error' })
+    }
+  }
+  function loadTeamModel(model: TeamModelSummary) {
+    team.load(model.id)
+      .then(snapshot => requestLoad({ kind: 'preset', snapshot }))
+      .catch((err: Error) => setToast({ message: `Couldn't load "${model.name}": ${err.message}`, type: 'error' }))
+  }
+  async function deleteTeamModel() {
+    const model = confirmDeleteTeam
+    if (!model) return
+    setConfirmDeleteTeam(null)
+    try {
+      await team.remove(model.id)
+      setToast({ message: `Deleted "${model.name}" for everyone`, type: 'success' })
+    } catch (err) {
+      setToast({ message: `Couldn't delete "${model.name}": ${(err as Error).message}`, type: 'error' })
+    }
   }
 
   // ── Portable model: JSON export / import, curl ────────────────────────────
@@ -518,10 +577,20 @@ export function FullstackView() {
     fetchPreview(buildBody())
   }
 
+  // The in-flight Generate request, so the sticky bar's Cancel can abort it (and unmount does).
+  const generateAbortRef = useRef<AbortController | null>(null)
+  useEffect(() => () => generateAbortRef.current?.abort(), [])
+  function cancelGenerate() {
+    generateAbortRef.current?.abort()
+  }
+
   /** Returns true when the ZIP downloaded successfully — lets the preview modal stay
    *  open (and show the error toast) on failure, and close only on success. */
   async function generate(): Promise<boolean> {
     if (!validateBeforeSubmit()) return false
+    generateAbortRef.current?.abort()
+    const controller = new AbortController()
+    generateAbortRef.current = controller
     setGenerating(true)
     try {
       const body = buildBody()
@@ -529,6 +598,7 @@ export function FullstackView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: controller.signal,
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null) as { detail?: string; error?: string } | null
@@ -547,10 +617,18 @@ export function FullstackView() {
       setToast({ message: 'Fullstack project downloaded', type: 'success' })
       return true
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setToast({ message: 'Generation cancelled', type: 'success' })
+        return false
+      }
       setToast({ message: `Generation failed: ${(err as Error).message}`, type: 'error' })
       return false
     } finally {
-      setGenerating(false)
+      // A newer Generate may already own the ref — only the request that set it clears the state.
+      if (generateAbortRef.current === controller) {
+        generateAbortRef.current = null
+        setGenerating(false)
+      }
     }
   }
 
@@ -590,6 +668,29 @@ export function FullstackView() {
     })
   }
   const allCollapsed = entities.length > 0 && entities.every(e => e.uid && collapsed.has(e.uid))
+
+  /** Expand (if collapsed) and scroll to an entity card, focusing its name — used by the
+   *  diagram and the suggestions panel. */
+  function revealRow(uid: string) {
+    setCollapsed(prev => { if (!prev.has(uid)) return prev; const next = new Set(prev); next.delete(uid); return next })
+    requestAnimationFrame(() => {
+      const card = document.querySelector<HTMLElement>(`[data-row-uid="${CSS.escape(uid)}"]`)
+      card?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      card?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true })
+    })
+  }
+
+  // ── Suggestions (non-blocking lint) ────────────────────────────────────────
+  const lintIssues = useMemo(() => lintModel(entities, scaffoldOpts, selectedDeps), [entities, scaffoldOpts, selectedDeps])
+  function applyLintFix(issue: LintIssue) {
+    if (!issue.fix) return
+    pushUndoEntry(`Fixed: ${issue.fix.label}`)
+    const next = issue.fix.apply({ entities, scaffoldOpts, selectedDeps })
+    if (next.entities !== entities) setEntities(withUids(next.entities))
+    if (next.scaffoldOpts !== scaffoldOpts) setScaffoldOpts(next.scaffoldOpts)
+    if (next.selectedDeps !== selectedDeps) setSelectedDeps(next.selectedDeps)
+    setToast({ message: `Applied: ${issue.fix.label}`, type: 'success' })
+  }
 
   const lastUndo = history.past[history.past.length - 1]
   const nextRedo = history.future[history.future.length - 1]
@@ -648,6 +749,13 @@ export function FullstackView() {
         onExportJson={exportJson}
         onImportJson={importJson}
         onCopyCurl={copyCurl}
+        teamModels={team.models}
+        teamLoading={team.loading}
+        teamError={team.error}
+        onRefreshTeam={() => { void team.refresh() }}
+        onLoadTeam={loadTeamModel}
+        onSaveTeam={(name, description) => { void saveToTeam(name, description) }}
+        onDeleteTeam={setConfirmDeleteTeam}
       />
 
       {/* Two-column config row: settings on the left, the dependency picker on the right. The
@@ -669,6 +777,17 @@ export function FullstackView() {
                    aria-invalid={Boolean(metaErrors.artifactId)}
                    onChange={e => updateMeta({ artifactId: e.target.value })} />
           </Labeled>
+          <Labeled label="Name" htmlFor="fs-name">
+            <input id="fs-name" className={inputClass()} value={meta.name}
+                   placeholder={meta.artifactId || 'demo'}
+                   title="Project name in the generated pom.xml (blank = the artifact id)"
+                   onChange={e => updateMeta({ name: e.target.value })} />
+          </Labeled>
+          <Labeled label="Description" htmlFor="fs-description">
+            <input id="fs-description" className={inputClass()} value={meta.description}
+                   placeholder="Optional one-liner for the pom"
+                   onChange={e => updateMeta({ description: e.target.value })} />
+          </Labeled>
           <Labeled label="Package Name" htmlFor="fs-packageName" error={metaErrors.packageName}>
             <input id="fs-packageName" className={inputClass(metaErrors.packageName)} value={meta.packageName}
                    aria-invalid={Boolean(metaErrors.packageName)}
@@ -684,18 +803,41 @@ export function FullstackView() {
               <code>.dto</code>, <code>.service</code>, <code>.controller</code>. Blank = same as Package Name; must be under it.
             </p>
           </Labeled>
-          <Labeled label="Java Version" htmlFor="fs-javaVersion">
-            <select id="fs-javaVersion" className={inputClass()} value={meta.javaVersion}
+          {/* A restored/imported version that has left the catalog is kept visible as an "(unknown)"
+              option and flagged, rather than silently snapping the select to the first entry. */}
+          <Labeled label="Java Version" htmlFor="fs-javaVersion" error={metaErrors.javaVersion}>
+            <select id="fs-javaVersion" className={inputClass(metaErrors.javaVersion)} value={meta.javaVersion}
+                    aria-invalid={Boolean(metaErrors.javaVersion)}
                     onChange={e => updateMeta({ javaVersion: e.target.value })}>
-              {javaVersions.length === 0 && <option value={meta.javaVersion}>{meta.javaVersion}</option>}
+              {(javaVersions.length === 0 || !javaVersions.includes(meta.javaVersion)) && (
+                <option value={meta.javaVersion}>{meta.javaVersion}{javaVersions.length > 0 ? ' (unknown)' : ''}</option>
+              )}
               {javaVersions.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </Labeled>
-          <Labeled label="Boot Version" htmlFor="fs-bootVersion">
-            <select id="fs-bootVersion" className={inputClass()} value={meta.bootVersion}
+          <Labeled label="Boot Version" htmlFor="fs-bootVersion" error={metaErrors.bootVersion}>
+            <select id="fs-bootVersion" className={inputClass(metaErrors.bootVersion)} value={meta.bootVersion}
+                    aria-invalid={Boolean(metaErrors.bootVersion)}
                     onChange={e => updateMeta({ bootVersion: e.target.value })}>
-              {bootVersions.length === 0 && <option value={meta.bootVersion}>{meta.bootVersion}</option>}
+              {(bootVersions.length === 0 || !bootVersions.includes(meta.bootVersion)) && (
+                <option value={meta.bootVersion}>{meta.bootVersion}{bootVersions.length > 0 ? ' (unknown)' : ''}</option>
+              )}
               {bootVersions.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </Labeled>
+          <Labeled label="Version" htmlFor="fs-version">
+            <input id="fs-version" className={inputClass()} value={meta.version}
+                   placeholder="0.0.1-SNAPSHOT"
+                   title="Artifact version in the generated pom.xml (blank = the catalog default)"
+                   onChange={e => updateMeta({ version: e.target.value })} />
+          </Labeled>
+          {/* configurationFileFormat is deliberately not offered: the common catalog writes
+              application.yaml and deletes application.properties whatever the request says. */}
+          <Labeled label="Packaging" htmlFor="fs-packaging">
+            <select id="fs-packaging" className={inputClass()} value={meta.packaging}
+                    onChange={e => updateMeta({ packaging: e.target.value })}>
+              {(packagings.length > 0 ? packagings : ['jar', 'war']).map(p => <option key={p} value={p}>{p}</option>)}
+              {packagings.length > 0 && !packagings.includes(meta.packaging) && <option value={meta.packaging}>{meta.packaging} (unknown)</option>}
             </select>
           </Labeled>
         </div>
@@ -795,20 +937,33 @@ export function FullstackView() {
                    onChange={e => updateMeta({ dashboardOverview: e.target.value })} />
           </Labeled>
         </div>
-        {RTL_OPTION && (
-          <label className="flex items-start gap-2.5 p-3 rounded-lg border border-outline-variant hover:border-primary/50 cursor-pointer transition-colors">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-4 w-4 accent-primary"
-              checked={scaffoldOpts.includes(RTL_OPTION.value)}
-              onChange={() => toggleOpt(RTL_OPTION.value)}
-            />
-            <span className="flex flex-col">
-              <span className="text-sm text-on-surface">{RTL_OPTION.label}</span>
-              <span className="text-[11px] text-secondary">{RTL_OPTION.hint}</span>
-            </span>
-          </label>
-        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+          <Labeled label="Language" htmlFor="fs-locale">
+            <select id="fs-locale" className={inputClass()} value={meta.locale}
+                    onChange={e => updateMeta({ locale: e.target.value === 'he' ? 'he' : 'en' })}>
+              <option value="en">English</option>
+              <option value="he">עברית (Hebrew)</option>
+            </select>
+            <p className="text-[11px] text-on-surface-variant">
+              The generated app's own words — nav, buttons, dialogs, empty states. Your entity and
+              field labels are used exactly as typed.
+            </p>
+          </Labeled>
+          {RTL_OPTION && (
+            <label className="flex items-start gap-2.5 p-3 rounded-lg border border-outline-variant hover:border-primary/50 cursor-pointer transition-colors sm:mt-5">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-primary"
+                checked={scaffoldOpts.includes(RTL_OPTION.value)}
+                onChange={() => toggleOpt(RTL_OPTION.value)}
+              />
+              <span className="flex flex-col">
+                <span className="text-sm text-on-surface">{RTL_OPTION.label}</span>
+                <span className="text-[11px] text-secondary">{RTL_OPTION.hint}</span>
+              </span>
+            </label>
+          )}
+        </div>
       </section>
 
       <section className="space-y-3">
@@ -925,18 +1080,12 @@ export function FullstackView() {
             </button>
           </div>
         </div>
+        <ModelLintPanel issues={lintIssues} onFix={applyLintFix} onJump={revealRow} />
         {showGraph && entities.length > 0 && (
           <EntityRelationGraph
             entities={entities}
             showInverse={scaffoldOpts.includes('inverseCollections')}
-            onSelect={uid => {
-              setCollapsed(prev => { if (!prev.has(uid)) return prev; const next = new Set(prev); next.delete(uid); return next })
-              requestAnimationFrame(() => {
-                const card = document.querySelector<HTMLElement>(`[data-row-uid="${CSS.escape(uid)}"]`)
-                card?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                card?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true })
-              })
-            }}
+            onSelect={revealRow}
           />
         )}
         <EntitiesEditor
@@ -948,6 +1097,7 @@ export function FullstackView() {
           onToggleCollapsed={toggleCollapsed}
           onDestructive={pushUndoEntry}
           projectOpts={scaffoldOpts}
+          onNotice={message => setToast({ message, type: 'success' })}
         />
       </section>
 
@@ -1025,11 +1175,22 @@ export function FullstackView() {
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>arrow_forward</span>
           </button>
         )}
+        {(previewLoading || generating) && (
+          <button
+            type="button"
+            onClick={previewLoading ? cancelPreview : cancelGenerate}
+            className="ml-auto inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-error hover:border-error/50 hover:bg-error/5 transition-all active:scale-95"
+            title={previewLoading ? 'Stop building the preview' : 'Stop generating the ZIP'}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+            Cancel
+          </button>
+        )}
         <button
           onClick={explore}
           disabled={previewLoading || hasErrors}
           title={hasErrors ? blockedReason : 'Preview the generated file tree before downloading'}
-          className={`ml-auto inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${previewError
+          className={`${previewLoading || generating ? '' : 'ml-auto '}inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${previewError
             ? 'border-error/50 text-error hover:bg-error/5'
             : 'border-outline-variant text-secondary hover:text-primary hover:border-primary hover:bg-primary/5'}`}
         >
@@ -1058,6 +1219,28 @@ export function FullstackView() {
           tone="danger"
           onConfirm={doReset}
           onCancel={() => setConfirmReset(false)}
+        />
+      )}
+
+      {teamConflict && (
+        <ConfirmDialog
+          title={`Replace the team model "${teamConflict.existing.name}"?`}
+          message={`A team model with this name already exists${teamConflict.existing.createdBy ? ` (saved by ${teamConflict.existing.createdBy})` : ''}. Overwriting it changes what everyone else loads.`}
+          confirmLabel="Overwrite"
+          tone="danger"
+          onConfirm={() => { void overwriteTeamModel() }}
+          onCancel={() => setTeamConflict(null)}
+        />
+      )}
+
+      {confirmDeleteTeam && (
+        <ConfirmDialog
+          title={`Delete "${confirmDeleteTeam.name}" for everyone?`}
+          message="This removes the model from the server. Colleagues who rely on it will no longer see it, and this cannot be undone."
+          confirmLabel="Delete"
+          tone="danger"
+          onConfirm={() => { void deleteTeamModel() }}
+          onCancel={() => setConfirmDeleteTeam(null)}
         />
       )}
 

@@ -44,8 +44,11 @@ src/
 ## Fullstack editor (`src/components/fullstack/`)
 
 `FullstackView.tsx` owns the whole editor state and wires: `FullstackPresets` (built-in example models
-from `examples.ts` — every example must pass `validateEntities`, pinned by `examples.test.ts` — plus
-saved presets/recents via `hooks/useFullstackPresets`, and **Export JSON / Import JSON / Copy as curl**
+from `examples.ts` — every example must pass `validateEntities` and raise no `lint.ts` warnings,
+pinned by `examples.test.ts`/`lint.test.ts` — plus saved presets/recents via `hooks/useFullstackPresets`,
+**Team** models via `hooks/useTeamModels` (server-side `/metadata/fullstack/models`, same export shape;
+the save prompt has a This browser / Team destination, a 409 name clash asks to Overwrite, delete is
+confirmed in-app because it affects everyone), and **Export JSON / Import JSON / Copy as curl**
 — `snapshot.ts` `toExportedModel`/`parseExportedModel`), **undo/redo** (`undo.ts` `History` — every
 snapshot change is recorded automatically, coalescing a typing burst into one entry labelled by
 `describeSnapshotChange`; destructive actions push an explicit label via `pushUndoEntry` and the change
@@ -59,23 +62,42 @@ a clickable issue count that jumps to the first problem (`#fs-meta`/`[data-entit
 fit, which the sticky bar reports) so the header's Share button reproduces the model; on load `?fs=`
 beats localStorage, `App.tsx` keeps `?tab=fullstack` in step and strips `fs` when leaving the tab.
 `snapshot.ts` defines `FullstackSnapshot`/`ProjectMeta` (uids stripped; `colorPalette` optional) — the
-unit presets, recents, undo, share links and JSON files carry.
+unit presets, recents, undo, share links, team models and JSON files carry. `DEFAULT_PROJECT_META` +
+`normalizeMeta` fill in keys older stored models predate (name/description/version/packaging/`locale`),
+`stripUids` also drops `sourceSql` (the imported DDL stays in memory only — it was blowing the storage
+quota and the share-link length), and `describeSnapshotChange` names reorders.
 
-Settings are grouped Project Metadata / Backend / Frontend (frontend template set, `PalettePicker` from
-`components/shared/`, dashboard title/overview, RTL) / Options (the `SCAFFOLD_OPTIONS`; `requiresAnyDep`
-warns inline when e.g. `secured` lacks an ldap-auth dep). `FullstackDepPicker` renders the BACKEND
-compatibility rules via `useDependencyCompatibility`. The tab registers its ⌘K actions through
+Settings are grouped Project Metadata (group/artifact, name, description, version, packaging, packages,
+Boot/Java — a version no longer in the catalog is kept as an "(unknown)" option and flagged by
+`validateMeta`) / Backend / Frontend (frontend template set, `PalettePicker` from `components/shared/`,
+dashboard title/overview, **Language** en/he + RTL — `frontendSetDefaults.ts` turns both on when the
+Menora Digital set is picked) / Options (the `SCAFFOLD_OPTIONS`; `requiresAnyDep` warns inline when e.g.
+`secured` lacks an ldap-auth dep). `lint.ts` + `ModelLintPanel` (Entities header) list non-blocking
+**suggestions** with undoable one-click fixes: relation targets without a text field, search boxes that
+would vanish, ticked views the generator drops, key-only entities, unique+default, overrides that can't
+apply, `secured`/`openapi` vs the dependency list. `FullstackDepPicker` renders the BACKEND
+compatibility rules via `useDependencyCompatibility`. Explore and Generate both have a Cancel
+(`useFullstackPreview.cancel`, an AbortController in `generate`). The tab registers its ⌘K actions through
 `src/commands.ts` (`registerCommands` / `useRegisteredCommands`); on this tab `CommandPalette` lists
 those instead of the Backend catalog.
 
 `EntitiesEditor` rows carry `data-row-uid` so `focus.ts` can focus a freshly added entity/field/relation;
-entities and fields have move up/down (`reorder.ts`); "Paste fields…" parses one field per line
-(`quickAdd.ts` — types/flags/`key=value`, incl. `default=`); each card shows a derived summary line
-(`summary.ts` + `naming.ts`, which mirrors `gen/Naming.java` — keep them in step); an "Overrides"
-panel sets per-entity `opts` (`FULLSTACK_ENTITY_OPT_KEYS` in `types.ts`, inherit/on/off vs the project
-opts) and the constraints panel carries a type-aware **Default value** (`validation.defaultValueError`
-mirrors the server check). `EntityRelationGraph.tsx` is the toggleable @ManyToOne diagram (d3-force,
-deterministic, click = jump to card). `ImportFromDdlDrawer` is two-step: Parse → preview → Import N.
+entities, fields and relations reorder by arrow buttons or **drag-and-drop** (`useDragReorder.ts` — native
+HTML5 DnD, one hook keyed per list, only the grip handle is draggable, `reorder.ts` `moveItem` applies
+it); "Paste fields…" parses one field per line (`quickAdd.ts` — types/flags/`key=value`, incl.
+`default=`); a **SELECT view** checkbox turns an entity into a `@Subselect` view (`viewQuery: ''` until
+typed — validation blocks a blank query); each card shows a derived summary line plus a "Generates"
+`<details>` with every endpoint (`summary.ts` `endpoints`/`opts` + `naming.ts`, which mirrors
+`gen/Naming.java` — keep them in step); an "Overrides" panel sets per-entity `opts`
+(`FULLSTACK_ENTITY_OPT_KEYS` in `types.ts`, inherit/on/off vs the project opts; `entityOptApplicability`
+says "Has no effect" next to a switch the entity can't carry) and the constraints panel carries a
+type-aware **Default value** (`validation.defaultValueError` mirrors the server check; a type change keeps
+it across STRING↔TEXT / LONG↔INTEGER via `carryDefaultAcrossTypes`, otherwise clears it with a toast;
+integral min/max must be whole). `RelationsEditor` shows the inverse collection name when
+`inverseCollections` is on. `EntityRelationGraph.tsx` is the toggleable @ManyToOne diagram (d3-force,
+deterministic, click = jump to card). `ImportFromDdlDrawer` is two-step: Parse → preview (tick which
+entities to import; FK-derived relation chips, struck through when their target is unticked; dialects
+from `useSqlDialects`) → Import N of M.
 
 ## Data Flow
 

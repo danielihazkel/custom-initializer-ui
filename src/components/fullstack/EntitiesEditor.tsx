@@ -3,14 +3,15 @@ import {
   FULLSTACK_ENTITY_OPT_KEYS,
   type FullstackEntityDef, type FullstackEntityOptKey, type FullstackFieldDef, type FullstackFieldType, type FullstackRelationDef,
 } from '../../types'
-import type { EntityErrors, FieldErrors } from './validation'
+import { carryDefaultAcrossTypes, type EntityErrors, type FieldErrors } from './validation'
 import { EnumValuesEditor } from './EnumValuesEditor'
 import { RelationsEditor } from './RelationsEditor'
 import { cloneWithNewUids, newUid } from './uid'
 import { focusRowWhenRendered } from './focus'
 import { moveItem } from './reorder'
-import { summarizeEntity } from './summary'
+import { entityOptApplicability, summarizeEntity } from './summary'
 import { QuickAddFields } from './QuickAddFields'
+import { dropIndicatorClass, useDragReorder } from './useDragReorder'
 
 const FIELD_TYPES: FullstackFieldType[] = [
   'STRING', 'TEXT', 'LONG', 'INTEGER', 'BOOLEAN',
@@ -32,6 +33,8 @@ interface Props {
   /** The project-wide `opts.scaffold` selection — shown as the "inherit" value in each entity's
    *  per-entity overrides panel. */
   projectOpts?: string[]
+  /** Non-error notices worth a toast (e.g. a default value dropped by a type change). */
+  onNotice?: (message: string) => void
 }
 
 /** Labels for the per-entity override panel; the hint says what the flag changes on one entity. */
@@ -75,7 +78,7 @@ function newField(): FullstackFieldDef {
 }
 
 export function EntitiesEditor({
-  entities, onChange, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [],
+  entities, onChange, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [], onNotice,
 }: Props) {
   // Which entity has its per-entity overrides panel open.
   const [overridesFor, setOverridesFor] = useState<string | null>(null)
@@ -101,6 +104,16 @@ export function EntitiesEditor({
   }
   // Which entity has its "Paste fields" panel open (one at a time is plenty).
   const [quickAddFor, setQuickAddFor] = useState<string | null>(null)
+  // Drag-and-drop reordering for the entity list ('entities') and each entity's fields
+  // ('fields:<entity index>'). One hook serves every list, since the cards render in a loop.
+  const dnd = useDragReorder((list, from, to) => {
+    if (list === 'entities') {
+      onChange(moveItem(entities, from, to))
+      return
+    }
+    const eIdx = Number(list.slice('fields:'.length))
+    onChange(entities.map((e, i) => i === eIdx ? { ...e, fields: moveItem(e.fields, from, to) } : e))
+  })
 
   function updateEntity(idx: number, updates: Partial<FullstackEntityDef>) {
     onChange(entities.map((e, i) => i === idx ? { ...e, ...updates } : e))
@@ -148,6 +161,8 @@ export function EntitiesEditor({
   // Changing a field's type clears attributes that no longer apply, so we never send
   // an orphaned length (non-STRING) or enumValues (non-ENUM) — the backend rejects both.
   function changeFieldType(eIdx: number, fIdx: number, type: FullstackFieldType) {
+    const field = entities[eIdx]?.fields[fIdx]
+    if (!field || field.type === type) return
     const updates: Partial<FullstackFieldDef> = { type }
     if (type !== 'STRING') updates.length = undefined
     if (type !== 'ENUM') updates.enumValues = undefined
@@ -163,8 +178,13 @@ export function EntitiesEditor({
     if (type !== 'STRING' && type !== 'TEXT') updates.searchable = undefined
     const temporal = type === 'LOCAL_DATE' || type === 'LOCAL_DATE_TIME'
     if (!(type === 'ENUM' || type === 'BOOLEAN' || temporal || numeric)) updates.filterable = undefined
-    // A default is typed per field type, so it rarely survives a type change — drop it.
-    updates.defaultValue = undefined
+    // A default is typed per field type: keep it across the lossless pairs (STRING↔TEXT,
+    // LONG↔INTEGER), otherwise drop it — and say so, since the user typed it.
+    const kept = carryDefaultAcrossTypes(field.type, type, field.defaultValue)
+    updates.defaultValue = kept
+    if (field.defaultValue?.trim() && kept === undefined) {
+      onNotice?.(`Cleared default "${field.defaultValue.trim()}" on ${field.name.trim() || 'the field'} — it does not fit ${type}`)
+    }
     updateField(eIdx, fIdx, updates)
   }
 
@@ -210,7 +230,8 @@ export function EntitiesEditor({
         // Mirror the backend down-grade rules so the picker only offers a mode the entity supports:
         // kanban groups by an ENUM/BOOLEAN field and writes the value back (needs a writable entity);
         // calendar places records by a LOCAL_DATE/LOCAL_DATE_TIME field.
-        const kanbanOk = !entity.readOnly && !entity.viewQuery
+        const isView = entity.viewQuery != null
+        const kanbanOk = !entity.readOnly && !isView
           && entity.fields.some(f => f.type === 'ENUM' || f.type === 'BOOLEAN')
         const calendarOk = entity.fields.some(f => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME')
         // Which list views are enabled (back-compat: fall back to the legacy single listView, else table).
@@ -238,19 +259,36 @@ export function EntitiesEditor({
         const errCount = countEntityErrors(eErr)
         const isCollapsed = Boolean(collapsed?.has(entityKey))
         const relCount = entity.relations?.length ?? 0
-        const summary = summarizeEntity(entity)
+        const summary = summarizeEntity(entity, projectOpts)
+        const optApplicability = entityOptApplicability(entity)
+        const cardDrop = dnd.indicatorFor('entities', eIdx)
         return (
         <div
           key={entityKey}
           data-entity-index={eIdx}
           data-row-uid={entity.uid}
-          className={`border rounded-xl p-5 bg-surface-container shadow-sm space-y-4 ${errCount > 0 ? 'border-error/40' : 'border-outline-variant'}`}
+          {...dnd.rowProps('entities', eIdx)}
+          className={`border rounded-xl p-5 bg-surface-container shadow-sm space-y-4 ${errCount > 0 ? 'border-error/40' : 'border-outline-variant'} ${
+            cardDrop === 'before' ? 'border-t-4 border-t-primary' : cardDrop === 'after' ? 'border-b-4 border-b-primary' : ''} ${
+            dnd.isDragging('entities', eIdx) ? 'opacity-40' : ''}`}
         >
           {/* Header: identity (row 1) split from secondary attributes (row 2) so the controls
               don't overflow a single row on laptop widths. A tinted panel marks the card title. */}
           <div className="rounded-lg bg-primary/[0.04] border border-outline-variant px-3 py-2.5 space-y-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 flex-1 min-w-0">
+                {entities.length > 1 && (
+                  <span
+                    {...dnd.handleProps('entities', eIdx)}
+                    role="button"
+                    aria-label="Drag to reorder entity"
+                    title="Drag to reorder (entity order = nav order in the generated app)"
+                    className="material-symbols-outlined -ml-2 cursor-grab active:cursor-grabbing text-secondary/60 hover:text-secondary select-none shrink-0"
+                    style={{ fontSize: '20px' }}
+                  >
+                    drag_indicator
+                  </span>
+                )}
                 {onToggleCollapsed && (
                   <button
                     type="button"
@@ -282,7 +320,7 @@ export function EntitiesEditor({
                   <span className="hidden sm:inline-flex items-center gap-2 text-[11px] text-secondary shrink-0">
                     <span>{entity.fields.length} field{entity.fields.length === 1 ? '' : 's'}</span>
                     {relCount > 0 && <span>· {relCount} relation{relCount === 1 ? '' : 's'}</span>}
-                    {(entity.readOnly || entity.viewQuery) && <span>· read-only</span>}
+                    {(entity.readOnly || isView) && <span>· {isView ? 'view' : 'read-only'}</span>}
                     <span className="font-mono">· {summary.path}</span>
                   </span>
                 )}
@@ -378,8 +416,8 @@ export function EntitiesEditor({
                 className="w-56 bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-40"
                 placeholder="table_name (optional)"
                 value={entity.tableName ?? ''}
-                disabled={Boolean(entity.viewQuery)}
-                title={entity.viewQuery ? 'A SELECT-backed view maps to its query, not a table' : undefined}
+                disabled={isView}
+                title={isView ? 'A SELECT-backed view maps to its query, not a table' : undefined}
                 onChange={e => updateEntity(eIdx, { tableName: e.target.value || undefined })}
               />
               </div>
@@ -397,14 +435,27 @@ export function EntitiesEditor({
               </button>
               <label
                 className="flex items-center gap-1.5 text-xs text-secondary shrink-0 cursor-pointer"
-                title={entity.viewQuery ? 'A SELECT-backed view is always read-only' : 'Generate GET-only scaffolding (no create/update/delete)'}
+                title="Map this entity to a SELECT query (Hibernate @Immutable + @Subselect) instead of a table. Always read-only; no relations."
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  aria-label="SELECT-backed view"
+                  checked={isView}
+                  onChange={e => updateEntity(eIdx, { viewQuery: e.target.checked ? '' : undefined })}
+                />
+                SELECT view
+              </label>
+              <label
+                className="flex items-center gap-1.5 text-xs text-secondary shrink-0 cursor-pointer"
+                title={isView ? 'A SELECT-backed view is always read-only' : 'Generate GET-only scaffolding (no create/update/delete)'}
               >
                 <input
                   type="checkbox"
                   className="h-4 w-4 accent-primary"
                   aria-label="Read-only"
-                  checked={Boolean(entity.readOnly) || Boolean(entity.viewQuery)}
-                  disabled={Boolean(entity.viewQuery)}
+                  checked={Boolean(entity.readOnly) || isView}
+                  disabled={isView}
                   onChange={e => updateEntity(eIdx, { readOnly: e.target.checked || undefined })}
                 />
                 Read-only
@@ -457,6 +508,24 @@ export function EntitiesEditor({
               <span title="Fields that get a filter control">filters: {summary.filters.length ? summary.filters.join(', ') : '—'}</span>
             </p>
             )}
+            {/* The full endpoint list, opts included — what a checkbox in Options actually adds here. */}
+            {!isCollapsed && (
+            <details className="text-[11px]" data-entity-generates>
+              <summary className="cursor-pointer select-none text-secondary hover:text-on-surface inline-flex items-center gap-1">
+                <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>list_alt</span>
+                Generates {summary.endpoints.length} endpoint{summary.endpoints.length === 1 ? '' : 's'}
+                {summary.opts.length > 0 && <span className="text-secondary/70"> · {summary.opts.join(', ')}</span>}
+              </summary>
+              <ul className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-on-surface">
+                {summary.endpoints.map(ep => (
+                  <li key={`${ep.method} ${ep.path}`} className="flex items-baseline gap-2 min-w-0">
+                    <span className="w-14 shrink-0 text-[10px] font-bold tracking-wide text-secondary">{ep.method}</span>
+                    <span className="truncate">{ep.path}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+            )}
           </div>
 
           {!isCollapsed && (<>
@@ -471,22 +540,35 @@ export function EntitiesEditor({
                   const projectOn = projectOpts.includes(key)
                   const value = entity.opts?.[key]
                   const current = value === undefined ? 'inherit' : value ? 'on' : 'off'
+                  // The backend silently drops a flag the entity can't carry (a view can't be
+                  // audited, a composite key can't be soft-deleted…) — say so next to the switch.
+                  const resolvedOn = value ?? projectOn
+                  const applicability = optApplicability[key]
+                  const noEffect = resolvedOn && !applicability.applicable ? applicability.reason : undefined
                   return (
-                    <label key={key} className="flex items-center justify-between gap-2 text-xs">
-                      <span className="flex flex-col min-w-0">
-                        <span className="text-on-surface">{ENTITY_OPT_LABELS[key].label}</span>
-                        <span className="text-[10px] text-secondary truncate">{ENTITY_OPT_LABELS[key].hint}</span>
+                    <label key={key} className="flex flex-col gap-1 text-xs">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="flex flex-col min-w-0">
+                          <span className="text-on-surface">{ENTITY_OPT_LABELS[key].label}</span>
+                          <span className="text-[10px] text-secondary truncate">{ENTITY_OPT_LABELS[key].hint}</span>
+                        </span>
+                        <select
+                          aria-label={`${ENTITY_OPT_LABELS[key].label} override`}
+                          className={`bg-background border rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-primary/20 ${current === 'inherit' ? 'border-outline-variant text-secondary' : 'border-primary/50 text-on-surface'}`}
+                          value={current}
+                          onChange={e => setEntityOpt(eIdx, key, e.target.value === 'inherit' ? undefined : e.target.value === 'on')}
+                        >
+                          <option value="inherit">Inherit ({projectOn ? 'on' : 'off'})</option>
+                          <option value="on">On</option>
+                          <option value="off">Off</option>
+                        </select>
                       </span>
-                      <select
-                        aria-label={`${ENTITY_OPT_LABELS[key].label} override`}
-                        className={`bg-background border rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-primary/20 ${current === 'inherit' ? 'border-outline-variant text-secondary' : 'border-primary/50 text-on-surface'}`}
-                        value={current}
-                        onChange={e => setEntityOpt(eIdx, key, e.target.value === 'inherit' ? undefined : e.target.value === 'on')}
-                      >
-                        <option value="inherit">Inherit ({projectOn ? 'on' : 'off'})</option>
-                        <option value="on">On</option>
-                        <option value="off">Off</option>
-                      </select>
+                      {noEffect && (
+                        <span data-opt-no-effect className={`inline-flex items-center gap-1 text-[10px] ${value === true ? 'text-warning' : 'text-secondary'}`}>
+                          <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>info</span>
+                          Has no effect: {noEffect}
+                        </span>
+                      )}
                     </label>
                   )
                 })}
@@ -514,8 +596,8 @@ export function EntitiesEditor({
             </div>
           )}
 
-          {entity.viewQuery && (
-            <details className="rounded-lg border border-outline-variant bg-background/50">
+          {isView && (
+            <details className="rounded-lg border border-outline-variant bg-background/50" open={!entity.viewQuery?.trim()}>
               <summary className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-secondary cursor-pointer select-none">
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>table_view</span>
                 Read-only view — mapped to this SELECT via <code className="font-mono">@Subselect</code>.
@@ -523,15 +605,17 @@ export function EntitiesEditor({
               </summary>
               <textarea
                 aria-label="View SELECT query"
+                aria-invalid={!entity.viewQuery?.trim()}
                 className="w-full font-mono text-[11px] bg-background border-t border-outline-variant rounded-b p-3 min-h-[100px] focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 value={entity.viewQuery}
+                placeholder="SELECT u.id AS id, u.full_name AS fullName FROM users u"
                 spellCheck={false}
-                onChange={e => updateEntity(eIdx, { viewQuery: e.target.value || undefined })}
+                onChange={e => updateEntity(eIdx, { viewQuery: e.target.value })}
               />
             </details>
           )}
 
-          {entity.sourceSql && !entity.viewQuery && (
+          {entity.sourceSql && !isView && (
             <details className="rounded-lg border border-outline-variant bg-background/50">
               <summary className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-secondary cursor-pointer select-none">
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>code</span>
@@ -551,6 +635,7 @@ export function EntitiesEditor({
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-[11px] font-bold uppercase tracking-wider text-secondary">
+                  <th className="w-6"></th>
                   <th className="text-left py-1.5 px-2">Name</th>
                   <th className="text-left py-1.5 px-2">Type</th>
                   <th className="text-left py-1.5 px-2" title="Display label for the generated UI (defaults to the field name)">Label</th>
@@ -591,9 +676,29 @@ export function EntitiesEditor({
                   const rowKey = `${entityKey}-${fieldKey}`
                   // Force open on error so the message is never hidden behind a collapsed panel.
                   const isOpen = hasConstraintControls && (expandedFields.has(rowKey) || hasConstraintErr)
+                  const fieldList = `fields:${eIdx}`
+                  const rowDrop = dnd.indicatorFor(fieldList, fIdx)
                   return (
                   <Fragment key={fieldKey}>
-                  <tr className="border-t border-outline-variant" data-row-uid={field.uid}>
+                  <tr
+                    className={`${rowDrop ? dropIndicatorClass(rowDrop) : 'border-t border-outline-variant'} ${dnd.isDragging(fieldList, fIdx) ? 'opacity-40' : ''}`}
+                    data-row-uid={field.uid}
+                    {...dnd.rowProps(fieldList, fIdx)}
+                  >
+                    <td className="py-1.5 pl-1 align-top">
+                      {entity.fields.length > 1 && (
+                        <span
+                          {...dnd.handleProps(fieldList, fIdx)}
+                          role="button"
+                          aria-label="Drag to reorder field"
+                          title="Drag to reorder (field order = column / form order in the generated app)"
+                          className="material-symbols-outlined cursor-grab active:cursor-grabbing text-secondary/60 hover:text-secondary select-none"
+                          style={{ fontSize: '16px' }}
+                        >
+                          drag_indicator
+                        </span>
+                      )}
+                    </td>
                     <td className="py-1.5 px-2 align-top">
                       <input
                         type="text"
@@ -743,7 +848,7 @@ export function EntitiesEditor({
                   </tr>
                   {isOpen && (
                     <tr className="bg-background/30">
-                      <td colSpan={12} className="px-2 pb-3 pt-0 align-top">
+                      <td colSpan={13} className="px-2 pb-3 pt-0 align-top">
                         <FieldConstraintsPanel
                           field={field}
                           fErr={fErr}
@@ -791,7 +896,9 @@ export function EntitiesEditor({
             entityNames={entityNames}
             onChange={rels => updateRelations(eIdx, rels)}
             errors={eErr?.relations}
-            addDisabledReason={entity.viewQuery
+            ownerName={entity.name}
+            showInverse={projectOpts.includes('inverseCollections')}
+            addDisabledReason={isView
               ? 'A SELECT-backed view maps to a query, not a table, so it cannot own a foreign key.'
               : undefined}
           />

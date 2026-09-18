@@ -406,6 +406,18 @@ export interface FullstackEntityDef {
   opts?: FullstackEntityOpts
 }
 
+/** A fullstack model saved on the server for the whole team (`/metadata/fullstack/models`).
+ *  The listing carries summaries only; the snapshot comes with `GET /{id}`. */
+export interface TeamModelSummary {
+  id: number
+  name: string
+  description: string | null
+  entityCount: number
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface EntityTemplateSetSummary {
   setKey: string
   name: string
@@ -428,12 +440,15 @@ export interface FullstackStarterRequest {
   bootVersion?: string
   packaging?: string
   javaVersion?: string
+  version?: string
   dependencies?: string[]
   backendTemplateSet?: string
   frontendTemplateSet?: string
   /** Optional dashboard header overrides; blank falls back to the generated defaults. */
   dashboardTitle?: string
   dashboardOverview?: string
+  /** Language of the generated frontend's own chrome strings; omitted = English. */
+  locale?: 'en' | 'he'
   /** Opt-in scaffolding extras, e.g. { scaffold: ["audit","softDelete","inverseCollections","tests"] }. */
   opts?: Record<string, string[]>
   /** Seeded colour-palette id for the generated frontend; omitted = the frontend set's default. */

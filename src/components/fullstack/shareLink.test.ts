@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest'
 import {
   clearShareFromLocation, decodeShare, encodeShare, readShareFromLocation, writeShareToLocation, SHARE_PARAM,
 } from './shareLink'
-import type { FullstackSnapshot } from './snapshot'
+import { DEFAULT_PROJECT_META, type FullstackSnapshot } from './snapshot'
 
 const snapshot: FullstackSnapshot = {
   meta: {
+    ...DEFAULT_PROJECT_META,
     groupId: 'com.menora', artifactId: 'shop', packageName: 'com.menora.shop', domainPackage: '',
     bootVersion: '3.2.1', javaVersion: '21', dashboardTitle: 'חנות', dashboardOverview: '',
   },

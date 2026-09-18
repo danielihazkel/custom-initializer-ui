@@ -2,6 +2,9 @@ import type { FullstackRelationDef } from '../../types'
 import type { RelationErrors } from './validation'
 import { newUid } from './uid'
 import { focusRowWhenRendered } from './focus'
+import { moveItem } from './reorder'
+import { pluralize, toCamelCase } from './naming'
+import { dropIndicatorClass, useDragReorder } from './useDragReorder'
 
 interface Props {
   relations: FullstackRelationDef[]
@@ -12,18 +15,28 @@ interface Props {
   /** When set, adding a relation is not offered and this text explains why (e.g. a SELECT-backed
    *  view can't declare relations). Existing rows stay editable/removable so validation can clear. */
   addDisabledReason?: string
+  /** The owning entity's name — names the inverse collection the target would get. */
+  ownerName?: string
+  /** True when the project-wide `inverseCollections` opt is on, so each row can say what the
+   *  target entity gains (`Customer.orders` + `ordersCount`). */
+  showInverse?: boolean
 }
 
 function newRelation(defaultTarget: string): FullstackRelationDef {
   return { uid: newUid(), type: 'MANY_TO_ONE', fieldName: '', targetEntity: defaultTarget, required: false }
 }
 
+const ICON_BUTTON = 'p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
+
 /**
  * Per-entity editor for `MANY_TO_ONE` relations (the FK-owning side). v1 supports only
  * MANY_TO_ONE — the inverse `@OneToMany` is auto-derived server-side via the
- * `inverseCollections` opt, so there is no inverse editor here.
+ * `inverseCollections` opt, so there is no inverse editor here; the hint under each target
+ * shows what that derivation will name.
  */
-export function RelationsEditor({ relations, entityNames, onChange, errors, addDisabledReason }: Props) {
+export function RelationsEditor({ relations, entityNames, onChange, errors, addDisabledReason, ownerName, showInverse }: Props) {
+  const dnd = useDragReorder((_list, from, to) => onChange(moveItem(relations, from, to)))
+
   function update(idx: number, updates: Partial<FullstackRelationDef>) {
     onChange(relations.map((r, i) => (i === idx ? { ...r, ...updates } : r)))
   }
@@ -35,6 +48,14 @@ export function RelationsEditor({ relations, entityNames, onChange, errors, addD
     onChange([...relations, rel])
     focusRowWhenRendered(rel.uid)
   }
+  function duplicate(idx: number) {
+    const src = relations[idx]
+    const copy: FullstackRelationDef = { ...src, uid: newUid(), fieldName: src.fieldName ? `${src.fieldName}Copy` : '' }
+    onChange([...relations.slice(0, idx + 1), copy, ...relations.slice(idx + 1)])
+    focusRowWhenRendered(copy.uid)
+  }
+  // Mirrors EntityScaffoldContext: the parent's collection is the pluralized camel-case child name.
+  const inverseName = ownerName?.trim() ? pluralize(toCamelCase(ownerName.trim())) : ''
 
   return (
     <div className="space-y-2 border-t border-outline-variant pt-3">
@@ -47,17 +68,39 @@ export function RelationsEditor({ relations, entityNames, onChange, errors, addD
         <table className="w-full text-xs">
           <thead>
             <tr className="text-[11px] font-bold uppercase tracking-wider text-secondary">
+              <th className="w-6"></th>
               <th className="text-left py-1 px-2">Field name</th>
               <th className="text-left py-1 px-2">Target entity</th>
               <th className="text-center py-1 px-2 w-12">Req</th>
-              <th className="w-8"></th>
+              <th className="w-28"></th>
             </tr>
           </thead>
           <tbody>
             {relations.map((rel, rIdx) => {
               const rErr = errors?.[rIdx]
+              const indicator = dnd.indicatorFor('relations', rIdx)
+              const target = rel.targetEntity.trim()
               return (
-                <tr key={rel.uid ?? `i${rIdx}`} data-row-uid={rel.uid} className="border-t border-outline-variant">
+                <tr
+                  key={rel.uid ?? `i${rIdx}`}
+                  data-row-uid={rel.uid}
+                  {...dnd.rowProps('relations', rIdx)}
+                  className={`${indicator ? dropIndicatorClass(indicator) : 'border-t border-outline-variant'} ${dnd.isDragging('relations', rIdx) ? 'opacity-40' : ''}`}
+                >
+                  <td className="py-1.5 pl-1 align-top">
+                    {relations.length > 1 && (
+                      <span
+                        {...dnd.handleProps('relations', rIdx)}
+                        className="material-symbols-outlined cursor-grab active:cursor-grabbing text-secondary/60 hover:text-secondary select-none"
+                        style={{ fontSize: '16px' }}
+                        title="Drag to reorder"
+                        aria-label="Drag to reorder relation"
+                        role="button"
+                      >
+                        drag_indicator
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1.5 px-2 align-top">
                     <input
                       type="text"
@@ -87,6 +130,12 @@ export function RelationsEditor({ relations, entityNames, onChange, errors, addD
                       )}
                     </select>
                     {rErr?.targetEntity && <p className="mt-0.5 text-[11px] text-error">{rErr.targetEntity}</p>}
+                    {!rErr?.targetEntity && showInverse && target && inverseName && (
+                      <p className="mt-0.5 text-[10px] text-secondary font-mono" data-inverse-hint
+                         title="With the Inverse collections option on, the target gets a read-only @OneToMany collection and its DTO a count of these rows">
+                        + {target}.{inverseName} · {inverseName}Count
+                      </p>
+                    )}
                   </td>
                   <td className="py-1.5 px-2 text-center align-top">
                     <input
@@ -98,14 +147,28 @@ export function RelationsEditor({ relations, entityNames, onChange, errors, addD
                     />
                   </td>
                   <td className="py-1.5 px-2 text-right align-top">
-                    <button
-                      onClick={() => remove(rIdx)}
-                      className="p-1 rounded text-secondary hover:text-error hover:bg-error/10 transition-colors"
-                      title="Remove relation"
-                      aria-label="Remove relation"
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
-                    </button>
+                    <div className="flex items-center justify-end gap-0.5">
+                      <button type="button" onClick={() => onChange(moveItem(relations, rIdx, rIdx - 1))} disabled={rIdx === 0}
+                              className={ICON_BUTTON} title="Move relation up" aria-label="Move relation up">
+                        <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_upward</span>
+                      </button>
+                      <button type="button" onClick={() => onChange(moveItem(relations, rIdx, rIdx + 1))} disabled={rIdx === relations.length - 1}
+                              className={ICON_BUTTON} title="Move relation down" aria-label="Move relation down">
+                        <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_downward</span>
+                      </button>
+                      <button type="button" onClick={() => duplicate(rIdx)} className={ICON_BUTTON} title="Duplicate relation" aria-label="Duplicate relation">
+                        <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>content_copy</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => remove(rIdx)}
+                        className="p-1 rounded text-secondary hover:text-error hover:bg-error/10 transition-colors"
+                        title="Remove relation"
+                        aria-label="Remove relation"
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )

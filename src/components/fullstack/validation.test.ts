@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validateEntities, validateMeta, countMetaErrors } from './validation'
+import { carryDefaultAcrossTypes, validateEntities, validateMeta, countMetaErrors } from './validation'
 import type { FullstackEntityDef } from '../../types'
 
 const validEntity = (over: Partial<FullstackEntityDef> = {}): FullstackEntityDef => ({
@@ -204,5 +204,58 @@ describe('validateMeta', () => {
     expect(errors.artifactId).toBe('No spaces allowed')
     expect(errors.packageName).toBe('Invalid Java package name')
     expect(countMetaErrors(errors)).toBe(3)
+  })
+})
+
+describe('validateMeta version catalog check', () => {
+  const meta = { groupId: 'com.menora', artifactId: 'shop', packageName: 'com.menora.shop', bootVersion: '3.2.1', javaVersion: '21' }
+  it('flags a version the catalog no longer lists, naming it', () => {
+    const errors = validateMeta({ ...meta, bootVersion: '2.7.0' }, { bootVersions: ['3.2.1', '3.3.0'], javaVersions: ['17', '21'] })
+    expect(errors.bootVersion).toBe('Not in the catalog (2.7.0)')
+    expect(errors.javaVersion).toBeUndefined()
+    expect(countMetaErrors(errors)).toBe(1)
+  })
+  it('stays quiet while the catalog is empty (not loaded yet) or absent', () => {
+    expect(validateMeta({ ...meta, bootVersion: '2.7.0' }, { bootVersions: [], javaVersions: [] })).toEqual({})
+    expect(validateMeta({ ...meta, bootVersion: '2.7.0' })).toEqual({})
+  })
+})
+
+describe('numeric bounds per type', () => {
+  const withField = (f: FullstackEntityDef['fields'][number]) =>
+    validateEntities([validEntity({ fields: [{ name: 'id', type: 'LONG', primaryKey: true, generated: true }, f] })])
+  it('accepts decimals on BIG_DECIMAL only', () => {
+    expect(withField({ name: 'price', type: 'BIG_DECIMAL', min: 0.5, max: 99.99 }).count).toBe(0)
+    expect(withField({ name: 'qty', type: 'INTEGER', min: 0.5 }).entities[0]?.fields[1]?.min).toBe('Must be a whole number')
+    expect(withField({ name: 'big', type: 'LONG', max: 1.25 }).entities[0]?.fields[1]?.max).toBe('Must be a whole number')
+  })
+  it('keeps INTEGER bounds inside the int range', () => {
+    expect(withField({ name: 'qty', type: 'INTEGER', max: 3_000_000_000 }).entities[0]?.fields[1]?.max).toBe('Out of the int range')
+    expect(withField({ name: 'big', type: 'LONG', max: 3_000_000_000 }).count).toBe(0)
+  })
+})
+
+describe('carryDefaultAcrossTypes', () => {
+  it('keeps a default across the lossless pairs and drops it otherwise', () => {
+    expect(carryDefaultAcrossTypes('STRING', 'TEXT', 'hello')).toBe('hello')
+    expect(carryDefaultAcrossTypes('TEXT', 'STRING', 'hello')).toBe('hello')
+    expect(carryDefaultAcrossTypes('INTEGER', 'LONG', '42')).toBe('42')
+    expect(carryDefaultAcrossTypes('LONG', 'INTEGER', '42')).toBe('42')
+    expect(carryDefaultAcrossTypes('LONG', 'INTEGER', '3000000000')).toBeUndefined()
+    expect(carryDefaultAcrossTypes('STRING', 'INTEGER', '42')).toBeUndefined()
+    expect(carryDefaultAcrossTypes('BOOLEAN', 'STRING', 'true')).toBeUndefined()
+    expect(carryDefaultAcrossTypes('STRING', 'TEXT', '  ')).toBeUndefined()
+  })
+})
+
+describe('enum constants and Java keywords', () => {
+  it('accepts upper-case constants that only match a keyword case-insensitively', () => {
+    const r = validateEntities([validEntity({
+      fields: [
+        { name: 'id', type: 'LONG', primaryKey: true },
+        { name: 'status', type: 'ENUM', enumValues: ['NEW', 'DEFAULT', 'DONE'] },
+      ],
+    })])
+    expect(r.count).toBe(0)
   })
 })

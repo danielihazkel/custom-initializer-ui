@@ -24,6 +24,36 @@ export function toSnakeCase(s: string): string {
   return out
 }
 
+/** `order_item` / `orderItem` / `order-item` → `OrderItem`. Mirrors `Naming.toPascalCase`: a
+ *  separator starts a new word; an uppercase letter following a lowercase letter or digit is kept
+ *  (camel hump); every other letter is lower-cased. */
+export function toPascalCase(s: string): string {
+  if (!s) return ''
+  let out = ''
+  let upper = true
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (c === '-' || c === '_' || c === ' ') {
+      upper = true
+    } else if (c !== c.toLowerCase() && c === c.toUpperCase() && i > 0 && /[a-z0-9]/.test(s[i - 1])) {
+      out += c
+      upper = false
+    } else if (upper) {
+      out += c.toUpperCase()
+      upper = false
+    } else {
+      out += c.toLowerCase()
+    }
+  }
+  return out
+}
+
+/** `OrderItem` / `order_item` → `orderItem`. */
+export function toCamelCase(s: string): string {
+  const pascal = toPascalCase(s)
+  return pascal ? pascal[0].toLowerCase() + pascal.slice(1) : ''
+}
+
 /** `OrderItem` → `order-item`. */
 export function toKebabCase(s: string): string {
   return toSnakeCase(s).replace(/_/g, '-')

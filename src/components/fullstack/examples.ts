@@ -88,6 +88,7 @@ export const EXAMPLE_MODELS: ExampleModel[] = [
         listViews: ['table', 'kanban', 'calendar'],
         fields: [
           id(),
+          { name: 'reference', type: 'STRING', required: true, unique: true, length: 40 },
           { name: 'status', type: 'ENUM', required: true, enumValues: ['OPEN', 'PAID', 'SHIPPED', 'CANCELLED'] },
           { name: 'placedAt', type: 'LOCAL_DATE', required: true },
           { name: 'total', type: 'BIG_DECIMAL', min: 0 },
