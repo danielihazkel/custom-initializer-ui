@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DEFAULT_PROJECT_META, EXPORT_FORMAT, describeSnapshotChange, isSnapshot, makeSnapshot, normalizeMeta, parseExportedModel, toExportedModel, type FullstackSnapshot } from './snapshot'
+import { DEFAULT_PROJECT_META, EXPORT_FORMAT, describeSnapshotChange, isSnapshot, makeSnapshot, normalizeMeta, parseExportedModel, snapshotChangeKey, toExportedModel, type FullstackSnapshot } from './snapshot'
 
 const snapshot: FullstackSnapshot = {
   meta: {
@@ -79,5 +79,39 @@ describe('describeSnapshotChange reorder labels', () => {
     const order = two.entities[0]
     const edited = makeSnapshot({ ...two, entities: [{ ...order, fields: [order.fields[1], { ...order.fields[0], name: 'key' }] }, two.entities[1]] })
     expect(describeSnapshotChange(two, edited)).toBe('Edited Order')
+  })
+})
+
+describe('snapshotChangeKey', () => {
+  const two: FullstackSnapshot = makeSnapshot({
+    ...snapshot,
+    entities: [
+      { name: 'Order', fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'total', type: 'BIG_DECIMAL' }],
+        relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer' }] },
+      { name: 'Customer', fields: [{ name: 'id', type: 'LONG', primaryKey: true }] },
+    ],
+  })
+  const withEntities = (entities: FullstackSnapshot['entities']) => makeSnapshot({ ...two, entities })
+
+  it('addresses the row that changed so unrelated edits get different keys', () => {
+    const order = two.entities[0]
+    const totalRequired = withEntities([{ ...order, fields: [order.fields[0], { ...order.fields[1], required: true }] }, two.entities[1]])
+    const idUnique = withEntities([{ ...order, fields: [{ ...order.fields[0], unique: true }, order.fields[1]] }, two.entities[1]])
+    expect(snapshotChangeKey(two, totalRequired)).toBe('e0.f1')
+    expect(snapshotChangeKey(two, idUnique)).toBe('e0.f0')
+    expect(snapshotChangeKey(two, withEntities([{ ...order, readOnly: true }, two.entities[1]]))).toBe('e0')
+    expect(snapshotChangeKey(two, withEntities([{ ...order, relations: [{ ...order.relations![0], required: true }] }, two.entities[1]]))).toBe('e0.r0')
+    expect(snapshotChangeKey(two, withEntities([{ ...order, fields: [order.fields[0]] }, two.entities[1]]))).toBe('e0.fields')
+    expect(snapshotChangeKey(two, withEntities([two.entities[1], order]))).toBe('entities')
+    expect(snapshotChangeKey(two, withEntities([order]))).toBe('entities')
+  })
+
+  it('names the project-level thing that changed', () => {
+    expect(snapshotChangeKey(two, { ...two, meta: { ...two.meta, locale: 'he' } })).toBe('meta.locale')
+    expect(snapshotChangeKey(two, { ...two, selectedDeps: [] })).toBe('deps')
+    expect(snapshotChangeKey(two, { ...two, scaffoldOpts: [] })).toBe('opts')
+    expect(snapshotChangeKey(two, { ...two, frontendSet: 'x' })).toBe('sets')
+    expect(snapshotChangeKey(two, { ...two, colorPalette: 'y' })).toBe('palette')
+    expect(snapshotChangeKey(two, makeSnapshot(two))).toBe('none')
   })
 })

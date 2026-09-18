@@ -180,6 +180,10 @@ export interface EntityErrors {
   pk?: string
   /** SELECT-backed view constraint (no generated PK, no relations). */
   view?: string
+  /** The "SELECT view" box is ticked but the query is still blank. Counted like any error (the
+   *  server would treat the entity as a plain table), but shown as a pending hint rather than a
+   *  red banner — ticking the box is the first step of typing the query, not a mistake. */
+  viewQuery?: string
   fields: Record<number, FieldErrors>
   relations?: Record<number, RelationErrors>
 }
@@ -340,7 +344,10 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
     if (isView) {
       // Both rules are independent (the backend raises each on its own), so report both.
       const viewErrors: string[] = []
-      if (!entity.viewQuery!.trim()) viewErrors.push('Enter the SELECT query or untick "SELECT-backed view"')
+      if (!entity.viewQuery!.trim()) {
+        eErr.viewQuery = 'Enter the SELECT query or untick "SELECT view"'
+        result.count += 1
+      }
       if (entity.fields.some(f => f.generated)) viewErrors.push('A view cannot have a generated primary key')
       if ((entity.relations?.length ?? 0) > 0) viewErrors.push('A view cannot declare relations')
       if (viewErrors.length > 0) {
@@ -381,7 +388,7 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
 
     if (eErr.name) result.count += 1
     const hasRelErrs = eErr.relations && Object.keys(eErr.relations).length > 0
-    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
+    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
       result.entities[eIdx] = eErr
     }
   })

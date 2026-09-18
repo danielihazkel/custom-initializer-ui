@@ -7,16 +7,24 @@ import { carryDefaultAcrossTypes, type EntityErrors, type FieldErrors } from './
 import { EnumValuesEditor } from './EnumValuesEditor'
 import { RelationsEditor } from './RelationsEditor'
 import { cloneWithNewUids, newUid } from './uid'
-import { focusRowWhenRendered } from './focus'
+import { focusRowWhenRendered, focusWithinRow } from './focus'
 import { moveItem } from './reorder'
 import { entityOptApplicability, summarizeEntity } from './summary'
 import { QuickAddFields } from './QuickAddFields'
 import { dropIndicatorClass, useDragReorder } from './useDragReorder'
+import { uniqueName } from './naming'
+import { FieldChips } from './FieldChips'
+import { EntitySettingsPanel, settingsSummary } from './EntitySettingsPanel'
+import { EntityUiPreview } from './EntityUiPreview'
 
 const FIELD_TYPES: FullstackFieldType[] = [
   'STRING', 'TEXT', 'LONG', 'INTEGER', 'BOOLEAN',
   'LOCAL_DATE', 'LOCAL_DATE_TIME', 'BIG_DECIMAL', 'UUID', 'ENUM',
 ]
+
+/** Field-table density. Compact hides the Label column (the label moves into the row's More
+ *  panel and shows as a chip) and tightens the row padding. */
+export type EditorDensity = 'comfortable' | 'compact'
 
 interface Props {
   entities: FullstackEntityDef[]
@@ -35,6 +43,15 @@ interface Props {
   projectOpts?: string[]
   /** Non-error notices worth a toast (e.g. a default value dropped by a type change). */
   onNotice?: (message: string) => void
+  /** Lint suggestions per entity uid — shown as an amber badge next to the red error badge. */
+  lintCounts?: Map<string, number>
+  /** Open the suggestions panel filtered to one entity (the amber badge's click). */
+  onShowLint?: (uid: string) => void
+  density?: EditorDensity
+  /** When set, only these entity uids render (the navigator's filter). */
+  visibleUids?: Set<string>
+  /** Language/direction of the generated app, for the per-entity UI preview. */
+  previewCtx?: { locale: 'en' | 'he'; rtl: boolean }
 }
 
 /** Labels for the per-entity override panel; the hint says what the flag changes on one entity. */
@@ -56,6 +73,7 @@ export function countEntityErrors(e?: EntityErrors): number {
   if (e.noFields) n += 1
   if (e.pk) n += 1
   if (e.view) n += 1
+  if (e.viewQuery) n += 1
   for (const f of Object.values(e.fields ?? {})) n += Object.values(f).filter(Boolean).length
   for (const r of Object.values(e.relations ?? {})) n += Object.values(r).filter(Boolean).length
   return n
@@ -77,11 +95,21 @@ function newField(): FullstackFieldDef {
   return { uid: newUid(), name: '', type: 'STRING' }
 }
 
+type PanelKind = 'settings' | 'overrides' | 'preview'
+
+const ICON_BTN = 'p-1.5 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
+const SMALL_ICON_BTN = 'p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
+
 export function EntitiesEditor({
   entities, onChange, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [], onNotice,
+  lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx,
 }: Props) {
-  // Which entity has its per-entity overrides panel open.
-  const [overridesFor, setOverridesFor] = useState<string | null>(null)
+  // One secondary panel open per card at a time: Settings (labels / mapping / SELECT view),
+  // Overrides (per-entity opts) or the UI preview. Keyed by entity uid so it follows its card.
+  const [panelFor, setPanelFor] = useState<{ key: string; kind: PanelKind } | null>(null)
+  function togglePanel(key: string, kind: PanelKind) {
+    setPanelFor(prev => (prev?.key === key && prev.kind === kind ? null : { key, kind }))
+  }
   function setEntityOpt(eIdx: number, key: FullstackEntityOptKey, value: boolean | undefined) {
     onChange(entities.map((e, i) => {
       if (i !== eIdx) return e
@@ -91,9 +119,8 @@ export function EntitiesEditor({
       return { ...e, opts: Object.keys(next).length > 0 ? next : undefined }
     }))
   }
-  // Which field rows have their constraint panel expanded, keyed by `${entityUid}-${fieldUid}`
-  // so the open panel follows its row through duplicate/remove. Rows with a constraint error
-  // force open regardless (see isOpen).
+  // Which field rows have their More panel expanded, keyed by `${entityUid}-${fieldUid}` so the
+  // open panel follows its row through duplicate/remove. Rows with an error force open (see isOpen).
   const [expandedFields, setExpandedFields] = useState<Set<string>>(() => new Set())
   function toggleExpand(key: string) {
     setExpandedFields(prev => {
@@ -101,6 +128,9 @@ export function EntitiesEditor({
       next.has(key) ? next.delete(key) : next.add(key)
       return next
     })
+  }
+  function expand(key: string) {
+    setExpandedFields(prev => (prev.has(key) ? prev : new Set(prev).add(key)))
   }
   // Which entity has its "Paste fields" panel open (one at a time is plenty).
   const [quickAddFor, setQuickAddFor] = useState<string | null>(null)
@@ -143,14 +173,16 @@ export function EntitiesEditor({
   function duplicateEntity(idx: number) {
     const src = entities[idx]
     // Deep copy (fresh uids) so edits to the clone don't mutate the original; the physical
-    // mapping is intentionally dropped since two entities can't share a table.
+    // mapping is intentionally dropped since two entities can't share a table. The name is
+    // uniquified so duplicating twice never yields two identical "XCopy" rows.
     const copy: FullstackEntityDef = {
       ...cloneWithNewUids(src),
-      name: `${src.name}Copy`,
+      name: src.name.trim() ? uniqueName(`${src.name.trim()}Copy`, entities.map(e => e.name)) : '',
       tableName: undefined,
       schema: undefined,
     }
     onChange([...entities.slice(0, idx + 1), copy, ...entities.slice(idx + 1)])
+    focusRowWhenRendered(copy.uid)
   }
   function updateField(eIdx: number, fIdx: number, updates: Partial<FullstackFieldDef>) {
     onChange(entities.map((e, i) => {
@@ -194,17 +226,21 @@ export function EntitiesEditor({
   // All entity names (non-blank) — valid FK targets for the relations editor.
   const entityNames = entities.map(e => e.name.trim()).filter(Boolean)
   function duplicateField(eIdx: number, fIdx: number) {
+    let copyUid: string | undefined
     onChange(entities.map((e, i) => {
       if (i !== eIdx) return e
       const src = e.fields[fIdx]
+      const taken = [...e.fields.map(f => f.name), ...(e.relations ?? []).map(r => r.fieldName)]
       const copy: FullstackFieldDef = {
         ...src,
         uid: newUid(),
-        name: `${src.name}Copy`,
+        name: src.name.trim() ? uniqueName(`${src.name.trim()}Copy`, taken) : '',
         enumValues: src.enumValues ? [...src.enumValues] : undefined,
       }
+      copyUid = copy.uid
       return { ...e, fields: [...e.fields.slice(0, fIdx + 1), copy, ...e.fields.slice(fIdx + 1)] }
     }))
+    focusRowWhenRendered(copyUid)
   }
   function removeField(eIdx: number, fIdx: number) {
     const owner = entities[eIdx]
@@ -222,10 +258,26 @@ export function EntitiesEditor({
     }))
     focusRowWhenRendered(field.uid)
   }
+  // Ticking "SELECT view" is the first step of typing the query: open Settings and put the
+  // caret in the textarea rather than leaving a red error for the user to hunt down.
+  function tickView(eIdx: number, key: string, uid: string | undefined, checked: boolean) {
+    updateEntity(eIdx, { viewQuery: checked ? '' : undefined })
+    if (checked) {
+      setPanelFor({ key, kind: 'settings' })
+      focusWithinRow(uid, 'textarea[aria-label="View SELECT query"]')
+    }
+  }
+
+  const compact = density === 'compact'
+  const cell = compact ? 'py-1 px-1.5' : 'py-1.5 px-2'
+  const fieldColumns = compact ? 9 : 10
+  let visibleCount = 0
 
   return (
     <div className="space-y-6">
       {entities.map((entity, eIdx) => {
+        if (visibleUids && !(entity.uid && visibleUids.has(entity.uid))) return null
+        visibleCount += 1
         const eErr = errors?.[eIdx]
         // Mirror the backend down-grade rules so the picker only offers a mode the entity supports:
         // kanban groups by an ENUM/BOOLEAN field and writes the value back (needs a writable entity);
@@ -245,8 +297,9 @@ export function EntitiesEditor({
         ] as const
         function toggleView(key: string) {
           const has = views.includes(key)
-          // Keep at least one view selected; otherwise toggle and re-sort into canonical order so the
-          // first (= the generated page's initial mode) is deterministic regardless of click order.
+          // Toggle and re-sort into canonical order so the first (= the generated page's initial
+          // mode) is deterministic regardless of click order. The last remaining view can't be
+          // removed — its button is disabled below, so an empty set never gets here.
           const next = (has ? views.filter(v => v !== key) : [...views, key])
             .filter((v, i, a) => a.indexOf(v) === i)
           if (next.length === 0) return
@@ -257,11 +310,19 @@ export function EntitiesEditor({
         // Loop-invariant: hoisted out of the per-field map below.
         const pkCount = entity.fields.filter(f => f.primaryKey).length
         const errCount = countEntityErrors(eErr)
+        const lintCount = lintCounts?.get(entityKey) ?? 0
         const isCollapsed = Boolean(collapsed?.has(entityKey))
         const relCount = entity.relations?.length ?? 0
         const summary = summarizeEntity(entity, projectOpts)
         const optApplicability = entityOptApplicability(entity)
         const cardDrop = dnd.indicatorFor('entities', eIdx)
+        const settingsChips = settingsSummary(entity)
+        // A problem inside Settings (blank query, generated PK / relations on a view) forces it open.
+        const settingsForced = Boolean(eErr?.viewQuery)
+        const settingsOpen = settingsForced || (panelFor?.key === entityKey && panelFor.kind === 'settings')
+        const overridesOpen = panelFor?.key === entityKey && panelFor.kind === 'overrides'
+        const previewOpen = panelFor?.key === entityKey && panelFor.kind === 'preview'
+        const overrideCount = entity.opts ? Object.keys(entity.opts).length : 0
         return (
         <div
           key={entityKey}
@@ -272,8 +333,8 @@ export function EntitiesEditor({
             cardDrop === 'before' ? 'border-t-4 border-t-primary' : cardDrop === 'after' ? 'border-b-4 border-b-primary' : ''} ${
             dnd.isDragging('entities', eIdx) ? 'opacity-40' : ''}`}
         >
-          {/* Header: identity (row 1) split from secondary attributes (row 2) so the controls
-              don't overflow a single row on laptop widths. A tinted panel marks the card title. */}
+          {/* Header: identity (row 1) split from the generated-page behaviour (row 2). The
+              secondary attributes (labels, mapping, SELECT view) live behind Settings. */}
           <div className="rounded-lg bg-primary/[0.04] border border-outline-variant px-3 py-2.5 space-y-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -333,41 +394,48 @@ export function EntitiesEditor({
                     {errCount}
                   </span>
                 )}
+                {lintCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onShowLint?.(entityKey)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/15 text-warning text-[11px] font-semibold shrink-0 hover:bg-warning/25 transition-colors"
+                    title={`${lintCount} suggestion${lintCount === 1 ? '' : 's'} for this entity — click to see`}
+                    aria-label={`${lintCount} suggestion${lintCount === 1 ? '' : 's'} for ${entity.name.trim() || 'this entity'}`}
+                    data-lint-badge
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>lightbulb</span>
+                    {lintCount}
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {entities.length > 1 && (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => moveEntity(eIdx, -1)}
-                      disabled={eIdx === 0}
-                      className="p-1.5 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary"
-                      title="Move entity up (earlier in the generated nav)"
-                      aria-label="Move entity up"
-                    >
+                    <button type="button" onClick={() => moveEntity(eIdx, -1)} disabled={eIdx === 0} className={ICON_BTN}
+                            title="Move entity up (earlier in the generated nav)" aria-label="Move entity up">
                       <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_upward</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => moveEntity(eIdx, 1)}
-                      disabled={eIdx === entities.length - 1}
-                      className="p-1.5 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary"
-                      title="Move entity down"
-                      aria-label="Move entity down"
-                    >
+                    <button type="button" onClick={() => moveEntity(eIdx, 1)} disabled={eIdx === entities.length - 1} className={ICON_BTN}
+                            title="Move entity down" aria-label="Move entity down">
                       <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_downward</span>
                     </button>
                   </>
                 )}
                 <button
-                  onClick={() => duplicateEntity(eIdx)}
-                  className="p-1.5 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
-                  title="Duplicate entity"
-                  aria-label="Duplicate entity"
+                  type="button"
+                  onClick={() => togglePanel(entityKey, 'preview')}
+                  aria-pressed={previewOpen}
+                  className={`p-1.5 rounded transition-colors ${previewOpen ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/10'}`}
+                  title="Preview the generated list page and form for this entity"
+                  aria-label="Preview UI"
                 >
+                  <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>preview</span>
+                </button>
+                <button type="button" onClick={() => duplicateEntity(eIdx)} className={ICON_BTN} title="Duplicate entity" aria-label="Duplicate entity">
                   <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>content_copy</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => removeEntity(eIdx)}
                   className="p-1.5 rounded text-secondary hover:text-error hover:bg-error/10 transition-colors"
                   title="Remove entity"
@@ -378,74 +446,35 @@ export function EntitiesEditor({
               </div>
             </div>
             {!isCollapsed && (
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-              {/* Cluster: display labels (optional) — user-facing names in the generated UI. */}
-              <div className="inline-flex items-center gap-3">
-              <input
-                type="text"
-                aria-label="Display label (optional)"
-                className="w-44 bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                placeholder="label (optional)"
-                title="Human-facing entity name shown in the generated UI (nav, headings, dialogs). Blank = derive from the entity name."
-                value={entity.label ?? ''}
-                onChange={e => updateEntity(eIdx, { label: e.target.value || undefined })}
-              />
-              <input
-                type="text"
-                aria-label="Plural display label (optional)"
-                className="w-44 bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                placeholder="plural label (optional)"
-                title="Plural form for nav / list heading / dashboard. Blank = falls back to the label, then the derived plural."
-                value={entity.labelPlural ?? ''}
-                onChange={e => updateEntity(eIdx, { labelPlural: e.target.value || undefined })}
-              />
-              </div>
-              {/* Cluster A: physical mapping (schema + table) — wraps as a unit, never mid-control. */}
-              <div className="inline-flex items-center gap-3">
-              <input
-                type="text"
-                aria-label="Schema (optional)"
-                className="w-40 bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                placeholder="schema (optional)"
-                value={entity.schema ?? ''}
-                onChange={e => updateEntity(eIdx, { schema: e.target.value || undefined })}
-              />
-              <input
-                type="text"
-                aria-label="Table name (optional)"
-                className="w-56 bg-background border border-outline-variant rounded px-3 py-2 text-sm text-secondary placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-40"
-                placeholder="table_name (optional)"
-                value={entity.tableName ?? ''}
-                disabled={isView}
-                title={isView ? 'A SELECT-backed view maps to its query, not a table' : undefined}
-                onChange={e => updateEntity(eIdx, { tableName: e.target.value || undefined })}
-              />
-              </div>
-              {/* Cluster B: generated-page behavior (read-only + list views + overrides) — wraps as a unit. */}
-              <div className="inline-flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              {/* Settings: display labels, schema/table, SELECT view — summarised when closed. */}
+              <span className="inline-flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => togglePanel(entityKey, 'settings')}
+                  aria-expanded={settingsOpen}
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${settingsOpen || settingsChips.length > 0 ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/5'}`}
+                  title="Display labels, schema / table name, SELECT-backed view"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>settings</span>
+                  Settings
+                </button>
+                {settingsChips.length > 0 && !settingsOpen && (
+                  <span className="text-[11px] text-secondary truncate max-w-[18rem]" title={settingsChips.join(' · ')} data-settings-summary>
+                    {settingsChips.join(' · ')}
+                  </span>
+                )}
+              </span>
               <button
                 type="button"
-                onClick={() => setOverridesFor(prev => prev === entityKey ? null : entityKey)}
-                aria-expanded={overridesFor === entityKey}
-                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${entity.opts && Object.keys(entity.opts).length > 0 ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/5'}`}
+                onClick={() => togglePanel(entityKey, 'overrides')}
+                aria-expanded={overridesOpen}
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${overrideCount > 0 || overridesOpen ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/5'}`}
                 title="Turn a project-wide scaffolding option on or off for this entity only"
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>tune</span>
-                Overrides{entity.opts && Object.keys(entity.opts).length > 0 ? ` (${Object.keys(entity.opts).length})` : ''}
+                Overrides{overrideCount > 0 ? ` (${overrideCount})` : ''}
               </button>
-              <label
-                className="flex items-center gap-1.5 text-xs text-secondary shrink-0 cursor-pointer"
-                title="Map this entity to a SELECT query (Hibernate @Immutable + @Subselect) instead of a table. Always read-only; no relations."
-              >
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-primary"
-                  aria-label="SELECT-backed view"
-                  checked={isView}
-                  onChange={e => updateEntity(eIdx, { viewQuery: e.target.checked ? '' : undefined })}
-                />
-                SELECT view
-              </label>
               <label
                 className="flex items-center gap-1.5 text-xs text-secondary shrink-0 cursor-pointer"
                 title={isView ? 'A SELECT-backed view is always read-only' : 'Generate GET-only scaffolding (no create/update/delete)'}
@@ -468,25 +497,27 @@ export function EntitiesEditor({
                 <div className="inline-flex rounded border border-outline-variant overflow-hidden" role="group" aria-label="List views">
                   {viewOptions.map(opt => {
                     const selected = views.includes(opt.key)
-                    // Disabled only blocks *adding* an unsupported view — an already-selected one can
-                    // still be removed (so it never gets stuck after its field is deleted).
-                    const interactive = opt.applicable || selected
+                    // Disabled blocks *adding* an unsupported view (an already-selected one can
+                    // still be removed, so it never gets stuck after its field is deleted) and
+                    // removing the last remaining view — a page needs at least one.
+                    const lastRemaining = selected && views.length === 1
+                    const interactive = (opt.applicable || selected) && !lastRemaining
+                    const title = lastRemaining ? 'At least one view is required' : opt.applicable ? undefined : opt.hint
                     return (
                       <button
                         key={opt.key}
                         type="button"
                         aria-pressed={selected}
                         disabled={!interactive}
-                        title={opt.applicable ? undefined : opt.hint}
+                        title={title}
                         onClick={() => toggleView(opt.key)}
-                        className={`px-2 py-1 transition-colors ${selected ? 'bg-primary text-on-primary' : 'bg-background text-secondary hover:text-on-surface'} ${interactive ? '' : 'opacity-40 cursor-not-allowed'}`}
+                        className={`px-2 py-1 transition-colors ${selected ? 'bg-primary text-on-primary' : 'bg-background text-secondary hover:text-on-surface'} ${interactive ? '' : lastRemaining ? 'cursor-default' : 'opacity-40 cursor-not-allowed'}`}
                       >
                         {opt.label}
                       </button>
                     )
                   })}
                 </div>
-              </div>
               </div>
             </div>
             )}
@@ -529,7 +560,15 @@ export function EntitiesEditor({
           </div>
 
           {!isCollapsed && (<>
-          {overridesFor === entityKey && (
+          {settingsOpen && (
+            <EntitySettingsPanel
+              entity={entity}
+              errors={eErr}
+              onUpdate={updates => updateEntity(eIdx, updates)}
+              onTickView={checked => tickView(eIdx, entityKey, entity.uid, checked)}
+            />
+          )}
+          {overridesOpen && (
             <div className="rounded-lg border border-outline-variant bg-background/50 px-3 py-2.5 space-y-2" data-entity-overrides>
               <p className="text-[11px] text-secondary">
                 Per-entity overrides of the project-wide Options. <em>Inherit</em> follows the project setting
@@ -575,6 +614,15 @@ export function EntitiesEditor({
               </div>
             </div>
           )}
+          {previewOpen && (
+            <EntityUiPreview
+              entity={entity}
+              entities={entities}
+              projectOpts={projectOpts}
+              locale={previewCtx?.locale ?? 'en'}
+              rtl={previewCtx?.rtl ?? false}
+            />
+          )}
           {eErr?.noFields && (
             <div data-error className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error/10 border border-error/30 text-[11px] text-error">
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
@@ -596,57 +644,19 @@ export function EntitiesEditor({
             </div>
           )}
 
-          {isView && (
-            <details className="rounded-lg border border-outline-variant bg-background/50" open={!entity.viewQuery?.trim()}>
-              <summary className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-secondary cursor-pointer select-none">
-                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>table_view</span>
-                Read-only view — mapped to this SELECT via <code className="font-mono">@Subselect</code>.
-                Field <code className="font-mono">@Column</code> names must match the projected aliases.
-              </summary>
-              <textarea
-                aria-label="View SELECT query"
-                aria-invalid={!entity.viewQuery?.trim()}
-                className="w-full font-mono text-[11px] bg-background border-t border-outline-variant rounded-b p-3 min-h-[100px] focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                value={entity.viewQuery}
-                placeholder="SELECT u.id AS id, u.full_name AS fullName FROM users u"
-                spellCheck={false}
-                onChange={e => updateEntity(eIdx, { viewQuery: e.target.value })}
-              />
-            </details>
-          )}
-
-          {entity.sourceSql && !isView && (
-            <details className="rounded-lg border border-outline-variant bg-background/50">
-              <summary className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-secondary cursor-pointer select-none">
-                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>code</span>
-                Imported from this <code className="font-mono">CREATE TABLE</code> (read-only — for reference).
-              </summary>
-              <textarea
-                aria-label="Source CREATE TABLE"
-                className="w-full font-mono text-[11px] bg-background border-t border-outline-variant rounded-b p-3 min-h-[100px] text-secondary outline-none resize-y"
-                value={entity.sourceSql}
-                readOnly
-                spellCheck={false}
-              />
-            </details>
-          )}
-
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-[11px] font-bold uppercase tracking-wider text-secondary">
                   <th className="w-6"></th>
-                  <th className="text-left py-1.5 px-2">Name</th>
-                  <th className="text-left py-1.5 px-2">Type</th>
-                  <th className="text-left py-1.5 px-2" title="Display label for the generated UI (defaults to the field name)">Label</th>
-                  <th className="text-center py-1.5 px-2 w-12" title="Primary key (@Id). Tick more than one for a composite key.">PK</th>
-                  <th className="text-center py-1.5 px-2 w-12" title="Generated by the database on insert (IDENTITY for LONG/INTEGER, UUID generator for UUID). Primary key only.">Gen</th>
-                  <th className="text-center py-1.5 px-2 w-12" title="Required: NOT NULL column + @NotNull/@NotBlank on the DTO + a required form field">Req</th>
-                  <th className="text-center py-1.5 px-2 w-12" title="Unique: a unique constraint on the column; a duplicate value answers 409">Uniq</th>
-                  <th className="text-center py-1.5 px-2 w-12" title="Locked after create: the field is set when a row is created and can't be edited afterwards (form disables it, the service never overwrites it)">Lock</th>
-                  <th className="text-center py-1.5 px-2 w-12" title="Include in the text-search box (STRING/TEXT fields)">Search</th>
-                  <th className="text-center py-1.5 px-2 w-12" title="Include in the filter bar (enum/boolean/date/numeric fields)">Filter</th>
-                  <th className="text-center py-1.5 px-2 w-28">Constraints</th>
+                  <th className={`text-left ${cell}`}>Name</th>
+                  <th className={`text-left ${cell}`}>Type</th>
+                  {!compact && <th className={`text-left ${cell}`} title="Display label for the generated UI (defaults to the field name)">Label</th>}
+                  <th className={`text-center ${cell} w-12`} title="Primary key (@Id). Tick more than one for a composite key.">PK</th>
+                  <th className={`text-center ${cell} w-12`} title="Generated by the database on insert (IDENTITY for LONG/INTEGER, UUID generator for UUID). Primary key only.">Gen</th>
+                  <th className={`text-center ${cell} w-12`} title="Required: NOT NULL column + @NotNull/@NotBlank on the DTO + a required form field">Req</th>
+                  <th className={`text-center ${cell} w-12`} title="Unique: a unique constraint on the column; a duplicate value answers 409">Uniq</th>
+                  <th className={`text-left ${cell}`} title="Constraints, default value, lock-after-create, search / filter inclusion">More</th>
                   <th className="w-8"></th>
                 </tr>
               </thead>
@@ -664,18 +674,15 @@ export function EntitiesEditor({
                   const isTemporal = field.type === 'LOCAL_DATE' || field.type === 'LOCAL_DATE_TIME'
                   const isFilterableType = !field.primaryKey
                     && (field.type === 'ENUM' || field.type === 'BOOLEAN' || isTemporal || isNumeric)
-                  // Constraints are type-gated: STRING → length/pattern/email, numeric → min/max,
-                  // ENUM → values; every non-generated field can also carry a default value, so
-                  // only a generated key has no expander.
-                  const hasConstraintControls = !(field.primaryKey && field.generated)
-                  const hasConstraintsSet = field.length != null || field.min != null || field.max != null
-                    || Boolean(field.pattern) || Boolean(field.email) || (field.enumValues?.length ?? 0) > 0
-                    || Boolean(field.defaultValue)
-                  const hasConstraintErr = Boolean(
+                  // A generated key takes no constraints, default, lock or search/filter — its
+                  // More panel only exists in compact mode, for the display label.
+                  const generatedKey = Boolean(field.primaryKey && field.generated)
+                  const hasMorePanel = !generatedKey || compact
+                  const hasErr = Boolean(
                     fErr?.length || fErr?.min || fErr?.max || fErr?.pattern || fErr?.email || fErr?.enumValues || fErr?.defaultValue)
                   const rowKey = `${entityKey}-${fieldKey}`
                   // Force open on error so the message is never hidden behind a collapsed panel.
-                  const isOpen = hasConstraintControls && (expandedFields.has(rowKey) || hasConstraintErr)
+                  const isOpen = hasMorePanel && (expandedFields.has(rowKey) || hasErr)
                   const fieldList = `fields:${eIdx}`
                   const rowDrop = dnd.indicatorFor(fieldList, fIdx)
                   return (
@@ -699,7 +706,7 @@ export function EntitiesEditor({
                         </span>
                       )}
                     </td>
-                    <td className="py-1.5 px-2 align-top">
+                    <td className={`${cell} align-top`}>
                       <input
                         type="text"
                         aria-label="Field name"
@@ -711,7 +718,7 @@ export function EntitiesEditor({
                       />
                       {fErr?.name && <p className="mt-0.5 text-[11px] text-error">{fErr.name}</p>}
                     </td>
-                    <td className="py-1.5 px-2 align-top">
+                    <td className={`${cell} align-top`}>
                       <select
                         aria-label="Field type"
                         className="w-full bg-background border border-outline-variant rounded px-2 py-1 text-xs focus:ring-1 focus:ring-primary/20 focus:border-primary outline-none"
@@ -721,22 +728,24 @@ export function EntitiesEditor({
                         {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </td>
-                    <td className="py-1.5 px-2 align-top">
-                      <input
-                        type="text"
-                        aria-label="Display label"
-                        className="w-full bg-background border border-outline-variant rounded px-2 py-1 text-xs focus:ring-1 focus:ring-primary/20 focus:border-primary outline-none"
-                        value={field.label ?? ''}
-                        onChange={e => updateField(eIdx, fIdx, { label: e.target.value || undefined })}
-                        placeholder={field.name || 'label'}
-                        title="Display label for the generated UI. Leave blank to derive from the field name."
-                      />
-                    </td>
-                    <td className="py-1.5 px-2 text-center align-top">
+                    {!compact && (
+                      <td className={`${cell} align-top`}>
+                        <input
+                          type="text"
+                          aria-label="Display label"
+                          className="w-full bg-background border border-outline-variant rounded px-2 py-1 text-xs focus:ring-1 focus:ring-primary/20 focus:border-primary outline-none"
+                          value={field.label ?? ''}
+                          onChange={e => updateField(eIdx, fIdx, { label: e.target.value || undefined })}
+                          placeholder={field.name || 'label'}
+                          title="Display label for the generated UI. Leave blank to derive from the field name."
+                        />
+                      </td>
+                    )}
+                    <td className={`${cell} text-center align-top`}>
                       <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Primary key" checked={!!field.primaryKey}
                         onChange={e => updateField(eIdx, fIdx, e.target.checked ? { primaryKey: true } : { primaryKey: false, generated: undefined })} />
                     </td>
-                    <td className="py-1.5 px-2 text-center align-top">
+                    <td className={`${cell} text-center align-top`}>
                       <input type="checkbox" aria-label="Auto-generated value" checked={!!field.generated}
                         disabled={!canGenerate}
                         title={canGenerate ? undefined : (pkCount > 1 ? 'A generated key requires a single primary key' : 'Auto-generated applies to a LONG/INTEGER/UUID primary key only')}
@@ -744,98 +753,52 @@ export function EntitiesEditor({
                         onChange={e => updateField(eIdx, fIdx, { generated: e.target.checked })} />
                       {fErr?.generated && <p className="mt-0.5 text-[11px] text-error">{fErr.generated}</p>}
                     </td>
-                    <td className="py-1.5 px-2 text-center align-top">
+                    <td className={`${cell} text-center align-top`}>
                       <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Required (not null)" checked={!!field.required}
                         onChange={e => updateField(eIdx, fIdx, { required: e.target.checked })} />
                     </td>
-                    <td className="py-1.5 px-2 text-center align-top">
+                    <td className={`${cell} text-center align-top`}>
                       <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Unique" checked={!!field.unique}
                         onChange={e => updateField(eIdx, fIdx, { unique: e.target.checked })} />
                     </td>
-                    <td className="py-1.5 px-2 text-center align-top">
-                      {field.primaryKey ? (
-                        <span className="text-secondary/40" title="Primary keys are already locked after create" aria-hidden="true">—</span>
-                      ) : (
-                        <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Locked after create" checked={!!field.readOnly}
-                          title="Locked after create: set on create, not editable afterwards"
-                          onChange={e => updateField(eIdx, fIdx, { readOnly: e.target.checked || undefined })} />
-                      )}
+                    <td className={`${cell} align-top`}>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {hasMorePanel ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleExpand(rowKey)}
+                            aria-expanded={isOpen}
+                            aria-label={isOpen ? 'Hide field details' : 'Edit field details'}
+                            title={hasErr ? 'Problem in this field — fix below' : isOpen ? 'Hide' : 'Constraints, default, lock, search / filter'}
+                            className={`inline-flex items-center gap-1 px-1.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                              hasErr ? 'text-error hover:bg-error/10' : 'text-secondary hover:text-primary hover:bg-primary/10'}`}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
+                              {isOpen ? 'expand_less' : 'tune'}
+                            </span>
+                            {hasErr && <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>error</span>}
+                          </button>
+                        ) : (
+                          <span className="text-secondary/40 px-1.5" title="A generated key takes no constraints or default" aria-hidden="true">—</span>
+                        )}
+                        {!isOpen && <FieldChips field={field} includeLabel={compact} onOpen={() => expand(rowKey)} />}
+                      </div>
                     </td>
-                    <td className="py-1.5 px-2 text-center align-top">
-                      {isTextSearch ? (
-                        <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Include in search" checked={field.searchable !== false}
-                          title="Include this field in the text-search box"
-                          onChange={e => updateField(eIdx, fIdx, { searchable: e.target.checked ? undefined : false })} />
-                      ) : (
-                        <span className="text-secondary/40" title="Search applies to STRING/TEXT fields only" aria-hidden="true">—</span>
-                      )}
-                    </td>
-                    <td className="py-1.5 px-2 text-center align-top">
-                      {isFilterableType ? (
-                        <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Include in filter bar" checked={field.filterable !== false}
-                          title="Include this field in the filter bar"
-                          onChange={e => updateField(eIdx, fIdx, { filterable: e.target.checked ? undefined : false })} />
-                      ) : (
-                        <span className="text-secondary/40" title="Filters apply to non-PK enum/boolean/date/numeric fields only" aria-hidden="true">—</span>
-                      )}
-                    </td>
-                    <td className="py-1.5 px-2 text-center align-top">
-                      {hasConstraintControls ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleExpand(rowKey)}
-                          aria-expanded={isOpen}
-                          aria-label={isOpen ? 'Hide constraints' : 'Edit constraints'}
-                          title={hasConstraintErr ? 'Constraint error — fix below'
-                            : hasConstraintsSet ? 'Constraints set — edit'
-                            : 'Add constraints'}
-                          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                            hasConstraintErr ? 'text-error hover:bg-error/10'
-                              : hasConstraintsSet ? 'text-primary hover:bg-primary/10'
-                              : 'text-secondary hover:text-primary hover:bg-primary/10'}`}
-                        >
-                          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
-                            {isOpen ? 'expand_less' : 'tune'}
-                          </span>
-                          {hasConstraintErr
-                            ? <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>error</span>
-                            : (hasConstraintsSet && !isOpen && <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />)}
-                        </button>
-                      ) : (
-                        <span className="text-secondary/40" title="A generated key takes no constraints or default" aria-hidden="true">—</span>
-                      )}
-                    </td>
-                    <td className="py-1.5 px-2 text-right align-top">
+                    <td className={`${cell} text-right align-top`}>
                       <div className="flex items-center justify-end gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => moveField(eIdx, fIdx, -1)}
-                          disabled={fIdx === 0}
-                          className="p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary"
-                          title="Move field up (earlier column / form row)"
-                          aria-label="Move field up"
-                        >
+                        <button type="button" onClick={() => moveField(eIdx, fIdx, -1)} disabled={fIdx === 0} className={SMALL_ICON_BTN}
+                                title="Move field up (earlier column / form row)" aria-label="Move field up">
                           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_upward</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => moveField(eIdx, fIdx, 1)}
-                          disabled={fIdx === entity.fields.length - 1}
-                          className="p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary"
-                          title="Move field down"
-                          aria-label="Move field down"
-                        >
+                        <button type="button" onClick={() => moveField(eIdx, fIdx, 1)} disabled={fIdx === entity.fields.length - 1} className={SMALL_ICON_BTN}
+                                title="Move field down" aria-label="Move field down">
                           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_downward</span>
                         </button>
-                        <button
-                          onClick={() => duplicateField(eIdx, fIdx)}
-                          className="p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
-                          title="Duplicate field"
-                          aria-label="Duplicate field"
-                        >
+                        <button type="button" onClick={() => duplicateField(eIdx, fIdx)} className={SMALL_ICON_BTN} title="Duplicate field" aria-label="Duplicate field">
                           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>content_copy</span>
                         </button>
                         <button
+                          type="button"
                           onClick={() => removeField(eIdx, fIdx)}
                           className="p-1 rounded text-secondary hover:text-error hover:bg-error/10 transition-colors"
                           title="Remove field"
@@ -848,12 +811,15 @@ export function EntitiesEditor({
                   </tr>
                   {isOpen && (
                     <tr className="bg-background/30">
-                      <td colSpan={13} className="px-2 pb-3 pt-0 align-top">
-                        <FieldConstraintsPanel
+                      <td colSpan={fieldColumns} className="px-2 pb-3 pt-0 align-top">
+                        <FieldMorePanel
                           field={field}
                           fErr={fErr}
                           isString={isString}
                           isNumeric={isNumeric}
+                          isTextSearch={isTextSearch}
+                          isFilterableType={isFilterableType}
+                          showLabel={compact}
                           onUpdate={updates => updateField(eIdx, fIdx, updates)}
                         />
                       </td>
@@ -866,6 +832,7 @@ export function EntitiesEditor({
             </table>
             <div className="mt-2 flex items-center gap-1">
               <button
+                type="button"
                 onClick={() => addField(eIdx)}
                 className="inline-flex items-center gap-1 px-3 py-1 rounded text-xs text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
               >
@@ -894,6 +861,7 @@ export function EntitiesEditor({
           <RelationsEditor
             relations={entity.relations ?? []}
             entityNames={entityNames}
+            fieldNames={entity.fields.map(f => f.name)}
             onChange={rels => updateRelations(eIdx, rels)}
             errors={eErr?.relations}
             ownerName={entity.name}
@@ -906,6 +874,12 @@ export function EntitiesEditor({
         </div>
         )
       })}
+
+      {visibleUids && entities.length > 0 && visibleCount === 0 && (
+        <p className="text-xs text-secondary text-center py-6" data-no-match>
+          No entity matches the filter. Clear it in the outline to see all {entities.length} entities.
+        </p>
+      )}
 
       {entities.length === 0 ? (
         <div
@@ -926,6 +900,7 @@ export function EntitiesEditor({
             )}
           </div>
           <button
+            type="button"
             onClick={addEntity}
             className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition-opacity active:scale-95"
           >
@@ -935,6 +910,7 @@ export function EntitiesEditor({
         </div>
       ) : (
         <button
+          type="button"
           onClick={addEntity}
           className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant hover:border-primary text-secondary hover:text-primary text-sm font-medium transition-colors"
         >
@@ -945,23 +921,42 @@ export function EntitiesEditor({
   )
 }
 
-/** Expanded constraint editor for a single field — shows only the constraints valid for the
- *  field's type (STRING → length/pattern/email, numeric → min/max, ENUM → values). Replaces
- *  the old always-on constraint columns, so no disabled cells are ever shown. */
-function FieldConstraintsPanel({ field, fErr, isString, isNumeric, onUpdate }: {
+/** Expanded per-field editor: constraints valid for the field's type (STRING → length/pattern/
+ *  email, numeric → min/max, ENUM → values), the default value, and the behaviour flags that used
+ *  to be table columns (lock after create, search / filter inclusion; plus the display label in
+ *  compact density). Only controls that apply to the field are shown. */
+function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilterableType, showLabel, onUpdate }: {
   field: FullstackFieldDef
   fErr?: FieldErrors
   isString: boolean
   isNumeric: boolean
+  isTextSearch: boolean
+  isFilterableType: boolean
+  showLabel: boolean
   onUpdate: (updates: Partial<FullstackFieldDef>) => void
 }) {
   const inputClass = (error?: string) =>
     `w-full bg-background border rounded px-2 py-1.5 text-xs tabular-nums focus:ring-1 outline-none ${
       error ? 'border-error focus:ring-error/20 focus:border-error'
         : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`
+  const takesConstraints = !(field.primaryKey && field.generated)
+  const hasBehaviour = !field.primaryKey || isTextSearch
   return (
-    <div className="flex flex-wrap items-start gap-x-5 gap-y-3 rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-3">
-      {isString && (
+    <div className="flex flex-wrap items-start gap-x-5 gap-y-3 rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-3" data-field-more>
+      {showLabel && (
+        <ConstraintBox label="Display label" wide>
+          <input
+            type="text"
+            aria-label="Display label"
+            className={inputClass()}
+            value={field.label ?? ''}
+            onChange={e => onUpdate({ label: e.target.value || undefined })}
+            placeholder={field.name || 'label'}
+            title="Display label for the generated UI. Leave blank to derive from the field name."
+          />
+        </ConstraintBox>
+      )}
+      {takesConstraints && isString && (
         <>
           <ConstraintBox label="Max length" error={fErr?.length}>
             <input
@@ -998,7 +993,7 @@ function FieldConstraintsPanel({ field, fErr, isString, isNumeric, onUpdate }: {
           </label>
         </>
       )}
-      {isNumeric && (
+      {takesConstraints && isNumeric && (
         <>
           <ConstraintBox label="Min" error={fErr?.min}>
             <input
@@ -1022,7 +1017,7 @@ function FieldConstraintsPanel({ field, fErr, isString, isNumeric, onUpdate }: {
           </ConstraintBox>
         </>
       )}
-      {field.type === 'ENUM' && (
+      {takesConstraints && field.type === 'ENUM' && (
         <ConstraintBox label="Enum values" error={fErr?.enumValues} wide>
           <EnumValuesEditor
             values={field.enumValues ?? []}
@@ -1031,10 +1026,39 @@ function FieldConstraintsPanel({ field, fErr, isString, isNumeric, onUpdate }: {
           />
         </ConstraintBox>
       )}
-      <ConstraintBox label="Default value" error={fErr?.defaultValue}>
-        <DefaultValueInput field={field} invalid={Boolean(fErr?.defaultValue)} className={inputClass(fErr?.defaultValue)}
-          onChange={v => onUpdate({ defaultValue: v === '' ? undefined : v })} />
-      </ConstraintBox>
+      {takesConstraints && (
+        <ConstraintBox label="Default value" error={fErr?.defaultValue}>
+          <DefaultValueInput field={field} invalid={Boolean(fErr?.defaultValue)} className={inputClass(fErr?.defaultValue)}
+            onChange={v => onUpdate({ defaultValue: v === '' ? undefined : v })} />
+        </ConstraintBox>
+      )}
+      {hasBehaviour && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 basis-full pt-1 border-t border-outline-variant/60" data-field-behaviour>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Behaviour</span>
+          {!field.primaryKey && (
+            <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer"
+                   title="Locked after create: set when a row is created and can't be edited afterwards (form disables it, the service never overwrites it)">
+              <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Locked after create" checked={!!field.readOnly}
+                onChange={e => onUpdate({ readOnly: e.target.checked || undefined })} />
+              Locked after create
+            </label>
+          )}
+          {isTextSearch && (
+            <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer" title="Include this field in the text-search box">
+              <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Include in search" checked={field.searchable !== false}
+                onChange={e => onUpdate({ searchable: e.target.checked ? undefined : false })} />
+              In search
+            </label>
+          )}
+          {isFilterableType && (
+            <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer" title="Include this field in the filter bar">
+              <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Include in filter bar" checked={field.filterable !== false}
+                onChange={e => onUpdate({ filterable: e.target.checked ? undefined : false })} />
+              In filter bar
+            </label>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -1075,8 +1099,8 @@ function DefaultValueInput({ field, invalid, className, onChange }: {
   )
 }
 
-/** Labeled wrapper for one constraint control inside FieldConstraintsPanel. `wide` lets the
- *  pattern/enum editors grow to fill remaining width. */
+/** Labeled wrapper for one control inside FieldMorePanel. `wide` lets the pattern/enum/label
+ *  editors grow to fill remaining width. */
 function ConstraintBox({ label, error, wide, children }: {
   label: string; error?: string; wide?: boolean; children: React.ReactNode
 }) {

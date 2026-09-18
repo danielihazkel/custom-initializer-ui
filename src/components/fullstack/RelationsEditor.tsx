@@ -3,13 +3,15 @@ import type { RelationErrors } from './validation'
 import { newUid } from './uid'
 import { focusRowWhenRendered } from './focus'
 import { moveItem } from './reorder'
-import { pluralize, toCamelCase } from './naming'
+import { pluralize, toCamelCase, uniqueName } from './naming'
 import { dropIndicatorClass, useDragReorder } from './useDragReorder'
 
 interface Props {
   relations: FullstackRelationDef[]
   /** All entity names in the request (valid FK targets; self-references are allowed). */
   entityNames: string[]
+  /** The owning entity's field names — a duplicated relation must not collide with them. */
+  fieldNames?: string[]
   onChange: (relations: FullstackRelationDef[]) => void
   errors?: Record<number, RelationErrors>
   /** When set, adding a relation is not offered and this text explains why (e.g. a SELECT-backed
@@ -34,7 +36,7 @@ const ICON_BUTTON = 'p-1 rounded text-secondary hover:text-primary hover:bg-prim
  * `inverseCollections` opt, so there is no inverse editor here; the hint under each target
  * shows what that derivation will name.
  */
-export function RelationsEditor({ relations, entityNames, onChange, errors, addDisabledReason, ownerName, showInverse }: Props) {
+export function RelationsEditor({ relations, entityNames, fieldNames = [], onChange, errors, addDisabledReason, ownerName, showInverse }: Props) {
   const dnd = useDragReorder((_list, from, to) => onChange(moveItem(relations, from, to)))
 
   function update(idx: number, updates: Partial<FullstackRelationDef>) {
@@ -50,7 +52,12 @@ export function RelationsEditor({ relations, entityNames, onChange, errors, addD
   }
   function duplicate(idx: number) {
     const src = relations[idx]
-    const copy: FullstackRelationDef = { ...src, uid: newUid(), fieldName: src.fieldName ? `${src.fieldName}Copy` : '' }
+    const taken = [...fieldNames, ...relations.map(r => r.fieldName)]
+    const copy: FullstackRelationDef = {
+      ...src,
+      uid: newUid(),
+      fieldName: src.fieldName.trim() ? uniqueName(`${src.fieldName.trim()}Copy`, taken) : '',
+    }
     onChange([...relations.slice(0, idx + 1), copy, ...relations.slice(idx + 1)])
     focusRowWhenRendered(copy.uid)
   }
@@ -184,6 +191,7 @@ export function RelationsEditor({ relations, entityNames, onChange, errors, addD
         </p>
       ) : (
         <button
+          type="button"
           onClick={add}
           className="inline-flex items-center gap-1 px-3 py-1 rounded text-xs text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
         >

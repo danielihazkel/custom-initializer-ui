@@ -506,6 +506,9 @@ export interface ActivitySummary {
 export interface Toast {
   message: string
   type: 'success' | 'error'
+  /** Optional one-click follow-up rendered as a button in the toast (e.g. "Undo" after a
+   *  delete). A toast carrying an action stays up longer so the user can reach it. */
+  action?: { label: string; onClick: () => void }
 }
 
 // Starter Templates

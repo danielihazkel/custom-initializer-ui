@@ -81,6 +81,49 @@ compatibility rules via `useDependencyCompatibility`. Explore and Generate both 
 `src/commands.ts` (`registerCommands` / `useRegisteredCommands`); on this tab `CommandPalette` lists
 those instead of the Backend catalog.
 
+**Scaling to larger models.** `SectionNav` (page header) jumps to `#fs-meta` / `#fs-backend` /
+`#fs-frontend` / `#fs-options` / `#fs-deps` / `#fs-entities` with a red dot per section that has
+errors. From four entities up (or once the ⌘K "Find entity…" action pins it) `EntityNavigator`
+renders beside the cards — a sticky outline with per-entity error/suggestion badges, a filter
+(`entityMatches`: name, labels, table, field names) that also narrows the cards
+(`EntitiesEditor.visibleUids`), ↑/↓/Enter navigation and a highlight on the card in view
+(`useActiveEntity`, IntersectionObserver, no-op in jsdom). The field table has a **density** toggle
+(`fullstack:density`): Lock / Search / Filter left the columns for each row's **More** panel
+(`FieldMorePanel`: constraints + default + a Behaviour row), and everything set inside it shows as
+chips on the row (`FieldChips.fieldChips`, click = open); Compact also drops the Label column (the
+label moves into the panel and shows as a chip). The entity header keeps Views / Read-only /
+Overrides and puts labels, schema/table, the **SELECT view** tick + query and the imported DDL behind
+**Settings** (`EntitySettingsPanel`, summarised by `settingsSummary` when closed; forced open while
+the query is blank — that state is `EntityErrors.viewQuery`, counted like an error but rendered as
+an amber `data-pending` hint, and ticking the box focuses the textarea via `focusWithinRow`). Each
+card also has **Preview UI** (`EntityUiPreview`, view-model in `uiPreview.ts` `buildUiPreview`): a
+static mock of the generated list toolbar/table header and create form — labels, control per type,
+required marks, defaults, locked fields, relation selects, audit columns, selection/export affordances,
+Hebrew chrome and `dir="rtl"` — derived from the same rules as `summary.ts`, no server call. Only one
+of Settings / Overrides / Preview is open per card (`panelFor`). The lint panel is controlled by the
+view (`lintOpen` / `lintFilterUid`) so a card's amber badge opens it on that entity's issues.
+
+**Safety nets.** Duplicate entity/field/relation names are uniquified (`naming.uniqueName`: `XCopy`,
+`XCopy2`, …) so cloning twice never trips the duplicate validator; the last remaining list view is
+disabled with a tooltip rather than silently ignored; Explore / Generate stay clickable with errors
+(the click toasts the count and jumps to the first one); `persist()` reports a refused localStorage
+write and the sticky bar shows a storage-full notice (`data-storage-full`), a `beforeunload` guard
+arms while that is true and there is unsaved work, and `useFullstackPresets.savePreset` returns
+`persisted` so the toast never claims a save that only lives in memory; deleting a browser preset
+toasts an **Undo** (`Toast.action`, `restorePreset`); the import drawer keeps a parsed preview after
+an edit, marks it stale (`data-stale`) and re-parses on the primary button, keeping unticked entities
+by name; Import JSON offers Replace / Append when a model is already loaded (`ConfirmDialog`
+`secondaryLabel`); undo bursts only coalesce edits with the same `snapshotChangeKey` (row-level), so
+three quick ticks on three fields stay three steps. Examples include a composite-key model
+("Course enrolments") and a SELECT-view model ("Sales reporting").
+
+**Jumping around the page.** `App.tsx`'s `<main>` is `overflow-hidden` (it clips the ambient
+blobs, one of which hangs below it), so it has hidden scrollable overflow. `element.scrollIntoView()`
+and a plain `focus()` scroll *that* box as well as the window, and the wheel can never scroll it back
+— the page then looks stuck part-way down. Every jump in the editor therefore goes through
+`scroll.ts` (`scrollToElement` scrolls the window only and resets any clipped ancestor;
+`focusWithoutClipping` focuses with `preventScroll`). Do not reintroduce `scrollIntoView` here.
+
 `EntitiesEditor` rows carry `data-row-uid` so `focus.ts` can focus a freshly added entity/field/relation;
 entities, fields and relations reorder by arrow buttons or **drag-and-drop** (`useDragReorder.ts` — native
 HTML5 DnD, one hook keyed per list, only the grip handle is draggable, `reorder.ts` `moveItem` applies

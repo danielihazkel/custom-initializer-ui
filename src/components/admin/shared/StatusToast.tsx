@@ -7,10 +7,14 @@ interface StatusToastProps {
   onClear: () => void
 }
 
+// A toast that offers an action ("Undo") stays up long enough to reach it.
+const PLAIN_MS = 3000
+const WITH_ACTION_MS = 6000
+
 export function StatusToast({ toast, onClear }: StatusToastProps) {
   useEffect(() => {
     if (!toast) return
-    const t = setTimeout(onClear, 3000)
+    const t = setTimeout(onClear, toast.action ? WITH_ACTION_MS : PLAIN_MS)
     return () => clearTimeout(t)
   }, [toast, onClear])
 
@@ -30,6 +34,15 @@ export function StatusToast({ toast, onClear }: StatusToastProps) {
         {toast.type === 'success' ? 'check_circle' : 'error'}
       </span>
       <span className="break-words">{toast.message}</span>
+      {toast.action && (
+        <button
+          type="button"
+          onClick={() => { toast.action?.onClick(); onClear() }}
+          className="ml-2 px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wide bg-background/30 hover:bg-background/50 transition-colors shrink-0"
+        >
+          {toast.action.label}
+        </button>
+      )}
     </div>,
     document.body
   )

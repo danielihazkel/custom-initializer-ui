@@ -191,6 +191,78 @@ export const EXAMPLE_MODELS: ExampleModel[] = [
       },
     ],
   },
+  {
+    id: 'enrolments',
+    name: 'Course enrolments',
+    description: 'Students enrol in courses. Enrolment has a composite key (student + course) — the shape a link table gets.',
+    icon: 'school',
+    entities: [
+      {
+        name: 'Student',
+        fields: [
+          id(),
+          { name: 'fullName', type: 'STRING', required: true, length: 120 },
+          { name: 'email', type: 'STRING', required: true, unique: true, email: true, length: 200 },
+        ],
+      },
+      {
+        name: 'Course',
+        listViews: ['table', 'cards'],
+        fields: [
+          id(),
+          { name: 'code', type: 'STRING', required: true, unique: true, length: 20 },
+          { name: 'title', type: 'STRING', required: true, length: 160 },
+          { name: 'credits', type: 'INTEGER', required: true, min: 1, max: 30 },
+        ],
+      },
+      {
+        // Composite primary key: two PK fields, no `generated`. The generated controller addresses
+        // rows as /api/enrolments/{studentId}/{courseId}. (A relation cannot *target* a
+        // composite-key entity, so the key columns stay plain fields here.)
+        name: 'Enrolment',
+        fields: [
+          { name: 'studentId', type: 'LONG', primaryKey: true },
+          { name: 'courseId', type: 'LONG', primaryKey: true },
+          { name: 'enrolledOn', type: 'LOCAL_DATE', required: true },
+          { name: 'grade', type: 'ENUM', enumValues: ['A', 'B', 'C', 'D', 'F'] },
+          { name: 'notes', type: 'STRING', length: 255 },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'reporting',
+    name: 'Sales reporting',
+    description: 'Sales rows plus a read-only SELECT view that rolls them up per month — a @Subselect entity with no writes.',
+    icon: 'monitoring',
+    entities: [
+      {
+        name: 'Sale',
+        listViews: ['table', 'calendar'],
+        fields: [
+          id(),
+          { name: 'reference', type: 'STRING', required: true, unique: true, length: 40 },
+          { name: 'region', type: 'ENUM', required: true, enumValues: ['NORTH', 'CENTER', 'SOUTH'] },
+          { name: 'amount', type: 'BIG_DECIMAL', required: true, min: 0 },
+          { name: 'soldOn', type: 'LOCAL_DATE', required: true },
+        ],
+      },
+      {
+        // SELECT-backed view: read-only, mapped to the query via @Subselect. Field names must
+        // match the projected aliases; the first field is the @Id.
+        name: 'MonthlySales',
+        label: 'Monthly sales',
+        labelPlural: 'Monthly sales',
+        listViews: ['table', 'cards'],
+        viewQuery: 'SELECT SUBSTRING(CAST(s.sold_on AS VARCHAR), 1, 7) AS month, SUM(s.amount) AS total, COUNT(*) AS sales FROM sale s GROUP BY SUBSTRING(CAST(s.sold_on AS VARCHAR), 1, 7)',
+        fields: [
+          { name: 'month', type: 'STRING', primaryKey: true },
+          { name: 'total', type: 'BIG_DECIMAL' },
+          { name: 'sales', type: 'LONG' },
+        ],
+      },
+    ],
+  },
 ]
 
 /** Deep copy so the loaded model can be edited without touching the catalog entry. */

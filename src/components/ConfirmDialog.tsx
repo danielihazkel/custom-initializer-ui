@@ -9,6 +9,9 @@ interface ConfirmDialogProps {
   tone?: 'danger' | 'default'
   onConfirm: () => void
   onCancel: () => void
+  /** Optional third choice between Cancel and Confirm (e.g. "Append" next to "Replace"). */
+  secondaryLabel?: string
+  onSecondary?: () => void
 }
 
 /**
@@ -24,6 +27,8 @@ export function ConfirmDialog({
   tone = 'default',
   onConfirm,
   onCancel,
+  secondaryLabel,
+  onSecondary,
 }: ConfirmDialogProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
@@ -55,12 +60,23 @@ export function ConfirmDialog({
         </div>
         <div className="flex items-center justify-end gap-3">
           <button
+            type="button"
             onClick={onCancel}
             className="px-4 py-2 rounded text-sm font-medium border border-outline-variant text-secondary hover:text-on-surface transition-all"
           >
             {cancelLabel}
           </button>
+          {secondaryLabel && onSecondary && (
+            <button
+              type="button"
+              onClick={onSecondary}
+              className="px-4 py-2 rounded text-sm font-bold border border-primary/50 text-primary hover:bg-primary/10 transition-all active:scale-95"
+            >
+              {secondaryLabel}
+            </button>
+          )}
           <button
+            type="button"
             autoFocus
             onClick={onConfirm}
             className={`px-4 py-2 rounded text-sm font-bold transition-all active:scale-95 ${confirmClasses}`}

@@ -25,11 +25,14 @@ function readList(key: string): FullstackPreset[] {
   }
 }
 
-function writeList(key: string, list: FullstackPreset[]): void {
+/** Returns false when the write failed (quota exceeded / storage disabled) so the caller can say
+ *  so instead of reporting a save that only exists in memory. */
+function writeList(key: string, list: FullstackPreset[]): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(list))
+    return true
   } catch {
-    /* quota exceeded — drop silently */
+    return false
   }
 }
 
@@ -38,27 +41,48 @@ function makeId(): string {
 }
 
 /** Named presets + a rolling list of recently generated/explored models for the fullstack tab.
- *  Mirrors useFrontendPresets; both persist in localStorage. */
+ *  Mirrors useFrontendPresets; both persist in localStorage. `persistFailed` is true once a write
+ *  has been refused — the lists still work for the session, they just won't survive a refresh. */
 export function useFullstackPresets() {
   const [presets, setPresets] = useState<FullstackPreset[]>(() => readList(PRESETS_KEY))
   const [recents, setRecents] = useState<FullstackPreset[]>(() => readList(RECENTS_KEY))
+  const [persistFailed, setPersistFailed] = useState(false)
 
-  useEffect(() => { writeList(PRESETS_KEY, presets) }, [presets])
-  useEffect(() => { writeList(RECENTS_KEY, recents) }, [recents])
+  useEffect(() => { setPersistFailed(!writeList(PRESETS_KEY, presets)) }, [presets])
+  useEffect(() => { if (!writeList(RECENTS_KEY, recents)) setPersistFailed(true) }, [recents])
 
-  const savePreset = useCallback((name: string, snapshot: FullstackSnapshot): FullstackPreset => {
+  /** Saves a preset. `persisted` is false when localStorage refused the write — the preset is
+   *  still listed for this session. */
+  const savePreset = useCallback((name: string, snapshot: FullstackSnapshot): { preset: FullstackPreset; persisted: boolean } => {
     const preset: FullstackPreset = {
       id: makeId(),
       name: name.trim() || 'Untitled preset',
       createdAt: Date.now(),
       snapshot,
     }
-    setPresets(prev => [preset, ...prev])
-    return preset
-  }, [])
+    const next = [preset, ...presets]
+    const persisted = writeList(PRESETS_KEY, next)
+    setPresets(next)
+    return { preset, persisted }
+  }, [presets])
 
-  const deletePreset = useCallback((id: string): void => {
+  /** Removes a preset and hands it back with its position, so an "Undo" can put it back. */
+  const deletePreset = useCallback((id: string): { preset: FullstackPreset; index: number } | null => {
+    const index = presets.findIndex(p => p.id === id)
+    if (index < 0) return null
+    const preset = presets[index]
     setPresets(prev => prev.filter(p => p.id !== id))
+    return { preset, index }
+  }, [presets])
+
+  /** Re-inserts a deleted preset at its old position (or the end if the list shrank). */
+  const restorePreset = useCallback((preset: FullstackPreset, index: number): void => {
+    setPresets(prev => {
+      if (prev.some(p => p.id === preset.id)) return prev
+      const next = [...prev]
+      next.splice(Math.min(index, next.length), 0, preset)
+      return next
+    })
   }, [])
 
   const deleteRecent = useCallback((id: string): void => {
@@ -79,5 +103,5 @@ export function useFullstackPresets() {
     })
   }, [])
 
-  return { presets, recents, savePreset, deletePreset, deleteRecent, pushRecent }
+  return { presets, recents, persistFailed, savePreset, deletePreset, restorePreset, deleteRecent, pushRecent }
 }

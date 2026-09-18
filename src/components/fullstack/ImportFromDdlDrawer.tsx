@@ -114,6 +114,9 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
   // Two-step flow: "Parse" fills this preview, "Import N entities" commits it. Editing the SQL
   // or switching dialect clears it, so what gets imported is always what was reviewed.
   const [parsed, setParsed] = useState<{ entities: FullstackEntityDef[]; note?: string } | null>(null)
+  // The SQL or dialect changed after Parse: the preview (and the ticks) stay on screen, dimmed,
+  // but can't be imported until re-parsed — a stray keystroke must not throw the review away.
+  const [stale, setStale] = useState(false)
   // Which parsed entities to import (uids) — everything by default, so a paste of a whole schema
   // can be trimmed to the tables that matter without re-pasting.
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
@@ -136,13 +139,14 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       setError(null)
       setParsing(false)
       setParsed(null)
+      setStale(false)
       setSelected(new Set())
       setMode(hasExisting ? 'append' : 'replace')
     }
   }, [isOpen, hasExisting, variant])
 
   async function handleSave() {
-    if (parsed) {
+    if (parsed && !stale) {
       const chosen = parsed.entities.filter(e => e.uid && selected.has(e.uid))
       if (chosen.length === 0) {
         setError({ detail: 'Tick at least one entity to import' })
@@ -158,6 +162,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       onImport(entities, mode, parsed.note)
       setSql('')
       setParsed(null)
+      setStale(false)
       onClose()
       return
     }
@@ -222,8 +227,12 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       setError({ detail: copy.emptyResult })
       throw new Error('empty result')
     }
+    // Re-parsing after an edit keeps the ticks of entities that are still there (by name).
+    const previouslyUnticked = new Set(
+      stale && parsed ? parsed.entities.filter(e => e.uid && !selected.has(e.uid)).map(e => e.name.toLowerCase()) : [])
     setParsed({ entities, note: body.note ?? undefined })
-    setSelected(new Set(entities.map(e => e.uid!)))
+    setStale(false)
+    setSelected(new Set(entities.filter(e => !previouslyUnticked.has(e.name.toLowerCase())).map(e => e.uid!)))
   }
 
   const n = parsed?.entities.length ?? 0
@@ -240,9 +249,9 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       onClose={onClose}
       onSave={handleSave}
       saving={parsing}
-      saveLabel={parsed
+      saveLabel={parsed && !stale
         ? (nSelected === n ? `Import ${n} entit${n === 1 ? 'y' : 'ies'}` : `Import ${nSelected} of ${n}`)
-        : 'Parse'}
+        : stale ? 'Parse again' : 'Parse'}
       savingLabel="Parsing…"
     >
       <div className="space-y-4">
@@ -257,7 +266,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
           <select
             className="w-full bg-background border border-outline-variant rounded px-3 py-2 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
             value={dialect}
-            onChange={e => { setDialect(e.target.value); setParsed(null) }}
+            onChange={e => { setDialect(e.target.value); if (parsed) setStale(true) }}
           >
             {dialectChoices.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
           </select>
@@ -268,16 +277,23 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
             {variant === 'select' ? 'SELECT query' : 'DDL'}
           </label>
           <textarea
+            aria-label={variant === 'select' ? 'SELECT query' : 'DDL'}
             className="w-full font-mono text-xs bg-background border border-outline-variant rounded p-3 min-h-[260px] focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
             placeholder={copy.placeholder}
             value={sql}
-            onChange={e => { setSql(e.target.value); setParsed(null) }}
+            onChange={e => { setSql(e.target.value); if (parsed) setStale(true) }}
             spellCheck={false}
           />
         </div>
 
         {parsed && (
-          <div className="space-y-2" data-import-preview>
+          <div className={`space-y-2 ${stale ? 'opacity-60' : ''}`} data-import-preview data-stale={stale ? '' : undefined}>
+            {stale && (
+              <p className="flex items-center gap-1.5 text-[11px] text-warning rounded-lg border border-warning/40 bg-warning/5 px-3 py-2" role="status">
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>sync_problem</span>
+                The SQL changed since this preview — click Parse again to refresh it. Your ticks are kept.
+              </p>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase tracking-widest text-secondary">
                 Preview — {n} entit{n === 1 ? 'y' : 'ies'}

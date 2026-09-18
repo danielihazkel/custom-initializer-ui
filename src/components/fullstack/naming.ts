@@ -59,6 +59,26 @@ export function toKebabCase(s: string): string {
   return toSnakeCase(s).replace(/_/g, '-')
 }
 
+/** A name that does not collide (case-insensitively — the validator's duplicate rule) with any
+ *  in `taken`: `base` itself, else `base2`, `base3`, … Used by the Duplicate actions so cloning
+ *  the same row twice never produces two identical `XCopy` names. */
+export function uniqueName(base: string, taken: readonly string[]): string {
+  const used = new Set(taken.map(t => t.trim().toLowerCase()))
+  if (!used.has(base.trim().toLowerCase())) return base
+  for (let n = 2; ; n++) {
+    const candidate = `${base}${n}`
+    if (!used.has(candidate.toLowerCase())) return candidate
+  }
+}
+
+/** `firstName` / `first_name` / `FirstName` → `First name` — the label the generated UI derives
+ *  when no explicit display label is set. */
+export function humanize(s: string): string {
+  const words = toSnakeCase(s.trim()).split('_').filter(Boolean)
+  if (words.length === 0) return ''
+  return words.map((w, i) => (i === 0 ? w[0].toUpperCase() + w.slice(1) : w)).join(' ')
+}
+
 /** Best-effort English plural, same heuristics as the backend: -y→-ies, -s/-x/-z/-ch/-sh→-es,
  *  else +s; something already ending in s (not ss/us) is left alone. */
 export function pluralize(s: string): string {

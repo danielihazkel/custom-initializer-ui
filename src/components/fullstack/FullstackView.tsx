@@ -3,8 +3,11 @@ import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
 } from '../../types'
-import { EntitiesEditor, newEntity } from './EntitiesEditor'
+import { EntitiesEditor, countEntityErrors, newEntity, type EditorDensity } from './EntitiesEditor'
 import { EntityRelationGraph } from './EntityRelationGraph'
+import { EntityNavigator, entityMatches, useActiveEntity } from './EntityNavigator'
+import { SectionNav } from './SectionNav'
+import { focusWithoutClipping, scrollToElement } from './scroll'
 import { focusRowWhenRendered } from './focus'
 import { FullstackDepPicker } from './FullstackDepPicker'
 import { FullstackPresets } from './FullstackPresets'
@@ -14,7 +17,7 @@ import { ConfirmDialog } from '../ConfirmDialog'
 import { StatusToast } from '../admin/shared/StatusToast'
 import { stripUids, withUids } from './uid'
 import {
-  DEFAULT_PROJECT_META, describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, snapshotsEqual, toExportedModel,
+  DEFAULT_PROJECT_META, describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, snapshotChangeKey, snapshotsEqual, toExportedModel,
   type FullstackSnapshot, type ProjectMeta,
 } from './snapshot'
 import { lintModel, type LintIssue } from './lint'
@@ -64,7 +67,11 @@ const LS = {
   palette: 'fullstack:palette',
   collapsed: 'fullstack:collapsed',
   graph: 'fullstack:graph',
+  density: 'fullstack:density',
 } as const
+
+// The entity outline appears once the list is long enough to need one (or while filtering).
+const NAVIGATOR_MIN_ENTITIES = 4
 
 // Opt-in scaffolding extras, sent as opts.scaffold. Each value matches a backend optScaffold<Option>
 // gate — keep this list in step with FullstackProjectGenerationConfiguration (backend) and
@@ -99,12 +106,14 @@ function loadJson<T>(key: string, fallback: T): T {
 
 /** localStorage write that never throws: a model carrying imported `sourceSql` can exceed the
  *  quota, and an exception from inside a persist effect would take the whole view down on every
- *  keystroke. Losing the refresh-restore is the acceptable failure. */
-function persist(key: string, value: string): void {
+ *  keystroke. Losing the refresh-restore is the acceptable failure — but a visible one: the
+ *  caller tracks the returned flag and the sticky bar says the draft is no longer being saved. */
+function persist(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value)
+    return true
   } catch {
-    /* quota exceeded / storage disabled — keep editing, just don't restore on refresh */
+    return false
   }
 }
 
@@ -144,11 +153,24 @@ export function FullstackView() {
   const [pendingLoad, setPendingLoad] = useState<PendingLoad | null>(null)
   const [shareStatus, setShareStatus] = useState<ShareWriteStatus>('written')
   const [showGraph, setShowGraph] = useState<boolean>(() => loadJson<boolean>(LS.graph, false))
+  const [density, setDensity] = useState<EditorDensity>(() => (localStorage.getItem(LS.density) === 'compact' ? 'compact' : 'comfortable'))
+  // The entity outline's filter — also narrows which cards render.
+  const [entityFilter, setEntityFilter] = useState('')
+  const [navigatorPinned, setNavigatorPinned] = useState(false)
+  // The suggestions panel is controlled here so an entity card's amber badge can open it on
+  // that entity's issues.
+  const [lintOpen, setLintOpen] = useState(false)
+  const [lintFilterUid, setLintFilterUid] = useState<string | null>(null)
+  // True once a localStorage write was refused (quota / disabled): the draft is no longer being
+  // saved, so the sticky bar says so and leaving the page asks first.
+  const [persistFailed, setPersistFailed] = useState(false)
+  // A JSON file parsed by Import JSON, held while the user picks Replace / Append.
+  const [pendingJsonImport, setPendingJsonImport] = useState<FullstackSnapshot | null>(null)
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
     fetchPreview, clearPreview, clearError, cancel: cancelPreview,
   } = useFullstackPreview()
-  const { presets, recents, savePreset, deletePreset, deleteRecent, pushRecent } = useFullstackPresets()
+  const { presets, recents, persistFailed: presetsPersistFailed, savePreset, deletePreset, restorePreset, deleteRecent, pushRecent } = useFullstackPresets()
   const team = useTeamModels()
   // A team save that hit an existing name, held while the user decides whether to overwrite it.
   const [teamConflict, setTeamConflict] = useState<{ name: string; description: string; existing: TeamModelSummary } | null>(null)
@@ -181,10 +203,14 @@ export function FullstackView() {
   const hasErrors = errorCount > 0
 
   // Persist form state so a refresh doesn't lose the user's work (mirrors useProjectState).
-  useEffect(() => { persist(LS.meta, JSON.stringify(meta)) }, [meta])
+  // The model itself (meta + entities) is what matters for the storage-full notice; the small
+  // UI-state keys just try their luck.
+  useEffect(() => { setPersistFailed(!persist(LS.meta, JSON.stringify(meta))) }, [meta])
   // `sourceSql` (the imported DDL) stays in memory only: it is the one prop big enough to blow
   // the quota, and the server discards it anyway. The uids do persist — `collapsed` keys on them.
-  useEffect(() => { persist(LS.entities, JSON.stringify(entities.map(({ sourceSql: _s, ...e }) => e))) }, [entities])
+  useEffect(() => {
+    setPersistFailed(!persist(LS.entities, JSON.stringify(entities.map(({ sourceSql: _s, ...e }) => e))))
+  }, [entities])
   useEffect(() => { persist(LS.deps, JSON.stringify(selectedDeps)) }, [selectedDeps])
   useEffect(() => { persist(LS.backendSet, backendSet) }, [backendSet])
   useEffect(() => { persist(LS.frontendSet, frontendSet) }, [frontendSet])
@@ -192,6 +218,7 @@ export function FullstackView() {
   useEffect(() => { persist(LS.palette, colorPalette) }, [colorPalette])
   useEffect(() => { persist(LS.collapsed, JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { persist(LS.graph, JSON.stringify(showGraph)) }, [showGraph])
+  useEffect(() => { persist(LS.density, density) }, [density])
 
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
   const currentSnapshot = useMemo(
@@ -225,6 +252,15 @@ export function FullstackView() {
     if (baselineRef.current && snapshotsEqual(currentSnapshot, baselineRef.current)) return false
     return ![...presets, ...recents].some(p => snapshotsEqual(p.snapshot, currentSnapshot))
   }, [currentSnapshot, presets, recents])
+
+  // Closing the tab normally costs nothing — localStorage restores the draft. Once storage has
+  // refused a write, that safety net is gone, so ask before the unsaved model is lost.
+  useEffect(() => {
+    if (!(hasUnsavedWork && persistFailed)) return
+    const guard = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', guard)
+    return () => window.removeEventListener('beforeunload', guard)
+  }, [hasUnsavedWork, persistFailed])
 
   // Drop a stale preview error once the user changes any input, so the Explore button
   // doesn't stay error-styled (with the message hidden in a tooltip) after they've moved on.
@@ -290,12 +326,14 @@ export function FullstackView() {
 
   // ── Undo / redo ────────────────────────────────────────────────────────────
   // Every change to the snapshot is recorded automatically: the effect below sees the new
-  // snapshot, and files the *previous* one as the "before" state. Rapid successive changes
-  // (typing a name, ticking a few boxes) coalesce into one entry — a burst stays open while
-  // changes keep arriving within BURST_IDLE_MS and is committed when they stop. Destructive
-  // actions (remove, import, load, reset) still push an explicitly labelled entry first via
-  // pushUndoEntry; the state change they cause is then skipped so it isn't recorded twice.
-  // Undo/redo restore through applySnapshot and are skipped the same way.
+  // snapshot, and files the *previous* one as the "before" state. Rapid successive changes to
+  // the *same thing* (typing a name, retyping a default) coalesce into one entry — a burst stays
+  // open while changes keep arriving within BURST_IDLE_MS and keep hitting the same change key;
+  // an edit elsewhere (another field's checkbox) commits the burst and starts a new one, so
+  // three quick ticks on three fields stay three undo steps. Destructive actions (remove,
+  // import, load, reset) still push an explicitly labelled entry first via pushUndoEntry; the
+  // state change they cause is then skipped so it isn't recorded twice. Undo/redo restore
+  // through applySnapshot and are skipped the same way.
   const BURST_IDLE_MS = 600
   const historyRef = useRef(history)
   historyRef.current = history
@@ -303,7 +341,7 @@ export function FullstackView() {
   // The snapshot a silent (already-recorded, or non-user) change starts from — matched by
   // identity in the recording effect, then cleared.
   const silentFromRef = useRef<FullstackSnapshot | null>(null)
-  const burstRef = useRef<{ before: FullstackSnapshot; label: string } | null>(null)
+  const burstRef = useRef<{ before: FullstackSnapshot; label: string; key: string } | null>(null)
   const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const flushBurst = useCallback(() => {
@@ -320,7 +358,9 @@ export function FullstackView() {
     lastSnapshotRef.current = currentSnapshot
     if (silentFromRef.current === prev) { silentFromRef.current = null; return }
     if (snapshotsEqual(prev, currentSnapshot)) return
-    if (!burstRef.current) burstRef.current = { before: prev, label: describeSnapshotChange(prev, currentSnapshot) }
+    const key = snapshotChangeKey(prev, currentSnapshot)
+    if (burstRef.current && burstRef.current.key !== key) flushBurst()
+    if (!burstRef.current) burstRef.current = { before: prev, label: describeSnapshotChange(prev, currentSnapshot), key }
     if (burstTimerRef.current) clearTimeout(burstTimerRef.current)
     burstTimerRef.current = setTimeout(flushBurst, BURST_IDLE_MS)
   }, [currentSnapshot, flushBurst])
@@ -476,8 +516,35 @@ export function FullstackView() {
         setToast({ message: `Couldn't import ${file.name}: ${result.error}`, type: 'error' })
         return
       }
-      requestLoad({ kind: 'preset', snapshot: result.snapshot })
+      // With a model already in the editor, offer Append (its entities join yours) as well as
+      // the whole-model Replace — the same choice the DDL import gives.
+      if (entities.length > 0 && result.snapshot.entities.length > 0) setPendingJsonImport(result.snapshot)
+      else requestLoad({ kind: 'preset', snapshot: result.snapshot })
     }).catch(() => setToast({ message: `Couldn't read ${file.name}`, type: 'error' }))
+  }
+  function appendJsonImport() {
+    const snapshot = pendingJsonImport
+    if (!snapshot) return
+    setPendingJsonImport(null)
+    handleImport(JSON.parse(JSON.stringify(snapshot.entities)) as FullstackEntityDef[], 'append')
+  }
+
+  // Deleting a browser preset is one click, so it is undoable from the toast instead of confirmed.
+  function deletePresetWithUndo(id: string) {
+    const removed = deletePreset(id)
+    if (!removed) return
+    setToast({
+      message: `Deleted preset "${removed.preset.name}"`,
+      type: 'success',
+      action: { label: 'Undo', onClick: () => restorePreset(removed.preset, removed.index) },
+    })
+  }
+
+  function savePresetAndReport(name: string, snapshot: FullstackSnapshot) {
+    const { persisted } = savePreset(name, snapshot)
+    setToast(persisted
+      ? { message: `Saved preset "${name}"`, type: 'success' }
+      : { message: `Saved preset "${name}" for this session only — browser storage is full, so it won't survive a refresh. Export JSON to keep it.`, type: 'error' })
   }
 
   async function copyCurl() {
@@ -547,8 +614,7 @@ export function FullstackView() {
   function jumpToFirstError() {
     const metaInvalid = document.querySelector<HTMLElement>('#fs-meta [aria-invalid="true"]')
     if (metaInvalid) {
-      metaInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      metaInvalid.focus()
+      focusWithoutClipping(metaInvalid, 'center')
       return
     }
     const firstIdx = Object.keys(entityErrors.entities).map(Number).sort((a, b) => a - b)[0]
@@ -560,8 +626,8 @@ export function FullstackView() {
       const scope = firstIdx == null ? '#fs-entities' : `[data-entity-index="${firstIdx}"]`
       const target = document.querySelector<HTMLElement>(`${scope} [aria-invalid="true"], ${scope} [data-error]`)
         ?? document.querySelector<HTMLElement>('#fs-entities')
-      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      if (target?.matches('input, select, textarea')) target.focus()
+      if (target?.matches('input, select, textarea')) focusWithoutClipping(target, 'center')
+      else scrollToElement(target, 'center')
     })
   }
 
@@ -678,13 +744,49 @@ export function FullstackView() {
     setCollapsed(prev => { if (!prev.has(uid)) return prev; const next = new Set(prev); next.delete(uid); return next })
     requestAnimationFrame(() => {
       const card = document.querySelector<HTMLElement>(`[data-row-uid="${CSS.escape(uid)}"]`)
-      card?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      scrollToElement(card, 'start')
       card?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true })
     })
   }
 
   // ── Suggestions (non-blocking lint) ────────────────────────────────────────
   const lintIssues = useMemo(() => lintModel(entities, scaffoldOpts, selectedDeps), [entities, scaffoldOpts, selectedDeps])
+  const lintCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const issue of lintIssues) if (issue.entityUid) counts.set(issue.entityUid, (counts.get(issue.entityUid) ?? 0) + 1)
+    return counts
+  }, [lintIssues])
+  // An entity card's amber badge: open the panel on that entity's suggestions.
+  function showLintFor(uid: string) {
+    setLintFilterUid(uid)
+    setLintOpen(true)
+    requestAnimationFrame(() => scrollToElement(document.querySelector<HTMLElement>('[data-model-lint]'), 'nearest'))
+  }
+  // Drop a stale filter once its entity is gone or has nothing left to say.
+  useEffect(() => {
+    if (lintFilterUid && !lintCounts.has(lintFilterUid)) setLintFilterUid(null)
+  }, [lintFilterUid, lintCounts])
+
+  // ── Entity outline ─────────────────────────────────────────────────────────
+  const activeEntityUid = useActiveEntity(entities)
+  const showNavigator = entities.length >= NAVIGATOR_MIN_ENTITIES || entityFilter.trim() !== '' || navigatorPinned
+  const visibleUids = useMemo(() => {
+    if (!entityFilter.trim()) return undefined
+    return new Set(entities.filter(e => e.uid && entityMatches(e, entityFilter)).map(e => e.uid!))
+  }, [entities, entityFilter])
+  const entityErrorCounts = useMemo(() => {
+    const counts: Record<number, number> = {}
+    for (const [idx, err] of Object.entries(entityErrors.entities)) counts[Number(idx)] = countEntityErrors(err)
+    return counts
+  }, [entityErrors])
+  const sections = [
+    { id: 'fs-meta', label: 'Project', errors: countMetaErrors(metaErrors) },
+    { id: 'fs-backend', label: 'Backend' },
+    { id: 'fs-frontend', label: 'Frontend' },
+    { id: 'fs-options', label: 'Options' },
+    { id: 'fs-deps', label: 'Dependencies' },
+    { id: 'fs-entities', label: 'Entities', errors: entityErrors.count },
+  ]
   function applyLintFix(issue: LintIssue) {
     if (!issue.fix) return
     pushUndoEntry(`Fixed: ${issue.fix.label}`)
@@ -697,7 +799,7 @@ export function FullstackView() {
 
   const lastUndo = history.past[history.past.length - 1]
   const nextRedo = history.future[history.future.length - 1]
-  const blockedReason = `Fix ${errorCount} issue${errorCount === 1 ? '' : 's'} first (see the list to the left)`
+  const blockedReason = `Fix ${errorCount} issue${errorCount === 1 ? '' : 's'} first — click to jump to the first one`
 
   // ⌘K actions for this tab. Handlers are read through a ref so the registration effect runs
   // once per mount instead of on every render; the palette closes itself before `run`.
@@ -712,6 +814,13 @@ export function FullstackView() {
     explore, generate, exportJson, copyCurl, undo, redo,
     toggleCollapse: () => setCollapsed(allCollapsed ? new Set() : new Set(entities.map(e => e.uid).filter((u): u is string => Boolean(u)))),
     reset: () => setConfirmReset(true),
+    findEntity: () => {
+      // The outline only renders for larger models; asking for it pins it on for this session.
+      setNavigatorPinned(true)
+      scrollToElement(document.getElementById('fs-entities'), 'start')
+      requestAnimationFrame(() => document.getElementById('fs-entity-filter')?.focus({ preventScroll: true }))
+    },
+    toggleDensity: () => setDensity(d => (d === 'compact' ? 'comfortable' : 'compact')),
   }
   const commandRef = useRef(commandHandlers)
   commandRef.current = commandHandlers
@@ -726,6 +835,8 @@ export function FullstackView() {
     { id: 'fs-undo', title: 'Undo', icon: 'undo', group: 'Fullstack', shortcut: 'Ctrl+Z', run: () => commandRef.current.undo() },
     { id: 'fs-redo', title: 'Redo', icon: 'redo', group: 'Fullstack', shortcut: 'Ctrl+Shift+Z', run: () => commandRef.current.redo() },
     { id: 'fs-collapse', title: 'Collapse / expand all entities', icon: 'unfold_less', group: 'Fullstack', run: () => commandRef.current.toggleCollapse() },
+    { id: 'fs-find', title: 'Find entity…', description: 'Filter the entity list by name, label, table or field', icon: 'search', group: 'Fullstack', run: () => commandRef.current.findEntity() },
+    { id: 'fs-density', title: 'Toggle compact field tables', icon: 'density_small', group: 'Fullstack', run: () => commandRef.current.toggleDensity() },
     { id: 'fs-reset', title: 'Reset the fullstack generator', icon: 'restart_alt', group: 'Fullstack', run: () => commandRef.current.reset() },
   ]), [])
 
@@ -738,6 +849,7 @@ export function FullstackView() {
           (JPA + REST controllers per entity) and a React frontend (Vite + Tailwind, with a table-driven
           CRUD page per entity), already wired together end-to-end.
         </p>
+        <SectionNav sections={sections} />
       </header>
 
       <FullstackPresets
@@ -746,8 +858,8 @@ export function FullstackView() {
         currentSnapshot={currentSnapshot}
         onLoad={snapshot => requestLoad({ kind: 'preset', snapshot })}
         onLoadExample={example => requestLoad({ kind: 'example', example })}
-        onSave={(name, snapshot) => { savePreset(name, snapshot); setToast({ message: `Saved preset "${name}"`, type: 'success' }) }}
-        onDeletePreset={deletePreset}
+        onSave={savePresetAndReport}
+        onDeletePreset={deletePresetWithUndo}
         onDeleteRecent={deleteRecent}
         onExportJson={exportJson}
         onImportJson={importJson}
@@ -848,7 +960,7 @@ export function FullstackView() {
 
       {/* Backend: which template set renders the Spring side. Frontend (below): the React set plus
           everything that only affects the generated SPA — palette, dashboard header, RTL. */}
-      <section className="space-y-3">
+      <section id="fs-backend" className="space-y-3">
         <SectionHeading icon="dns" title="Backend" />
         <p className="text-[11px] text-on-surface-variant">
           Generated files come from the selected template sets. Edit them in the Config admin panel
@@ -969,7 +1081,7 @@ export function FullstackView() {
         </div>
       </section>
 
-      <section className="space-y-3">
+      <section id="fs-options" className="space-y-3">
         <SectionHeading icon="toggle_on" title="Options" />
         <p className="text-[11px] text-on-surface-variant">
           Opt-in scaffolding extras applied to every entity. Off by default.
@@ -1015,7 +1127,7 @@ export function FullstackView() {
         </div>
 
         <div className="col-span-12 lg:col-span-7 lg:sticky lg:top-24 lg:flex lg:flex-col lg:max-h-[calc(100vh-7.5rem)]">
-      <section className="space-y-3 lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
+      <section id="fs-deps" className="space-y-3 lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
         <div className="flex items-center justify-between gap-4">
           <SectionHeading icon="inventory_2" title="Dependencies" />
           <span className="text-[11px] text-secondary">{selectedDeps.length} selected</span>
@@ -1052,6 +1164,19 @@ export function FullstackView() {
                 Diagram
               </button>
             )}
+            <div className="inline-flex rounded border border-outline-variant overflow-hidden text-[11px]" role="group" aria-label="Field table density" title="Compact hides the Label column (labels move into each field's More panel) and tightens the rows">
+              {(['comfortable', 'compact'] as const).map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={density === d}
+                  onClick={() => setDensity(d)}
+                  className={`px-2 py-1 transition-colors ${density === d ? 'bg-primary text-on-primary' : 'bg-background text-secondary hover:text-on-surface'}`}
+                >
+                  {d === 'compact' ? 'Compact' : 'Comfortable'}
+                </button>
+              ))}
+            </div>
             {entities.length > 1 && (
               <button
                 type="button"
@@ -1083,7 +1208,16 @@ export function FullstackView() {
             </button>
           </div>
         </div>
-        <ModelLintPanel issues={lintIssues} onFix={applyLintFix} onJump={revealRow} />
+        <ModelLintPanel
+          issues={lintIssues}
+          onFix={applyLintFix}
+          onJump={revealRow}
+          open={lintOpen}
+          onOpenChange={setLintOpen}
+          filterUid={lintFilterUid}
+          onFilterChange={setLintFilterUid}
+          entityName={uid => entities.find(e => e.uid === uid)?.name.trim() ?? ''}
+        />
         {showGraph && entities.length > 0 && (
           <EntityRelationGraph
             entities={entities}
@@ -1091,17 +1225,41 @@ export function FullstackView() {
             onSelect={revealRow}
           />
         )}
-        <EntitiesEditor
-          entities={entities}
-          onChange={setEntities}
-          errors={entityErrors.entities}
-          noEntities={entityErrors.noEntities}
-          collapsed={collapsed}
-          onToggleCollapsed={toggleCollapsed}
-          onDestructive={pushUndoEntry}
-          projectOpts={scaffoldOpts}
-          onNotice={message => setToast({ message, type: 'success' })}
-        />
+        {/* Larger models get an outline beside the cards: a sticky rail on wide screens, a strip
+            above them otherwise. The filter narrows the cards too. */}
+        <div className={showNavigator ? 'grid grid-cols-1 lg:grid-cols-[14rem_minmax(0,1fr)] gap-6 items-start' : ''}>
+          {showNavigator && (
+            <div className="lg:sticky lg:top-24">
+              <EntityNavigator
+                entities={entities}
+                errorCounts={entityErrorCounts}
+                lintCounts={lintCounts}
+                filter={entityFilter}
+                onFilterChange={setEntityFilter}
+                onSelect={revealRow}
+                activeUid={activeEntityUid}
+              />
+            </div>
+          )}
+          <div className="min-w-0">
+            <EntitiesEditor
+              entities={entities}
+              onChange={setEntities}
+              errors={entityErrors.entities}
+              noEntities={entityErrors.noEntities}
+              collapsed={collapsed}
+              onToggleCollapsed={toggleCollapsed}
+              onDestructive={pushUndoEntry}
+              projectOpts={scaffoldOpts}
+              onNotice={message => setToast({ message, type: 'success' })}
+              lintCounts={lintCounts}
+              onShowLint={showLintFor}
+              density={density}
+              visibleUids={visibleUids}
+              previewCtx={{ locale: meta.locale, rtl: scaffoldOpts.includes('rtl') }}
+            />
+          </div>
+        </div>
       </section>
 
       {/* Pinned to the viewport bottom so Generate/Explore stay reachable while editing a long
@@ -1136,8 +1294,16 @@ export function FullstackView() {
             Use Export JSON (above) to hand it to someone.
           </p>
         )}
+        {(persistFailed || presetsPersistFailed) && (
+          <p className="flex items-center gap-1.5 text-[11px] text-secondary" role="status" data-storage-full>
+            <span className="material-symbols-outlined text-warning" style={{ fontSize: '14px' }}>save_as</span>
+            Browser storage is full — {persistFailed ? 'this model' : 'your presets'} won't be restored on refresh.
+            Export JSON (above) or save to the Team to keep it.
+          </p>
+        )}
         <div className="flex items-center gap-3">
         <button
+          type="button"
           onClick={() => setConfirmReset(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-error hover:border-error/50 hover:bg-error/5 transition-all active:scale-95"
           title="Reset the fullstack generator to defaults"
@@ -1169,6 +1335,7 @@ export function FullstackView() {
         {hasErrors && (
           <button
             type="button"
+            id="fs-blocked-reason"
             onClick={jumpToFirstError}
             className="text-[11px] text-error flex items-center gap-1 rounded px-1.5 py-1 hover:bg-error/10 transition-colors"
             title="Jump to the first problem"
@@ -1189,9 +1356,13 @@ export function FullstackView() {
             Cancel
           </button>
         )}
+        {/* Explore / Generate stay clickable with validation errors: the click toasts the count and
+            jumps to the first problem (validateBeforeSubmit), which a disabled button can't do. */}
         <button
+          type="button"
           onClick={explore}
-          disabled={previewLoading || hasErrors}
+          disabled={previewLoading}
+          aria-describedby={hasErrors ? 'fs-blocked-reason' : undefined}
           title={hasErrors ? blockedReason : 'Preview the generated file tree before downloading'}
           className={`${previewLoading || generating ? '' : 'ml-auto '}inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${previewError
             ? 'border-error/50 text-error hover:bg-error/5'
@@ -1202,10 +1373,12 @@ export function FullstackView() {
             : <><span className="material-symbols-outlined" style={{ fontSize: '16px' }}>travel_explore</span>Explore</>}
         </button>
         <button
-          onClick={generate}
-          disabled={generating || hasErrors}
+          type="button"
+          onClick={() => { void generate() }}
+          disabled={generating}
+          aria-describedby={hasErrors ? 'fs-blocked-reason' : undefined}
           title={hasErrors ? blockedReason : 'Generate and download the backend + frontend ZIP'}
-          className="px-8 py-3 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+          className={`px-8 py-3 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-md disabled:opacity-60 disabled:cursor-not-allowed ${hasErrors ? 'opacity-70' : ''}`}
         >
           {generating ? 'Generating…' : 'Generate Fullstack ZIP'}
         </button>
@@ -1244,6 +1417,19 @@ export function FullstackView() {
           tone="danger"
           onConfirm={() => { void deleteTeamModel() }}
           onCancel={() => setConfirmDeleteTeam(null)}
+        />
+      )}
+
+      {pendingJsonImport && (
+        <ConfirmDialog
+          title={`Import ${pendingJsonImport.meta.artifactId || 'this model'}?`}
+          message={`The file holds ${pendingJsonImport.entities.length} entit${pendingJsonImport.entities.length === 1 ? 'y' : 'ies'}. Replace loads the whole model (entities, dependencies and settings) in place of yours; Append adds only its entities to your current ${entities.length}. Either can be undone (Ctrl+Z).`}
+          confirmLabel="Replace"
+          tone="danger"
+          secondaryLabel={`Append ${pendingJsonImport.entities.length}`}
+          onSecondary={appendJsonImport}
+          onConfirm={() => { const s = pendingJsonImport; setPendingJsonImport(null); loadPreset(s) }}
+          onCancel={() => setPendingJsonImport(null)}
         />
       )}
 
