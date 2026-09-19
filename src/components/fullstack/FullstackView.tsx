@@ -10,7 +10,7 @@ import { SectionNav } from './SectionNav'
 import { focusWithoutClipping, scrollToElement } from './scroll'
 import { focusRowWhenRendered } from './focus'
 import { FullstackDepPicker } from './FullstackDepPicker'
-import { FullstackPresets } from './FullstackPresets'
+import { FullstackPresets, type SaveTarget } from './FullstackPresets'
 import { ImportFromDdlDrawer, type ImportMode, type ImportVariant } from './ImportFromDdlDrawer'
 import { ViewSkeleton } from '../Skeletons'
 import { ConfirmDialog } from '../ConfirmDialog'
@@ -22,6 +22,12 @@ import {
 } from './snapshot'
 import { lintModel, type LintIssue } from './lint'
 import { ModelLintPanel } from './ModelLintPanel'
+import { OPTIONS_SECTION, RTL_OPTION, isEntityOptKey } from './scaffoldOptions'
+import { OptionCoverage } from './OptionCoverage'
+import { NextStepsPanel, type GeneratedRun } from './NextStepsPanel'
+import { ShortcutsOverlay } from './ShortcutsOverlay'
+import { draftHasUnsavedWork } from './shareGuard'
+import { summarizeEntity } from './summary'
 import { frontendSetDefaults } from './frontendSetDefaults'
 import { clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
@@ -36,7 +42,7 @@ import { registerCommands } from '../../commands'
 // The preview modal drags in CodeMirror + every language grammar; load it on first Explore.
 const ProjectPreview = lazy(() => import('../ProjectPreview').then(m => ({ default: m.ProjectPreview })))
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
-import { useFullstackPresets } from '../../hooks/useFullstackPresets'
+import { readStoredPresetSnapshots, useFullstackPresets } from '../../hooks/useFullstackPresets'
 import { TeamModelError, useTeamModels } from '../../hooks/useTeamModels'
 import type { TeamModelSummary } from '../../types'
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
@@ -73,28 +79,6 @@ const LS = {
 // The entity outline appears once the list is long enough to need one (or while filtering).
 const NAVIGATOR_MIN_ENTITIES = 4
 
-// Opt-in scaffolding extras, sent as opts.scaffold. Each value matches a backend optScaffold<Option>
-// gate — keep this list in step with FullstackProjectGenerationConfiguration (backend) and
-// FullstackStarterController.renderFrontend (frontend): an opt missing here is unreachable from the UI.
-// `requiresAnyDep`: the backend silently no-ops the opt unless one of these deps is selected, so the
-// editor warns inline instead of letting the user discover the missing scaffolding in the ZIP.
-const SCAFFOLD_OPTIONS: { value: string; label: string; hint: string; requiresAnyDep?: string[] }[] = [
-  { value: 'audit', label: 'Audit timestamps', hint: 'createdAt / updatedAt via JPA auditing' },
-  { value: 'softDelete', label: 'Soft delete', hint: 'deleted flag + Hibernate @SQLDelete/@SQLRestriction; delete toast gets a real Undo' },
-  { value: 'inverseCollections', label: 'Inverse collections', hint: 'Read-only @OneToMany on the referenced side' },
-  { value: 'tests', label: 'Controller tests', hint: 'Per-entity @WebMvcTest' },
-  { value: 'openapi', label: 'OpenAPI annotations', hint: 'springdoc @Tag/@Operation on every controller; adds the openapi starter' },
-  { value: 'secured', label: 'Permission hints', hint: 'Commented @RequiresPermission per endpoint; needs ldap-auth or ldap-auth-rest selected', requiresAnyDep: ['ldap-auth', 'ldap-auth-rest'] },
-  { value: 'csvExport', label: 'CSV export', hint: 'GET /export.csv (streamed, honors search/filters/sort) + Export button' },
-  { value: 'bulkDelete', label: 'Bulk delete', hint: 'Select rows, DELETE /bulk across all' },
-  { value: 'bulkUpdate', label: 'Bulk edit', hint: 'Select rows, set one field, PATCH /bulk across all' },
-  { value: 'seedData', label: 'Demo data', hint: 'Seeds 8 rows per entity on first start (parents before children); off via app.demo-data.enabled=false' },
-  { value: 'rtl', label: 'RTL layout', hint: 'dir="rtl" + Hebrew lang; mirrored right-to-left UI' },
-]
-// RTL only touches the generated SPA, so it renders in the Frontend section, not with the
-// per-entity scaffolding extras.
-const RTL_OPTION = SCAFFOLD_OPTIONS.find(o => o.value === 'rtl')
-
 function loadJson<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key)
@@ -124,12 +108,39 @@ const DEFAULT_ENTITIES_JSON = JSON.stringify(stripUids(DEFAULT_ENTITIES))
 type PendingLoad =
   | { kind: 'example'; example: ExampleModel }
   | { kind: 'preset'; snapshot: FullstackSnapshot }
+  | { kind: 'shared'; snapshot: FullstackSnapshot }
+
+/** The draft as localStorage holds it, in snapshot form — what a share link would replace. */
+function readStoredSnapshot(): FullstackSnapshot {
+  const item = (key: string) => { try { return localStorage.getItem(key) } catch { return null } }
+  return makeSnapshot({
+    meta: normalizeMeta(loadJson<Partial<ProjectMeta>>(LS.meta, DEFAULT_META)),
+    entities: loadJson<FullstackEntityDef[]>(LS.entities, DEFAULT_ENTITIES),
+    selectedDeps: loadJson<string[]>(LS.deps, []),
+    scaffoldOpts: loadJson<string[]>(LS.opts, []),
+    backendSet: item(LS.backendSet) ?? 'spring-jpa-crud',
+    frontendSet: item(LS.frontendSet) ?? 'react-tailwind-crud',
+    colorPalette: item(LS.palette) ?? '',
+  })
+}
+
+/** What the editor starts from. A share link (?fs=…) beats localStorage — that is the whole point
+ *  of the link — unless the stored draft holds unsaved work (shareGuard.ts): then the draft loads
+ *  and the link waits in a confirm dialog as `pendingShared`. */
+function resolveInitialModel(): { shared: FullstackSnapshot | null; pendingShared: FullstackSnapshot | null } {
+  const link = readShareFromLocation()
+  if (!link) return { shared: null, pendingShared: null }
+  const linked = makeSnapshot({ ...link, meta: normalizeMeta(link.meta) })
+  if (!draftHasUnsavedWork(readStoredSnapshot(), linked, readStoredPresetSnapshots(), DEFAULT_ENTITIES_JSON)) {
+    return { shared: link, pendingShared: null }
+  }
+  return { shared: null, pendingShared: linked }
+}
 
 export function FullstackView() {
-  // A share link (?fs=…) beats localStorage on first render — that is the whole point of the link.
-  const sharedRef = useRef<FullstackSnapshot | null | undefined>(undefined)
-  if (sharedRef.current === undefined) sharedRef.current = readShareFromLocation()
-  const shared = sharedRef.current
+  const initRef = useRef<ReturnType<typeof resolveInitialModel> | undefined>(undefined)
+  if (initRef.current === undefined) initRef.current = resolveInitialModel()
+  const { shared, pendingShared } = initRef.current
 
   // normalizeMeta fills in settings that predate a stored model (name/version/packaging/locale…).
   const [meta, setMeta] = useState<ProjectMeta>(() => normalizeMeta(shared?.meta ?? loadJson<Partial<ProjectMeta>>(LS.meta, DEFAULT_META)))
@@ -150,7 +161,7 @@ export function FullstackView() {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(shared ? [] : loadJson<string[]>(LS.collapsed, [])))
   const [history, setHistory] = useState<History<FullstackSnapshot>>(() => emptyHistory())
   const [confirmReset, setConfirmReset] = useState(false)
-  const [pendingLoad, setPendingLoad] = useState<PendingLoad | null>(null)
+  const [pendingLoad, setPendingLoad] = useState<PendingLoad | null>(() => (pendingShared ? { kind: 'shared', snapshot: pendingShared } : null))
   const [shareStatus, setShareStatus] = useState<ShareWriteStatus>('written')
   const [showGraph, setShowGraph] = useState<boolean>(() => loadJson<boolean>(LS.graph, false))
   const [density, setDensity] = useState<EditorDensity>(() => (localStorage.getItem(LS.density) === 'compact' ? 'compact' : 'comfortable'))
@@ -166,6 +177,11 @@ export function FullstackView() {
   const [persistFailed, setPersistFailed] = useState(false)
   // A JSON file parsed by Import JSON, held while the user picks Replace / Append.
   const [pendingJsonImport, setPendingJsonImport] = useState<FullstackSnapshot | null>(null)
+  // The last successful Generate — drives the "Next steps" card. Memory only; a refresh clears it.
+  const [lastGenerated, setLastGenerated] = useState<GeneratedRun | null>(null)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  // Opens the presets strip's save prompt from elsewhere (Ctrl+S, the Next steps card).
+  const [saveRequest, setSaveRequest] = useState<{ target: SaveTarget; key: number } | null>(null)
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
     fetchPreview, clearPreview, clearError, cancel: cancelPreview,
@@ -409,17 +425,6 @@ export function FullstackView() {
     setToast({ message: `Redid: ${step.restore.label}`, type: 'success' })
   }, [applySnapshot, flushBurst])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || isTypingTarget(e.target)) return
-      const key = e.key.toLowerCase()
-      if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
-      else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo() }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [undo, redo])
-
   function handleImport(imported: FullstackEntityDef[], mode: ImportMode, note?: string) {
     pushUndoEntry(mode === 'replace' ? 'Replaced entities from import' : 'Appended imported entities')
     const stamped = withUids(imported)
@@ -438,15 +443,21 @@ export function FullstackView() {
     setToast({ message: `Loaded the ${example.name} example (${example.entities.length} entities)`, type: 'success' })
   }
 
-  function loadPreset(snapshot: FullstackSnapshot) {
-    pushUndoEntry('Loaded a preset')
+  function loadPreset(snapshot: FullstackSnapshot, label = 'Loaded a preset') {
+    pushUndoEntry(label)
     applySnapshot(snapshot)
     setToast({ message: `Loaded ${snapshot.meta.artifactId || 'preset'}`, type: 'success' })
   }
 
   function runLoad(load: PendingLoad) {
     if (load.kind === 'example') loadExample(load.example)
+    else if (load.kind === 'shared') loadPreset(load.snapshot, 'Opened the shared model')
     else loadPreset(load.snapshot)
+  }
+  /** "Keep mine" on a share link: the draft stays, the link leaves the URL. */
+  function dismissPendingLoad() {
+    if (pendingLoad?.kind === 'shared') clearShareFromLocation()
+    setPendingLoad(null)
   }
   /** Entry point for the presets strip: confirms first when it would discard unsaved edits. */
   function requestLoad(load: PendingLoad) {
@@ -560,6 +571,24 @@ export function FullstackView() {
     setToast(await copyToClipboard(cmd)
       ? { message: 'curl command copied to clipboard', type: 'success' }
       : { message: "Couldn't copy — clipboard access was refused", type: 'error' })
+  }
+
+  /** The header's Share button copies `location.href`; this does the same from the Next steps
+   *  card, syncing the URL first so the link carries the model as it is now. */
+  async function copyShareLink() {
+    if (writeShareToLocation(currentSnapshot) === 'too-large') {
+      setToast({ message: 'This model is too large for a share link — Export JSON to hand it over', type: 'error' })
+      return
+    }
+    setToast(await copyToClipboard(window.location.href)
+      ? { message: 'Share link copied to clipboard', type: 'success' }
+      : { message: "Couldn't copy — clipboard access was refused", type: 'error' })
+  }
+
+  /** Opens the presets strip's save prompt on the given target and brings it into view. */
+  function requestSave(target: SaveTarget) {
+    setSaveRequest({ target, key: Date.now() })
+    scrollToElement(document.querySelector<HTMLElement>('[aria-label="Start from"]'), 'start')
   }
 
   // Load the template-set list. Extracted so the inline Retry can re-run it; on failure
@@ -684,6 +713,14 @@ export function FullstackView() {
       URL.revokeObjectURL(url)
       pushRecent(currentSnapshot)
       setToast({ message: 'Fullstack project downloaded', type: 'success' })
+      setLastGenerated({
+        at: Date.now(),
+        artifactId: meta.artifactId || 'demo',
+        entityCount: entities.length,
+        endpoints: entities.flatMap(e => summarizeEntity(e, scaffoldOpts).endpoints.map(ep => ({ entity: e.name.trim() || 'Entity', ...ep }))),
+        snapshot: currentSnapshot,
+      })
+      requestAnimationFrame(() => scrollToElement(document.querySelector<HTMLElement>('[data-next-steps]'), 'nearest'))
       return true
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -720,6 +757,7 @@ export function FullstackView() {
     setScaffoldOpts([])
     setColorPalette('')
     setCollapsed(new Set())
+    setLastGenerated(null)
     baselineRef.current = null
     // Re-seed deps from whichever backend set resolves; the set-change effect won't
     // fire if the key is unchanged, so seed explicitly here.
@@ -821,15 +859,42 @@ export function FullstackView() {
       requestAnimationFrame(() => document.getElementById('fs-entity-filter')?.focus({ preventScroll: true }))
     },
     toggleDensity: () => setDensity(d => (d === 'compact' ? 'comfortable' : 'compact')),
+    savePreset: (target: SaveTarget = 'browser') => requestSave(target),
+    toggleShortcuts: () => setShortcutsOpen(v => !v),
   }
   const commandRef = useRef(commandHandlers)
   commandRef.current = commandHandlers
+
+  // Keyboard shortcuts — the list lives in ShortcutsOverlay (FULLSTACK_SHORTCUTS). The chords fire
+  // even while typing: Ctrl+S in particular has to beat the browser's Save dialog wherever focus
+  // is. Undo/redo and the bare `?` wait until focus leaves the field, as before. A confirm dialog
+  // (anything modal other than the cheat sheet itself) owns the keyboard while it is open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return
+      const mod = e.ctrlKey || e.metaKey
+      const key = e.key.toLowerCase()
+      const h = commandRef.current
+      const dialogOpen = document.querySelector('[role="dialog"][aria-modal="true"]:not([data-shortcuts])') !== null
+      if (mod && key === 'enter') { e.preventDefault(); if (!dialogOpen) void h.generate(); return }
+      if (mod && e.shiftKey && key === 'e') { e.preventDefault(); if (!dialogOpen) h.explore(); return }
+      if (mod && !e.shiftKey && key === 's') { e.preventDefault(); if (!dialogOpen) h.savePreset(); return }
+      if (isTypingTarget(e.target)) return
+      if (mod && key === 'z' && !e.shiftKey) { e.preventDefault(); h.undo() }
+      else if (mod && ((key === 'z' && e.shiftKey) || key === 'y')) { e.preventDefault(); h.redo() }
+      else if (!mod && !e.altKey && e.key === '?' && !dialogOpen) { e.preventDefault(); h.toggleShortcuts() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   useEffect(() => registerCommands([
     { id: 'fs-add-entity', title: 'Add entity', icon: 'add_box', group: 'Fullstack', run: () => commandRef.current.addEntity() },
     { id: 'fs-import-ddl', title: 'Import entities from DDL', icon: 'database', group: 'Fullstack', run: () => commandRef.current.importDdl() },
     { id: 'fs-import-select', title: 'Import a view from SELECT', icon: 'table_view', group: 'Fullstack', run: () => commandRef.current.importSelect() },
-    { id: 'fs-explore', title: 'Explore generated files', description: 'Preview the file tree before downloading', icon: 'travel_explore', group: 'Fullstack', run: () => commandRef.current.explore() },
-    { id: 'fs-generate', title: 'Generate fullstack ZIP', icon: 'download', group: 'Fullstack', run: () => { void commandRef.current.generate() } },
+    { id: 'fs-explore', title: 'Explore generated files', description: 'Preview the file tree before downloading', icon: 'travel_explore', group: 'Fullstack', shortcut: 'Ctrl+Shift+E', run: () => commandRef.current.explore() },
+    { id: 'fs-generate', title: 'Generate fullstack ZIP', icon: 'download', group: 'Fullstack', shortcut: 'Ctrl+Enter', run: () => { void commandRef.current.generate() } },
+    { id: 'fs-save-preset', title: 'Save current as preset…', icon: 'bookmark_add', group: 'Fullstack', shortcut: 'Ctrl+S', run: () => commandRef.current.savePreset() },
     { id: 'fs-export', title: 'Export model as JSON', icon: 'file_download', group: 'Fullstack', run: () => commandRef.current.exportJson() },
     { id: 'fs-curl', title: 'Copy as curl', icon: 'terminal', group: 'Fullstack', run: () => { void commandRef.current.copyCurl() } },
     { id: 'fs-undo', title: 'Undo', icon: 'undo', group: 'Fullstack', shortcut: 'Ctrl+Z', run: () => commandRef.current.undo() },
@@ -838,6 +903,7 @@ export function FullstackView() {
     { id: 'fs-find', title: 'Find entity…', description: 'Filter the entity list by name, label, table or field', icon: 'search', group: 'Fullstack', run: () => commandRef.current.findEntity() },
     { id: 'fs-density', title: 'Toggle compact field tables', icon: 'density_small', group: 'Fullstack', run: () => commandRef.current.toggleDensity() },
     { id: 'fs-reset', title: 'Reset the fullstack generator', icon: 'restart_alt', group: 'Fullstack', run: () => commandRef.current.reset() },
+    { id: 'fs-shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', group: 'Fullstack', shortcut: '?', run: () => commandRef.current.toggleShortcuts() },
   ]), [])
 
   return (
@@ -871,6 +937,7 @@ export function FullstackView() {
         onLoadTeam={loadTeamModel}
         onSaveTeam={(name, description) => { void saveToTeam(name, description) }}
         onDeleteTeam={setConfirmDeleteTeam}
+        saveRequest={saveRequest}
       />
 
       {/* Two-column config row: settings on the left, the dependency picker on the right. The
@@ -1064,30 +1131,29 @@ export function FullstackView() {
               field labels are used exactly as typed.
             </p>
           </Labeled>
-          {RTL_OPTION && (
-            <label className="flex items-start gap-2.5 p-3 rounded-lg border border-outline-variant hover:border-primary/50 cursor-pointer transition-colors sm:mt-5">
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 accent-primary"
-                checked={scaffoldOpts.includes(RTL_OPTION.value)}
-                onChange={() => toggleOpt(RTL_OPTION.value)}
-              />
-              <span className="flex flex-col">
-                <span className="text-sm text-on-surface">{RTL_OPTION.label}</span>
-                <span className="text-[11px] text-secondary">{RTL_OPTION.hint}</span>
-              </span>
-            </label>
-          )}
+          <label className="flex items-start gap-2.5 p-3 rounded-lg border border-outline-variant hover:border-primary/50 cursor-pointer transition-colors sm:mt-5">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-primary"
+              checked={scaffoldOpts.includes(RTL_OPTION.value)}
+              onChange={() => toggleOpt(RTL_OPTION.value)}
+            />
+            <span className="flex flex-col">
+              <span className="text-sm text-on-surface">{RTL_OPTION.label}</span>
+              <span className="text-[11px] text-secondary">{RTL_OPTION.hint}</span>
+            </span>
+          </label>
         </div>
       </section>
 
       <section id="fs-options" className="space-y-3">
         <SectionHeading icon="toggle_on" title="Options" />
         <p className="text-[11px] text-on-surface-variant">
-          Opt-in scaffolding extras applied to every entity. Off by default.
+          Opt-in scaffolding extras applied to every entity. Off by default. An entity can switch
+          the per-entity ones On/Off for itself under its <strong>Overrides</strong>.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {SCAFFOLD_OPTIONS.filter(opt => opt.value !== 'rtl').map(opt => {
+          {OPTIONS_SECTION.map(opt => {
             const checked = scaffoldOpts.includes(opt.value)
             const missingDep = checked && opt.requiresAnyDep && !opt.requiresAnyDep.some(d => selectedDeps.includes(d))
             return (
@@ -1102,8 +1168,14 @@ export function FullstackView() {
                 onChange={() => toggleOpt(opt.value)}
               />
               <span className="flex flex-col min-w-0">
-                <span className="text-sm text-on-surface">{opt.label}</span>
+                <span className="text-sm text-on-surface">
+                  {opt.label}
+                  {!opt.perEntity && <span className="ml-1.5 text-[10px] uppercase tracking-wider text-secondary" title="Applies to the whole project — entities cannot override it">project-wide</span>}
+                </span>
                 <span className="text-[11px] text-secondary">{opt.hint}</span>
+                {checked && isEntityOptKey(opt.value) && (
+                  <OptionCoverage optKey={opt.value} entities={entities} onReveal={revealRow} />
+                )}
                 {missingDep && opt.requiresAnyDep && (
                   <span className="mt-1.5 flex items-center gap-1.5 text-[11px] text-warning" role="alert">
                     <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>warning</span>
@@ -1257,10 +1329,26 @@ export function FullstackView() {
               density={density}
               visibleUids={visibleUids}
               previewCtx={{ locale: meta.locale, rtl: scaffoldOpts.includes('rtl') }}
+              onGoToOptions={() => scrollToElement(document.getElementById('fs-options'), 'start')}
             />
           </div>
         </div>
       </section>
+
+      {lastGenerated && (
+        <NextStepsPanel
+          run={lastGenerated}
+          stale={!snapshotsEqual(lastGenerated.snapshot, currentSnapshot)}
+          onDismiss={() => setLastGenerated(null)}
+          onSavePreset={() => requestSave('browser')}
+          onSaveTeam={() => requestSave('team')}
+          onCopyCurl={() => { void copyCurl() }}
+          onShareLink={() => { void copyShareLink() }}
+          onCopied={(ok, what) => setToast(ok
+            ? { message: `${what} copied to clipboard`, type: 'success' }
+            : { message: "Couldn't copy — clipboard access was refused", type: 'error' })}
+        />
+      )}
 
       {/* Pinned to the viewport bottom so Generate/Explore stay reachable while editing a long
           entity list. The negative-margin/px pair lets the glass backdrop bleed to the column edges. */}
@@ -1331,6 +1419,15 @@ export function FullstackView() {
           aria-label={nextRedo ? `Redo: ${nextRedo.label}` : 'Redo (nothing to redo)'}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>redo</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setShortcutsOpen(true)}
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts (?)"
+          className="inline-flex items-center px-3 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all active:scale-95"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>keyboard</span>
         </button>
         {hasErrors && (
           <button
@@ -1437,15 +1534,22 @@ export function FullstackView() {
         <ConfirmDialog
           title={pendingLoad.kind === 'example'
             ? `Load the ${pendingLoad.example.name} example?`
-            : `Load ${pendingLoad.snapshot.meta.artifactId || 'this preset'}?`}
+            : pendingLoad.kind === 'shared'
+              ? 'Open the shared model?'
+              : `Load ${pendingLoad.snapshot.meta.artifactId || 'this preset'}?`}
           message={pendingLoad.kind === 'example'
             ? 'This replaces your current entities, which aren\'t saved as a preset yet. You can undo it afterwards (Ctrl+Z).'
-            : 'This replaces your current entities, dependencies and settings, which aren\'t saved as a preset yet. You can undo it afterwards (Ctrl+Z).'}
-          confirmLabel="Load"
+            : pendingLoad.kind === 'shared'
+              ? `This link carries "${pendingLoad.snapshot.meta.artifactId || 'a model'}" (${pendingLoad.snapshot.entities.length} entit${pendingLoad.snapshot.entities.length === 1 ? 'y' : 'ies'}). Your draft here has edits that aren't saved as a preset — Replace loads the link over it (undoable with Ctrl+Z); Keep mine leaves your draft as it is.`
+              : 'This replaces your current entities, dependencies and settings, which aren\'t saved as a preset yet. You can undo it afterwards (Ctrl+Z).'}
+          confirmLabel={pendingLoad.kind === 'shared' ? 'Replace my draft' : 'Load'}
+          cancelLabel={pendingLoad.kind === 'shared' ? 'Keep mine' : 'Cancel'}
           onConfirm={() => { const load = pendingLoad; setPendingLoad(null); runLoad(load) }}
-          onCancel={() => setPendingLoad(null)}
+          onCancel={dismissPendingLoad}
         />
       )}
+
+      {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
 
       <ImportFromDdlDrawer
         isOpen={importVariant !== null}

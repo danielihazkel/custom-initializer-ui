@@ -36,6 +36,12 @@ function writeList(key: string, list: FullstackPreset[]): boolean {
   }
 }
 
+/** Every snapshot kept in this browser (presets + recents), read synchronously from storage — for
+ *  the share-link guard, which runs inside the view's state initialisers before the hook has. */
+export function readStoredPresetSnapshots(): FullstackSnapshot[] {
+  return [...readList(PRESETS_KEY), ...readList(RECENTS_KEY)].map(p => p.snapshot)
+}
+
 function makeId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }

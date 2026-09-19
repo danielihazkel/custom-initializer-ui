@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { FullstackPreset } from '../../hooks/useFullstackPresets'
 import type { TeamModelSummary } from '../../types'
@@ -29,6 +29,9 @@ interface Props {
   onLoadTeam: (model: TeamModelSummary) => void
   onSaveTeam: (name: string, description: string, snapshot: FullstackSnapshot) => void
   onDeleteTeam: (model: TeamModelSummary) => void
+  /** Opens the save prompt from outside (Ctrl+S, the Next steps card) on the given target; a new
+   *  `key` re-opens it even when the target is unchanged. */
+  saveRequest?: { target: SaveTarget; key: number } | null
 }
 
 export function relativeTime(ts: number): string {
@@ -44,7 +47,7 @@ export function relativeTime(ts: number): string {
 }
 
 type Tab = 'examples' | 'presets' | 'recents' | 'team'
-type SaveTarget = 'browser' | 'team'
+export type SaveTarget = 'browser' | 'team'
 
 /**
  * "Start from" strip for the fullstack tab: built-in example models (Blog, Orders, …), the user's
@@ -54,7 +57,7 @@ type SaveTarget = 'browser' | 'team'
 export function FullstackPresets({
   presets, recents, currentSnapshot, onLoad, onLoadExample, onSave, onDeletePreset, onDeleteRecent,
   onExportJson, onImportJson, onCopyCurl,
-  teamModels, teamLoading, teamError, onRefreshTeam, onLoadTeam, onSaveTeam, onDeleteTeam,
+  teamModels, teamLoading, teamError, onRefreshTeam, onLoadTeam, onSaveTeam, onDeleteTeam, saveRequest,
 }: Props) {
   const [tab, setTab] = useState<Tab>('examples')
   const [savePromptOpen, setSavePromptOpen] = useState(false)
@@ -62,6 +65,12 @@ export function FullstackPresets({
   const [draftDescription, setDraftDescription] = useState('')
   const [saveTarget, setSaveTarget] = useState<SaveTarget>('browser')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!saveRequest) return
+    setSaveTarget(saveRequest.target)
+    setSavePromptOpen(true)
+  }, [saveRequest])
 
   function closeSavePrompt() {
     setSavePromptOpen(false)

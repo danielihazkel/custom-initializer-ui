@@ -142,6 +142,36 @@ deterministic, click = jump to card). `ImportFromDdlDrawer` is two-step: Parse �
 entities to import; FK-derived relation chips, struck through when their target is unticked; dialects
 from `useSqlDialects`) → Import N of M.
 
+**Share-link guard, lint for foreign keys, next steps, shortcuts, one option source.** A `?fs=`
+link no longer wins unconditionally: `resolveInitialModel` (top of `FullstackView.tsx`) compares the
+stored draft with the link through `shareGuard.ts` `draftHasUnsavedWork` (not the stock model, not the
+link itself, not kept as a preset/recent — `useFullstackPresets.readStoredPresetSnapshots` reads
+those synchronously) and, when the draft has unsaved work, starts from the draft with the link held
+as `pendingLoad: { kind: 'shared' }` — the same ConfirmDialog as presets, "Replace my draft" (undoable)
+/ "Keep mine" (`clearShareFromLocation`). `lint.ts` rule `fk-lookalike`: a non-key LONG/INTEGER/UUID
+field named `<entity>Id` / `<entity>_id` beside an entity of that name (single PK of the same type,
+not a view) warns, with a "Convert … to a relation" fix that swaps the field for a `MANY_TO_ONE`
+(`required` carried; no fix when the camel-cased name collides with a field). A successful Generate
+sets `lastGenerated` (`GeneratedRun`, memory only) and renders `NextStepsPanel` above the sticky
+bar: unpack/run commands with Copy, the endpoint list per entity (`summarizeEntity`), Save as preset
+/ Save to Team (`saveRequest` prop on `FullstackPresets` opens its prompt on that target), Copy as
+curl and Copy share link (`copyShareLink`); it goes stale (`snapshotsEqual` vs the current snapshot)
+rather than disappearing. Keyboard: one window `keydown` effect reads handlers through `commandRef` —
+Ctrl+Enter Generate, Ctrl+Shift+E Explore, Ctrl+S Save preset (chords fire while typing, so Ctrl+S
+beats the browser dialog), Ctrl+Z/Y undo/redo and `?` (the cheat sheet, `ShortcutsOverlay.tsx`,
+`FULLSTACK_SHORTCUTS`) only outside fields; any `[role="dialog"][aria-modal]` other than the sheet
+itself (`data-shortcuts`) mutes the chords. The ⌘K actions carry the same `shortcut` hints, and the
+sticky bar has a keyboard button. `scaffoldOptions.ts` is the single description of the opts
+(`SCAFFOLD_OPTIONS` with `perEntity`/`entityHint`/`requiresAnyDep`, `OPTIONS_SECTION`, `RTL_OPTION`,
+`PROJECT_ONLY_OPTS`, `ENTITY_OPT_LABELS` derived from it — a test pins the keys to
+`FULLSTACK_ENTITY_OPT_KEYS`); under each checked per-entity option `OptionCoverage` says "Applies to
+N of M entities" with a chip per excluded entity (`optCoverage`: Off override / view / composite key,
+click = `revealRow`), project-only options are tagged, and the Overrides panel ends with the
+project-only flags and their current value plus "Go to Options" (`onGoToOptions`).
+`FullstackView.test.tsx` is the first test that mounts the whole view (fetch stubbed to 404,
+`framer-motion` mocked, `URL.createObjectURL` stubbed): share-link precedence, Generate success /
+failure, Ctrl+S and `?`.
+
 ## Data Flow
 
 1. `useMetadata` fetches `/metadata/client` → raw Initializr metadata JSON

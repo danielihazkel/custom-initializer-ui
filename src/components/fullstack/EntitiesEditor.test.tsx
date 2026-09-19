@@ -156,3 +156,19 @@ describe('EntitiesEditor — outline filter, lint badge and preview', () => {
     expect(preview.querySelector('[data-preview-field="id"]')).toBeNull()
   })
 })
+
+describe('EntitiesEditor — overrides panel', () => {
+  it('names the project-only flags with their project value and links to Options', () => {
+    const onGoToOptions = vi.fn()
+    renderEditor(base, { projectOpts: ['openapi', 'audit'], onGoToOptions })
+    fireEvent.click(screen.getByRole('button', { name: /Overrides/ }))
+    const note = document.querySelector('[data-project-only-opts]')!
+    expect(note.textContent).toContain('OpenAPI annotations (on)')
+    expect(note.textContent).toContain('Demo data (off)')
+    // The overridable flags keep their select; the project-only ones have none.
+    expect(screen.getByRole('combobox', { name: 'Audit timestamps override' })).toBeTruthy()
+    expect(screen.queryByRole('combobox', { name: /OpenAPI/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Options' }))
+    expect(onGoToOptions).toHaveBeenCalledTimes(1)
+  })
+})

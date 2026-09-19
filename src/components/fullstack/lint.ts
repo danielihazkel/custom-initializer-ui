@@ -1,5 +1,6 @@
 import type { FullstackEntityDef } from '../../types'
 import { entityOptApplicability, summarizeEntity } from './summary'
+import { toCamelCase } from './naming'
 import { newUid } from './uid'
 
 /**
@@ -31,6 +32,9 @@ export interface LintIssue {
 }
 
 const LDAP_DEPS = ['ldap-auth', 'ldap-auth-rest']
+
+/** Scalar types a hand-typed foreign key column comes as. */
+const FK_TYPES = new Set(['LONG', 'INTEGER', 'UUID'])
 
 /** The first non-key STRING field — what the generated relation dropdown labels rows by. */
 function labelField(entity: FullstackEntityDef) {
@@ -141,6 +145,46 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
           })),
         },
       })
+    }
+
+    // A `<Entity>Id` scalar beside an entity of that name is almost always a foreign key typed by
+    // hand, or imported from DDL whose referenced table was outside the paste. As a relation it
+    // gets a dropdown, a filter and a label column instead of a bare number box. Views can't
+    // declare relations, so they are left alone.
+    if (!isView) {
+      for (const f of entity.fields) {
+        if (f.primaryKey || !FK_TYPES.has(f.type)) continue
+        const fieldName = f.name.trim()
+        const match = /^(.+?)_?id$/i.exec(fieldName)
+        if (!match) continue
+        const target = byName.get(match[1].replace(/_/g, '').toLowerCase())
+        if (!target || target === entity || target.viewQuery != null) continue
+        const targetPks = target.fields.filter(p => p.primaryKey)
+        if (targetPks.length !== 1 || targetPks[0].type !== f.type) continue
+        const targetName = target.name.trim()
+        const relationName = toCamelCase(targetName)
+        const sameName = (n: string) => n.trim().toLowerCase() === relationName.toLowerCase()
+        if ((entity.relations ?? []).some(r => sameName(r.fieldName))) continue
+        const collides = entity.fields.some(x => x !== f && sameName(x.name))
+        issues.push({
+          id: `fk-lookalike:${uid}:${f.uid ?? fieldName}`,
+          rule: 'fk-lookalike',
+          severity: 'warn',
+          entityUid: uid,
+          message: `${name}.${fieldName} looks like a reference to ${targetName} — as a relation it gets a dropdown, a filter and a label column instead of a bare number.`,
+          fix: collides ? undefined : {
+            label: `Convert ${fieldName} to a relation to ${targetName}`,
+            apply: m => replaceEntity(m, uid, e => ({
+              ...e,
+              fields: e.fields.filter(x => x.uid !== f.uid),
+              relations: [
+                ...(e.relations ?? []),
+                { uid: newUid(), type: 'MANY_TO_ONE', fieldName: relationName, targetEntity: targetName, required: Boolean(f.required) },
+              ],
+            })),
+          },
+        })
+      }
     }
 
     // Per-entity override switched On for something the entity can't carry (mirrors the server's

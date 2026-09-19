@@ -16,6 +16,7 @@ import { uniqueName } from './naming'
 import { FieldChips } from './FieldChips'
 import { EntitySettingsPanel, settingsSummary } from './EntitySettingsPanel'
 import { EntityUiPreview } from './EntityUiPreview'
+import { ENTITY_OPT_LABELS, PROJECT_ONLY_OPTS } from './scaffoldOptions'
 
 const FIELD_TYPES: FullstackFieldType[] = [
   'STRING', 'TEXT', 'LONG', 'INTEGER', 'BOOLEAN',
@@ -52,16 +53,8 @@ interface Props {
   visibleUids?: Set<string>
   /** Language/direction of the generated app, for the per-entity UI preview. */
   previewCtx?: { locale: 'en' | 'he'; rtl: boolean }
-}
-
-/** Labels for the per-entity override panel; the hint says what the flag changes on one entity. */
-const ENTITY_OPT_LABELS: Record<FullstackEntityOptKey, { label: string; hint: string }> = {
-  audit: { label: 'Audit timestamps', hint: 'createdAt / updatedAt columns' },
-  softDelete: { label: 'Soft delete', hint: 'deleted flag + restore endpoint' },
-  csvExport: { label: 'CSV export', hint: 'GET /export.csv + Export button' },
-  bulkDelete: { label: 'Bulk delete', hint: 'row selection + DELETE /bulk' },
-  bulkUpdate: { label: 'Bulk edit', hint: 'row selection + PATCH /bulk' },
-  tests: { label: 'Controller test', hint: '@WebMvcTest for this entity' },
+  /** Jump to the project-wide Options section (the Overrides panel's "Go to Options"). */
+  onGoToOptions?: () => void
 }
 
 /** Number of distinct problems on one entity (its own + every field's + every relation's) —
@@ -102,7 +95,7 @@ const SMALL_ICON_BTN = 'p-1 rounded text-secondary hover:text-primary hover:bg-p
 
 export function EntitiesEditor({
   entities, onChange, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [], onNotice,
-  lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx,
+  lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx, onGoToOptions,
 }: Props) {
   // One secondary panel open per card at a time: Settings (labels / mapping / SELECT view),
   // Overrides (per-entity opts) or the UI preview. Keyed by entity uid so it follows its card.
@@ -612,6 +605,21 @@ export function EntitiesEditor({
                   )
                 })}
               </div>
+              {/* The flags that have no per-entity switch, with their project value, so nobody
+                  hunts this panel for an OpenAPI or demo-data override that cannot exist. */}
+              <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-secondary border-t border-outline-variant pt-2" data-project-only-opts>
+                <span>Project-wide only:</span>
+                {PROJECT_ONLY_OPTS.map((opt, i) => (
+                  <span key={opt.value}>
+                    {opt.label} <span className="font-mono">({projectOpts.includes(opt.value) ? 'on' : 'off'})</span>{i < PROJECT_ONLY_OPTS.length - 1 ? ',' : '.'}
+                  </span>
+                ))}
+                {onGoToOptions && (
+                  <button type="button" onClick={onGoToOptions} className="font-semibold text-primary underline hover:no-underline">
+                    Go to Options
+                  </button>
+                )}
+              </p>
             </div>
           )}
           {previewOpen && (
