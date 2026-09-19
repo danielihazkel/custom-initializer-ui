@@ -31,7 +31,7 @@ interface Props {
   onDeleteTeam: (model: TeamModelSummary) => void
   /** Opens the save prompt from outside (Ctrl+S, the Next steps card) on the given target; a new
    *  `key` re-opens it even when the target is unchanged. */
-  saveRequest?: { target: SaveTarget; key: number } | null
+  saveRequest?: { target: SaveTarget; key: number; draft?: { name: string; description: string } } | null
 }
 
 export function relativeTime(ts: number): string {
@@ -69,11 +69,19 @@ export function FullstackPresets({
   useEffect(() => {
     if (!saveRequest) return
     setSaveTarget(saveRequest.target)
+    if (saveRequest.draft) {
+      setDraftName(saveRequest.draft.name)
+      setDraftDescription(saveRequest.draft.description)
+    }
     setSavePromptOpen(true)
   }, [saveRequest])
 
+  // Closing keeps what was typed (a name conflict's "Rename…" and a stray Escape both reopen with
+  // it); only a completed save clears the draft.
   function closeSavePrompt() {
     setSavePromptOpen(false)
+  }
+  function clearDraft() {
     setDraftName('')
     setDraftDescription('')
   }
@@ -89,6 +97,7 @@ export function FullstackPresets({
       setTab('presets')
     }
     closeSavePrompt()
+    clearDraft()
   }
 
   const tabButton = (key: Tab, label: string, count: number, tone: 'primary' | 'tertiary') => (

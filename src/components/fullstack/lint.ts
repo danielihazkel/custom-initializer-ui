@@ -118,8 +118,9 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
       })
     }
 
-    // Only key fields → a form with nothing to type and a table with nothing to show.
-    if (entity.fields.length > 0 && entity.fields.every(f => f.primaryKey)) {
+    // Only key fields → a form with nothing to type and a table with nothing to show. A join
+    // entity (keys + relations) is fine: its relations render as dropdowns and columns.
+    if (entity.fields.length > 0 && entity.fields.every(f => f.primaryKey) && (entity.relations ?? []).length === 0) {
       issues.push({
         id: `only-keys:${uid}`,
         rule: 'only-keys',

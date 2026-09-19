@@ -1,4 +1,5 @@
 import type { FullstackEntityDef, FullstackFieldDef } from '../../types'
+import { enumLabel } from './enumLabels'
 import { humanize, pluralize, toPascalCase } from './naming'
 import { entityOptApplicability, summarizeEntity } from './summary'
 
@@ -120,8 +121,9 @@ export function buildUiPreview(entity: FullstackEntityDef, ctx: UiPreviewContext
       control: controlKind(f),
       required: Boolean(f.required) || Boolean(f.primaryKey),
       locked: Boolean(f.readOnly) && !f.primaryKey,
-      options: f.type === 'ENUM' ? [...(f.enumValues ?? [])] : undefined,
-      value: f.defaultValue?.trim() || undefined,
+      // The mock shows what the generated select shows: the display label per constant.
+      options: f.type === 'ENUM' ? (f.enumValues ?? []).map(v => enumLabel(f, v)) : undefined,
+      value: f.type === 'ENUM' && f.defaultValue?.trim() ? enumLabel(f, f.defaultValue.trim()) : (f.defaultValue?.trim() || undefined),
       hint: controlHint(f),
     }))
   for (const r of entity.relations ?? []) {

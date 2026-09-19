@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 import {
   FULLSTACK_ENTITY_OPT_KEYS,
   type FullstackEntityDef, type FullstackEntityOptKey, type FullstackFieldDef, type FullstackFieldType, type FullstackRelationDef,
@@ -17,6 +17,11 @@ import { FieldChips } from './FieldChips'
 import { EntitySettingsPanel, settingsSummary } from './EntitySettingsPanel'
 import { EntityUiPreview } from './EntityUiPreview'
 import { ENTITY_OPT_LABELS, PROJECT_ONLY_OPTS } from './scaffoldOptions'
+import { joinEntity } from './joinEntity'
+import { enumLabel, pruneLabels } from './enumLabels'
+
+/** A one-click follow-up on a notice — "Undo" after a removal. */
+export type NoticeAction = { label: string; onClick: () => void }
 
 const FIELD_TYPES: FullstackFieldType[] = [
   'STRING', 'TEXT', 'LONG', 'INTEGER', 'BOOLEAN',
@@ -42,8 +47,12 @@ interface Props {
   /** The project-wide `opts.scaffold` selection — shown as the "inherit" value in each entity's
    *  per-entity overrides panel. */
   projectOpts?: string[]
-  /** Non-error notices worth a toast (e.g. a default value dropped by a type change). */
-  onNotice?: (message: string) => void
+  /** Non-error notices worth a toast (e.g. a default value dropped by a type change). A removal
+   *  passes an Undo `action` that puts the specific row back. */
+  onNotice?: (message: string, action?: NoticeAction) => void
+  /** A row was just added (add, duplicate, join entity, undo-restore) — the parent brings it on
+   *  screen even when the outline filter or a collapsed card would hide it. */
+  onRowAdded?: (uid: string) => void
   /** Lint suggestions per entity uid — shown as an amber badge next to the red error badge. */
   lintCounts?: Map<string, number>
   /** Open the suggestions panel filtered to one entity (the amber badge's click). */
@@ -95,8 +104,12 @@ const SMALL_ICON_BTN = 'p-1 rounded text-secondary hover:text-primary hover:bg-p
 
 export function EntitiesEditor({
   entities, onChange, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [], onNotice,
-  lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx, onGoToOptions,
+  onRowAdded, lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx, onGoToOptions,
 }: Props) {
+  // The latest list for the Undo closures on removal toasts: they fire after later edits, and must
+  // re-insert into the list as it is *then*, not as it was when the row went.
+  const entitiesRef = useRef(entities)
+  entitiesRef.current = entities
   // One secondary panel open per card at a time: Settings (labels / mapping / SELECT view),
   // Overrides (per-entity opts) or the UI preview. Keyed by entity uid so it follows its card.
   const [panelFor, setPanelFor] = useState<{ key: string; kind: PanelKind } | null>(null)
@@ -155,13 +168,37 @@ export function EntitiesEditor({
     focusRowWhenRendered(fields[0]?.uid)
   }
   function removeEntity(idx: number) {
-    onDestructive?.(`Removed entity ${entities[idx]?.name.trim() || '(unnamed)'}`)
+    const removed = entities[idx]
+    const label = removed?.name.trim() || '(unnamed)'
+    onDestructive?.(`Removed entity ${label}`)
     onChange(entities.filter((_, i) => i !== idx))
+    onNotice?.(`Removed entity ${label}`, { label: 'Undo', onClick: () => restoreEntity(removed, idx) })
+  }
+  /** Puts a removed entity back at its old position (or the end if the list shrank). */
+  function restoreEntity(entity: FullstackEntityDef, idx: number) {
+    const current = entitiesRef.current
+    if (entity.uid && current.some(e => e.uid === entity.uid)) return
+    const next = [...current]
+    next.splice(Math.min(idx, next.length), 0, entity)
+    onChange(next)
+    if (entity.uid) onRowAdded?.(entity.uid)
   }
   function addEntity() {
     const entity = newEntity()
     onChange([...entities, entity])
+    if (entity.uid) onRowAdded?.(entity.uid)
     focusRowWhenRendered(entity.uid)
+  }
+  /** Many-to-many workaround the generator supports today: a join entity between this entity and
+   *  `target`, inserted right after this card. */
+  function addJoinEntity(eIdx: number, target: string) {
+    const owner = entities[eIdx]
+    if (!owner?.name.trim()) return
+    const entity = joinEntity(owner.name, target, entities.map(e => e.name))
+    onChange([...entities.slice(0, eIdx + 1), entity, ...entities.slice(eIdx + 1)])
+    if (entity.uid) onRowAdded?.(entity.uid)
+    focusRowWhenRendered(entity.uid)
+    onNotice?.(`Added ${entity.name} — a join entity with required relations to ${owner.name.trim()} and ${target}`)
   }
   function duplicateEntity(idx: number) {
     const src = entities[idx]
@@ -175,6 +212,7 @@ export function EntitiesEditor({
       schema: undefined,
     }
     onChange([...entities.slice(0, idx + 1), copy, ...entities.slice(idx + 1)])
+    if (copy.uid) onRowAdded?.(copy.uid)
     focusRowWhenRendered(copy.uid)
   }
   function updateField(eIdx: number, fIdx: number, updates: Partial<FullstackFieldDef>) {
@@ -184,13 +222,15 @@ export function EntitiesEditor({
     }))
   }
   // Changing a field's type clears attributes that no longer apply, so we never send
-  // an orphaned length (non-STRING) or enumValues (non-ENUM) — the backend rejects both.
+  // an orphaned length (non-STRING) or enumValues (non-ENUM) — the backend rejects both. Every
+  // cleared attribute is named in one notice, with Undo, since the user typed each of them.
   function changeFieldType(eIdx: number, fIdx: number, type: FullstackFieldType) {
-    const field = entities[eIdx]?.fields[fIdx]
-    if (!field || field.type === type) return
+    const owner = entities[eIdx]
+    const field = owner?.fields[fIdx]
+    if (!owner || !field || field.type === type) return
     const updates: Partial<FullstackFieldDef> = { type }
     if (type !== 'STRING') updates.length = undefined
-    if (type !== 'ENUM') updates.enumValues = undefined
+    if (type !== 'ENUM') { updates.enumValues = undefined; updates.enumLabels = undefined }
     // Auto-generated keys are valid on an integral key (IDENTITY) or a UUID (@UuidGenerator) —
     // drop the flag when the type can't carry it.
     if (type !== 'LONG' && type !== 'INTEGER' && type !== 'UUID') updates.generated = undefined
@@ -204,13 +244,60 @@ export function EntitiesEditor({
     const temporal = type === 'LOCAL_DATE' || type === 'LOCAL_DATE_TIME'
     if (!(type === 'ENUM' || type === 'BOOLEAN' || temporal || numeric)) updates.filterable = undefined
     // A default is typed per field type: keep it across the lossless pairs (STRING↔TEXT,
-    // LONG↔INTEGER), otherwise drop it — and say so, since the user typed it.
+    // LONG↔INTEGER), otherwise drop it.
     const kept = carryDefaultAcrossTypes(field.type, type, field.defaultValue)
     updates.defaultValue = kept
-    if (field.defaultValue?.trim() && kept === undefined) {
-      onNotice?.(`Cleared default "${field.defaultValue.trim()}" on ${field.name.trim() || 'the field'} — it does not fit ${type}`)
-    }
     updateField(eIdx, fIdx, updates)
+
+    const dropped: string[] = []
+    const cleared = (key: keyof FullstackFieldDef) => key in updates && updates[key] === undefined && field[key] != null
+    if (cleared('length')) dropped.push(`length ${field.length}`)
+    if (cleared('enumValues') && field.enumValues?.length) dropped.push(`${field.enumValues.length} enum value${field.enumValues.length === 1 ? '' : 's'}${Object.keys(field.enumLabels ?? {}).length ? ' and their labels' : ''}`)
+    if (cleared('pattern') && field.pattern) dropped.push('pattern')
+    if (cleared('email') && field.email) dropped.push('email check')
+    if (cleared('min')) dropped.push(`min ${field.min}`)
+    if (cleared('max')) dropped.push(`max ${field.max}`)
+    if (cleared('generated') && field.generated) dropped.push('auto-generated')
+    if (cleared('searchable') && field.searchable === false) dropped.push('search opt-out')
+    if (cleared('filterable') && field.filterable === false) dropped.push('filter opt-out')
+    if (field.defaultValue?.trim() && kept === undefined) dropped.push(`default "${field.defaultValue.trim()}"`)
+    if (dropped.length === 0) return
+    const before = { ...field }
+    const ownerUid = owner.uid
+    onNotice?.(
+      `Changed ${field.name.trim() || 'the field'} to ${type} — cleared ${dropped.join(', ')}`,
+      { label: 'Undo', onClick: () => restoreField(ownerUid, before, fIdx) },
+    )
+  }
+  /** Puts a field back into its entity — replacing the row with the same uid if it is still
+   *  there (type-change undo), else re-inserting at its old index (removal undo). */
+  function restoreField(ownerUid: string | undefined, field: FullstackFieldDef, idx: number) {
+    const current = entitiesRef.current
+    const eIdx = current.findIndex(e => e.uid === ownerUid)
+    if (eIdx < 0) return
+    onChange(current.map((e, i) => {
+      if (i !== eIdx) return e
+      const at = e.fields.findIndex(f => f.uid === field.uid)
+      if (at >= 0) return { ...e, fields: e.fields.map((f, j) => (j === at ? field : f)) }
+      const fields = [...e.fields]
+      fields.splice(Math.min(idx, fields.length), 0, field)
+      return { ...e, fields }
+    }))
+    if (ownerUid) onRowAdded?.(ownerUid)
+  }
+  /** Re-inserts a removed relation into its entity at its old index. */
+  function restoreRelation(ownerUid: string | undefined, relation: FullstackRelationDef, idx: number) {
+    const current = entitiesRef.current
+    const eIdx = current.findIndex(e => e.uid === ownerUid)
+    if (eIdx < 0) return
+    onChange(current.map((e, i) => {
+      if (i !== eIdx) return e
+      if ((e.relations ?? []).some(r => r.uid === relation.uid)) return e
+      const relations = [...(e.relations ?? [])]
+      relations.splice(Math.min(idx, relations.length), 0, relation)
+      return { ...e, relations }
+    }))
+    if (ownerUid) onRowAdded?.(ownerUid)
   }
 
   function updateRelations(eIdx: number, relations: FullstackRelationDef[]) {
@@ -229,6 +316,7 @@ export function EntitiesEditor({
         uid: newUid(),
         name: src.name.trim() ? uniqueName(`${src.name.trim()}Copy`, taken) : '',
         enumValues: src.enumValues ? [...src.enumValues] : undefined,
+        enumLabels: src.enumLabels ? { ...src.enumLabels } : undefined,
       }
       copyUid = copy.uid
       return { ...e, fields: [...e.fields.slice(0, fIdx + 1), copy, ...e.fields.slice(fIdx + 1)] }
@@ -237,11 +325,14 @@ export function EntitiesEditor({
   }
   function removeField(eIdx: number, fIdx: number) {
     const owner = entities[eIdx]
-    onDestructive?.(`Removed field ${owner?.fields[fIdx]?.name.trim() || '(unnamed)'} from ${owner?.name.trim() || '(unnamed)'}`)
+    const removed = owner?.fields[fIdx]
+    const label = `Removed field ${removed?.name.trim() || '(unnamed)'} from ${owner?.name.trim() || '(unnamed)'}`
+    onDestructive?.(label)
     onChange(entities.map((e, i) => {
       if (i !== eIdx) return e
       return { ...e, fields: e.fields.filter((_, j) => j !== fIdx) }
     }))
+    if (removed) onNotice?.(label, { label: 'Undo', onClick: () => restoreField(owner?.uid, removed, fIdx) })
   }
   function addField(eIdx: number) {
     const field = newField()
@@ -871,6 +962,11 @@ export function EntitiesEditor({
             entityNames={entityNames}
             fieldNames={entity.fields.map(f => f.name)}
             onChange={rels => updateRelations(eIdx, rels)}
+            onRemoved={(rel, rIdx) => onNotice?.(
+              `Removed relation ${rel.fieldName.trim() || '(unnamed)'} from ${entity.name.trim() || '(unnamed)'}`,
+              { label: 'Undo', onClick: () => restoreRelation(entity.uid, rel, rIdx) },
+            )}
+            onAddJoinEntity={isView || !entity.name.trim() ? undefined : target => addJoinEntity(eIdx, target)}
             errors={eErr?.relations}
             ownerName={entity.name}
             showInverse={projectOpts.includes('inverseCollections')}
@@ -1029,7 +1125,9 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
         <ConstraintBox label="Enum values" error={fErr?.enumValues} wide>
           <EnumValuesEditor
             values={field.enumValues ?? []}
-            onChange={vals => onUpdate({ enumValues: vals })}
+            onChange={vals => onUpdate({ enumValues: vals, enumLabels: pruneLabels(field.enumLabels, vals) })}
+            labels={field.enumLabels}
+            onLabelsChange={labels => onUpdate({ enumLabels: labels })}
             invalid={Boolean(fErr?.enumValues)}
           />
         </ConstraintBox>
@@ -1091,7 +1189,7 @@ function DefaultValueInput({ field, invalid, className, onChange }: {
     return (
       <select {...common} value={value} onChange={e => onChange(e.target.value)}>
         <option value="">none</option>
-        {(field.enumValues ?? []).map(v => <option key={v} value={v}>{v}</option>)}
+        {(field.enumValues ?? []).map(v => <option key={v} value={v}>{field.enumLabels ? `${v} — ${enumLabel(field, v)}` : v}</option>)}
         {value && !(field.enumValues ?? []).includes(value) && <option value={value}>{value}</option>}
       </select>
     )

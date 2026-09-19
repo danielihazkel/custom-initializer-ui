@@ -91,8 +91,23 @@ export function useFullstackPresets() {
     })
   }, [])
 
-  const deleteRecent = useCallback((id: string): void => {
+  /** Removes a recent and hands it back with its position, so an "Undo" can put it back. */
+  const deleteRecent = useCallback((id: string): { preset: FullstackPreset; index: number } | null => {
+    const index = recents.findIndex(r => r.id === id)
+    if (index < 0) return null
+    const preset = recents[index]
     setRecents(prev => prev.filter(r => r.id !== id))
+    return { preset, index }
+  }, [recents])
+
+  /** Re-inserts a deleted recent at its old position (or the end if the list shrank). */
+  const restoreRecent = useCallback((preset: FullstackPreset, index: number): void => {
+    setRecents(prev => {
+      if (prev.some(r => r.id === preset.id)) return prev
+      const next = [...prev]
+      next.splice(Math.min(index, next.length), 0, preset)
+      return next
+    })
   }, [])
 
   const pushRecent = useCallback((snapshot: FullstackSnapshot): void => {
@@ -109,5 +124,5 @@ export function useFullstackPresets() {
     })
   }, [])
 
-  return { presets, recents, persistFailed, savePreset, deletePreset, restorePreset, deleteRecent, pushRecent }
+  return { presets, recents, persistFailed, savePreset, deletePreset, restorePreset, deleteRecent, restoreRecent, pushRecent }
 }

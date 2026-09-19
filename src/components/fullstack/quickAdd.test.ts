@@ -46,3 +46,13 @@ describe('parseQuickAdd', () => {
     ])
   })
 })
+
+describe('parseQuickAdd — enum labels', () => {
+  it('reads VALUE:Label pairs, quoted when a label has spaces, and leaves unlabelled values alone', () => {
+    const r = parseQuickAdd('status enum values="OPEN:Open|IN_PROGRESS:In progress|CLOSED"')
+    expect(r.errors).toEqual([])
+    expect(r.fields[0].enumValues).toEqual(['OPEN', 'IN_PROGRESS', 'CLOSED'])
+    expect(r.fields[0].enumLabels).toEqual({ OPEN: 'Open', IN_PROGRESS: 'In progress' })
+    expect(parseQuickAdd('kind values=A|B').fields[0].enumLabels).toBeUndefined()
+  })
+})

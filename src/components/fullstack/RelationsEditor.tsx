@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { FullstackRelationDef } from '../../types'
 import type { RelationErrors } from './validation'
 import { newUid } from './uid'
@@ -13,6 +14,11 @@ interface Props {
   /** The owning entity's field names — a duplicated relation must not collide with them. */
   fieldNames?: string[]
   onChange: (relations: FullstackRelationDef[]) => void
+  /** A row was removed — the owner offers an Undo that re-inserts it at `index`. */
+  onRemoved?: (relation: FullstackRelationDef, index: number) => void
+  /** Creates a join entity between the owner and `target` — the many-to-many workaround. Absent
+   *  (a view, or an unnamed owner) hides the offer. */
+  onAddJoinEntity?: (target: string) => void
   errors?: Record<number, RelationErrors>
   /** When set, adding a relation is not offered and this text explains why (e.g. a SELECT-backed
    *  view can't declare relations). Existing rows stay editable/removable so validation can clear. */
@@ -36,14 +42,19 @@ const ICON_BUTTON = 'p-1 rounded text-secondary hover:text-primary hover:bg-prim
  * `inverseCollections` opt, so there is no inverse editor here; the hint under each target
  * shows what that derivation will name.
  */
-export function RelationsEditor({ relations, entityNames, fieldNames = [], onChange, errors, addDisabledReason, ownerName, showInverse }: Props) {
+export function RelationsEditor({ relations, entityNames, fieldNames = [], onChange, onRemoved, onAddJoinEntity, errors, addDisabledReason, ownerName, showInverse }: Props) {
   const dnd = useDragReorder((_list, from, to) => onChange(moveItem(relations, from, to)))
+  // The inline "join entity" picker: which entity the many-to-many goes to.
+  const [joinTarget, setJoinTarget] = useState<string | null>(null)
+  const joinChoices = entityNames.filter(n => n !== ownerName?.trim())
 
   function update(idx: number, updates: Partial<FullstackRelationDef>) {
     onChange(relations.map((r, i) => (i === idx ? { ...r, ...updates } : r)))
   }
   function remove(idx: number) {
+    const removed = relations[idx]
     onChange(relations.filter((_, i) => i !== idx))
+    if (removed) onRemoved?.(removed, idx)
   }
   function add() {
     const rel = newRelation(entityNames[0] ?? '')
@@ -66,9 +77,45 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
 
   return (
     <div className="space-y-2 border-t border-outline-variant pt-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[11px] font-bold uppercase tracking-wider text-secondary">Relations</span>
         <span className="text-[11px] text-secondary/70">@ManyToOne — foreign key to another entity</span>
+        {onAddJoinEntity && (
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-secondary/70 ml-auto" data-join-entity>
+            <span>Many-to-many?</span>
+            {joinTarget === null ? (
+              <button
+                type="button"
+                onClick={() => setJoinTarget(joinChoices[0] ?? ownerName?.trim() ?? '')}
+                className="font-semibold text-primary underline hover:no-underline"
+                title="Only MANY_TO_ONE is generated: model a many-to-many as a join entity that references both sides"
+              >
+                Add a join entity…
+              </button>
+            ) : (
+              <>
+                <span>with</span>
+                <select
+                  aria-label="Join entity target"
+                  className="bg-background border border-outline-variant rounded px-1.5 py-0.5 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary/20"
+                  value={joinTarget}
+                  onChange={e => setJoinTarget(e.target.value)}
+                >
+                  {(joinChoices.length ? joinChoices : entityNames).map(n => <option key={n} value={n}>{n}</option>)}
+                  {joinChoices.length > 0 && ownerName?.trim() && <option value={ownerName.trim()}>{ownerName.trim()} (self)</option>}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => { if (joinTarget) onAddJoinEntity(joinTarget); setJoinTarget(null) }}
+                  className="px-2 py-0.5 rounded bg-primary text-on-primary font-semibold hover:opacity-90"
+                >
+                  Create
+                </button>
+                <button type="button" onClick={() => setJoinTarget(null)} className="underline hover:no-underline">Cancel</button>
+              </>
+            )}
+          </span>
+        )}
       </div>
 
       {relations.length > 0 && (

@@ -10,7 +10,9 @@ import { newUid } from './uid'
  *
  * `name:TYPE` and `name TYPE(N)` are accepted too. Type aliases follow the backend's lenient
  * `FieldType.forWireString` (int, bool, date, datetime, decimal, text, guid, …). `values=` implies
- * ENUM. Blank lines and `#`/`//` comments are skipped. Errors name the line; good lines still parse.
+ * ENUM; a value may carry a display label after a colon — `values="OPEN:Open|IN_PROGRESS:In progress"`
+ * (quote the whole token when a label has spaces). Blank lines and `#`/`//` comments are skipped.
+ * Errors name the line; good lines still parse.
  */
 export interface QuickAddResult {
   fields: FullstackFieldDef[]
@@ -106,10 +108,22 @@ export function parseQuickAdd(text: string): QuickAddResult {
           case 'pattern': case 'regex': field.pattern = value; break
           case 'label': field.label = value; break
           case 'default': field.defaultValue = value; break
-          case 'values': case 'enum': case 'options':
-            field.enumValues = value.split(/[|,]/).map(v => v.trim()).filter(Boolean)
+          case 'values': case 'enum': case 'options': {
+            const values: string[] = []
+            const labels: Record<string, string> = {}
+            for (const item of value.split(/[|,]/).map(v => v.trim()).filter(Boolean)) {
+              const sep = item.indexOf(':')
+              const constant = (sep > 0 ? item.slice(0, sep) : item).trim()
+              const label = sep > 0 ? item.slice(sep + 1).trim() : ''
+              if (!constant) continue
+              values.push(constant)
+              if (label) labels[constant] = label
+            }
+            field.enumValues = values
+            if (Object.keys(labels).length > 0) field.enumLabels = labels
             field.type = 'ENUM'; typeSet = true
             break
+          }
           case 'type': {
             const t = resolveType(value)
             if (t) { field.type = t; typeSet = true } else problems.push(`unknown type '${value}'`)

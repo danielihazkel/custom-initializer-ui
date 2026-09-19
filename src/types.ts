@@ -336,6 +336,11 @@ export interface FullstackFieldDef {
   pattern?: string
   email?: boolean
   enumValues?: string[]
+  /** Display labels per enum constant (`{ IN_PROGRESS: 'In progress' }` / Hebrew), shown by the
+   *  generated dropdowns, filter chips, kanban lanes, table cells and detail rows. A constant
+   *  without one is humanized (`IN_PROGRESS` → "In progress"). Optional and additive: older
+   *  presets, team models and share links simply lack it. */
+  enumLabels?: Record<string, string>
   // Per-field search/filter opt-out (default on). searchable applies to STRING/TEXT (text-search box);
   // filterable to enum/boolean/date/numeric (filter bar). Omitted = default true; written false to exclude.
   searchable?: boolean

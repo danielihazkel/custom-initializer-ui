@@ -139,7 +139,10 @@ export const EXAMPLE_MODELS: ExampleModel[] = [
           { name: 'subject', type: 'STRING', required: true, length: 200 },
           { name: 'details', type: 'TEXT' },
           { name: 'priority', type: 'ENUM', required: true, enumValues: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] },
-          { name: 'status', type: 'ENUM', required: true, enumValues: ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] },
+          {
+            name: 'status', type: 'ENUM', required: true, enumValues: ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'],
+            enumLabels: { OPEN: 'Open', IN_PROGRESS: 'In progress', RESOLVED: 'Resolved', CLOSED: 'Closed' },
+          },
           { name: 'dueAt', type: 'LOCAL_DATE_TIME' },
         ],
         relations: [

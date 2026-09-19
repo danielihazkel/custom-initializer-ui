@@ -29,7 +29,7 @@ export function focusWithinRow(uid: string | undefined, selector: string): void 
 
 /** `CSS.escape` with a fallback for environments without it (jsdom) — uids are UUIDs, so only
  *  quotes and backslashes could ever need escaping. */
-function cssEscape(s: string): string {
+export function cssEscape(s: string): string {
   const css = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS
   return css?.escape ? css.escape(s) : s.replace(/["\\]/g, '\\$&')
 }

@@ -49,6 +49,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   window.history.replaceState({}, '', '/')
 })
@@ -141,5 +142,69 @@ describe('FullstackView — generate and shortcuts', () => {
     expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeTruthy()
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).toBeNull()
+  })
+})
+
+describe('FullstackView — editor safety nets', () => {
+  const four: FullstackEntityDef[] = ['Invoice', 'Customer', 'Product', 'Shipment']
+    .map(name => ({ name, fields: [pk, { name: 'label', type: 'STRING' as const }] }))
+
+  it('keeps the storage-full notice while the entity list is unsaved, even after a smaller key saves', () => {
+    storeDraft(draftEntities)
+    const real = Storage.prototype.setItem
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) {
+      if (key === 'fullstack:entities') throw new Error('QuotaExceededError')
+      real.call(this, key, value)
+    })
+    render(<FullstackView />)
+    expect(document.querySelector('[data-storage-full]')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Group ID'), { target: { value: 'com.other' } })
+    expect(document.querySelector('[data-storage-full]')).toBeTruthy()
+  })
+
+  it('adding an entity while the outline filter hides it clears the filter and shows the card', () => {
+    storeDraft(four)
+    render(<FullstackView />)
+    const filter = screen.getByLabelText('Find entity') as HTMLInputElement
+    fireEvent.change(filter, { target: { value: 'ship' } })
+    expect(entityNames()).toEqual(['Shipment'])
+    fireEvent.click(screen.getByRole('button', { name: '+ Add entity' }))
+    expect(filter.value).toBe('')
+    expect(entityNames()).toEqual(['Invoice', 'Customer', 'Product', 'Shipment', ''])
+  })
+
+  it('"issues to fix" reveals an errored card the filter was hiding', () => {
+    storeDraft([{ ...four[0], name: 'class' }, ...four.slice(1)])
+    render(<FullstackView />)
+    fireEvent.change(screen.getByLabelText('Find entity'), { target: { value: 'ship' } })
+    expect(entityNames()).toEqual(['Shipment'])
+    fireEvent.click(screen.getByRole('button', { name: /issue.* to fix before generating/ }))
+    expect(entityNames()[0]).toBe('class')
+    expect(screen.getAllByLabelText('Entity name')[0].getAttribute('aria-invalid')).toBe('true')
+  })
+
+  it('undo keeps the other cards collapsed', () => {
+    storeDraft(four.slice(0, 2))
+    render(<FullstackView />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Collapse entity' })[1])
+    expect(screen.getAllByRole('button', { name: 'Expand entity' })).toHaveLength(1)
+    fireEvent.change(screen.getAllByLabelText('Entity name')[0], { target: { value: 'Bill' } })
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(entityNames()).toEqual(['Invoice', 'Customer'])
+    expect(screen.getAllByRole('button', { name: 'Expand entity' })).toHaveLength(1)
+  })
+
+  it('offers the other tab\'s draft instead of overwriting silently', () => {
+    storeDraft(draftEntities)
+    render(<FullstackView />)
+    const theirs = [{ name: 'Ledger', fields: [pk] }]
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'fullstack:entities', newValue: JSON.stringify(theirs) }))
+    })
+    const banner = document.querySelector('[data-external-draft]')
+    expect(banner?.textContent).toContain('changed in another browser tab')
+    fireEvent.click(screen.getByRole('button', { name: 'Load theirs' }))
+    expect(entityNames()).toEqual(['Ledger'])
+    expect(document.querySelector('[data-external-draft]')).toBeNull()
   })
 })

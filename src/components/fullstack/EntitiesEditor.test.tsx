@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { useState } from 'react'
 import { EntitiesEditor } from './EntitiesEditor'
 import { validateEntities } from './validation'
 import { withUids } from './uid'
@@ -170,5 +171,56 @@ describe('EntitiesEditor — overrides panel', () => {
     expect(screen.queryByRole('combobox', { name: /OpenAPI/ })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Go to Options' }))
     expect(onGoToOptions).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('EntitiesEditor — removals and type changes are undoable from the notice', () => {
+  it('offers an Undo that puts the removed field back at its index with the same uid', () => {
+    const onNotice = vi.fn()
+    const { onChange } = renderEditor(base, { onNotice })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove field' })[1]) // email
+    const afterRemove = onChange.mock.calls[0][0] as FullstackEntityDef[]
+    expect(afterRemove[0].fields.map(f => f.name)).toEqual(['id', 'active'])
+    expect(onNotice).toHaveBeenCalledWith('Removed field email from User', expect.objectContaining({ label: 'Undo' }))
+    ;(onNotice.mock.calls[0][1] as { onClick: () => void }).onClick()
+    const restored = onChange.mock.calls[1][0] as FullstackEntityDef[]
+    expect(restored[0].fields.map(f => f.name)).toEqual(['id', 'email', 'active'])
+    expect(restored[0].fields[1].uid).toBe(base[0].fields[1].uid)
+  })
+
+  // The Undo closures re-insert into the list as it is when clicked, so these run the editor
+  // with real state rather than a mock onChange.
+  function Stateful({ initial, onNotice }: { initial: FullstackEntityDef[]; onNotice: (m: string, a?: { label: string; onClick: () => void }) => void }) {
+    const [entities, setEntities] = useState(initial)
+    return <EntitiesEditor entities={entities} onChange={setEntities} errors={validateEntities(entities).entities} onNotice={onNotice} />
+  }
+
+  it('offers an Undo on entity removal and names what a type change cleared', () => {
+    const onNotice = vi.fn()
+    render(<Stateful initial={base} onNotice={onNotice} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove entity' }))
+    expect(screen.queryAllByLabelText('Entity name')).toHaveLength(0)
+    expect(onNotice).toHaveBeenCalledWith('Removed entity User', expect.objectContaining({ label: 'Undo' }))
+    act(() => { (onNotice.mock.calls[0][1] as { onClick: () => void }).onClick() })
+    expect((screen.getByLabelText('Entity name') as HTMLInputElement).value).toBe('User')
+
+    onNotice.mockClear()
+    fireEvent.change(screen.getAllByLabelText('Field type')[1], { target: { value: 'LONG' } }) // email: STRING len 200
+    expect((screen.getAllByLabelText('Field type')[1] as HTMLSelectElement).value).toBe('LONG')
+    expect(onNotice).toHaveBeenCalledWith('Changed email to LONG — cleared length 200', expect.objectContaining({ label: 'Undo' }))
+    act(() => { (onNotice.mock.calls[0][1] as { onClick: () => void }).onClick() })
+    expect((screen.getAllByLabelText('Field type')[1] as HTMLSelectElement).value).toBe('STRING')
+  })
+
+  it('creates a join entity after the owner from the relations header', () => {
+    const two = withUids([base[0], { name: 'Role', fields: [{ name: 'id', type: 'LONG', primaryKey: true, generated: true }, { name: 'name', type: 'STRING' }] }])
+    const onRowAdded = vi.fn()
+    const { onChange } = renderEditor(two, { onRowAdded })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a join entity…' })[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    const next = onChange.mock.calls[0][0] as FullstackEntityDef[]
+    expect(next.map(e => e.name)).toEqual(['User', 'UserRole', 'Role'])
+    expect(next[1].relations?.map(r => r.targetEntity)).toEqual(['User', 'Role'])
+    expect(onRowAdded).toHaveBeenCalledWith(next[1].uid)
   })
 })

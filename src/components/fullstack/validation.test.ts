@@ -270,3 +270,31 @@ describe('Boot version spellings', () => {
     expect(canonicalVersion('3.2.1')).toBe('3.2.1')
   })
 })
+
+describe('validateMeta — name and version', () => {
+  const base = { groupId: 'com.menora', artifactId: 'demo', packageName: 'com.menora.demo' }
+  it('accepts blank name/version (the server defaults them) and Maven-shaped versions', () => {
+    expect(validateMeta({ ...base, name: '', version: '' })).toEqual({})
+    expect(validateMeta({ ...base, version: '0.0.1-SNAPSHOT' })).toEqual({})
+    expect(validateMeta({ ...base, version: '2024.1' })).toEqual({})
+  })
+  it('flags a whitespace-only name and a version with spaces or leading punctuation', () => {
+    expect(validateMeta({ ...base, name: '   ' }).name).toBeTruthy()
+    expect(validateMeta({ ...base, version: '1.0 beta' }).version).toBeTruthy()
+    expect(validateMeta({ ...base, version: '-1' }).version).toBeTruthy()
+  })
+})
+
+describe('validateEntities — enum labels', () => {
+  const pk = { name: 'id', type: 'LONG' as const, primaryKey: true, generated: true }
+  it('allows labels on an ENUM, flags one over 80 characters, and rejects labels on other types', () => {
+    const ok = validateEntities([{ name: 'T', fields: [pk, { name: 'status', type: 'ENUM', enumValues: ['OPEN'], enumLabels: { OPEN: 'פתוח' } }] }])
+    expect(ok.count).toBe(0)
+    const long = validateEntities([{ name: 'T', fields: [pk, { name: 'status', type: 'ENUM', enumValues: ['OPEN'], enumLabels: { OPEN: 'x'.repeat(81) } }] }])
+    expect(long.entities[0]?.fields?.[1]?.enumValues).toMatch(/too long/)
+    const stale = validateEntities([{ name: 'T', fields: [pk, { name: 'status', type: 'ENUM', enumValues: ['OPEN'], enumLabels: { GONE: 'Gone' } }] }])
+    expect(stale.entities[0]?.fields?.[1]?.enumValues).toMatch(/not one of the values/)
+    const wrongType = validateEntities([{ name: 'T', fields: [pk, { name: 'status', type: 'STRING', enumLabels: { OPEN: 'Open' } }] }])
+    expect(wrongType.entities[0]?.fields?.[1]?.enumValues).toBe('Values apply to ENUM only')
+  })
+})

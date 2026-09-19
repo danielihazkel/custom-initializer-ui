@@ -46,3 +46,33 @@ describe('EnumValuesEditor', () => {
     expect(onChange).toHaveBeenCalledWith(['ACTIVE'])
   })
 })
+
+describe('EnumValuesEditor — display labels', () => {
+  it('emits the label map from a chip input and defaults the placeholder to the humanized constant', () => {
+    const onChange = vi.fn()
+    const onLabelsChange = vi.fn()
+    const { rerender } = render(<EnumValuesEditor values={['IN_PROGRESS']} labels={{}} onChange={onChange} onLabelsChange={onLabelsChange} />)
+    const input = screen.getByLabelText('Label for IN_PROGRESS') as HTMLInputElement
+    expect(input.placeholder).toBe('In progress')
+    fireEvent.change(input, { target: { value: 'בטיפול' } })
+    expect(onLabelsChange).toHaveBeenCalledWith({ IN_PROGRESS: 'בטיפול' })
+    // Controlled: the parent hands the map back, then clearing the input empties the map.
+    rerender(<EnumValuesEditor values={['IN_PROGRESS']} labels={{ IN_PROGRESS: 'בטיפול' }} onChange={onChange} onLabelsChange={onLabelsChange} />)
+    fireEvent.change(screen.getByLabelText('Label for IN_PROGRESS'), { target: { value: '' } })
+    expect(onLabelsChange).toHaveBeenLastCalledWith(undefined)
+  })
+
+  it('accepts VALUE:Label in the draft and drops the label with its value', () => {
+    const onChange = vi.fn()
+    const onLabelsChange = vi.fn()
+    render(<EnumValuesEditor values={['OPEN']} labels={{ OPEN: 'Open' }} onChange={onChange} onLabelsChange={onLabelsChange} />)
+    const draft = screen.getByLabelText('Add enum value')
+    fireEvent.change(draft, { target: { value: 'CLOSED:Closed, DONE' } })
+    fireEvent.keyDown(draft, { key: 'Enter' })
+    expect(onChange).toHaveBeenCalledWith(['OPEN', 'CLOSED', 'DONE'])
+    expect(onLabelsChange).toHaveBeenCalledWith({ OPEN: 'Open', CLOSED: 'Closed' })
+    fireEvent.click(screen.getByLabelText('Remove OPEN'))
+    expect(onChange).toHaveBeenLastCalledWith([])
+    expect(onLabelsChange).toHaveBeenLastCalledWith(undefined)
+  })
+})

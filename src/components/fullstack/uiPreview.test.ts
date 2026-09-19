@@ -48,8 +48,9 @@ describe('buildUiPreview', () => {
     expect(p.form.map(c => c.name)).toEqual(['reference', 'status', 'total', 'notes', 'placedOn', 'customer'])
     const status = p.form.find(c => c.name === 'status')!
     expect(status.control).toBe('select')
-    expect(status.options).toEqual(['OPEN', 'PAID'])
-    expect(status.value).toBe('OPEN')
+    // Options are the display labels the generated select shows (humanized when none is set).
+    expect(status.options).toEqual(['Open', 'Paid'])
+    expect(status.value).toBe('Open')
     expect(p.form.find(c => c.name === 'reference')!.locked).toBe(true)
     expect(p.form.find(c => c.name === 'total')!.hint).toBe('0 – 1000')
     expect(p.form.find(c => c.name === 'notes')!.control).toBe('textarea')

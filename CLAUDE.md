@@ -172,6 +172,34 @@ project-only flags and their current value plus "Go to Options" (`onGoToOptions`
 `framer-motion` mocked, `URL.createObjectURL` stubbed): share-link precedence, Generate success /
 failure, Ctrl+S and `?`.
 
+**Editor safety nets, join entities, enum labels.** `revealRow(uid, { focus? })` is the one way to
+bring a card on screen: it clears the outline filter when `visibleUids` hides the card, expands it,
+then scrolls/focuses two frames later — `jumpToFirstError`, the diagram, lint "Show", coverage chips
+and every add/duplicate/restore (`EntitiesEditor.onRowAdded`) go through it, so a row is never
+created or pointed at off screen. Removals (entity, field, relation — `RelationsEditor.onRemoved`)
+and a type change that clears attributes toast through `onNotice(message, action)` with an **Undo**
+that re-inserts *that* row (`restoreEntity`/`restoreField`/`restoreRelation` read the latest list via
+`entitiesRef`, so later edits survive); recents get the same (`useFullstackPresets.restoreRecent`).
+Undo/redo call `applySnapshot(s, true)`: `uid.ts` `reconcileUids` re-uses the current uids by name
+then position, so `collapsed` (intersected with the survivors), open panels and expanded field rows
+stay put; `flushBurst` also updates `historyRef` synchronously so Ctrl+Z right after typing works.
+Storage: `persistFailedKeys` is per key (a successful meta write no longer hides the storage-full
+notice while the entity list is unsaved); a `storage` event for `fullstack:entities` that this tab
+did not write (`lastWrittenEntitiesRef`) shows a "changed in another browser tab" banner with Load
+theirs (undoable) / Keep mine — never a silent overwrite. `RelationsEditor` offers "Many-to-many? Add a
+join entity…" (`joinEntity.ts`: `<Owner><Target>`, generated id, two required MANY_TO_ONEs; lint's
+`only-keys` rule skips entities that have relations). Template-set pickers show the set's
+`description` and, with 2+ sets of a kind, a `SetCompare` grid; the palette picker gets the same
+error banner + Retry as the sets (`useFrontendMetadata.reload`). `ImportFromDdlDrawer` takes a `.sql`
+file (button or drop on the textarea); the team-conflict dialog has **Rename…** (reopens the save
+prompt pre-filled via `saveRequest.draft`; closing the prompt keeps the draft); `validateMeta` checks
+`name`/`version`; Copy as curl warns past `MAX_ENCODED_LENGTH`. **Enum labels:** `FullstackFieldDef.enumLabels`
+(`Record<constant, label>`, additive — old presets/links lack it) is edited per chip in
+`EnumValuesEditor` (`labels`/`onLabelsChange`; the draft accepts `OPEN:Open`), pruned when a value
+goes (`enumLabels.ts` `pruneLabels`), mirrored by `quickAdd` `values="OPEN:Open|CLOSED"`, shown by
+the UI mock (`enumLabel` = explicit else `humanizeConstant`, mirroring `EntityScaffoldContext`) and
+validated like the server's `canonicalEnumLabels` (key must be a value, non-blank, ≤ 80 chars, ENUM only). The tickets example carries labels so the path is exercised.
+
 ## Data Flow
 
 1. `useMetadata` fetches `/metadata/client` → raw Initializr metadata JSON

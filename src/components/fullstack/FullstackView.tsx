@@ -8,14 +8,14 @@ import { EntityRelationGraph } from './EntityRelationGraph'
 import { EntityNavigator, entityMatches, useActiveEntity } from './EntityNavigator'
 import { SectionNav } from './SectionNav'
 import { focusWithoutClipping, scrollToElement } from './scroll'
-import { focusRowWhenRendered } from './focus'
+import { cssEscape, focusRowWhenRendered } from './focus'
 import { FullstackDepPicker } from './FullstackDepPicker'
 import { FullstackPresets, type SaveTarget } from './FullstackPresets'
 import { ImportFromDdlDrawer, type ImportMode, type ImportVariant } from './ImportFromDdlDrawer'
 import { ViewSkeleton } from '../Skeletons'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { StatusToast } from '../admin/shared/StatusToast'
-import { stripUids, withUids } from './uid'
+import { reconcileUids, stripUids, withUids } from './uid'
 import {
   DEFAULT_PROJECT_META, describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, snapshotChangeKey, snapshotsEqual, toExportedModel,
   type FullstackSnapshot, type ProjectMeta,
@@ -29,7 +29,7 @@ import { ShortcutsOverlay } from './ShortcutsOverlay'
 import { draftHasUnsavedWork } from './shareGuard'
 import { summarizeEntity } from './summary'
 import { frontendSetDefaults } from './frontendSetDefaults'
-import { clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
+import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, type ExampleModel } from './examples'
 import { PalettePicker } from '../shared/PalettePicker'
@@ -172,21 +172,29 @@ export function FullstackView() {
   // that entity's issues.
   const [lintOpen, setLintOpen] = useState(false)
   const [lintFilterUid, setLintFilterUid] = useState<string | null>(null)
-  // True once a localStorage write was refused (quota / disabled): the draft is no longer being
-  // saved, so the sticky bar says so and leaving the page asks first.
-  const [persistFailed, setPersistFailed] = useState(false)
+  // The localStorage keys whose last write was refused (quota / disabled). Tracked per key: the
+  // entity list is what blows the quota, and a later *successful* write of the small meta key
+  // must not hide the notice while the model itself is still unsaved. Non-empty = the draft is no
+  // longer being saved, so the sticky bar says so and leaving the page asks first.
+  const [persistFailedKeys, setPersistFailedKeys] = useState<ReadonlySet<string>>(() => new Set())
+  const persistFailed = persistFailedKeys.size > 0
+  // What this tab last wrote for the entity list, so a `storage` event from another tab can be
+  // told apart from the echo of our own write.
+  const lastWrittenEntitiesRef = useRef<string | null>(null)
+  // Another tab saved a different draft under the same keys — held until the user picks a side.
+  const [externalDraft, setExternalDraft] = useState<{ meta: ProjectMeta; entities: FullstackEntityDef[] } | null>(null)
   // A JSON file parsed by Import JSON, held while the user picks Replace / Append.
   const [pendingJsonImport, setPendingJsonImport] = useState<FullstackSnapshot | null>(null)
   // The last successful Generate — drives the "Next steps" card. Memory only; a refresh clears it.
   const [lastGenerated, setLastGenerated] = useState<GeneratedRun | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   // Opens the presets strip's save prompt from elsewhere (Ctrl+S, the Next steps card).
-  const [saveRequest, setSaveRequest] = useState<{ target: SaveTarget; key: number } | null>(null)
+  const [saveRequest, setSaveRequest] = useState<{ target: SaveTarget; key: number; draft?: { name: string; description: string } } | null>(null)
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
     fetchPreview, clearPreview, clearError, cancel: cancelPreview,
   } = useFullstackPreview()
-  const { presets, recents, persistFailed: presetsPersistFailed, savePreset, deletePreset, restorePreset, deleteRecent, pushRecent } = useFullstackPresets()
+  const { presets, recents, persistFailed: presetsPersistFailed, savePreset, deletePreset, restorePreset, deleteRecent, restoreRecent, pushRecent } = useFullstackPresets()
   const team = useTeamModels()
   // A team save that hit an existing name, held while the user decides whether to overwrite it.
   const [teamConflict, setTeamConflict] = useState<{ name: string; description: string; existing: TeamModelSummary } | null>(null)
@@ -196,7 +204,7 @@ export function FullstackView() {
   // The client metadata spells Boot versions "3.2.1.RELEASE"; the fullstack endpoint and the template
   // sets pin the catalog id "3.2.1" — list and store the canonical form only.
   const bootVersions = useMemo(() => Array.from(new Set(rawBootVersions.map(canonicalVersion))), [rawBootVersions])
-  const { metadata: feMetadata } = useFrontendMetadata()
+  const { metadata: feMetadata, error: feError, reload: reloadFe } = useFrontendMetadata()
   const { rules: compatibilityRules } = useCompatibility('BACKEND')
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
   const currentFrontendSet = availableSets.find(s => s.setKey === frontendSet)
@@ -221,12 +229,29 @@ export function FullstackView() {
   // Persist form state so a refresh doesn't lose the user's work (mirrors useProjectState).
   // The model itself (meta + entities) is what matters for the storage-full notice; the small
   // UI-state keys just try their luck.
-  useEffect(() => { setPersistFailed(!persist(LS.meta, JSON.stringify(meta))) }, [meta])
+  useEffect(() => { setPersistFailedKeys(prev => trackPersist(prev, LS.meta, persist(LS.meta, JSON.stringify(meta)))) }, [meta])
   // `sourceSql` (the imported DDL) stays in memory only: it is the one prop big enough to blow
   // the quota, and the server discards it anyway. The uids do persist — `collapsed` keys on them.
   useEffect(() => {
-    setPersistFailed(!persist(LS.entities, JSON.stringify(entities.map(({ sourceSql: _s, ...e }) => e))))
+    const json = JSON.stringify(entities.map(({ sourceSql: _s, ...e }) => e))
+    lastWrittenEntitiesRef.current = json
+    setPersistFailedKeys(prev => trackPersist(prev, LS.entities, persist(LS.entities, json)))
   }, [entities])
+  // Two tabs on this page share the draft keys, and the last one to type used to win silently.
+  // A write we did not make ourselves surfaces as a banner with both drafts on offer — never an
+  // automatic merge.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== LS.entities || e.newValue == null || e.newValue === lastWrittenEntitiesRef.current) return
+      try {
+        const theirs = JSON.parse(e.newValue) as FullstackEntityDef[]
+        if (!Array.isArray(theirs)) return
+        setExternalDraft({ meta: normalizeMeta(loadJson<Partial<ProjectMeta>>(LS.meta, DEFAULT_META)), entities: theirs })
+      } catch { /* not ours to interpret */ }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
   useEffect(() => { persist(LS.deps, JSON.stringify(selectedDeps)) }, [selectedDeps])
   useEffect(() => { persist(LS.backendSet, backendSet) }, [backendSet])
   useEffect(() => { persist(LS.frontendSet, frontendSet) }, [frontendSet])
@@ -243,6 +268,9 @@ export function FullstackView() {
   )
   const snapshotRef = useRef(currentSnapshot)
   snapshotRef.current = currentSnapshot
+  // The live entity list (with uids) for callbacks that outlive a render — undo's uid reconciliation.
+  const entitiesRef = useRef(entities)
+  entitiesRef.current = entities
 
   // Keep the URL in step (debounced) so the header's Share button copies a link that reproduces
   // this model elsewhere. The frontend tab does the same with plain query params; the entity
@@ -365,7 +393,11 @@ export function FullstackView() {
     const burst = burstRef.current
     if (!burst) return
     burstRef.current = null
-    setHistory(h => record(h, { label: burst.label, snapshot: burst.before }))
+    // Update the ref as well as the state: undo() reads the ref right after flushing, and a
+    // Ctrl+Z within the burst window must see the entry it just closed, not the pre-render one.
+    const next = record(historyRef.current, { label: burst.label, snapshot: burst.before })
+    historyRef.current = next
+    setHistory(next)
   }, [])
 
   useEffect(() => {
@@ -389,19 +421,29 @@ export function FullstackView() {
     setHistory(h => record(h, { label, snapshot: before }))
   }, [flushBurst])
 
-  const applySnapshot = useCallback((s: FullstackSnapshot) => {
+  /** Replaces the whole editor state. `keepView` (undo/redo) re-uses the current rows' uids for
+   *  the rows that survive, so collapsed cards and open panels stay put instead of every card
+   *  springing open; a load (preset, example, link) starts from a clean view. */
+  const applySnapshot = useCallback((s: FullstackSnapshot, keepView = false) => {
     // Adopt the snapshot's sets as "already seeded" so the set-change effects above don't
     // re-seed deps/versions over the snapshot's own values.
     seededBackendSetRef.current = s.backendSet
     seededFrontendSetRef.current = s.frontendSet
+    const restored = JSON.parse(JSON.stringify(s.entities)) as FullstackEntityDef[]
+    const next = keepView ? reconcileUids(entitiesRef.current, restored) : withUids(restored)
     setMeta(normalizeMeta(s.meta))
-    setEntities(withUids(JSON.parse(JSON.stringify(s.entities)) as FullstackEntityDef[]))
+    setEntities(next)
     setSelectedDeps([...s.selectedDeps])
     setScaffoldOpts([...s.scaffoldOpts])
     setBackendSet(s.backendSet)
     setFrontendSet(s.frontendSet)
     setColorPalette(s.colorPalette ?? '')
-    setCollapsed(new Set())
+    if (keepView) {
+      const alive = new Set(next.map(e => e.uid))
+      setCollapsed(prev => new Set([...prev].filter(uid => alive.has(uid))))
+    } else {
+      setCollapsed(new Set())
+    }
     baselineRef.current = null // adopt the loaded state as the new "nothing unsaved" point
   }, [])
 
@@ -411,7 +453,7 @@ export function FullstackView() {
     if (!step) return
     silentFromRef.current = snapshotRef.current
     setHistory(step.history)
-    applySnapshot(step.restore.snapshot)
+    applySnapshot(step.restore.snapshot, true)
     setToast({ message: `Undid: ${step.restore.label}`, type: 'success' })
   }, [applySnapshot, flushBurst])
 
@@ -421,7 +463,7 @@ export function FullstackView() {
     if (!step) return
     silentFromRef.current = snapshotRef.current
     setHistory(step.history)
-    applySnapshot(step.restore.snapshot)
+    applySnapshot(step.restore.snapshot, true)
     setToast({ message: `Redid: ${step.restore.label}`, type: 'success' })
   }, [applySnapshot, flushBurst])
 
@@ -429,6 +471,7 @@ export function FullstackView() {
     pushUndoEntry(mode === 'replace' ? 'Replaced entities from import' : 'Appended imported entities')
     const stamped = withUids(imported)
     setEntities(prev => (mode === 'replace' ? stamped : [...prev, ...stamped]))
+    if (stamped[0]?.uid) revealRow(stamped[0].uid)
     const verb = mode === 'replace' ? 'Replaced with' : 'Appended'
     const n = imported.length
     const base = `${verb} ${n} entit${n === 1 ? 'y' : 'ies'}`
@@ -551,6 +594,16 @@ export function FullstackView() {
     })
   }
 
+  function deleteRecentWithUndo(id: string) {
+    const removed = deleteRecent(id)
+    if (!removed) return
+    setToast({
+      message: `Removed "${removed.preset.name}" from recents`,
+      type: 'success',
+      action: { label: 'Undo', onClick: () => restoreRecent(removed.preset, removed.index) },
+    })
+  }
+
   function savePresetAndReport(name: string, snapshot: FullstackSnapshot) {
     const { persisted } = savePreset(name, snapshot)
     setToast(persisted
@@ -568,8 +621,10 @@ export function FullstackView() {
       `-o ${meta.artifactId || 'project'}.zip`,
       `-d ${quoted}`,
     ].join(' \\\n  ')
+    // The body rides inline; past the share-link limit it is a clipboard payload worth a warning.
+    const large = body.length > MAX_ENCODED_LENGTH
     setToast(await copyToClipboard(cmd)
-      ? { message: 'curl command copied to clipboard', type: 'success' }
+      ? { message: large ? `curl command copied (${Math.round(body.length / 1024)} KB inline — Export JSON and -d @file may be handier)` : 'curl command copied to clipboard', type: 'success' }
       : { message: "Couldn't copy — clipboard access was refused", type: 'error' })
   }
 
@@ -585,9 +640,10 @@ export function FullstackView() {
       : { message: "Couldn't copy — clipboard access was refused", type: 'error' })
   }
 
-  /** Opens the presets strip's save prompt on the given target and brings it into view. */
-  function requestSave(target: SaveTarget) {
-    setSaveRequest({ target, key: Date.now() })
+  /** Opens the presets strip's save prompt on the given target and brings it into view. A
+   *  `draft` pre-fills it (the team-conflict "Rename…" path). */
+  function requestSave(target: SaveTarget, draft?: { name: string; description: string }) {
+    setSaveRequest({ target, key: Date.now(), draft })
     scrollToElement(document.querySelector<HTMLElement>('[aria-label="Start from"]'), 'start')
   }
 
@@ -648,12 +704,13 @@ export function FullstackView() {
     }
     const firstIdx = Object.keys(entityErrors.entities).map(Number).sort((a, b) => a - b)[0]
     const uid = firstIdx == null ? undefined : entities[firstIdx]?.uid
-    if (uid && collapsed.has(uid)) {
-      setCollapsed(prev => { const next = new Set(prev); next.delete(uid); return next })
+    if (uid) {
+      // The card may be collapsed or hidden by the outline filter — revealRow handles both.
+      revealRow(uid, { focus: '[aria-invalid="true"], [data-error]' })
+      return
     }
     requestAnimationFrame(() => {
-      const scope = firstIdx == null ? '#fs-entities' : `[data-entity-index="${firstIdx}"]`
-      const target = document.querySelector<HTMLElement>(`${scope} [aria-invalid="true"], ${scope} [data-error]`)
+      const target = document.querySelector<HTMLElement>('#fs-entities [aria-invalid="true"], #fs-entities [data-error]')
         ?? document.querySelector<HTMLElement>('#fs-entities')
       if (target?.matches('input, select, textarea')) focusWithoutClipping(target, 'center')
       else scrollToElement(target, 'center')
@@ -776,15 +833,26 @@ export function FullstackView() {
   }
   const allCollapsed = entities.length > 0 && entities.every(e => e.uid && collapsed.has(e.uid))
 
-  /** Expand (if collapsed) and scroll to an entity card, focusing its name — used by the
-   *  diagram and the suggestions panel. */
-  function revealRow(uid: string) {
+  /** Brings an entity card on screen whatever hides it — the outline filter (cleared), a
+   *  collapsed card (expanded) — then focuses its name, or the first control matching
+   *  `opts.focus` (jump-to-error). Used by the diagram, the suggestions panel, the coverage chips,
+   *  the issue counter, and every add/duplicate/restore so a new row is never created off screen. */
+  function revealRow(uid: string, opts?: { focus?: string }) {
+    if (visibleUids && !visibleUids.has(uid)) setEntityFilter('')
     setCollapsed(prev => { if (!prev.has(uid)) return prev; const next = new Set(prev); next.delete(uid); return next })
-    requestAnimationFrame(() => {
-      const card = document.querySelector<HTMLElement>(`[data-row-uid="${CSS.escape(uid)}"]`)
+    // Two frames: the first lets the filter/collapse change render the card, the second scrolls.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const card = document.querySelector<HTMLElement>(`[data-row-uid="${cssEscape(uid)}"]`)
+      if (!card) return
+      if (opts?.focus) {
+        const control = card.querySelector<HTMLElement>(opts.focus)
+        if (control?.matches('input, select, textarea')) focusWithoutClipping(control, 'center')
+        else scrollToElement(control ?? card, 'center')
+        return
+      }
       scrollToElement(card, 'start')
-      card?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true })
-    })
+      card.querySelector<HTMLElement>('input')?.focus({ preventScroll: true })
+    }))
   }
 
   // ── Suggestions (non-blocking lint) ────────────────────────────────────────
@@ -845,6 +913,7 @@ export function FullstackView() {
     addEntity: () => {
       const entity = newEntity()
       setEntities(prev => [...prev, entity])
+      revealRow(entity.uid!)
       focusRowWhenRendered(entity.uid)
     },
     importDdl: () => setImportVariant('ddl'),
@@ -926,7 +995,7 @@ export function FullstackView() {
         onLoadExample={example => requestLoad({ kind: 'example', example })}
         onSave={savePresetAndReport}
         onDeletePreset={deletePresetWithUndo}
-        onDeleteRecent={deleteRecent}
+        onDeleteRecent={deleteRecentWithUndo}
         onExportJson={exportJson}
         onImportJson={importJson}
         onCopyCurl={copyCurl}
@@ -959,8 +1028,9 @@ export function FullstackView() {
                    aria-invalid={Boolean(metaErrors.artifactId)}
                    onChange={e => updateMeta({ artifactId: e.target.value })} />
           </Labeled>
-          <Labeled label="Name" htmlFor="fs-name">
-            <input id="fs-name" className={inputClass()} value={meta.name}
+          <Labeled label="Name" htmlFor="fs-name" error={metaErrors.name}>
+            <input id="fs-name" className={inputClass(metaErrors.name)} value={meta.name}
+                   aria-invalid={Boolean(metaErrors.name)}
                    placeholder={meta.artifactId || 'demo'}
                    title="Project name in the generated pom.xml (blank = the artifact id)"
                    onChange={e => updateMeta({ name: e.target.value })} />
@@ -1007,8 +1077,9 @@ export function FullstackView() {
               {bootVersions.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </Labeled>
-          <Labeled label="Version" htmlFor="fs-version">
-            <input id="fs-version" className={inputClass()} value={meta.version}
+          <Labeled label="Version" htmlFor="fs-version" error={metaErrors.version}>
+            <input id="fs-version" className={inputClass(metaErrors.version)} value={meta.version}
+                   aria-invalid={Boolean(metaErrors.version)}
                    placeholder="0.0.1-SNAPSHOT"
                    title="Artifact version in the generated pom.xml (blank = the catalog default)"
                    onChange={e => updateMeta({ version: e.target.value })} />
@@ -1060,6 +1131,8 @@ export function FullstackView() {
             ) : (
               <SetLabel name={currentBackendSet?.name} setKey={backendSet} />
             )}
+            <SetDescription set={currentBackendSet} />
+            {backendSets.length > 1 && <SetCompare sets={backendSets} selected={backendSet} onPick={setBackendSet} />}
           </Labeled>
         )}
       </section>
@@ -1080,7 +1153,22 @@ export function FullstackView() {
             ) : (
               <SetLabel name={currentFrontendSet?.name} setKey={frontendSet} />
             )}
+            <SetDescription set={currentFrontendSet} />
+            {frontendSets.length > 1 && <SetCompare sets={frontendSets} selected={frontendSet} onPick={setFrontendSet} />}
           </Labeled>
+        )}
+        {feError && palettes.length === 0 && (
+          <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-on-surface" data-palette-error>
+            <span>Couldn't load the colour palettes ({feError}); the generated app uses the set's default palette.</span>
+            <button
+              type="button"
+              onClick={reloadFe}
+              className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-error/40 text-error hover:bg-error/10 transition-colors"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>refresh</span>
+              Retry
+            </button>
+          </div>
         )}
         {palettes.length > 0 && (
           <div className="pt-1 space-y-1.5">
@@ -1323,7 +1411,8 @@ export function FullstackView() {
               onToggleCollapsed={toggleCollapsed}
               onDestructive={pushUndoEntry}
               projectOpts={scaffoldOpts}
-              onNotice={message => setToast({ message, type: 'success' })}
+              onNotice={(message, action) => setToast({ message, type: 'success', action })}
+              onRowAdded={revealRow}
               lintCounts={lintCounts}
               onShowLint={showLintFor}
               density={density}
@@ -1381,6 +1470,39 @@ export function FullstackView() {
             This model is too large for a share link — the header's Share button copies a link without it.
             Use Export JSON (above) to hand it to someone.
           </p>
+        )}
+        {externalDraft && (
+          <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-xs text-on-surface" data-external-draft>
+            <span className="material-symbols-outlined text-warning" style={{ fontSize: '16px' }}>tab_duplicate</span>
+            <span className="flex-1 min-w-0">
+              This model was changed in another browser tab ({externalDraft.entities.length} entit{externalDraft.entities.length === 1 ? 'y' : 'ies'} there,
+              {' '}{entities.length} here). Which draft should this tab keep?
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const theirs = externalDraft
+                setExternalDraft(null)
+                pushUndoEntry("Loaded the other tab's draft")
+                setMeta(theirs.meta)
+                setEntities(withUids(theirs.entities))
+              }}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-primary text-on-primary hover:opacity-90"
+            >
+              Load theirs
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setExternalDraft(null)
+                if (lastWrittenEntitiesRef.current !== null) persist(LS.entities, lastWrittenEntitiesRef.current)
+                persist(LS.meta, JSON.stringify(meta))
+              }}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-outline-variant text-secondary hover:text-on-surface"
+            >
+              Keep mine
+            </button>
+          </div>
         )}
         {(persistFailed || presetsPersistFailed) && (
           <p className="flex items-center gap-1.5 text-[11px] text-secondary" role="status" data-storage-full>
@@ -1501,6 +1623,12 @@ export function FullstackView() {
           message={`A team model with this name already exists${teamConflict.existing.createdBy ? ` (saved by ${teamConflict.existing.createdBy})` : ''}. Overwriting it changes what everyone else loads.`}
           confirmLabel="Overwrite"
           tone="danger"
+          secondaryLabel="Rename…"
+          onSecondary={() => {
+            const conflict = teamConflict
+            setTeamConflict(null)
+            requestSave('team', { name: conflict.name, description: conflict.description })
+          }}
           onConfirm={() => { void overwriteTeamModel() }}
           onCancel={() => setTeamConflict(null)}
         />
@@ -1594,6 +1722,62 @@ function inputClass(error?: string): string {
   return error
     ? `${base} border-error focus:ring-2 focus:ring-error/20 focus:border-error`
     : `${base} border-outline-variant focus:ring-2 focus:ring-primary/20 focus:border-primary`
+}
+
+/** Adds or clears `key` in the failed-writes set, returning the same set when nothing changed. */
+function trackPersist(prev: ReadonlySet<string>, key: string, ok: boolean): ReadonlySet<string> {
+  if (ok === !prev.has(key)) return prev
+  const next = new Set(prev)
+  if (ok) next.delete(key)
+  else next.add(key)
+  return next
+}
+
+/** What a template set does, in the set's own words — the picker only names it. */
+function SetDescription({ set }: { set?: EntityTemplateSetSummary }) {
+  if (!set?.description?.trim()) return null
+  return <p className="text-[11px] text-on-surface-variant" data-set-description>{set.description}</p>
+}
+
+/** Side-by-side facts for the sets of one kind, so the choice is made on what they ship rather
+ *  than on their names. Rows are clickable, mirroring the select above them. */
+function SetCompare({ sets, selected, onPick }: { sets: EntityTemplateSetSummary[]; selected: string; onPick: (key: string) => void }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-outline-variant" data-set-compare>
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="text-left uppercase tracking-wider text-secondary bg-surface-container-low">
+            <th className="px-2 py-1 font-semibold">Set</th>
+            <th className="px-2 py-1 font-semibold">Design</th>
+            <th className="px-2 py-1 font-semibold">Pins</th>
+            <th className="px-2 py-1 font-semibold">Default deps</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sets.map(s => (
+            <tr
+              key={s.setKey}
+              onClick={() => onPick(s.setKey)}
+              aria-selected={s.setKey === selected}
+              className={`cursor-pointer border-t border-outline-variant ${s.setKey === selected ? 'bg-primary/5 text-on-surface' : 'text-secondary hover:bg-primary/[0.03]'}`}
+            >
+              <td className="px-2 py-1 whitespace-nowrap">
+                <span className="font-semibold">{s.name}</span>
+                <span className="ml-1 font-mono text-secondary">{s.setKey}</span>
+              </td>
+              <td className="px-2 py-1 whitespace-nowrap">{s.designSystem ?? '—'}</td>
+              <td className="px-2 py-1 whitespace-nowrap">{[s.bootVersion && `Boot ${s.bootVersion}`, s.javaVersion && `Java ${s.javaVersion}`].filter(Boolean).join(' · ') || '—'}</td>
+              <td className="px-2 py-1">
+                {s.defaultDeps.length === 0 ? '—' : s.defaultDeps.map(d => (
+                  <span key={d} className="inline-block mr-1 mb-0.5 px-1.5 py-0.5 rounded bg-surface-container-low font-mono">{d}</span>
+                ))}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 function SetLabel({ name, setKey }: { name?: string; setKey: string }) {

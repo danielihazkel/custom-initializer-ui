@@ -35,7 +35,7 @@ export function cloneWithNewUids(e: FullstackEntityDef): FullstackEntityDef {
   return {
     ...e,
     uid: newUid(),
-    fields: e.fields.map(f => ({ ...f, uid: newUid(), enumValues: f.enumValues ? [...f.enumValues] : undefined })),
+    fields: e.fields.map(f => ({ ...f, uid: newUid(), enumValues: f.enumValues ? [...f.enumValues] : undefined, enumLabels: f.enumLabels ? { ...f.enumLabels } : undefined })),
     relations: e.relations?.map(r => ({ ...r, uid: newUid() })),
     listViews: e.listViews ? [...e.listViews] : undefined,
     opts: e.opts ? { ...e.opts } : undefined,
@@ -52,4 +52,41 @@ export function stripUids(entities: FullstackEntityDef[]): FullstackEntityDef[] 
     fields: fields.map(({ uid: _f, ...f }) => f),
     relations: relations?.map(({ uid: _r, ...r }) => r),
   }))
+}
+
+/** Rows that carry a client uid and a display name — entities, fields (`name`) and relations
+ *  (`fieldName`) all fit once given a key accessor. */
+function reconcileRows<T extends { uid?: string }>(current: readonly T[], restored: readonly T[], key: (row: T) => string): T[] {
+  const norm = (row: T) => key(row).trim().toLowerCase()
+  const used = new Set<number>()
+  const matched: (number | undefined)[] = restored.map(row => {
+    const name = norm(row)
+    if (!name) return undefined
+    const idx = current.findIndex((c, j) => !used.has(j) && norm(c) === name)
+    if (idx < 0) return undefined
+    used.add(idx)
+    return idx
+  })
+  // Second pass: rows with no name match fall back to their old position, if it is still free.
+  return restored.map((row, i) => {
+    let idx = matched[i]
+    if (idx === undefined && i < current.length && !used.has(i)) { idx = i; used.add(i) }
+    return { ...row, uid: idx === undefined ? newUid() : current[idx].uid ?? newUid() }
+  })
+}
+
+/** Re-stamps a restored (uid-less) entity list with the uids of the current one, so React keys —
+ *  and everything keyed on them: collapsed cards, open panels, expanded field rows — survive an
+ *  undo/redo. Match by trimmed, case-insensitive name first, then by position; the same for the
+ *  fields and relations inside a matched entity. Anything unmatched gets a fresh uid. */
+export function reconcileUids(current: FullstackEntityDef[], restored: FullstackEntityDef[]): FullstackEntityDef[] {
+  const byUid = new Map(current.filter(e => e.uid).map(e => [e.uid!, e]))
+  return reconcileRows(current, restored, e => e.name).map(e => {
+    const match = e.uid ? byUid.get(e.uid) : undefined
+    return {
+      ...e,
+      fields: reconcileRows(match?.fields ?? [], e.fields, f => f.name),
+      relations: e.relations ? reconcileRows(match?.relations ?? [], e.relations, r => r.fieldName) : undefined,
+    }
+  })
 }

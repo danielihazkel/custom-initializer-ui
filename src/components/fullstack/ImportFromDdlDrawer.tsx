@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { AdminFormDrawer } from '../admin/shared/AdminFormDrawer'
 import type { FullstackEntityDef } from '../../types'
 import { newUid } from './uid'
@@ -121,6 +121,21 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
   // can be trimmed to the tables that matter without re-pasting.
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const copy = COPY[variant]
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  // A `.sql` file can be picked or dropped onto the textarea instead of pasted; its text replaces
+  // the current SQL and, like typing, marks an existing preview stale.
+  function loadFile(file: File | undefined) {
+    if (!file) return
+    file.text()
+      .then(text => { setSql(text); setError(null); if (parsed) setStale(true) })
+      .catch(() => setError({ error: 'Read failed', detail: `Couldn't read ${file.name}` }))
+  }
+  function onDrop(e: DragEvent<HTMLTextAreaElement>) {
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return // a text drag falls through to the browser's default paste
+    e.preventDefault()
+    loadFile(file)
+  }
   const { dialects: catalogDialects } = useSqlDialects()
   const dialectChoices = dialectOptions(catalogDialects)
   // If the catalog answers without the current pick (e.g. a dialect was removed), fall back to
@@ -273,15 +288,36 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
         </div>
 
         <div>
-          <label className="block text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
-            {variant === 'select' ? 'SELECT query' : 'DDL'}
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-[11px] font-bold uppercase tracking-widest text-secondary">
+              {variant === 'select' ? 'SELECT query' : 'DDL'}
+            </label>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
+              title="Load a .sql file (or drop one onto the text area)"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>upload_file</span>
+              Load .sql file…
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".sql,.ddl,.txt,text/plain,application/sql"
+              className="hidden"
+              aria-label="Load SQL file"
+              onChange={e => { loadFile(e.target.files?.[0]); e.target.value = '' }}
+            />
+          </div>
           <textarea
             aria-label={variant === 'select' ? 'SELECT query' : 'DDL'}
             className="w-full font-mono text-xs bg-background border border-outline-variant rounded p-3 min-h-[260px] focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
             placeholder={copy.placeholder}
             value={sql}
             onChange={e => { setSql(e.target.value); if (parsed) setStale(true) }}
+            onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault() }}
+            onDrop={onDrop}
             spellCheck={false}
           />
         </div>

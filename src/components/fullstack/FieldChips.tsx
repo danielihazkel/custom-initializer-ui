@@ -12,7 +12,7 @@ export function fieldChips(field: FullstackFieldDef, opts: { includeLabel?: bool
   else if (field.max != null) chips.push(`max ${field.max}`)
   if (field.pattern) chips.push('regex')
   if (field.email) chips.push('email')
-  if (field.type === 'ENUM') chips.push(`${field.enumValues?.length ?? 0} value${(field.enumValues?.length ?? 0) === 1 ? '' : 's'}`)
+  if (field.type === 'ENUM') chips.push(`${field.enumValues?.length ?? 0} value${(field.enumValues?.length ?? 0) === 1 ? '' : 's'}${Object.keys(field.enumLabels ?? {}).length > 0 ? ', labelled' : ''}`)
   if (field.defaultValue?.trim()) chips.push(`= ${field.defaultValue.trim()}`)
   if (field.readOnly && !field.primaryKey) chips.push('locked')
   if (field.searchable === false) chips.push('no search')

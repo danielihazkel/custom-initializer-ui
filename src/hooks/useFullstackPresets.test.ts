@@ -46,3 +46,19 @@ describe('useFullstackPresets', () => {
     expect(result.current.persistFailed).toBe(true)
   })
 })
+
+describe('useFullstackPresets — recents', () => {
+  it('deletes a recent and restores it at its old position', () => {
+    const { result } = renderHook(() => useFullstackPresets())
+    act(() => { result.current.pushRecent(snapshot) })
+    act(() => { result.current.pushRecent({ ...snapshot, meta: { ...snapshot.meta, artifactId: 'shop' } }) })
+    expect(result.current.recents.map(r => r.name)).toEqual(['shop', 'billing'])
+    let removed!: ReturnType<typeof result.current.deleteRecent>
+    act(() => { removed = result.current.deleteRecent(result.current.recents[1].id) })
+    expect(removed?.index).toBe(1)
+    expect(result.current.recents.map(r => r.name)).toEqual(['shop'])
+    act(() => { result.current.restoreRecent(removed!.preset, removed!.index) })
+    expect(result.current.recents.map(r => r.name)).toEqual(['shop', 'billing'])
+    expect(result.current.deleteRecent('nope')).toBeNull()
+  })
+})

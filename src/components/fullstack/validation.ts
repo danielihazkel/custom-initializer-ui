@@ -27,11 +27,17 @@ const PACKAGE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/
 export interface MetaErrors {
   groupId?: string
   artifactId?: string
+  name?: string
+  version?: string
   packageName?: string
   domainPackage?: string
   bootVersion?: string
   javaVersion?: string
 }
+
+// Maven coordinates: a version is a dotted/dashed token (`1.0.0`, `0.0.1-SNAPSHOT`, `2024.1`).
+// The server only rejects a bad one at Generate, so the editor flags it up front.
+const MAVEN_VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 /** The version ids the server knows. A restored preset or share link can carry a version that
  *  has since left the catalog; the server rejects it with a 400 only at Generate, so the editor
@@ -49,7 +55,7 @@ export function canonicalVersion(v: string): string {
 
 /** Validates the project-metadata fields. Mirrors the Backend tab's validateForm rules. */
 export function validateMeta(
-  meta: { groupId: string; artifactId: string; packageName: string; domainPackage?: string; bootVersion?: string; javaVersion?: string },
+  meta: { groupId: string; artifactId: string; name?: string; version?: string; packageName: string; domainPackage?: string; bootVersion?: string; javaVersion?: string },
   catalog?: VersionCatalog,
 ): MetaErrors {
   const errors: MetaErrors = {}
@@ -65,6 +71,9 @@ export function validateMeta(
   if (!meta.artifactId.trim()) errors.artifactId = 'Required'
   else if (/\s/.test(meta.artifactId)) errors.artifactId = 'No spaces allowed'
   if (!meta.groupId.trim()) errors.groupId = 'Required'
+  // Both optional (blank = the server's default); when typed they must be usable in the pom.
+  if (meta.name !== undefined && meta.name !== '' && !meta.name.trim()) errors.name = 'Blank — leave empty to use the artifact id'
+  if (meta.version?.trim() && !MAVEN_VERSION_RE.test(meta.version.trim())) errors.version = 'Not a valid Maven version (e.g. 0.0.1-SNAPSHOT)'
   if (!meta.packageName.trim()) errors.packageName = 'Required'
   else if (!PACKAGE_NAME_RE.test(meta.packageName)) errors.packageName = 'Invalid Java package name'
 
@@ -256,8 +265,19 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
           const bad = values.find(v => !IDENTIFIER_RE.test(v) || RESERVED_JAVA_KEYWORDS.has(v))
           if (bad) fErr.enumValues = `Invalid value '${bad}'`
         }
-      } else if ((field.enumValues?.length ?? 0) > 0) {
-        // Mirrors the backend rule that enumValues are only allowed when type=ENUM.
+        // Labels are optional. Mirrors FullstackRequestValidator.canonicalEnumLabels: each key
+        // must be one of the values (case-insensitively), and a label must be non-blank and at
+        // most 80 characters. The editor prunes keys when a value goes, so these only fire on a
+        // hand-edited or imported model.
+        const known = new Set(values.map(v => v.trim().toLowerCase()))
+        for (const [key, label] of Object.entries(field.enumLabels ?? {})) {
+          if (fErr.enumValues) break
+          if (!known.has(key.trim().toLowerCase())) fErr.enumValues = `Label for '${key}', which is not one of the values`
+          else if (!label.trim()) fErr.enumValues = `Label for '${key}' is blank`
+          else if (label.trim().length > 80) fErr.enumValues = `Label for '${key}' is too long (max 80 characters)`
+        }
+      } else if ((field.enumValues?.length ?? 0) > 0 || Object.keys(field.enumLabels ?? {}).length > 0) {
+        // Mirrors the backend rule that enumValues/enumLabels are only allowed when type=ENUM.
         // The editor clears these on type change; this guards stale persisted/imported state.
         fErr.enumValues = 'Values apply to ENUM only'
       }
