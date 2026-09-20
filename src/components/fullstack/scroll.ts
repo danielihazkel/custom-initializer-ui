@@ -2,16 +2,20 @@
  * Page-scroll helpers for the editor's "jump to" actions (section nav, first error, outline
  * rows, lint "Show", new-row focus).
  *
- * Why not `element.scrollIntoView()`: it scrolls *every* scrollable ancestor, and the app's
- * `<main>` is `overflow: hidden` (it clips the decorative background). An overflow-hidden box is
- * still programmatically scrollable, so `scrollIntoView` — and a plain `focus()` — can shift the
- * content inside `<main>` instead of / as well as scrolling the window. The wheel can never undo
- * that inner offset, which is the "page is stuck, can't scroll back to the top" bug. These
- * helpers scroll the window only and put any clipped ancestor back to 0.
+ * Why not `element.scrollIntoView()`: it scrolls *every* scrollable ancestor. An
+ * `overflow: hidden` box is still programmatically scrollable, so `scrollIntoView` — and a plain
+ * `focus()` — can shift the content inside it instead of / as well as scrolling the window. The
+ * wheel can never undo that inner offset, which is the "page is stuck, can't scroll back to the
+ * top" bug. These helpers scroll the window only and put any clipped ancestor back to 0.
+ *
+ * The app's `<main>` used to be the offender; it is `overflow: clip` now (App.tsx), which still
+ * clips the decorative background but creates no scroll container — that is also what lets this
+ * tab's sticky layers pin to the viewport at all. `resetClippedAncestors` stays as the guard for
+ * any other clipped ancestor a panel may sit inside.
  */
 
-/** The fixed app header (h-16) plus the sticky offsets the editor uses (`top-24`). */
-export const SCROLL_TOP_OFFSET = 96
+/** The fixed app header (h-16) plus the sticky workspace toolbar the editor pins beneath it. */
+export const SCROLL_TOP_OFFSET = 120
 
 export type ScrollBlock = 'start' | 'center' | 'nearest'
 

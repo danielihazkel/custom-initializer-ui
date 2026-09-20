@@ -9,21 +9,26 @@ import { EntityNavigator, entityMatches, useActiveEntity } from './EntityNavigat
 import { SectionNav } from './SectionNav'
 import { focusWithoutClipping, scrollToElement } from './scroll'
 import { cssEscape, focusRowWhenRendered } from './focus'
-import { FullstackDepPicker } from './FullstackDepPicker'
 import { FullstackPresets, type SaveTarget } from './FullstackPresets'
 import { ImportFromDdlDrawer, type ImportMode, type ImportVariant } from './ImportFromDdlDrawer'
 import { ViewSkeleton } from '../Skeletons'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { StatusToast } from '../admin/shared/StatusToast'
-import { reconcileUids, stripUids, withUids } from './uid'
+import { newUid, reconcileUids, stripUids, withUids } from './uid'
+import { toCamelCase, uniqueName } from './naming'
 import {
   DEFAULT_PROJECT_META, describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, snapshotChangeKey, snapshotsEqual, toExportedModel,
   type FullstackSnapshot, type ProjectMeta,
 } from './snapshot'
 import { lintModel, type LintIssue } from './lint'
 import { ModelLintPanel } from './ModelLintPanel'
-import { OPTIONS_SECTION, RTL_OPTION, isEntityOptKey } from './scaffoldOptions'
-import { OptionCoverage } from './OptionCoverage'
+import { ModelNotices } from './ModelNotices'
+import { FullstackSetupPanel } from './FullstackSetupPanel'
+import { EntitiesToolbar } from './EntitiesToolbar'
+import { entityCodeFiles } from './entityCode'
+import { HeaderActions } from './HeaderActions'
+import { SetupSummaryBar } from './SetupSummaryBar'
+import { describeSetup } from './setupSummary'
 import { NextStepsPanel, type GeneratedRun } from './NextStepsPanel'
 import { ShortcutsOverlay } from './ShortcutsOverlay'
 import { draftHasUnsavedWork } from './shareGuard'
@@ -32,7 +37,6 @@ import { frontendSetDefaults } from './frontendSetDefaults'
 import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, type ExampleModel } from './examples'
-import { PalettePicker } from '../shared/PalettePicker'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
@@ -72,12 +76,10 @@ const LS = {
   opts: 'fullstack:opts',
   palette: 'fullstack:palette',
   collapsed: 'fullstack:collapsed',
+  setup: 'fullstack:setup',
   graph: 'fullstack:graph',
   density: 'fullstack:density',
 } as const
-
-// The entity outline appears once the list is long enough to need one (or while filtering).
-const NAVIGATOR_MIN_ENTITIES = 4
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -164,10 +166,17 @@ export function FullstackView() {
   const [pendingLoad, setPendingLoad] = useState<PendingLoad | null>(() => (pendingShared ? { kind: 'shared', snapshot: pendingShared } : null))
   const [shareStatus, setShareStatus] = useState<ShareWriteStatus>('written')
   const [showGraph, setShowGraph] = useState<boolean>(() => loadJson<boolean>(LS.graph, false))
+  // Setup is a once-per-project job, so it collapses to a summary bar and gives the viewport to
+  // the entity modeller. A first-ever visit (no stored model) opens it, because there is nothing
+  // to model yet and the defaults deserve a look.
+  const [setupOpen, setSetupOpen] = useState<boolean>(() => {
+    const stored = localStorage.getItem(LS.setup)
+    if (stored) return stored === 'open'
+    return localStorage.getItem(LS.entities) === null
+  })
   const [density, setDensity] = useState<EditorDensity>(() => (localStorage.getItem(LS.density) === 'compact' ? 'compact' : 'comfortable'))
   // The entity outline's filter — also narrows which cards render.
   const [entityFilter, setEntityFilter] = useState('')
-  const [navigatorPinned, setNavigatorPinned] = useState(false)
   // The suggestions panel is controlled here so an entity card's amber badge can open it on
   // that entity's issues.
   const [lintOpen, setLintOpen] = useState(false)
@@ -187,6 +196,9 @@ export function FullstackView() {
   const [pendingJsonImport, setPendingJsonImport] = useState<FullstackSnapshot | null>(null)
   // The last successful Generate — drives the "Next steps" card. Memory only; a refresh clears it.
   const [lastGenerated, setLastGenerated] = useState<GeneratedRun | null>(null)
+  // The model as it stood when the last preview was fetched — lets each entity's Code panel
+  // say whether what it is showing still matches what the card says.
+  const previewSnapshotRef = useRef<FullstackSnapshot | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   // Opens the presets strip's save prompt from elsewhere (Ctrl+S, the Next steps card).
   const [saveRequest, setSaveRequest] = useState<{ target: SaveTarget; key: number; draft?: { name: string; description: string } } | null>(null)
@@ -259,6 +271,7 @@ export function FullstackView() {
   useEffect(() => { persist(LS.palette, colorPalette) }, [colorPalette])
   useEffect(() => { persist(LS.collapsed, JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { persist(LS.graph, JSON.stringify(showGraph)) }, [showGraph])
+  useEffect(() => { persist(LS.setup, setupOpen ? 'open' : 'closed') }, [setupOpen])
   useEffect(() => { persist(LS.density, density) }, [density])
 
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
@@ -697,9 +710,14 @@ export function FullstackView() {
   // The sticky bar's issue count is a button: metadata errors focus their input; entity errors
   // expand the offending card (if collapsed) and scroll its first flagged control/banner into view.
   function jumpToFirstError() {
-    const metaInvalid = document.querySelector<HTMLElement>('#fs-meta [aria-invalid="true"]')
-    if (metaInvalid) {
-      focusWithoutClipping(metaInvalid, 'center')
+    if (countMetaErrors(metaErrors) > 0) {
+      // Setup is collapsed by default; open it (a no-op when already open) and let it lay out
+      // before reaching for the offending control.
+      setSetupOpen(true)
+      requestAnimationFrame(() => {
+        const metaInvalid = document.querySelector<HTMLElement>('#fs-meta [aria-invalid="true"]')
+        if (metaInvalid) focusWithoutClipping(metaInvalid, 'center')
+      })
       return
     }
     const firstIdx = Object.keys(entityErrors.entities).map(Number).sort((a, b) => a - b)[0]
@@ -729,6 +747,9 @@ export function FullstackView() {
   function explore() {
     if (!validateBeforeSubmit()) return
     pushRecent(currentSnapshot)
+    // Stamp the model the preview is being built from, so each card's Code panel can tell
+    // whether the files it shows still match what the card describes.
+    previewSnapshotRef.current = currentSnapshot
     fetchPreview(buildBody())
   }
 
@@ -875,7 +896,6 @@ export function FullstackView() {
 
   // ── Entity outline ─────────────────────────────────────────────────────────
   const activeEntityUid = useActiveEntity(entities)
-  const showNavigator = entities.length >= NAVIGATOR_MIN_ENTITIES || entityFilter.trim() !== '' || navigatorPinned
   const visibleUids = useMemo(() => {
     if (!entityFilter.trim()) return undefined
     return new Set(entities.filter(e => e.uid && entityMatches(e, entityFilter)).map(e => e.uid!))
@@ -885,14 +905,66 @@ export function FullstackView() {
     for (const [idx, err] of Object.entries(entityErrors.entities)) counts[Number(idx)] = countEntityErrors(err)
     return counts
   }, [entityErrors])
+  // Setup's own sections only. Entities is not in the list: it is the page's other surface, not
+  // a section of this panel, and its error count lives on the workspace toolbar instead.
+  /**
+   * Adds a `MANY_TO_ONE` from one entity to another, dragged on the diagram. Goes through the
+   * same `entity.relations` array the Relations table edits, so undo/redo, validation and lint
+   * need no special case. The field name is the camel-cased target name, uniquified against the
+   * entity's existing fields and relations — the same convention `SqlToEntityDefinitionConverter`
+   * uses when a DDL import turns an FK column into a relation.
+   */
+  function createRelationFromGraph(sourceUid: string, targetUid: string) {
+    const source = entities.find(e => e.uid === sourceUid)
+    const target = entities.find(e => e.uid === targetUid)
+    if (!source || !target) return
+    const taken = [...source.fields.map(f => f.name), ...(source.relations ?? []).map(r => r.fieldName)]
+    const fieldName = uniqueName(toCamelCase(target.name.trim() || 'related'), taken)
+    pushUndoEntry(`Linked ${source.name.trim()} to ${target.name.trim()}`)
+    setEntities(entities.map(e => (e.uid === sourceUid
+      ? { ...e, relations: [...(e.relations ?? []), { uid: newUid(), type: 'MANY_TO_ONE' as const, fieldName, targetEntity: target.name.trim(), required: false }] }
+      : e)))
+    setToast({
+      message: `Added ${source.name.trim()}.${fieldName} → ${target.name.trim()}`,
+      type: 'success',
+      action: { label: 'Show', onClick: () => revealRow(sourceUid) },
+    })
+  }
+
+  const codeFilesFor = useCallback(
+    (entity: FullstackEntityDef) => entityCodeFiles(entity, preview?.files),
+    [preview],
+  )
+  const codeState = useMemo(() => ({
+    hasPreview: Boolean(preview),
+    loading: previewLoading,
+    stale: Boolean(previewSnapshotRef.current) && !snapshotsEqual(previewSnapshotRef.current!, currentSnapshot),
+    onExplore: explore,
+  }), [preview, previewLoading, currentSnapshot, explore])
+
   const sections = [
     { id: 'fs-meta', label: 'Project', errors: countMetaErrors(metaErrors) },
     { id: 'fs-backend', label: 'Backend' },
     { id: 'fs-frontend', label: 'Frontend' },
     { id: 'fs-options', label: 'Options' },
     { id: 'fs-deps', label: 'Dependencies' },
-    { id: 'fs-entities', label: 'Entities', errors: entityErrors.count },
   ]
+  // A metadata error must never hide inside a collapsed panel — same rule the entity cards use
+  // for a blocked Settings panel, and it keeps `jumpToFirstError`'s `#fs-meta` query answerable.
+  const setupForcedOpen = countMetaErrors(metaErrors) > 0
+  const setupVisible = setupOpen || setupForcedOpen
+  const setupChips = useMemo(() => describeSetup({
+    meta, backendSet, frontendSet, currentBackendSet, currentFrontendSet,
+    palettes, effectivePalette, paletteIsExplicit: Boolean(colorPalette), selectedDeps, scaffoldOpts,
+  }), [meta, backendSet, frontendSet, currentBackendSet, currentFrontendSet,
+       palettes, effectivePalette, colorPalette, selectedDeps, scaffoldOpts])
+
+  /** Opens Setup and scrolls to one of its sections — every jump target lives inside it now. */
+  function jumpToSection(id: string) {
+    setSetupOpen(true)
+    requestAnimationFrame(() => scrollToElement(document.getElementById(id), 'start'))
+  }
+
   function applyLintFix(issue: LintIssue) {
     if (!issue.fix) return
     pushUndoEntry(`Fixed: ${issue.fix.label}`)
@@ -922,8 +994,6 @@ export function FullstackView() {
     toggleCollapse: () => setCollapsed(allCollapsed ? new Set() : new Set(entities.map(e => e.uid).filter((u): u is string => Boolean(u)))),
     reset: () => setConfirmReset(true),
     findEntity: () => {
-      // The outline only renders for larger models; asking for it pins it on for this session.
-      setNavigatorPinned(true)
       scrollToElement(document.getElementById('fs-entities'), 'start')
       requestAnimationFrame(() => document.getElementById('fs-entity-filter')?.focus({ preventScroll: true }))
     },
@@ -963,7 +1033,7 @@ export function FullstackView() {
     { id: 'fs-import-select', title: 'Import a view from SELECT', icon: 'table_view', group: 'Fullstack', run: () => commandRef.current.importSelect() },
     { id: 'fs-explore', title: 'Explore generated files', description: 'Preview the file tree before downloading', icon: 'travel_explore', group: 'Fullstack', shortcut: 'Ctrl+Shift+E', run: () => commandRef.current.explore() },
     { id: 'fs-generate', title: 'Generate fullstack ZIP', icon: 'download', group: 'Fullstack', shortcut: 'Ctrl+Enter', run: () => { void commandRef.current.generate() } },
-    { id: 'fs-save-preset', title: 'Save current as preset…', icon: 'bookmark_add', group: 'Fullstack', shortcut: 'Ctrl+S', run: () => commandRef.current.savePreset() },
+    { id: 'fs-save-preset', title: 'Save this model (browser or team)…', icon: 'bookmark_add', group: 'Fullstack', shortcut: 'Ctrl+S', run: () => commandRef.current.savePreset() },
     { id: 'fs-export', title: 'Export model as JSON', icon: 'file_download', group: 'Fullstack', run: () => commandRef.current.exportJson() },
     { id: 'fs-curl', title: 'Copy as curl', icon: 'terminal', group: 'Fullstack', run: () => { void commandRef.current.copyCurl() } },
     { id: 'fs-undo', title: 'Undo', icon: 'undo', group: 'Fullstack', shortcut: 'Ctrl+Z', run: () => commandRef.current.undo() },
@@ -984,8 +1054,32 @@ export function FullstackView() {
           (JPA + REST controllers per entity) and a React frontend (Vite + Tailwind, with a table-driven
           CRUD page per entity), already wired together end-to-end.
         </p>
-        <SectionNav sections={sections} />
       </header>
+
+      <ModelNotices
+        previewError={previewError}
+        previewLoading={previewLoading}
+        onRetryPreview={explore}
+        onDismissPreviewError={clearError}
+        shareStatus={shareStatus}
+        externalDraft={externalDraft}
+        entityCount={entities.length}
+        onLoadTheirs={() => {
+          const theirs = externalDraft
+          if (!theirs) return
+          setExternalDraft(null)
+          pushUndoEntry("Loaded the other tab's draft")
+          setMeta(theirs.meta)
+          setEntities(withUids(theirs.entities))
+        }}
+        onKeepMine={() => {
+          setExternalDraft(null)
+          if (lastWrittenEntitiesRef.current !== null) persist(LS.entities, lastWrittenEntitiesRef.current)
+          persist(LS.meta, JSON.stringify(meta))
+        }}
+        persistFailed={persistFailed}
+        presetsPersistFailed={presetsPersistFailed}
+      />
 
       <FullstackPresets
         presets={presets}
@@ -1009,363 +1103,79 @@ export function FullstackView() {
         saveRequest={saveRequest}
       />
 
-      {/* Two-column config row: settings on the left, the dependency picker on the right. The
-          picker column sticks to the viewport while the (taller) settings column scrolls past,
-          so the catalog stays reachable instead of being a small scroller beside a tall page.
-          Collapses to a single column below lg (mirrors the Backend/Frontend tabs). */}
-      <div className="grid grid-cols-12 gap-8 items-start">
-        <div className="col-span-12 lg:col-span-5 space-y-8">
-      <section id="fs-meta" className="space-y-3">
-        <SectionHeading icon="tune" title="Project Metadata" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Labeled label="Group ID" htmlFor="fs-groupId" error={metaErrors.groupId}>
-            <input id="fs-groupId" className={inputClass(metaErrors.groupId)} value={meta.groupId}
-                   aria-invalid={Boolean(metaErrors.groupId)}
-                   onChange={e => updateMeta({ groupId: e.target.value })} />
-          </Labeled>
-          <Labeled label="Artifact ID" htmlFor="fs-artifactId" error={metaErrors.artifactId}>
-            <input id="fs-artifactId" className={inputClass(metaErrors.artifactId)} value={meta.artifactId}
-                   aria-invalid={Boolean(metaErrors.artifactId)}
-                   onChange={e => updateMeta({ artifactId: e.target.value })} />
-          </Labeled>
-          <Labeled label="Name" htmlFor="fs-name" error={metaErrors.name}>
-            <input id="fs-name" className={inputClass(metaErrors.name)} value={meta.name}
-                   aria-invalid={Boolean(metaErrors.name)}
-                   placeholder={meta.artifactId || 'demo'}
-                   title="Project name in the generated pom.xml (blank = the artifact id)"
-                   onChange={e => updateMeta({ name: e.target.value })} />
-          </Labeled>
-          <Labeled label="Description" htmlFor="fs-description">
-            <input id="fs-description" className={inputClass()} value={meta.description}
-                   placeholder="Optional one-liner for the pom"
-                   onChange={e => updateMeta({ description: e.target.value })} />
-          </Labeled>
-          <Labeled label="Package Name" htmlFor="fs-packageName" error={metaErrors.packageName}>
-            <input id="fs-packageName" className={inputClass(metaErrors.packageName)} value={meta.packageName}
-                   aria-invalid={Boolean(metaErrors.packageName)}
-                   onChange={e => updateMeta({ packageName: e.target.value })} />
-          </Labeled>
-          <Labeled label="Domain Package" htmlFor="fs-domainPackage" error={metaErrors.domainPackage}>
-            <input id="fs-domainPackage" className={inputClass(metaErrors.domainPackage)} value={meta.domainPackage}
-                   aria-invalid={Boolean(metaErrors.domainPackage)}
-                   placeholder={meta.packageName || 'com.menora.demo'}
-                   onChange={e => updateMeta({ domainPackage: e.target.value })} />
-            <p className="text-[11px] text-on-surface-variant">
-              Where entities/repositories/controllers go, split into <code>.entity</code>, <code>.repository</code>,
-              <code>.dto</code>, <code>.service</code>, <code>.controller</code>. Blank = same as Package Name; must be under it.
-            </p>
-          </Labeled>
-          {/* A restored/imported version that has left the catalog is kept visible as an "(unknown)"
-              option and flagged, rather than silently snapping the select to the first entry. */}
-          <Labeled label="Java Version" htmlFor="fs-javaVersion" error={metaErrors.javaVersion}>
-            <select id="fs-javaVersion" className={inputClass(metaErrors.javaVersion)} value={meta.javaVersion}
-                    aria-invalid={Boolean(metaErrors.javaVersion)}
-                    onChange={e => updateMeta({ javaVersion: e.target.value })}>
-              {(javaVersions.length === 0 || !javaVersions.includes(meta.javaVersion)) && (
-                <option value={meta.javaVersion}>{meta.javaVersion}{javaVersions.length > 0 ? ' (unknown)' : ''}</option>
-              )}
-              {javaVersions.map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </Labeled>
-          <Labeled label="Boot Version" htmlFor="fs-bootVersion" error={metaErrors.bootVersion}>
-            <select id="fs-bootVersion" className={inputClass(metaErrors.bootVersion)} value={meta.bootVersion}
-                    aria-invalid={Boolean(metaErrors.bootVersion)}
-                    onChange={e => updateMeta({ bootVersion: canonicalVersion(e.target.value) })}>
-              {(bootVersions.length === 0 || !bootVersions.includes(meta.bootVersion)) && (
-                <option value={meta.bootVersion}>{meta.bootVersion}{bootVersions.length > 0 ? ' (unknown)' : ''}</option>
-              )}
-              {bootVersions.map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </Labeled>
-          <Labeled label="Version" htmlFor="fs-version" error={metaErrors.version}>
-            <input id="fs-version" className={inputClass(metaErrors.version)} value={meta.version}
-                   aria-invalid={Boolean(metaErrors.version)}
-                   placeholder="0.0.1-SNAPSHOT"
-                   title="Artifact version in the generated pom.xml (blank = the catalog default)"
-                   onChange={e => updateMeta({ version: e.target.value })} />
-          </Labeled>
-          {/* configurationFileFormat is deliberately not offered: the common catalog writes
-              application.yaml and deletes application.properties whatever the request says. */}
-          <Labeled label="Packaging" htmlFor="fs-packaging">
-            <select id="fs-packaging" className={inputClass()} value={meta.packaging}
-                    onChange={e => updateMeta({ packaging: e.target.value })}>
-              {(packagings.length > 0 ? packagings : ['jar', 'war']).map(p => <option key={p} value={p}>{p}</option>)}
-              {packagings.length > 0 && !packagings.includes(meta.packaging) && <option value={meta.packaging}>{meta.packaging} (unknown)</option>}
-            </select>
-          </Labeled>
-        </div>
-      </section>
-
-      {/* Backend: which template set renders the Spring side. Frontend (below): the React set plus
-          everything that only affects the generated SPA — palette, dashboard header, RTL. */}
-      <section id="fs-backend" className="space-y-3">
-        <SectionHeading icon="dns" title="Backend" />
-        <p className="text-[11px] text-on-surface-variant">
-          Generated files come from the selected template sets. Edit them in the Config admin panel
-          under "Entity CRUD".
-        </p>
-        {setsError && (
-          <div className="flex items-center justify-between gap-3 text-[11px] text-error border border-error/30 bg-error/10 rounded px-3 py-2">
-            <span>Couldn't load template sets ({setsError}); showing defaults.</span>
-            <button
-              type="button"
-              onClick={loadTemplateSets}
-              disabled={setsLoading}
-              className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-error/40 text-error hover:bg-error/10 transition-colors disabled:opacity-60"
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>refresh</span>
-              Retry
-            </button>
-          </div>
-        )}
-        {setsLoading ? (
-          <div className="h-[58px] rounded bg-surface-container-low animate-pulse" aria-hidden="true" />
-        ) : (
-          <Labeled label="Template set" htmlFor="fs-backendSet">
-            {/* A single-option <select> is just visual noise — show read-only text until a
-                second set of this kind exists. */}
-            {backendSets.length > 1 ? (
-              <select id="fs-backendSet" className={inputClass()} value={backendSet} onChange={e => setBackendSet(e.target.value)}>
-                {backendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
-              </select>
-            ) : (
-              <SetLabel name={currentBackendSet?.name} setKey={backendSet} />
-            )}
-            <SetDescription set={currentBackendSet} />
-          </Labeled>
-        )}
-      </section>
-
-      <section id="fs-frontend" className="space-y-3">
-        <SectionHeading icon="web" title="Frontend" />
-        <p className="text-[11px] text-on-surface-variant">
-          Only affects the generated React app: its template set, colours, dashboard header and text direction.
-        </p>
-        {setsLoading ? (
-          <div className="h-[58px] rounded bg-surface-container-low animate-pulse" aria-hidden="true" />
-        ) : (
-          <Labeled label="Template set" htmlFor="fs-frontendSet">
-            {frontendSets.length > 1 ? (
-              <select id="fs-frontendSet" className={inputClass()} value={frontendSet} onChange={e => setFrontendSet(e.target.value)}>
-                {frontendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
-              </select>
-            ) : (
-              <SetLabel name={currentFrontendSet?.name} setKey={frontendSet} />
-            )}
-            <SetDescription set={currentFrontendSet} />
-          </Labeled>
-        )}
-        {feError && palettes.length === 0 && (
-          <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-on-surface" data-palette-error>
-            <span>Couldn't load the colour palettes ({feError}); the generated app uses the set's default palette.</span>
-            <button
-              type="button"
-              onClick={reloadFe}
-              className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-error/40 text-error hover:bg-error/10 transition-colors"
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>refresh</span>
-              Retry
-            </button>
-          </div>
-        )}
-        {palettes.length > 0 && (
-          <div className="pt-1 space-y-1.5">
-            <PalettePicker
-              label="Frontend colour palette"
-              palettes={palettes}
-              selectedId={effectivePalette}
-              onChange={id => setColorPalette(id === setDefaultPalette ? '' : id)}
-              caption={colorPalette
-                ? (
-                  <button type="button" onClick={() => setColorPalette('')} className="underline hover:no-underline">
-                    use the set's default
-                  </button>
-                )
-                : '(set default)'}
-            />
-            {currentFrontendSet?.designSystem === 'MENORA_DIGITAL' && (
-              <p className="text-[11px] text-on-surface-variant">
-                The Menora Digital set uses the fixed brand tokens for its colours; the palette only feeds
-                the success/danger accents.
-              </p>
-            )}
-          </div>
-        )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Labeled label="Dashboard Title" htmlFor="fs-dashboardTitle">
-            <input id="fs-dashboardTitle" className={inputClass()} value={meta.dashboardTitle}
-                   placeholder={`Welcome to ${meta.artifactId || 'demo'}`}
-                   title="Heading of the generated dashboard (home) page"
-                   onChange={e => updateMeta({ dashboardTitle: e.target.value })} />
-          </Labeled>
-          <Labeled label="Dashboard Overview" htmlFor="fs-dashboardOverview">
-            <input id="fs-dashboardOverview" className={inputClass()} value={meta.dashboardOverview}
-                   placeholder="Manage your data below…"
-                   title="Blurb under the dashboard heading"
-                   onChange={e => updateMeta({ dashboardOverview: e.target.value })} />
-          </Labeled>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
-          <Labeled label="Language" htmlFor="fs-locale">
-            <select id="fs-locale" className={inputClass()} value={meta.locale}
-                    onChange={e => updateMeta({ locale: e.target.value === 'he' ? 'he' : 'en' })}>
-              <option value="en">English</option>
-              <option value="he">עברית (Hebrew)</option>
-            </select>
-            <p className="text-[11px] text-on-surface-variant">
-              The generated app's own words — nav, buttons, dialogs, empty states. Your entity and
-              field labels are used exactly as typed.
-            </p>
-          </Labeled>
-          <label className="flex items-start gap-2.5 p-3 rounded-lg border border-outline-variant hover:border-primary/50 cursor-pointer transition-colors sm:mt-5">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-4 w-4 accent-primary"
-              checked={scaffoldOpts.includes(RTL_OPTION.value)}
-              onChange={() => toggleOpt(RTL_OPTION.value)}
-            />
-            <span className="flex flex-col">
-              <span className="text-sm text-on-surface">{RTL_OPTION.label}</span>
-              <span className="text-[11px] text-secondary">{RTL_OPTION.hint}</span>
-            </span>
-          </label>
-        </div>
-      </section>
-
-      <section id="fs-options" className="space-y-3">
-        <SectionHeading icon="toggle_on" title="Options" />
-        <p className="text-[11px] text-on-surface-variant">
-          Opt-in scaffolding extras applied to every entity. Off by default. An entity can switch
-          the per-entity ones On/Off for itself under its <strong>Overrides</strong>.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {OPTIONS_SECTION.map(opt => {
-            const checked = scaffoldOpts.includes(opt.value)
-            const missingDep = checked && opt.requiresAnyDep && !opt.requiresAnyDep.some(d => selectedDeps.includes(d))
-            return (
-            <label
-              key={opt.value}
-              className={`flex items-start gap-2.5 p-3 rounded-lg border hover:border-primary/50 cursor-pointer transition-colors ${missingDep ? 'border-warning/50 bg-warning/5' : 'border-outline-variant'}`}
-            >
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 accent-primary"
-                checked={checked}
-                onChange={() => toggleOpt(opt.value)}
-              />
-              <span className="flex flex-col min-w-0">
-                <span className="text-sm text-on-surface">
-                  {opt.label}
-                  {!opt.perEntity && <span className="ml-1.5 text-[10px] uppercase tracking-wider text-secondary" title="Applies to the whole project — entities cannot override it">project-wide</span>}
-                </span>
-                <span className="text-[11px] text-secondary">{opt.hint}</span>
-                {checked && isEntityOptKey(opt.value) && (
-                  <OptionCoverage optKey={opt.value} entities={entities} onReveal={revealRow} />
-                )}
-                {missingDep && opt.requiresAnyDep && (
-                  <span className="mt-1.5 flex items-center gap-1.5 text-[11px] text-warning" role="alert">
-                    <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>warning</span>
-                    <span>Has no effect without <code className="font-mono">{opt.requiresAnyDep[0]}</code>.</span>
-                    <button
-                      type="button"
-                      onClick={e => { e.preventDefault(); setSelectedDeps(prev => [...prev, opt.requiresAnyDep![0]]) }}
-                      className="font-semibold underline hover:no-underline"
-                    >
-                      Add it
-                    </button>
-                  </span>
-                )}
-              </span>
-            </label>
-            )
-          })}
-        </div>
-      </section>
-
-        </div>
-
-        <div className="col-span-12 lg:col-span-7 lg:sticky lg:top-24 lg:flex lg:flex-col lg:max-h-[calc(100vh-7.5rem)]">
-      <section id="fs-deps" className="space-y-3 lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
-        <div className="flex items-center justify-between gap-4">
-          <SectionHeading icon="inventory_2" title="Dependencies" />
-          <span className="text-[11px] text-secondary">{selectedDeps.length} selected</span>
-        </div>
-        <p className="text-[11px] text-on-surface-variant">
-          Pre-checked from the chosen backend set's defaults. You can uncheck
-          anything — the generator respects your final selection. To change what
-          a set ships pre-checked, edit it under Admin → Entity CRUD.
-        </p>
-        <FullstackDepPicker
-          selected={selectedDeps}
-          defaults={currentDefaults}
-          onChange={setSelectedDeps}
-          compatibilityRules={compatibilityRules}
+      {/* Project configuration: collapsed behind a summary bar once set, so the entity
+          modeller below gets the viewport. */}
+      <section id="fs-setup" className="glass-panel rounded-2xl overflow-hidden">
+        <SetupSummaryBar
+          open={setupVisible}
+          forced={setupForcedOpen}
+          onToggle={() => setSetupOpen(o => !o)}
+          chips={setupChips}
+          errorCount={countMetaErrors(metaErrors)}
+          onChipJump={id => { setSetupOpen(true); requestAnimationFrame(() => scrollToElement(document.getElementById(id), 'start')) }}
         />
+        {setupVisible && (
+        <div id="fs-setup-body" className="border-t border-outline-variant px-5 pb-5 pt-4">
+      <FullstackSetupPanel
+        nav={<SectionNav sections={sections} onJump={() => setSetupOpen(true)} />}
+        meta={meta}
+        metaErrors={metaErrors}
+        updateMeta={updateMeta}
+        javaVersions={javaVersions}
+        bootVersions={bootVersions}
+        packagings={packagings}
+        backendSets={backendSets}
+        frontendSets={frontendSets}
+        backendSet={backendSet}
+        frontendSet={frontendSet}
+        setBackendSet={setBackendSet}
+        setFrontendSet={setFrontendSet}
+        currentBackendSet={currentBackendSet}
+        currentFrontendSet={currentFrontendSet}
+        setsLoading={setsLoading}
+        setsError={setsError}
+        loadTemplateSets={loadTemplateSets}
+        palettes={palettes}
+        feError={feError}
+        reloadFe={reloadFe}
+        effectivePalette={effectivePalette}
+        setDefaultPalette={setDefaultPalette}
+        colorPalette={colorPalette}
+        setColorPalette={setColorPalette}
+        scaffoldOpts={scaffoldOpts}
+        toggleOpt={toggleOpt}
+        selectedDeps={selectedDeps}
+        setSelectedDeps={setSelectedDeps}
+        currentDefaults={currentDefaults}
+        compatibilityRules={compatibilityRules}
+        entities={entities}
+        revealRow={revealRow}
+      />
+        </div>
+        )}
       </section>
-        </div>
-      </div>
 
-      <section id="fs-entities" className="space-y-3">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <SectionHeading icon="table" title="Entities" primary />
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-[11px] text-secondary">{entities.length} entit{entities.length === 1 ? 'y' : 'ies'}</span>
-            {entities.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowGraph(v => !v)}
-                aria-pressed={showGraph}
-                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-colors ${showGraph ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/5'}`}
-                title="Show the entities and their @ManyToOne relations as a diagram"
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
-                Diagram
-              </button>
-            )}
-            <div className="inline-flex rounded border border-outline-variant overflow-hidden text-[11px]" role="group" aria-label="Field table density" title="Compact hides the Label column (labels move into each field's More panel) and tightens the rows">
-              {(['comfortable', 'compact'] as const).map(d => (
-                <button
-                  key={d}
-                  type="button"
-                  aria-pressed={density === d}
-                  onClick={() => setDensity(d)}
-                  className={`px-2 py-1 transition-colors ${density === d ? 'bg-primary text-on-primary' : 'bg-background text-secondary hover:text-on-surface'}`}
-                >
-                  {d === 'compact' ? 'Compact' : 'Comfortable'}
-                </button>
-              ))}
-            </div>
-            {entities.length > 1 && (
-              <button
-                type="button"
-                onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(entities.map(e => e.uid).filter((u): u is string => Boolean(u))))}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium text-secondary hover:text-primary hover:bg-primary/5 transition-colors"
-                title={allCollapsed ? 'Expand every entity card' : 'Collapse every entity card to its header'}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{allCollapsed ? 'unfold_more' : 'unfold_less'}</span>
-                {allCollapsed ? 'Expand all' : 'Collapse all'}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setImportVariant('ddl')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-outline-variant text-secondary hover:text-primary hover:border-primary hover:bg-primary/5 transition-colors"
-              title="Parse CREATE TABLE DDL into entities"
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>database</span>
-              Import from DDL
-            </button>
-            <button
-              type="button"
-              onClick={() => setImportVariant('select')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-outline-variant text-secondary hover:text-primary hover:border-primary hover:bg-primary/5 transition-colors"
-              title="Parse a SELECT query into a read-only view entity"
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>table_view</span>
-              Import from SELECT
-            </button>
-          </div>
-        </div>
+      <section id="fs-entities" className="space-y-4">
+        <EntitiesToolbar
+          entityCount={entities.length}
+          density={density}
+          onDensityChange={setDensity}
+          layout={showGraph ? 'diagram' : 'cards'}
+          onLayoutChange={l => setShowGraph(l === 'diagram')}
+          allCollapsed={allCollapsed}
+          onToggleCollapseAll={() => setCollapsed(allCollapsed ? new Set() : new Set(entities.map(e => e.uid).filter((u): u is string => Boolean(u))))}
+          onImport={setImportVariant}
+          onAddEntity={() => commandRef.current.addEntity()}
+          canUndo={Boolean(lastUndo)}
+          canRedo={Boolean(nextRedo)}
+          undoLabel={lastUndo ? `Undo: ${lastUndo.label}` : null}
+          redoLabel={nextRedo ? `Redo: ${nextRedo.label}` : null}
+          onUndo={undo}
+          onRedo={redo}
+          onShortcuts={() => setShortcutsOpen(true)}
+          errorCount={errorCount}
+          onJumpToFirstError={jumpToFirstError}
+        />
         <ModelLintPanel
           issues={lintIssues}
           onFix={applyLintFix}
@@ -1380,14 +1190,15 @@ export function FullstackView() {
           <EntityRelationGraph
             entities={entities}
             showInverse={scaffoldOpts.includes('inverseCollections')}
-            onSelect={revealRow}
+            onSelect={uid => { setShowGraph(false); revealRow(uid) }}
+            onCreateRelation={createRelationFromGraph}
+            onRefuseRelation={message => setToast({ message, type: 'error' })}
           />
         )}
-        {/* Larger models get an outline beside the cards: a sticky rail on wide screens, a strip
-            above them otherwise. The filter narrows the cards too. */}
-        <div className={showNavigator ? 'grid grid-cols-1 lg:grid-cols-[14rem_minmax(0,1fr)] gap-6 items-start' : ''}>
-          {showNavigator && (
-            <div className="lg:sticky lg:top-24">
+        {/* The outline is always beside the cards on a wide screen. It used to appear only past
+            four entities, which reflowed the whole workspace the moment a fourth was added. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[15rem_minmax(0,1fr)] gap-6 items-start">
+            <div className="hidden lg:block lg:sticky lg:top-[7.5rem]">
               <EntityNavigator
                 entities={entities}
                 errorCounts={entityErrorCounts}
@@ -1398,7 +1209,6 @@ export function FullstackView() {
                 activeUid={activeEntityUid}
               />
             </div>
-          )}
           <div className="min-w-0">
             <EntitiesEditor
               entities={entities}
@@ -1416,7 +1226,9 @@ export function FullstackView() {
               density={density}
               visibleUids={visibleUids}
               previewCtx={{ locale: meta.locale, rtl: scaffoldOpts.includes('rtl') }}
-              onGoToOptions={() => scrollToElement(document.getElementById('fs-options'), 'start')}
+              onCodeFiles={codeFilesFor}
+              codeState={codeState}
+              onGoToOptions={() => jumpToSection('fs-options')}
             />
           </div>
         </div>
@@ -1437,170 +1249,17 @@ export function FullstackView() {
         />
       )}
 
-      {/* Pinned to the viewport bottom so Generate/Explore stay reachable while editing a long
-          entity list. The negative-margin/px pair lets the glass backdrop bleed to the column edges. */}
-      <section className="sticky bottom-0 z-20 -mx-8 px-8 py-4 flex flex-col gap-3 glass-header border-t border-outline-variant">
-        {previewError && (
-          <div role="alert" className="flex items-start gap-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2">
-            <span className="material-symbols-outlined text-error mt-0.5" style={{ fontSize: '18px' }}>error</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-on-surface">Couldn't build the preview</p>
-              <p className="text-[11px] text-secondary break-words">
-                {previewError.kind ? `${previewError.kind}: ` : ''}{previewError.message}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={explore}
-              disabled={previewLoading}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-primary text-on-primary hover:opacity-90 disabled:opacity-60 shrink-0"
-            >
-              Retry
-            </button>
-            <button type="button" onClick={clearError} aria-label="Dismiss preview error" className="p-0.5 rounded text-secondary hover:text-on-surface shrink-0">
-              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
-            </button>
-          </div>
-        )}
-        {shareStatus === 'too-large' && (
-          <p className="flex items-center gap-1.5 text-[11px] text-secondary" role="status">
-            <span className="material-symbols-outlined text-warning" style={{ fontSize: '14px' }}>link_off</span>
-            This model is too large for a share link — the header's Share button copies a link without it.
-            Use Export JSON (above) to hand it to someone.
-          </p>
-        )}
-        {externalDraft && (
-          <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-xs text-on-surface" data-external-draft>
-            <span className="material-symbols-outlined text-warning" style={{ fontSize: '16px' }}>tab_duplicate</span>
-            <span className="flex-1 min-w-0">
-              This model was changed in another browser tab ({externalDraft.entities.length} entit{externalDraft.entities.length === 1 ? 'y' : 'ies'} there,
-              {' '}{entities.length} here). Which draft should this tab keep?
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                const theirs = externalDraft
-                setExternalDraft(null)
-                pushUndoEntry("Loaded the other tab's draft")
-                setMeta(theirs.meta)
-                setEntities(withUids(theirs.entities))
-              }}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-primary text-on-primary hover:opacity-90"
-            >
-              Load theirs
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setExternalDraft(null)
-                if (lastWrittenEntitiesRef.current !== null) persist(LS.entities, lastWrittenEntitiesRef.current)
-                persist(LS.meta, JSON.stringify(meta))
-              }}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-outline-variant text-secondary hover:text-on-surface"
-            >
-              Keep mine
-            </button>
-          </div>
-        )}
-        {(persistFailed || presetsPersistFailed) && (
-          <p className="flex items-center gap-1.5 text-[11px] text-secondary" role="status" data-storage-full>
-            <span className="material-symbols-outlined text-warning" style={{ fontSize: '14px' }}>save_as</span>
-            Browser storage is full — {persistFailed ? 'this model' : 'your presets'} won't be restored on refresh.
-            Export JSON (above) or save to the Team to keep it.
-          </p>
-        )}
-        <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setConfirmReset(true)}
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-error hover:border-error/50 hover:bg-error/5 transition-all active:scale-95"
-          title="Reset the fullstack generator to defaults"
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>restart_alt</span>
-          Reset
-        </button>
-        <button
-          type="button"
-          onClick={undo}
-          disabled={!lastUndo}
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all active:scale-95 disabled:opacity-40 disabled:hover:text-secondary disabled:hover:border-outline-variant disabled:hover:bg-transparent"
-          title={lastUndo ? `Undo: ${lastUndo.label} (Ctrl+Z)` : 'Nothing to undo'}
-          aria-label={lastUndo ? `Undo: ${lastUndo.label}` : 'Undo (nothing to undo)'}
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>undo</span>
-          Undo
-        </button>
-        <button
-          type="button"
-          onClick={redo}
-          disabled={!nextRedo}
-          className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all active:scale-95 disabled:opacity-40 disabled:hover:text-secondary disabled:hover:border-outline-variant disabled:hover:bg-transparent"
-          title={nextRedo ? `Redo: ${nextRedo.label} (Ctrl+Shift+Z / Ctrl+Y)` : 'Nothing to redo'}
-          aria-label={nextRedo ? `Redo: ${nextRedo.label}` : 'Redo (nothing to redo)'}
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>redo</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setShortcutsOpen(true)}
-          aria-label="Keyboard shortcuts"
-          title="Keyboard shortcuts (?)"
-          className="inline-flex items-center px-3 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all active:scale-95"
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>keyboard</span>
-        </button>
-        {hasErrors && (
-          <button
-            type="button"
-            id="fs-blocked-reason"
-            onClick={jumpToFirstError}
-            className="text-[11px] text-error flex items-center gap-1 rounded px-1.5 py-1 hover:bg-error/10 transition-colors"
-            title="Jump to the first problem"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
-            {errorCount} issue{errorCount === 1 ? '' : 's'} to fix before generating
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>arrow_forward</span>
-          </button>
-        )}
-        {(previewLoading || generating) && (
-          <button
-            type="button"
-            onClick={previewLoading ? cancelPreview : cancelGenerate}
-            className="ml-auto inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-error hover:border-error/50 hover:bg-error/5 transition-all active:scale-95"
-            title={previewLoading ? 'Stop building the preview' : 'Stop generating the ZIP'}
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
-            Cancel
-          </button>
-        )}
-        {/* Explore / Generate stay clickable with validation errors: the click toasts the count and
-            jumps to the first problem (validateBeforeSubmit), which a disabled button can't do. */}
-        <button
-          type="button"
-          onClick={explore}
-          disabled={previewLoading}
-          aria-describedby={hasErrors ? 'fs-blocked-reason' : undefined}
-          title={hasErrors ? blockedReason : 'Preview the generated file tree before downloading'}
-          className={`${previewLoading || generating ? '' : 'ml-auto '}inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${previewError
-            ? 'border-error/50 text-error hover:bg-error/5'
-            : 'border-outline-variant text-secondary hover:text-primary hover:border-primary hover:bg-primary/5'}`}
-        >
-          {previewLoading
-            ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }}>progress_activity</span>
-            : <><span className="material-symbols-outlined" style={{ fontSize: '16px' }}>travel_explore</span>Explore</>}
-        </button>
-        <button
-          type="button"
-          onClick={() => { void generate() }}
-          disabled={generating}
-          aria-describedby={hasErrors ? 'fs-blocked-reason' : undefined}
-          title={hasErrors ? blockedReason : 'Generate and download the backend + frontend ZIP'}
-          className={`px-8 py-3 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn shadow-md disabled:opacity-60 disabled:cursor-not-allowed ${hasErrors ? 'opacity-70' : ''}`}
-        >
-          {generating ? 'Generating…' : 'Generate Fullstack ZIP'}
-        </button>
-        </div>
-      </section>
+      <HeaderActions
+        previewLoading={previewLoading}
+        generating={generating}
+        previewError={previewError}
+        hasErrors={hasErrors}
+        blockedReason={blockedReason}
+        onExplore={explore}
+        onGenerate={() => { void generate() }}
+        onCancel={previewLoading ? cancelPreview : cancelGenerate}
+        onReset={() => setConfirmReset(true)}
+      />
 
       <StatusToast toast={toast} onClear={() => setToast(null)} />
 
@@ -1702,25 +1361,7 @@ export function FullstackView() {
   )
 }
 
-/** Section label with a leading icon. `primary` bumps the weight/size so the Entities
- *  workspace visibly outranks the surrounding config sections. */
-function SectionHeading({ icon, title, primary }: { icon: string; title: string; primary?: boolean }) {
-  return (
-    <h2 className={`flex items-center gap-2 font-bold uppercase tracking-widest ${
-      primary ? 'text-sm text-on-surface' : 'text-xs text-secondary'}`}>
-      <span className={`material-symbols-outlined ${primary ? 'text-primary' : 'text-secondary'}`}
-            style={{ fontSize: primary ? '18px' : '15px' }}>{icon}</span>
-      {title}
-    </h2>
-  )
-}
 
-function inputClass(error?: string): string {
-  const base = 'w-full bg-background border rounded px-3 py-2 text-sm text-on-surface outline-none transition-all'
-  return error
-    ? `${base} border-error focus:ring-2 focus:ring-error/20 focus:border-error`
-    : `${base} border-outline-variant focus:ring-2 focus:ring-primary/20 focus:border-primary`
-}
 
 /** Adds or clears `key` in the failed-writes set, returning the same set when nothing changed. */
 function trackPersist(prev: ReadonlySet<string>, key: string, ok: boolean): ReadonlySet<string> {
@@ -1731,29 +1372,5 @@ function trackPersist(prev: ReadonlySet<string>, key: string, ok: boolean): Read
   return next
 }
 
-/** What a template set does, in the set's own words — the picker only names it. */
-function SetDescription({ set }: { set?: EntityTemplateSetSummary }) {
-  if (!set?.description?.trim()) return null
-  return <p className="text-[11px] text-on-surface-variant" data-set-description>{set.description}</p>
-}
 
-function SetLabel({ name, setKey }: { name?: string; setKey: string }) {
-  return (
-    <div className="w-full bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-sm text-on-surface">
-      {name ?? setKey}
-      <span className="ml-2 text-[11px] text-secondary font-mono">{setKey}</span>
-    </div>
-  )
-}
 
-function Labeled({ label, htmlFor, error, children }: {
-  label: string; htmlFor?: string; error?: string; children: React.ReactNode
-}) {
-  return (
-    <div className="space-y-1">
-      <label htmlFor={htmlFor} className="block text-[11px] font-semibold uppercase tracking-wider text-secondary">{label}</label>
-      {children}
-      {error && <p className="text-[11px] text-error">{error}</p>}
-    </div>
-  )
-}

@@ -43,6 +43,13 @@
   --color-on-error: #ffffff;
   --color-error-container: #7f1d1d;
   --color-on-error-container: #fecaca;
+
+  /* Warning — the advisory tier: lint suggestions, option-coverage gaps, missing-dep nudges.
+     Distinct from --color-error, which is the tier that gates Generate. Only the base token is
+     declared: every consumer uses text-warning / bg-warning/N / border-warning/N, so an M3
+     container quad here would just be dead custom properties. */
+  --color-warning: #f59e0b;
+
   --color-outline: #334155;
   --color-outline-variant: #1e293b;
   --color-on-surface: #f8fafc;
@@ -112,6 +119,10 @@ html.light {
   --color-on-error: #ffffff;
   --color-error-container: #fee2e2;
   --color-on-error-container: #991b1b;
+
+  /* Warning — burnt amber, not the brand gold: --color-primary is #ffc700 here, so a yellow
+     warning would be indistinguishable from a primary affordance. */
+  --color-warning: #b45309;
 
   /* Outline / borders — blue-gray */
   --color-outline: #c2d0e4;

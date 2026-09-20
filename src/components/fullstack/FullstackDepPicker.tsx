@@ -3,6 +3,7 @@ import type { CompatibilityRule, DependencyGroup } from '../../types'
 import { useMetadata } from '../../hooks/useMetadata'
 import { useDependencyCompatibility } from '../../hooks/useDependencyCompatibility'
 import { SuggestionStrip } from '../SuggestionStrip'
+import { useStarterTemplates } from '../../hooks/useStarterTemplates'
 
 interface Props {
   selected: string[]
@@ -25,6 +26,10 @@ const NO_RULES: CompatibilityRule[] = []
  */
 export function FullstackDepPicker({ selected, defaults, onChange, compatibilityRules = NO_RULES }: Props) {
   const { metadata, loading, error } = useMetadata()
+  // The same curated bundles the Backend tab offers as Quick Start cards. Here they are just
+  // additive shortcuts: a bundle adds its deps to the selection, it never replaces it, because
+  // the template set's own defaults are already checked and are not the user's to lose.
+  const { templates: bundles } = useStarterTemplates('BACKEND')
   const [query, setQuery] = useState('')
 
   const selectedSet = useMemo(() => new Set(selected), [selected])
@@ -75,6 +80,12 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
   if (loading) {
     return <div className="text-sm text-secondary">Loading dependency catalog…</div>
   }
+  /** Adds every dep in a bundle that is not already selected. */
+  function addBundle(depIds: string[]) {
+    const missing = depIds.filter(id => !selectedSet.has(id))
+    if (missing.length > 0) onChange([...selected, ...missing])
+  }
+
   if (error) {
     return (
       <div className="text-sm text-error border border-error/30 bg-error/10 rounded px-3 py-2">
@@ -85,6 +96,34 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
 
   return (
     <div className="space-y-3 lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
+      {bundles.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap" data-dep-bundles>
+          <span className="text-[11px] text-secondary shrink-0">Add a bundle:</span>
+          {bundles.map(bundle => {
+            const depIds = bundle.dependencies.map(d => d.depId)
+            const already = depIds.length > 0 && depIds.every(id => selectedSet.has(id))
+            return (
+              <button
+                key={bundle.id}
+                type="button"
+                onClick={() => addBundle(depIds)}
+                disabled={already}
+                title={already
+                  ? `Already selected: ${depIds.join(', ')}`
+                  : `${bundle.description || bundle.name} \u2014 adds ${depIds.join(', ')}`}
+                className="inline-flex items-center gap-1 h-6 px-2.5 rounded-full border border-outline-variant text-[11px] text-secondary hover:border-primary hover:text-primary transition-colors disabled:opacity-40 disabled:hover:border-outline-variant disabled:hover:text-secondary"
+              >
+                {bundle.icon && <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>{bundle.icon}</span>}
+                {bundle.name}
+                {already
+                  ? <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>check</span>
+                  : <span className="text-secondary/60">+{depIds.filter(id => !selectedSet.has(id)).length}</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-3">
         <input
           type="text"

@@ -16,6 +16,8 @@ import { uniqueName } from './naming'
 import { FieldChips } from './FieldChips'
 import { EntitySettingsPanel, settingsSummary } from './EntitySettingsPanel'
 import { EntityUiPreview } from './EntityUiPreview'
+import { EntityCodePanel } from './EntityCodePanel'
+import type { EntityCodeFile } from './entityCode'
 import { ENTITY_OPT_LABELS, PROJECT_ONLY_OPTS } from './scaffoldOptions'
 import { joinEntity } from './joinEntity'
 import { enumLabel, pruneLabels } from './enumLabels'
@@ -64,6 +66,16 @@ interface Props {
   previewCtx?: { locale: 'en' | 'he'; rtl: boolean }
   /** Jump to the project-wide Options section (the Overrides panel's "Go to Options"). */
   onGoToOptions?: () => void
+  /** The generated files for one entity, out of the last Explore preview. Omitted (with
+   *  `codeState`) the Code button does not render at all. */
+  onCodeFiles?: (entity: FullstackEntityDef) => EntityCodeFile[]
+  codeState?: {
+    hasPreview: boolean
+    loading: boolean
+    /** The model has changed since the preview was taken. */
+    stale: boolean
+    onExplore: () => void
+  }
 }
 
 /** Number of distinct problems on one entity (its own + every field's + every relation's) —
@@ -97,14 +109,14 @@ function newField(): FullstackFieldDef {
   return { uid: newUid(), name: '', type: 'STRING' }
 }
 
-type PanelKind = 'settings' | 'overrides' | 'preview'
+type PanelKind = 'settings' | 'overrides' | 'preview' | 'code'
 
 const ICON_BTN = 'p-1.5 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
 const SMALL_ICON_BTN = 'p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
 
 export function EntitiesEditor({
   entities, onChange, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [], onNotice,
-  onRowAdded, lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx, onGoToOptions,
+  onRowAdded, lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx, onGoToOptions, onCodeFiles, codeState,
 }: Props) {
   // The latest list for the Undo closures on removal toasts: they fire after later edits, and must
   // re-insert into the list as it is *then*, not as it was when the row went.
@@ -406,6 +418,7 @@ export function EntitiesEditor({
         const settingsOpen = settingsForced || (panelFor?.key === entityKey && panelFor.kind === 'settings')
         const overridesOpen = panelFor?.key === entityKey && panelFor.kind === 'overrides'
         const previewOpen = panelFor?.key === entityKey && panelFor.kind === 'preview'
+        const codeOpen = panelFor?.key === entityKey && panelFor.kind === 'code'
         const overrideCount = entity.opts ? Object.keys(entity.opts).length : 0
         return (
         <div
@@ -413,13 +426,15 @@ export function EntitiesEditor({
           data-entity-index={eIdx}
           data-row-uid={entity.uid}
           {...dnd.rowProps('entities', eIdx)}
-          className={`border rounded-xl p-5 bg-surface-container shadow-sm space-y-4 ${errCount > 0 ? 'border-error/40' : 'border-outline-variant'} ${
+          className={`border rounded-2xl p-5 glass-card shadow-sm space-y-4 ${errCount > 0 ? 'border-error/40' : 'border-outline-variant'} ${
             cardDrop === 'before' ? 'border-t-4 border-t-primary' : cardDrop === 'after' ? 'border-b-4 border-b-primary' : ''} ${
             dnd.isDragging('entities', eIdx) ? 'opacity-40' : ''}`}
         >
-          {/* Header: identity (row 1) split from the generated-page behaviour (row 2). The
-              secondary attributes (labels, mapping, SELECT view) live behind Settings. */}
-          <div className="rounded-lg bg-primary/[0.04] border border-outline-variant px-3 py-2.5 space-y-3">
+          {/* Header: identity (row 1), then the generated-page behaviour with the endpoint
+              headline on its right (row 2), then the derivation detail behind one disclosure.
+              Secondary attributes (labels, mapping, read-only, SELECT view) live behind Settings,
+              so the header stays two rows deep on a laptop. */}
+          <div className="rounded-lg bg-primary/[0.04] px-3 py-2.5 space-y-2.5">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 {entities.length > 1 && (
@@ -448,7 +463,6 @@ export function EntitiesEditor({
                     </span>
                   </button>
                 )}
-                <span className="text-[11px] font-bold uppercase tracking-wider text-secondary shrink-0">Entity</span>
                 <div className="flex-1 max-w-sm">
                   <input
                     type="text"
@@ -510,11 +524,23 @@ export function EntitiesEditor({
                   onClick={() => togglePanel(entityKey, 'preview')}
                   aria-pressed={previewOpen}
                   className={`p-1.5 rounded transition-colors ${previewOpen ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/10'}`}
-                  title="Preview the generated list page and form for this entity"
+                  title="Preview the generated list page and form for this entity (a mock, drawn here)"
                   aria-label="Preview UI"
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>preview</span>
                 </button>
+                {onCodeFiles && (
+                  <button
+                    type="button"
+                    onClick={() => togglePanel(entityKey, 'code')}
+                    aria-pressed={codeOpen}
+                    className={`p-1.5 rounded transition-colors ${codeOpen ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/10'}`}
+                    title="The code this entity generates, from the last Explore preview"
+                    aria-label="Generated code"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>code</span>
+                  </button>
+                )}
                 <button type="button" onClick={() => duplicateEntity(eIdx)} className={ICON_BTN} title="Duplicate entity" aria-label="Duplicate entity">
                   <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>content_copy</span>
                 </button>
@@ -559,20 +585,6 @@ export function EntitiesEditor({
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>tune</span>
                 Overrides{overrideCount > 0 ? ` (${overrideCount})` : ''}
               </button>
-              <label
-                className="flex items-center gap-1.5 text-xs text-secondary shrink-0 cursor-pointer"
-                title={isView ? 'A SELECT-backed view is always read-only' : 'Generate GET-only scaffolding (no create/update/delete)'}
-              >
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-primary"
-                  aria-label="Read-only"
-                  checked={Boolean(entity.readOnly) || isView}
-                  disabled={isView}
-                  onChange={e => updateEntity(eIdx, { readOnly: e.target.checked || undefined })}
-                />
-                Read-only
-              </label>
               <div
                 className="flex items-center gap-1.5 text-xs text-secondary shrink-0"
                 title="Which list views the generated page includes. A runtime toggle appears when you pick 2+; the first (Table > Cards > Kanban > Calendar) is the initial mode."
@@ -603,42 +615,49 @@ export function EntitiesEditor({
                   })}
                 </div>
               </div>
-            </div>
-            )}
-            {/* What this card will generate — derived from the same rules the backend applies, so
-                the effect of Search/Filter checkboxes and the view picker is visible without an
-                Explore round-trip. */}
-            {!isCollapsed && (
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-secondary" data-entity-summary>
-              <span className="inline-flex items-center gap-1.5">
+              {/* The headline of what this card generates, on the row that configures it. The
+                  breakdown (views / search / filters) is one disclosure down. */}
+              <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-secondary shrink-0" data-entity-summary>
                 <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>api</span>
                 <span className="font-semibold tracking-wide">{summary.verbs.join(' ')}</span>
                 <code className="font-mono text-on-surface">{summary.path}</code>
               </span>
-              <span>·</span>
-              <span>views: {summary.views.map(v => v.by ? `${v.name} (by ${v.by})` : v.name).join(', ')}</span>
-              <span>·</span>
-              <span title="Fields included in the text-search box">search: {summary.search.length ? summary.search.join(', ') : '—'}</span>
-              <span>·</span>
-              <span title="Fields that get a filter control">filters: {summary.filters.length ? summary.filters.join(', ') : '—'}</span>
-            </p>
+            </div>
             )}
-            {/* The full endpoint list, opts included — what a checkbox in Options actually adds here. */}
+            {/* Everything this card will generate, derived from the same rules the backend
+                applies — so the effect of the Search/Filter checkboxes and the view picker is
+                visible without an Explore round-trip. One disclosure, because it is reference
+                material: the headline on the row above is what you read while working. */}
             {!isCollapsed && (
             <details className="text-[11px]" data-entity-generates>
-              <summary className="cursor-pointer select-none text-secondary hover:text-on-surface inline-flex items-center gap-1">
+              <summary className="cursor-pointer select-none text-secondary hover:text-on-surface inline-flex items-center gap-1 flex-wrap">
                 <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>list_alt</span>
                 Generates {summary.endpoints.length} endpoint{summary.endpoints.length === 1 ? '' : 's'}
+                <span className="text-secondary/70">
+                  {' · '}{summary.views.length} view{summary.views.length === 1 ? '' : 's'}
+                  {' · '}{summary.search.length} searchable
+                  {' · '}{summary.filters.length} filter{summary.filters.length === 1 ? '' : 's'}
+                </span>
                 {summary.opts.length > 0 && <span className="text-secondary/70"> · {summary.opts.join(', ')}</span>}
               </summary>
-              <ul className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-on-surface">
-                {summary.endpoints.map(ep => (
-                  <li key={`${ep.method} ${ep.path}`} className="flex items-baseline gap-2 min-w-0">
-                    <span className="w-14 shrink-0 text-[10px] font-bold tracking-wide text-secondary">{ep.method}</span>
-                    <span className="truncate">{ep.path}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                <ul className="grid grid-cols-1 gap-y-0.5 font-mono text-on-surface">
+                  {summary.endpoints.map(ep => (
+                    <li key={`${ep.method} ${ep.path}`} className="flex items-baseline gap-2 min-w-0">
+                      <span className="w-14 shrink-0 text-[10px] font-bold tracking-wide text-secondary">{ep.method}</span>
+                      <span className="truncate">{ep.path}</span>
+                    </li>
+                  ))}
+                </ul>
+                <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-secondary">
+                  <dt className="font-semibold">views</dt>
+                  <dd className="text-on-surface">{summary.views.map(v => v.by ? `${v.name} (by ${v.by})` : v.name).join(', ')}</dd>
+                  <dt className="font-semibold" title="Fields included in the text-search box">search</dt>
+                  <dd className="text-on-surface">{summary.search.length ? summary.search.join(', ') : '—'}</dd>
+                  <dt className="font-semibold" title="Fields that get a filter control">filters</dt>
+                  <dd className="text-on-surface">{summary.filters.length ? summary.filters.join(', ') : '—'}</dd>
+                </dl>
+              </div>
             </details>
             )}
           </div>
@@ -712,6 +731,15 @@ export function EntitiesEditor({
                 )}
               </p>
             </div>
+          )}
+          {codeOpen && onCodeFiles && (
+            <EntityCodePanel
+              files={onCodeFiles(entity)}
+              hasPreview={Boolean(codeState?.hasPreview)}
+              previewLoading={Boolean(codeState?.loading)}
+              stale={codeState?.stale}
+              onExplore={() => codeState?.onExplore()}
+            />
           )}
           {previewOpen && (
             <EntityUiPreview

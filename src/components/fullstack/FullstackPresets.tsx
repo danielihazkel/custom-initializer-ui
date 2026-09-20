@@ -132,7 +132,7 @@ export function FullstackPresets({
             className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>bookmark_add</span>
-            Save current as preset…
+            Save this model…
           </button>
           <span className="h-3 w-px bg-outline-variant" aria-hidden="true" />
           <button
@@ -291,7 +291,7 @@ export function FullstackPresets({
           ) : teamModels.length === 0 ? (
             !teamError && (
               <div className="text-xs text-secondary py-4 px-4 rounded-lg border border-dashed border-outline-variant/50 bg-surface-container-low/30">
-                Nothing shared yet. Save the current model with "Save current as preset…" → Team and everyone who opens the generator will see it here.
+                Nothing shared yet. Save the current model with "Save this model…" → Team and everyone who opens the generator will see it here.
               </div>
             )
           ) : (
@@ -345,7 +345,7 @@ export function FullstackPresets({
           return (
             <div className="text-xs text-secondary py-4 px-4 rounded-lg border border-dashed border-outline-variant/50 bg-surface-container-low/30">
               {tab === 'presets'
-                ? 'No presets yet. Model your entities and click "Save current as preset…" above.'
+                ? 'No presets yet. Model your entities and click "Save this model…" above.'
                 : 'No recent models yet. Explore or generate a project to see it here.'}
             </div>
           )

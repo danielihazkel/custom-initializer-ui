@@ -39,9 +39,23 @@ function storeDraft(entities: FullstackEntityDef[]) {
 
 let fetchMock: ReturnType<typeof vi.fn>
 
+/**
+ * The view portals Explore/Generate/Cancel into `#header-frontend-actions` and Reset into
+ * `#header-frontend-reset` — slots App.tsx renders in the global header. A standalone render has
+ * no header, so the harness provides them; without these the action buttons simply never mount.
+ */
+function mountHeaderSlots() {
+  for (const id of ['header-frontend-actions', 'header-frontend-reset']) {
+    const slot = document.createElement('div')
+    slot.id = id
+    document.body.appendChild(slot)
+  }
+}
+
 beforeEach(() => {
   localStorage.clear()
   window.history.replaceState({}, '', '/')
+  mountHeaderSlots()
   fetchMock = vi.fn((url: string) => Promise.resolve(response(404, { error: `no ${url}` })))
   vi.stubGlobal('fetch', fetchMock)
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { cb(0); return 0 })
@@ -52,6 +66,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   window.history.replaceState({}, '', '/')
+  for (const id of ['header-frontend-actions', 'header-frontend-reset']) document.getElementById(id)?.remove()
 })
 
 const entityNames = () => screen.getAllByLabelText('Entity name').map(i => (i as HTMLInputElement).value)
@@ -145,6 +160,55 @@ describe('FullstackView — generate and shortcuts', () => {
   })
 })
 
+describe('FullstackView — collapsible Setup panel', () => {
+  it('starts collapsed when a draft already exists, and expands on demand', () => {
+    storeDraft(draftEntities)
+    render(<FullstackView />)
+    // Collapsed: the chip bar stands in for the fields.
+    expect(screen.queryByLabelText('Group ID')).toBeNull()
+    expect(document.querySelector('[data-setup-chip="coords"]')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit project setup' }))
+    expect(screen.getByLabelText('Group ID')).toBeTruthy()
+  })
+
+  it('starts expanded on a first-ever visit, when there is no model to work on yet', () => {
+    render(<FullstackView />)
+    expect(screen.getByLabelText('Group ID')).toBeTruthy()
+  })
+
+  it('remembers the collapsed/expanded choice across a remount', () => {
+    storeDraft(draftEntities)
+    const first = render(<FullstackView />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit project setup' }))
+    expect(localStorage.getItem('fullstack:setup')).toBe('open')
+    first.unmount()
+
+    render(<FullstackView />)
+    expect(screen.getByLabelText('Group ID')).toBeTruthy()
+  })
+
+  it('a chip reopens the panel at its section', () => {
+    storeDraft(draftEntities)
+    render(<FullstackView />)
+    fireEvent.click(document.querySelector('[data-setup-chip="deps"]') as HTMLElement)
+    expect(document.getElementById('fs-deps')).toBeTruthy()
+  })
+
+  it('holds itself open while a metadata error would otherwise hide inside it', () => {
+    storeDraft(draftEntities)
+    render(<FullstackView />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit project setup' }))
+    fireEvent.change(screen.getByLabelText('Group ID'), { target: { value: '' } })
+
+    // The collapse control is disabled, so the invalid field cannot be hidden.
+    const toggle = screen.getByRole('button', { name: 'Hide project setup' }) as HTMLButtonElement
+    expect(toggle.disabled).toBe(true)
+    fireEvent.click(toggle)
+    expect(screen.getByLabelText('Group ID')).toBeTruthy()
+  })
+})
+
 describe('FullstackView — editor safety nets', () => {
   const four: FullstackEntityDef[] = ['Invoice', 'Customer', 'Product', 'Shipment']
     .map(name => ({ name, fields: [pk, { name: 'label', type: 'STRING' as const }] }))
@@ -158,6 +222,8 @@ describe('FullstackView — editor safety nets', () => {
     })
     render(<FullstackView />)
     expect(document.querySelector('[data-storage-full]')).toBeTruthy()
+    // Group ID lives in the Setup panel, which is collapsed once a draft exists.
+    fireEvent.click(screen.getByRole('button', { name: 'Edit project setup' }))
     fireEvent.change(screen.getByLabelText('Group ID'), { target: { value: 'com.other' } })
     expect(document.querySelector('[data-storage-full]')).toBeTruthy()
   })

@@ -90,6 +90,36 @@ describe('EntitiesEditor — SELECT view', () => {
     expect(container.querySelector('[data-error]')).toBeNull()
     expect(screen.getAllByTitle(/issue.* on this entity/).length).toBeGreaterThan(0)
   })
+
+  it('forces Read-only on, in Settings beside it, once the entity is a view', () => {
+    const view: FullstackEntityDef[] = withUids([{
+      name: 'Report',
+      viewQuery: 'select 1 as code',
+      readOnly: true,
+      fields: [{ name: 'code', type: 'STRING', primaryKey: true }],
+    }])
+    renderEditor(view)
+    fireEvent.click(screen.getByRole('button', { name: /Settings/ }))
+    const readOnly = screen.getByLabelText('Read-only') as HTMLInputElement
+    expect(readOnly.checked).toBe(true)
+    expect(readOnly.disabled).toBe(true)
+  })
+
+  it('read-only lives in Settings and is summarised on the closed panel', () => {
+    const ro: FullstackEntityDef[] = withUids([{
+      name: 'Ledger',
+      readOnly: true,
+      fields: [{ name: 'id', type: 'LONG', primaryKey: true, generated: true }],
+    }])
+    const { container, onChange } = renderEditor(ro)
+    // Closed, it still shows up in the settings summary rather than vanishing.
+    expect(container.querySelector('[data-settings-summary]')?.textContent).toContain('read-only')
+
+    fireEvent.click(screen.getByRole('button', { name: /Settings/ }))
+    fireEvent.click(screen.getByLabelText('Read-only'))
+    const next = onChange.mock.calls[0][0] as FullstackEntityDef[]
+    expect(next[0].readOnly).toBeUndefined()
+  })
 })
 
 describe('EntitiesEditor — density and field chips', () => {

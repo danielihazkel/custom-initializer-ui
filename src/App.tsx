@@ -463,7 +463,7 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-      <main className="pt-20 pb-8 min-h-screen bg-background relative overflow-hidden">
+      <main className="pt-20 pb-8 min-h-screen bg-background relative overflow-clip">
         {/* Blueprint factory-floor grid, slowly panning behind the glow blobs */}
         <div className="factory-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
         {/* Decorative ambient background blobs — slowly drift/breathe (see index.css) */}

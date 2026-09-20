@@ -12,9 +12,15 @@ export interface NavSection {
  * Entities). The page is long by design; this keeps it navigable without turning it into a
  * wizard. A section with errors shows a dot so the user knows where the sticky bar's count lives.
  */
-export function SectionNav({ sections }: { sections: NavSection[] }) {
+export function SectionNav({ sections, onJump }: {
+  sections: NavSection[]
+  /** Called with the target id before scrolling — lets a collapsed panel open itself first. */
+  onJump?: (id: string) => void
+}) {
   function jump(id: string) {
-    scrollToElement(document.getElementById(id), 'start')
+    onJump?.(id)
+    // One frame, so a panel that opened on `onJump` has laid out before we measure it.
+    requestAnimationFrame(() => scrollToElement(document.getElementById(id), 'start'))
   }
   return (
     <nav aria-label="Page sections" className="flex items-center gap-1 flex-wrap" data-section-nav>

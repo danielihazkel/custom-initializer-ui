@@ -42,7 +42,7 @@ describe('FullstackPresets — Team tab', () => {
 
   it('saves to the team with a description when that destination is picked', () => {
     const props = renderStrip()
-    fireEvent.click(screen.getByText('Save current as preset…'))
+    fireEvent.click(screen.getByText('Save this model…'))
     fireEvent.change(screen.getByLabelText('Preset name'), { target: { value: 'Shared billing' } })
     // Button names carry the icon glyph text ("groups Team"), hence the loose match.
     fireEvent.click(within(screen.getByRole('group', { name: 'Save to' })).getByRole('button', { name: /Team/ }))

@@ -1,5 +1,6 @@
 import type { FullstackEntityDef } from '../../types'
 import type { EntityErrors } from './validation'
+import { Labeled, inputClass } from './controls'
 
 interface Props {
   entity: FullstackEntityDef
@@ -9,8 +10,6 @@ interface Props {
   onTickView: (checked: boolean) => void
 }
 
-const INPUT = 'w-full bg-background border border-outline-variant rounded px-3 py-2 text-sm text-on-surface placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-40'
-
 /** One-line summary of the non-default settings, shown beside the Settings button when the
  *  panel is closed so nothing set inside it is invisible. */
 export function settingsSummary(entity: FullstackEntityDef): string[] {
@@ -18,6 +17,7 @@ export function settingsSummary(entity: FullstackEntityDef): string[] {
   if (entity.label?.trim()) parts.push(`“${entity.label.trim()}”${entity.labelPlural?.trim() ? ` / “${entity.labelPlural.trim()}”` : ''}`)
   const table = [entity.schema?.trim(), entity.tableName?.trim()].filter(Boolean).join('.')
   if (table) parts.push(table)
+  if (entity.readOnly && entity.viewQuery == null) parts.push('read-only')
   if (entity.viewQuery != null) parts.push(entity.viewQuery.trim() ? 'SELECT view' : 'SELECT view (query missing)')
   return parts
 }
@@ -34,24 +34,42 @@ export function EntitySettingsPanel({ entity, errors, onUpdate, onTickView }: Pr
     <div className="rounded-lg border border-outline-variant bg-background/50 px-3 py-3 space-y-3" data-entity-settings>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Labeled label="Display label" hint="Human-facing name in the generated UI (nav, headings, dialogs). Blank = derived from the entity name.">
-          <input type="text" aria-label="Display label (optional)" className={INPUT} placeholder="e.g. Customer"
+          <input type="text" aria-label="Display label (optional)" className={inputClass()} placeholder="e.g. Customer"
                  value={entity.label ?? ''} onChange={e => onUpdate({ label: e.target.value || undefined })} />
         </Labeled>
         <Labeled label="Plural label" hint="For nav / list heading / dashboard. Blank = the label, then the derived plural.">
-          <input type="text" aria-label="Plural display label (optional)" className={INPUT} placeholder="e.g. Customers"
+          <input type="text" aria-label="Plural display label (optional)" className={inputClass()} placeholder="e.g. Customers"
                  value={entity.labelPlural ?? ''} onChange={e => onUpdate({ labelPlural: e.target.value || undefined })} />
         </Labeled>
         <Labeled label="Schema" hint="Database schema the table lives in (optional).">
-          <input type="text" aria-label="Schema (optional)" className={INPUT} placeholder="e.g. sales"
+          <input type="text" aria-label="Schema (optional)" className={inputClass()} placeholder="e.g. sales"
                  value={entity.schema ?? ''} disabled={isView}
                  onChange={e => onUpdate({ schema: e.target.value || undefined })} />
         </Labeled>
         <Labeled label="Table name" hint={isView ? 'A SELECT-backed view maps to its query, not a table' : 'Blank = snake_case of the entity name.'}>
-          <input type="text" aria-label="Table name (optional)" className={INPUT} placeholder="e.g. customers"
+          <input type="text" aria-label="Table name (optional)" className={inputClass()} placeholder="e.g. customers"
                  value={entity.tableName ?? ''} disabled={isView}
                  onChange={e => onUpdate({ tableName: e.target.value || undefined })} />
         </Labeled>
       </div>
+
+      <label
+        className="flex items-start gap-2 text-xs text-on-surface cursor-pointer"
+        title={isView ? 'A SELECT-backed view is always read-only' : 'Generate GET-only scaffolding (no create/update/delete)'}
+      >
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-primary"
+          aria-label="Read-only"
+          checked={Boolean(entity.readOnly) || isView}
+          disabled={isView}
+          onChange={e => onUpdate({ readOnly: e.target.checked || undefined })}
+        />
+        <span className="flex flex-col">
+          <span>Read-only</span>
+          <span className="text-[11px] text-secondary">GET-only scaffolding — no create, update or delete.</span>
+        </span>
+      </label>
 
       <label
         className="flex items-start gap-2 text-xs text-on-surface cursor-pointer"
@@ -104,15 +122,6 @@ export function EntitySettingsPanel({ entity, errors, onUpdate, onTickView }: Pr
           />
         </details>
       )}
-    </div>
-  )
-}
-
-function Labeled({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-[11px] font-semibold uppercase tracking-wider text-secondary" title={hint}>{label}</label>
-      {children}
     </div>
   )
 }
