@@ -1132,7 +1132,6 @@ export function FullstackView() {
               <SetLabel name={currentBackendSet?.name} setKey={backendSet} />
             )}
             <SetDescription set={currentBackendSet} />
-            {backendSets.length > 1 && <SetCompare sets={backendSets} selected={backendSet} onPick={setBackendSet} />}
           </Labeled>
         )}
       </section>
@@ -1154,7 +1153,6 @@ export function FullstackView() {
               <SetLabel name={currentFrontendSet?.name} setKey={frontendSet} />
             )}
             <SetDescription set={currentFrontendSet} />
-            {frontendSets.length > 1 && <SetCompare sets={frontendSets} selected={frontendSet} onPick={setFrontendSet} />}
           </Labeled>
         )}
         {feError && palettes.length === 0 && (
@@ -1737,47 +1735,6 @@ function trackPersist(prev: ReadonlySet<string>, key: string, ok: boolean): Read
 function SetDescription({ set }: { set?: EntityTemplateSetSummary }) {
   if (!set?.description?.trim()) return null
   return <p className="text-[11px] text-on-surface-variant" data-set-description>{set.description}</p>
-}
-
-/** Side-by-side facts for the sets of one kind, so the choice is made on what they ship rather
- *  than on their names. Rows are clickable, mirroring the select above them. */
-function SetCompare({ sets, selected, onPick }: { sets: EntityTemplateSetSummary[]; selected: string; onPick: (key: string) => void }) {
-  return (
-    <div className="overflow-x-auto rounded-lg border border-outline-variant" data-set-compare>
-      <table className="w-full text-[11px]">
-        <thead>
-          <tr className="text-left uppercase tracking-wider text-secondary bg-surface-container-low">
-            <th className="px-2 py-1 font-semibold">Set</th>
-            <th className="px-2 py-1 font-semibold">Design</th>
-            <th className="px-2 py-1 font-semibold">Pins</th>
-            <th className="px-2 py-1 font-semibold">Default deps</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sets.map(s => (
-            <tr
-              key={s.setKey}
-              onClick={() => onPick(s.setKey)}
-              aria-selected={s.setKey === selected}
-              className={`cursor-pointer border-t border-outline-variant ${s.setKey === selected ? 'bg-primary/5 text-on-surface' : 'text-secondary hover:bg-primary/[0.03]'}`}
-            >
-              <td className="px-2 py-1 whitespace-nowrap">
-                <span className="font-semibold">{s.name}</span>
-                <span className="ml-1 font-mono text-secondary">{s.setKey}</span>
-              </td>
-              <td className="px-2 py-1 whitespace-nowrap">{s.designSystem ?? '—'}</td>
-              <td className="px-2 py-1 whitespace-nowrap">{[s.bootVersion && `Boot ${s.bootVersion}`, s.javaVersion && `Java ${s.javaVersion}`].filter(Boolean).join(' · ') || '—'}</td>
-              <td className="px-2 py-1">
-                {s.defaultDeps.length === 0 ? '—' : s.defaultDeps.map(d => (
-                  <span key={d} className="inline-block mr-1 mb-0.5 px-1.5 py-0.5 rounded bg-surface-container-low font-mono">{d}</span>
-                ))}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
 }
 
 function SetLabel({ name, setKey }: { name?: string; setKey: string }) {

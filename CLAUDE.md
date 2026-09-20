@@ -189,8 +189,7 @@ did not write (`lastWrittenEntitiesRef`) shows a "changed in another browser tab
 theirs (undoable) / Keep mine — never a silent overwrite. `RelationsEditor` offers "Many-to-many? Add a
 join entity…" (`joinEntity.ts`: `<Owner><Target>`, generated id, two required MANY_TO_ONEs; lint's
 `only-keys` rule skips entities that have relations). Template-set pickers show the set's
-`description` and, with 2+ sets of a kind, a `SetCompare` grid; the palette picker gets the same
-error banner + Retry as the sets (`useFrontendMetadata.reload`). `ImportFromDdlDrawer` takes a `.sql`
+`description`; the palette picker gets the same error banner + Retry as the sets (`useFrontendMetadata.reload`). `ImportFromDdlDrawer` takes a `.sql`
 file (button or drop on the textarea); the team-conflict dialog has **Rename…** (reopens the save
 prompt pre-filled via `saveRequest.draft`; closing the prompt keeps the draft); `validateMeta` checks
 `name`/`version`; Copy as curl warns past `MAX_ENCODED_LENGTH`. **Enum labels:** `FullstackFieldDef.enumLabels`
