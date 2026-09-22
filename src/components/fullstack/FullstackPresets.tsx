@@ -3,13 +3,17 @@ import { AnimatePresence, motion } from 'framer-motion'
 import type { FullstackPreset } from '../../hooks/useFullstackPresets'
 import type { TeamModelSummary } from '../../types'
 import type { FullstackSnapshot } from './snapshot'
-import { EXAMPLE_MODELS, type ExampleModel } from './examples'
+import type { ExampleModel } from './examples'
 
 interface Props {
   presets: FullstackPreset[]
   recents: FullstackPreset[]
   currentSnapshot: FullstackSnapshot
   onLoad: (snapshot: FullstackSnapshot) => void
+  /** The admin-managed "Start from" examples (Admin → Fullstack Examples). */
+  examples: ExampleModel[]
+  examplesLoading: boolean
+  examplesError: string | null
   onLoadExample: (example: ExampleModel) => void
   onSave: (name: string, snapshot: FullstackSnapshot) => void
   onDeletePreset: (id: string) => void
@@ -55,7 +59,7 @@ export type SaveTarget = 'browser' | 'team'
  * team. Loading anything replaces the whole editor state (the caller pushes an undo entry first).
  */
 export function FullstackPresets({
-  presets, recents, currentSnapshot, onLoad, onLoadExample, onSave, onDeletePreset, onDeleteRecent,
+  presets, recents, currentSnapshot, onLoad, examples, examplesLoading, examplesError, onLoadExample, onSave, onDeletePreset, onDeleteRecent,
   onExportJson, onImportJson, onCopyCurl,
   teamModels, teamLoading, teamError, onRefreshTeam, onLoadTeam, onSaveTeam, onDeleteTeam, saveRequest,
 }: Props) {
@@ -120,7 +124,7 @@ export function FullstackPresets({
     <section className="space-y-3" aria-label="Start from">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4">
-          {tabButton('examples', 'Examples', EXAMPLE_MODELS.length, 'primary')}
+          {tabButton('examples', 'Examples', examples.length, 'primary')}
           {tabButton('presets', 'My Presets', presets.length, 'primary')}
           {tabButton('team', 'Team', teamModels.length, 'primary')}
           {tabButton('recents', 'Recent', recents.length, 'tertiary')}
@@ -250,9 +254,22 @@ export function FullstackPresets({
         )}
       </AnimatePresence>
 
-      {tab === 'examples' && (
+      {tab === 'examples' && examplesError && (
+        <div className="text-[11px] text-error border border-error/30 bg-error/10 rounded px-3 py-2">
+          Couldn't load the examples ({examplesError}).
+        </div>
+      )}
+      {tab === 'examples' && !examplesError && examplesLoading && examples.length === 0 && (
+        <div className="h-[104px] rounded-lg bg-surface-container-low animate-pulse" aria-hidden="true" />
+      )}
+      {tab === 'examples' && !examplesError && !examplesLoading && examples.length === 0 && (
+        <div className="text-xs text-secondary py-4 px-4 rounded-lg border border-dashed border-outline-variant/50 bg-surface-container-low/30">
+          No examples are published. An admin can add them under Admin → Fullstack Examples.
+        </div>
+      )}
+      {tab === 'examples' && examples.length > 0 && (
         <div className="flex gap-3 overflow-x-auto pb-2">
-          {EXAMPLE_MODELS.map(ex => (
+          {examples.map(ex => (
             <button
               key={ex.id}
               type="button"
@@ -261,7 +278,7 @@ export function FullstackPresets({
               title={`Replace the current entities with the ${ex.name} example`}
             >
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>{ex.icon}</span>
+                <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>{ex.icon || 'category'}</span>
                 <span className="font-semibold text-sm text-on-surface">{ex.name}</span>
               </div>
               <p className="text-[11px] text-secondary leading-relaxed line-clamp-3">{ex.description}</p>

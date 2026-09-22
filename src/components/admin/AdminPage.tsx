@@ -19,6 +19,7 @@ import { StarterTemplatesTab } from './starter-templates/StarterTemplatesTab'
 import { ModuleTemplatesTab } from './module-templates/ModuleTemplatesTab'
 import { ColorPalettesTab } from './color-palettes/ColorPalettesTab'
 import { EntityTemplatesTab } from './entity-templates/EntityTemplatesTab'
+import { FullstackExamplesTab } from './fullstack-examples/FullstackExamplesTab'
 import { VersionsTab } from './versions/VersionsTab'
 import { DepartmentsTab } from './departments/DepartmentsTab'
 
@@ -81,6 +82,7 @@ function AdminPageInner({ onLogout }: { onLogout: () => void }) {
     if (activeTab === 'modules' && kind === 'FRONTEND') setActiveTab('overview')
     if (activeTab === 'palettes' && kind === 'BACKEND') setActiveTab('overview')
     if (activeTab === 'entity-templates' && kind === 'FRONTEND') setActiveTab('overview')
+    if (activeTab === 'fullstack-examples' && kind === 'FRONTEND') setActiveTab('overview')
   }, [activeTab, kind])
 
   return (
@@ -121,6 +123,7 @@ function AdminPageInner({ onLogout }: { onLogout: () => void }) {
               {activeTab === 'modules'    && <ModuleTemplatesTab />}
               {activeTab === 'palettes'   && <ColorPalettesTab />}
               {activeTab === 'entity-templates' && <EntityTemplatesTab />}
+              {activeTab === 'fullstack-examples' && <FullstackExamplesTab />}
               {activeTab === 'versions'   && <VersionsTab />}
               {activeTab === 'departments' && <DepartmentsTab />}
             </motion.div>

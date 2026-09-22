@@ -48,6 +48,7 @@ const ProjectPreview = lazy(() => import('../ProjectPreview').then(m => ({ defau
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
 import { readStoredPresetSnapshots, useFullstackPresets } from '../../hooks/useFullstackPresets'
 import { TeamModelError, useTeamModels } from '../../hooks/useTeamModels'
+import { useFullstackExamples } from '../../hooks/useFullstackExamples'
 import type { TeamModelSummary } from '../../types'
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
 import { canonicalVersion, validateEntities, validateMeta, countMetaErrors, type MetaErrors } from './validation'
@@ -208,6 +209,7 @@ export function FullstackView() {
   } = useFullstackPreview()
   const { presets, recents, persistFailed: presetsPersistFailed, savePreset, deletePreset, restorePreset, deleteRecent, restoreRecent, pushRecent } = useFullstackPresets()
   const team = useTeamModels()
+  const exampleModels = useFullstackExamples()
   // A team save that hit an existing name, held while the user decides whether to overwrite it.
   const [teamConflict, setTeamConflict] = useState<{ name: string; description: string; existing: TeamModelSummary } | null>(null)
   const [confirmDeleteTeam, setConfirmDeleteTeam] = useState<TeamModelSummary | null>(null)
@@ -1094,6 +1096,9 @@ export function FullstackView() {
         onExportJson={exportJson}
         onImportJson={importJson}
         onCopyCurl={copyCurl}
+        examples={exampleModels.examples}
+        examplesLoading={exampleModels.loading}
+        examplesError={exampleModels.error}
         teamModels={team.models}
         teamLoading={team.loading}
         teamError={team.error}

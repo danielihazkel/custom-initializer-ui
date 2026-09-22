@@ -16,7 +16,7 @@ const model: TeamModelSummary = {
 function renderStrip(over: Partial<Parameters<typeof FullstackPresets>[0]> = {}) {
   const props = {
     presets: [], recents: [], currentSnapshot: snapshot,
-    onLoad: vi.fn(), onLoadExample: vi.fn(), onSave: vi.fn(), onDeletePreset: vi.fn(), onDeleteRecent: vi.fn(),
+    onLoad: vi.fn(), examples: [], examplesLoading: false, examplesError: null, onLoadExample: vi.fn(), onSave: vi.fn(), onDeletePreset: vi.fn(), onDeleteRecent: vi.fn(),
     onExportJson: vi.fn(), onImportJson: vi.fn(), onCopyCurl: vi.fn(),
     teamModels: [model], teamLoading: false, teamError: null,
     onRefreshTeam: vi.fn(), onLoadTeam: vi.fn(), onSaveTeam: vi.fn(), onDeleteTeam: vi.fn(),

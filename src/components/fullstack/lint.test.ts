@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { lintModel } from './lint'
-import { EXAMPLE_MODELS } from './examples'
+import type { ExampleModel } from '../../types'
+import seededExamples from './__fixtures__/fullstack-examples.json'
 import { withUids } from './uid'
 import type { FullstackEntityDef } from '../../types'
 
@@ -141,7 +142,7 @@ describe('lintModel', () => {
 })
 
 describe('built-in examples', () => {
-  for (const example of EXAMPLE_MODELS) {
+  for (const example of seededExamples as ExampleModel[]) {
     it(`${example.name} raises no warnings`, () => {
       const warns = lintModel(withUids(example.entities), [], []).filter(i => i.severity === 'warn')
       expect(warns.map(i => i.message)).toEqual([])

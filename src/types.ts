@@ -267,7 +267,7 @@ export interface AdminDependencyCompatibility {
   projectKind?: ProjectKind
 }
 
-export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates' | 'versions' | 'departments'
+export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates' | 'versions' | 'departments' | 'fullstack-examples'
 
 /** Discriminator for {@link AdminVersion} rows — backend Java/Boot plus frontend React/Node/package-manager lists. */
 export type VersionKind = 'JAVA' | 'BOOT' | 'REACT' | 'NODE' | 'PACKAGE_MANAGER'
@@ -471,6 +471,28 @@ export interface AdminDepartment {
   name: string
   isDefault: boolean
   sortOrder: number
+}
+
+/** One row of `/admin/fullstack-examples` — a "Start from → Examples" model. */
+export interface AdminFullstackExample {
+  id: number
+  exampleId: string
+  name: string
+  description: string | null
+  icon: string | null
+  entities: FullstackEntityDef[]
+  sortOrder: number
+  enabled: boolean
+}
+
+/** A ready-made entity model the Fullstack tab can start from (`GET /metadata/fullstack/examples`). */
+export interface ExampleModel {
+  id: string
+  name: string
+  description: string | null
+  /** Material Symbols icon name. */
+  icon: string | null
+  entities: FullstackEntityDef[]
 }
 
 export interface AdminColorPalette {

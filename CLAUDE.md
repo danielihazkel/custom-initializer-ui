@@ -43,9 +43,12 @@ src/
 
 ## Fullstack editor (`src/components/fullstack/`)
 
-`FullstackView.tsx` owns the whole editor state and wires: `FullstackPresets` (built-in example models
-from `examples.ts` — every example must pass `validateEntities` and raise no `lint.ts` warnings,
-pinned by `examples.test.ts`/`lint.test.ts` — plus saved presets/recents via `hooks/useFullstackPresets`,
+`FullstackView.tsx` owns the whole editor state and wires: `FullstackPresets` (example models from
+`hooks/useFullstackExamples` → `GET /metadata/fullstack/examples`, admin-managed under Admin → Fullstack
+Examples (`components/admin/fullstack-examples/`, which runs `validateEntities` before saving and can copy a
+Team model's entities). `__fixtures__/fullstack-examples.json` is a copy of the backend seed
+(`catalog/fullstack-examples.json`) — `examples.test.ts`/`lint.test.ts` pin that every seeded example passes
+`validateEntities` and raises no `lint.ts` warnings; re-copy it when the seed changes. Plus saved presets/recents via `hooks/useFullstackPresets`,
 **Team** models via `hooks/useTeamModels` (server-side `/metadata/fullstack/models`, same export shape;
 the save prompt has a This browser / Team destination, a 409 name clash asks to Overwrite, delete is
 confirmed in-app because it affects everyone), and **Export JSON / Import JSON / Copy as curl**
