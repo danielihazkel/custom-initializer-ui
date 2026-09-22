@@ -14,6 +14,7 @@ const form: ProjectFormValues = {
   type: 'maven-project',
   packaging: 'jar',
   javaVersion: '21',
+  department: '',
 }
 
 function okJson(value: unknown): Response {
@@ -45,6 +46,18 @@ describe('useProjectPreview.fetchPreview', () => {
     expect(url.searchParams.get('bootVersion')).toBe('3.2.1')
     expect(url.searchParams.get('dependencies')).toBe('web,kafka')
     expect(url.searchParams.get('opts-kafka')).toBe('consumer-example')
+    // Blank department = the server default, so it is not sent at all.
+    expect(url.searchParams.has('department')).toBe(false)
+  })
+
+  it('sends the chosen department', async () => {
+    const { result } = renderHook(() => useProjectPreview())
+    await act(async () => {
+      await result.current.fetchPreview({ ...form, department: 'fin' }, [], {})
+    })
+
+    const url = new URL(fetchMock.mock.calls[0][0] as string)
+    expect(url.searchParams.get('department')).toBe('fin')
   })
 
   it('targets the multimodule endpoint with a modules param when enabled', async () => {

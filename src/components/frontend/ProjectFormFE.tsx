@@ -1,4 +1,5 @@
 import type { FeForm } from '../../hooks/useFrontendState'
+import { FloatingDepartmentSelect } from '../shared/DepartmentSelect'
 
 interface Props {
   values: FeForm
@@ -118,6 +119,9 @@ export function ProjectFormFE({ values, onChange }: Props) {
             value={values.description}
             onChange={handle('description')}
           />
+        </div>
+        <div className="col-span-2">
+          <FloatingDepartmentSelect id="fe-department" value={values.department} onChange={department => onChange({ department })} />
         </div>
       </div>
       <p className="text-[11px] text-secondary px-1">

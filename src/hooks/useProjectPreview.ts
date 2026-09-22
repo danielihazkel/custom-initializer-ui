@@ -82,6 +82,7 @@ export function useProjectPreview() {
         url.searchParams.set('packageName', form.packageName)
         url.searchParams.set('packaging',   form.packaging)
         url.searchParams.set('javaVersion', form.javaVersion)
+        if (form.department) url.searchParams.set('department', form.department)
         if (isMultiModule) {
           url.searchParams.set('modules', multiModule!.modules.join(','))
         }

@@ -50,7 +50,7 @@ export function parseUrlParams(): {
   const form: Partial<ProjectFormValues> = {}
   for (const key of [
     'groupId', 'artifactId', 'name', 'description', 'packageName',
-    'bootVersion', 'language', 'type', 'packaging', 'javaVersion',
+    'bootVersion', 'language', 'type', 'packaging', 'javaVersion', 'department',
   ] as const) {
     const v = p.get(key)
     if (v !== null) form[key] = v
@@ -81,6 +81,7 @@ export function defaultForm(metadata: InitializrMetadata | null): ProjectFormVal
     type: metadata?.type?.default ?? 'maven-project',
     packaging: metadata?.packaging?.default ?? 'jar',
     javaVersion: metadata?.javaVersion?.default ?? '21',
+    department: '',
   }
 }
 
@@ -162,6 +163,7 @@ export async function triggerDownload(
   url.searchParams.set('packageName', form.packageName)
   url.searchParams.set('packaging', form.packaging)
   url.searchParams.set('javaVersion', form.javaVersion)
+  if (form.department) url.searchParams.set('department', form.department)
 
   if (isMultiModule) {
     url.searchParams.set('modules', multiModule!.modules.join(','))
@@ -295,6 +297,7 @@ export function buildWizardBody(
     bootVersion: form.bootVersion,
     packaging: form.packaging,
     javaVersion: form.javaVersion,
+    department: form.department || undefined,
     dependencies: selected,
     opts,
     sqlByDep: sqlByDepBody,

@@ -7,7 +7,7 @@ const FILE_TYPES: FileType[] = ['STATIC_COPY', 'YAML_MERGE', 'TEMPLATE', 'DELETE
 const SUB_TYPES: SubstitutionType[] = ['NONE', 'MUSTACHE']
 const SUB_TYPE_HINTS: Record<SubstitutionType, string> = {
   NONE: 'No substitution — content is written verbatim.',
-  MUSTACHE: 'Variables: {{artifactId}}, {{groupId}}, {{version}}, {{packageName}}, {{packagePath}}, {{javaVersion}}, {{packaging}}. Sections: {{#hasKafka}}…{{/hasKafka}}, {{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}. Use {{packagePath}} in Target Path too.',
+  MUSTACHE: 'Variables: {{artifactId}}, {{groupId}}, {{version}}, {{packageName}}, {{packagePath}}, {{javaVersion}}, {{packaging}}, {{department}}, {{departmentUpper}}, {{departmentName}}. Sections: {{#hasKafka}}…{{/hasKafka}}, {{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}. Use {{packagePath}} in Target Path too.',
 }
 
 interface Props {

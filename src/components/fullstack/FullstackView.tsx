@@ -693,6 +693,7 @@ export function FullstackView() {
   function buildBody(): FullstackStarterRequest {
     return {
       ...meta,
+      department: meta.department || undefined,
       backendTemplateSet: backendSet,
       frontendTemplateSet: frontendSet,
       dependencies: selectedDeps,

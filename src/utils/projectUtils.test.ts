@@ -13,6 +13,7 @@ const form: ProjectFormValues = {
   type: 'maven-project',
   packaging: 'jar',
   javaVersion: '21',
+  department: '',
 }
 
 describe('buildWizardBody', () => {
@@ -25,6 +26,11 @@ describe('buildWizardBody', () => {
       javaVersion: '21',
       dependencies: ['web', 'data-jpa'],
     })
+  })
+
+  it('carries the department only when one was chosen', () => {
+    expect(buildWizardBody(form, [], {}, {}, {}, {}).department).toBeUndefined()
+    expect(buildWizardBody({ ...form, department: 'fin' }, [], {}, {}, {}, {}).department).toBe('fin')
   })
 
   it('includes opts only for selected dependencies with non-empty options', () => {

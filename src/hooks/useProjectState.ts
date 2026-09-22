@@ -143,6 +143,7 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
       p.set('type', form.type)
       p.set('packaging', form.packaging)
       p.set('javaVersion', form.javaVersion)
+      if (form.department) p.set('department', form.department)
       if (selected.length > 0) p.set('dependencies', selected.join(','))
       for (const [depId, optIds] of Object.entries(selectedOptions)) {
         if (optIds.length > 0 && selected.includes(depId)) {

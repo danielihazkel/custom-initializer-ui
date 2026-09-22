@@ -8,6 +8,7 @@ import { Labeled, SectionHeading, SetDescription, SetLabel, inputClass } from '.
 import { FullstackDepPicker } from './FullstackDepPicker'
 import { OptionCoverage } from './OptionCoverage'
 import { PalettePicker } from '../shared/PalettePicker'
+import { DepartmentSelect } from '../shared/DepartmentSelect'
 import { OPTIONS_SECTION, RTL_OPTION, isEntityOptKey } from './scaffoldOptions'
 
 /**
@@ -157,6 +158,11 @@ export function FullstackSetupPanel({
               </Labeled>
               {/* configurationFileFormat is deliberately not offered: the common catalog writes
                   application.yaml and deletes application.properties whatever the request says. */}
+              <Labeled label="Department" htmlFor="fs-department"
+                       hint="Exposed to both halves' templates as {{department}} (k8s namespace, image repo, …)">
+                <DepartmentSelect id="fs-department" className={inputClass()} value={meta.department}
+                                  onChange={department => updateMeta({ department })} />
+              </Labeled>
               <Labeled label="Packaging" htmlFor="fs-packaging">
                 <select id="fs-packaging" className={inputClass()} value={meta.packaging}
                         onChange={e => updateMeta({ packaging: e.target.value })}>

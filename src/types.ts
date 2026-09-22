@@ -34,6 +34,8 @@ export interface ProjectFormValues {
   type:        string
   packaging:   string
   javaVersion: string
+  /** Department id ({{department}} in templates); '' = the server's default department. */
+  department:  string
 }
 
 // Dependency sub-options
@@ -265,7 +267,7 @@ export interface AdminDependencyCompatibility {
   projectKind?: ProjectKind
 }
 
-export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates' | 'versions'
+export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates' | 'versions' | 'departments'
 
 /** Discriminator for {@link AdminVersion} rows — backend Java/Boot plus frontend React/Node/package-manager lists. */
 export type VersionKind = 'JAVA' | 'BOOT' | 'REACT' | 'NODE' | 'PACKAGE_MANAGER'
@@ -454,11 +456,21 @@ export interface FullstackStarterRequest {
   dashboardOverview?: string
   /** Language of the generated frontend's own chrome strings; omitted = English. */
   locale?: 'en' | 'he'
+  /** Department id exposed to both halves' templates as {{department}}; omitted = the default. */
+  department?: string
   /** Opt-in scaffolding extras, e.g. { scaffold: ["audit","softDelete","inverseCollections","tests"] }. */
   opts?: Record<string, string[]>
   /** Seeded colour-palette id for the generated frontend; omitted = the frontend set's default. */
   colorPalette?: string
   entities: FullstackEntityDef[]
+}
+
+export interface AdminDepartment {
+  id: number
+  departmentId: string
+  name: string
+  isDefault: boolean
+  sortOrder: number
 }
 
 export interface AdminColorPalette {

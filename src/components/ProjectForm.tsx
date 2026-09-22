@@ -1,4 +1,5 @@
 import type { ProjectFormProps, ProjectFormValues } from '../types'
+import { FloatingDepartmentSelect } from './shared/DepartmentSelect'
 
 function FloatingInput({
   id,
@@ -91,6 +92,9 @@ export function ProjectForm({ values, onChange, errors }: ProjectFormProps) {
         </div>
         <div className="col-span-2">
           <FloatingInput id="packageName" label="Package name" value={values.packageName} onChange={handle('packageName')} error={errors?.packageName} />
+        </div>
+        <div className="col-span-2">
+          <FloatingDepartmentSelect id="department" value={values.department} onChange={department => onChange({ department })} />
         </div>
       </div>
     </div>

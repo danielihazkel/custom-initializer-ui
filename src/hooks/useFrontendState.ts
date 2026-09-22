@@ -7,6 +7,8 @@ export interface FeForm {
   description: string
   scope: string
   appTitle: string
+  /** Department id ({{department}} in templates); '' = the server's default department. */
+  department: string
 }
 
 export interface FeState {
@@ -54,6 +56,7 @@ function defaultState(metadata: FrontendMetadata | null): FeState {
       description: d?.description ?? '',
       scope: d?.scope ?? '',
       appTitle: d?.appTitle ?? 'Demo',
+      department: '',
     },
     reactVersion: d?.reactVersion ?? '18',
     nodeVersion: d?.nodeVersion ?? '20',
@@ -243,6 +246,7 @@ export function buildFrontendQuery(s: FeState): string {
   if (s.form.description) qp.set('description', s.form.description)
   if (s.form.scope) qp.set('scope', s.form.scope)
   if (s.form.appTitle) qp.set('appTitle', s.form.appTitle)
+  if (s.form.department) qp.set('department', s.form.department)
   qp.set('reactVersion', s.reactVersion)
   qp.set('nodeVersion', s.nodeVersion)
   qp.set('packageManager', s.packageManager)
@@ -267,7 +271,7 @@ export function parseFrontendUrl(): Partial<FeState> | null {
   if (p.get('tab') !== 'frontend') return null
 
   const form: Partial<FeForm> = {}
-  for (const key of ['projectName', 'description', 'scope', 'appTitle'] as const) {
+  for (const key of ['projectName', 'description', 'scope', 'appTitle', 'department'] as const) {
     const v = p.get(key)
     if (v !== null) form[key] = v
   }

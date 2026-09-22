@@ -55,6 +55,11 @@ describe('normalizeMeta', () => {
     expect(normalizeMeta(undefined)).toEqual(DEFAULT_PROJECT_META)
     expect(normalizeMeta({ locale: 'he' }).locale).toBe('he')
   })
+
+  it('defaults the department to blank (the server default) and keeps a chosen one', () => {
+    expect(normalizeMeta({ groupId: 'g' }).department).toBe('')
+    expect(normalizeMeta({ department: 'fin' }).department).toBe('fin')
+  })
 })
 
 describe('describeSnapshotChange reorder labels', () => {
