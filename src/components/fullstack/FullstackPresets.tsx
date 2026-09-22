@@ -280,6 +280,16 @@ export function FullstackPresets({
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>{ex.icon || 'category'}</span>
                 <span className="font-semibold text-sm text-on-surface">{ex.name}</span>
+                {ex.pages && ex.pages.length > 0 && (
+                  <span
+                    className="ml-auto inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded"
+                    title={`Comes with a page layout: ${ex.pages.filter(p => !p.hidden).map(p => p.title || p.entity || p.id).join(', ')}`}
+                    data-example-layout
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>web</span>
+                    {ex.pages.filter(p => !p.hidden).length} pages
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-secondary leading-relaxed line-clamp-3">{ex.description}</p>
               <div className="mt-2 flex flex-wrap gap-1">

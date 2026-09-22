@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { AdminFullstackExample, FullstackEntityDef, Toast } from '../../../types'
+import type { AdminFullstackExample, ExampleSettings, FullstackEntityDef, FullstackPageDef, Toast } from '../../../types'
 import { AdminApiError, useAdminResource } from '../../../hooks/useAdminResource'
 import { invalidateFullstackExamples } from '../../../hooks/useFullstackExamples'
 import { useTeamModels } from '../../../hooks/useTeamModels'
@@ -10,8 +10,13 @@ import { DeleteConfirmDialog } from '../shared/DeleteConfirmDialog'
 import { StatusToast } from '../shared/StatusToast'
 import { FullstackExampleForm } from './FullstackExampleForm'
 
-/** The drawer's working copy: the entities are edited as JSON text and parsed on save. */
-export type ExampleDraft = Partial<Omit<AdminFullstackExample, 'entities'>> & { entitiesText: string }
+/** The drawer's working copy: the entities, page layout and settings are edited as JSON text
+ *  and parsed on save (blank layout / settings = none). */
+export type ExampleDraft = Partial<Omit<AdminFullstackExample, 'entities' | 'pages' | 'settings'>> & {
+  entitiesText: string
+  pagesText?: string
+  settingsText?: string
+}
 
 /** Mirrors FullstackExampleAdminController's slug rule. */
 const EXAMPLE_ID = /^[a-z][a-z0-9-]*$/
@@ -25,6 +30,8 @@ const EMPTY: ExampleDraft = {
   sortOrder: 0,
   enabled: true,
   entitiesText: '[]',
+  pagesText: '',
+  settingsText: '',
 }
 
 function toText(entities: unknown): string {
@@ -36,7 +43,12 @@ function toText(entities: unknown): string {
  * non-empty array, and the Fullstack editor's own validation (the server re-checks with the
  * generator's validator). Returns the errors and, when the JSON parsed, the entities.
  */
-export function validateFullstackExample(data: ExampleDraft): { errors: Record<string, string>; entities?: FullstackEntityDef[] } {
+export function validateFullstackExample(data: ExampleDraft): {
+  errors: Record<string, string>
+  entities?: FullstackEntityDef[]
+  pages?: FullstackPageDef[] | null
+  settings?: ExampleSettings | null
+} {
   const errors: Record<string, string> = {}
   if (!data.exampleId?.trim()) errors.exampleId = 'Required'
   else if (!EXAMPLE_ID.test(data.exampleId.trim())) errors.exampleId = "Lower-case letters, digits and '-', starting with a letter"
@@ -58,7 +70,26 @@ export function validateFullstackExample(data: ExampleDraft): { errors: Record<s
   } catch (err) {
     errors.entitiesText = `Not valid JSON: ${err instanceof Error ? err.message : String(err)}`
   }
-  return { errors, entities }
+  // The layout and settings are optional; their rules (entity references, known keys) are the
+  // server's — only the JSON shape is checked here.
+  const pages = parseOptionalJson(data.pagesText, 'array', 'pagesText', errors) as FullstackPageDef[] | null
+  const settings = parseOptionalJson(data.settingsText, 'object', 'settingsText', errors) as ExampleSettings | null
+  return { errors, entities, pages, settings }
+}
+
+/** Blank → null; otherwise the parsed JSON when it has the expected shape, else an error. */
+function parseOptionalJson(text: string | undefined, shape: 'array' | 'object', key: string,
+                           errors: Record<string, string>): unknown {
+  if (!text || text.trim() === '') return null
+  try {
+    const parsed: unknown = JSON.parse(text)
+    const ok = shape === 'array' ? Array.isArray(parsed) : parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+    if (!ok) errors[key] = shape === 'array' ? 'Must be a JSON array of pages' : 'Must be a JSON object'
+    return ok ? parsed : null
+  } catch (err) {
+    errors[key] = `Not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+    return null
+  }
 }
 
 /** The server's `{error, detail}` message when there is one, else the HTTP status. */
@@ -86,8 +117,13 @@ export function FullstackExamplesTab() {
 
   function openNew() { setEditing({ ...EMPTY }); setIsNew(true); setErrors({}); setDrawerOpen(true) }
   function openEdit(row: AdminFullstackExample) {
-    const { entities, ...rest } = row
-    setEditing({ ...rest, entitiesText: toText(entities) })
+    const { entities, pages, settings, ...rest } = row
+    setEditing({
+      ...rest,
+      entitiesText: toText(entities),
+      pagesText: pages ? toText(pages) : '',
+      settingsText: settings ? toText(settings) : '',
+    })
     setIsNew(false)
     setErrors({})
     setDrawerOpen(true)
@@ -108,10 +144,10 @@ export function FullstackExamplesTab() {
 
   async function handleSave() {
     if (!editing) return
-    const { errors: e, entities } = validateFullstackExample(editing)
+    const { errors: e, entities, pages, settings } = validateFullstackExample(editing)
     if (Object.keys(e).length > 0 || !entities) { setErrors(e); return }
-    const { entitiesText: _text, ...rest } = editing
-    void _text
+    const { entitiesText: _text, pagesText: _pages, settingsText: _settings, ...rest } = editing
+    void _text; void _pages; void _settings
     const body = {
       ...rest,
       exampleId: rest.exampleId?.trim(),
@@ -119,6 +155,8 @@ export function FullstackExamplesTab() {
       icon: rest.icon?.trim() || null,
       description: rest.description?.trim() || null,
       entities,
+      pages: pages ?? null,
+      settings: settings ?? null,
     }
     setSaving(true)
     try {

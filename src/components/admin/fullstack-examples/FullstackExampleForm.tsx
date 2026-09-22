@@ -95,6 +95,26 @@ export function FullstackExampleForm({ data, errors, onChange, teamModels, onImp
           onChange={e => onChange({ entitiesText: e.target.value })}
         />
       </FieldRow>
+      <FieldRow label="Pages (JSON)" error={errors.pagesText}
+                hint="Optional frontend page layout — the pages array of a POST /starter-fullstack.zip body. Blank = the classic dashboard + one list page per entity">
+        <textarea
+          className={`${inputClass} font-mono text-xs`}
+          rows={8}
+          spellCheck={false}
+          value={data.pagesText ?? ''}
+          onChange={e => onChange({ pagesText: e.target.value })}
+        />
+      </FieldRow>
+      <FieldRow label="Settings (JSON)" error={errors.settingsText}
+                hint="Optional editor settings applied on load: locale, dashboardTitle, dashboardOverview, backendTemplateSet, frontendTemplateSet, colorPalette, scaffold[]">
+        <textarea
+          className={`${inputClass} font-mono text-xs`}
+          rows={4}
+          spellCheck={false}
+          value={data.settingsText ?? ''}
+          onChange={e => onChange({ settingsText: e.target.value })}
+        />
+      </FieldRow>
       <FieldRow label="Enabled" hint="Disabled examples stay here but are not offered on the Fullstack tab">
         <label className="inline-flex items-center gap-2 text-sm text-on-surface">
           <input

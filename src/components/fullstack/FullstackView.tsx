@@ -36,7 +36,9 @@ import { summarizeEntity } from './summary'
 import { frontendSetDefaults } from './frontendSetDefaults'
 import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
-import { cloneExample, type ExampleModel } from './examples'
+import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
+import { PageLayoutPanel } from './PageLayoutPanel'
+import { pageLayoutProblems } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
@@ -49,7 +51,7 @@ import { useFullstackPreview } from '../../hooks/useFullstackPreview'
 import { readStoredPresetSnapshots, useFullstackPresets } from '../../hooks/useFullstackPresets'
 import { TeamModelError, useTeamModels } from '../../hooks/useTeamModels'
 import { useFullstackExamples } from '../../hooks/useFullstackExamples'
-import type { TeamModelSummary } from '../../types'
+import type { ExampleSettings, FullstackPageDef, TeamModelSummary } from '../../types'
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
 import { canonicalVersion, validateEntities, validateMeta, countMetaErrors, type MetaErrors } from './validation'
 
@@ -76,6 +78,7 @@ const LS = {
   frontendSet: 'fullstack:frontendSet',
   opts: 'fullstack:opts',
   palette: 'fullstack:palette',
+  pages: 'fullstack:pages',
   collapsed: 'fullstack:collapsed',
   setup: 'fullstack:setup',
   graph: 'fullstack:graph',
@@ -124,6 +127,7 @@ function readStoredSnapshot(): FullstackSnapshot {
     backendSet: item(LS.backendSet) ?? 'spring-jpa-crud',
     frontendSet: item(LS.frontendSet) ?? 'react-tailwind-crud',
     colorPalette: item(LS.palette) ?? '',
+    pages: loadJson<FullstackPageDef[]>(LS.pages, []),
   })
 }
 
@@ -160,6 +164,8 @@ export function FullstackView() {
   const [scaffoldOpts, setScaffoldOpts] = useState<string[]>(() => shared?.scaffoldOpts ?? loadJson<string[]>(LS.opts, []))
   // '' = follow the frontend set's default palette (the backend resolves it; nothing is sent).
   const [colorPalette, setColorPalette] = useState<string>(() => shared ? (shared.colorPalette ?? '') : (localStorage.getItem(LS.palette) ?? ''))
+  // The frontend page layout — empty = the classic shell. Arrives with an example / preset / link.
+  const [pages, setPages] = useState<FullstackPageDef[]>(() => shared ? (shared.pages ?? []) : loadJson<FullstackPageDef[]>(LS.pages, []))
   // Collapsed cards survive a refresh: entities persist with their uids, so the uid set stays valid.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(shared ? [] : loadJson<string[]>(LS.collapsed, [])))
   const [history, setHistory] = useState<History<FullstackSnapshot>>(() => emptyHistory())
@@ -237,7 +243,9 @@ export function FullstackView() {
     () => validateMeta(meta, { bootVersions, javaVersions }),
     [meta, bootVersions, javaVersions],
   )
-  const errorCount = entityErrors.count + countMetaErrors(metaErrors)
+  // A layout outlives the entities it names (rename / delete) — flagged here, not as a 400 later.
+  const pageProblems = useMemo(() => pageLayoutProblems(pages, entities), [pages, entities])
+  const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageProblems.length
   const hasErrors = errorCount > 0
 
   // Persist form state so a refresh doesn't lose the user's work (mirrors useProjectState).
@@ -271,6 +279,7 @@ export function FullstackView() {
   useEffect(() => { persist(LS.frontendSet, frontendSet) }, [frontendSet])
   useEffect(() => { persist(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
   useEffect(() => { persist(LS.palette, colorPalette) }, [colorPalette])
+  useEffect(() => { persist(LS.pages, JSON.stringify(pages)) }, [pages])
   useEffect(() => { persist(LS.collapsed, JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { persist(LS.graph, JSON.stringify(showGraph)) }, [showGraph])
   useEffect(() => { persist(LS.setup, setupOpen ? 'open' : 'closed') }, [setupOpen])
@@ -278,8 +287,8 @@ export function FullstackView() {
 
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
   const currentSnapshot = useMemo(
-    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette }),
-    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette],
+    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages }),
+    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages],
   )
   const snapshotRef = useRef(currentSnapshot)
   snapshotRef.current = currentSnapshot
@@ -453,6 +462,7 @@ export function FullstackView() {
     setBackendSet(s.backendSet)
     setFrontendSet(s.frontendSet)
     setColorPalette(s.colorPalette ?? '')
+    setPages(s.pages ? JSON.parse(JSON.stringify(s.pages)) as FullstackPageDef[] : [])
     if (keepView) {
       const alive = new Set(next.map(e => e.uid))
       setCollapsed(prev => new Set([...prev].filter(uid => alive.has(uid))))
@@ -496,9 +506,39 @@ export function FullstackView() {
   function loadExample(example: ExampleModel) {
     pushUndoEntry(`Loaded the ${example.name} example`)
     setEntities(withUids(cloneExample(example)))
+    // An example replaces the model, layout included: one without pages means the classic shell.
+    setPages(cloneExamplePages(example))
+    applyExampleSettings(example.settings)
     setCollapsed(new Set())
     baselineRef.current = null
-    setToast({ message: `Loaded the ${example.name} example (${example.entities.length} entities)`, type: 'success' })
+    const layout = example.pages?.length ? ` and ${example.pages.length} pages` : ''
+    setToast({ message: `Loaded the ${example.name} example (${example.entities.length} entities${layout})`, type: 'success' })
+  }
+
+  /** The editor settings an example carries. Only the keys present change; a template set or
+   *  palette this installation doesn't have is skipped rather than selected blind. */
+  function applyExampleSettings(settings: ExampleSettings | null | undefined) {
+    if (!settings) return
+    const metaPatch: Partial<ProjectMeta> = {}
+    if (settings.locale) metaPatch.locale = settings.locale
+    if (settings.dashboardTitle !== undefined) metaPatch.dashboardTitle = settings.dashboardTitle
+    if (settings.dashboardOverview !== undefined) metaPatch.dashboardOverview = settings.dashboardOverview
+    if (Object.keys(metaPatch).length > 0) setMeta(m => ({ ...m, ...metaPatch }))
+    if (settings.scaffold) setScaffoldOpts([...settings.scaffold])
+    if (settings.backendTemplateSet && backendSets.some(x => x.setKey === settings.backendTemplateSet)) {
+      setBackendSet(settings.backendTemplateSet)
+    }
+    if (settings.frontendTemplateSet && frontendSets.some(x => x.setKey === settings.frontendTemplateSet)) {
+      setFrontendSet(settings.frontendTemplateSet)
+    }
+    if (settings.colorPalette && palettes.some(x => x.id === settings.colorPalette)) {
+      setColorPalette(settings.colorPalette)
+    }
+  }
+
+  function clearPageLayout() {
+    pushUndoEntry('Switched to the classic page layout')
+    setPages([])
   }
 
   function loadPreset(snapshot: FullstackSnapshot, label = 'Loaded a preset') {
@@ -702,6 +742,7 @@ export function FullstackView() {
       opts: scaffoldOpts.length ? { scaffold: scaffoldOpts } : undefined,
       colorPalette: colorPalette || undefined,
       entities: stripUids(entities),
+      pages: pages.length ? pages : undefined,
     }
   }
 
@@ -728,6 +769,10 @@ export function FullstackView() {
     if (uid) {
       // The card may be collapsed or hidden by the outline filter — revealRow handles both.
       revealRow(uid, { focus: '[aria-invalid="true"], [data-error]' })
+      return
+    }
+    if (entityErrors.count === 0 && pageProblems.length > 0) {
+      scrollToElement(document.getElementById('fs-pages'), 'center')
       return
     }
     requestAnimationFrame(() => {
@@ -1161,6 +1206,8 @@ export function FullstackView() {
         )}
       </section>
 
+      <PageLayoutPanel pages={pages} problems={pageProblems} onClear={clearPageLayout} />
+
       <section id="fs-entities" className="space-y-4">
         <EntitiesToolbar
           entityCount={entities.length}
@@ -1329,7 +1376,7 @@ export function FullstackView() {
               ? 'Open the shared model?'
               : `Load ${pendingLoad.snapshot.meta.artifactId || 'this preset'}?`}
           message={pendingLoad.kind === 'example'
-            ? 'This replaces your current entities, which aren\'t saved as a preset yet. You can undo it afterwards (Ctrl+Z).'
+            ? `This replaces your current entities and page layout${pendingLoad.example.settings ? ' and applies the example\'s settings' : ''}, which aren't saved as a preset yet. You can undo it afterwards (Ctrl+Z).`
             : pendingLoad.kind === 'shared'
               ? `This link carries "${pendingLoad.snapshot.meta.artifactId || 'a model'}" (${pendingLoad.snapshot.entities.length} entit${pendingLoad.snapshot.entities.length === 1 ? 'y' : 'ies'}). Your draft here has edits that aren't saved as a preset — Replace loads the link over it (undoable with Ctrl+Z); Keep mine leaves your draft as it is.`
               : 'This replaces your current entities, dependencies and settings, which aren\'t saved as a preset yet. You can undo it afterwards (Ctrl+Z).'}

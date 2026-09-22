@@ -4,7 +4,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { FullstackView } from './FullstackView'
 import { encodeShare } from './shareLink'
 import { DEFAULT_PROJECT_META, makeSnapshot, type FullstackSnapshot } from './snapshot'
-import type { FullstackEntityDef } from '../../types'
+import type { ExampleModel, FullstackEntityDef } from '../../types'
+import { invalidateFullstackExamples } from '../../hooks/useFullstackExamples'
 
 // The presets strip animates its save prompt; the view under test only needs it to render.
 vi.mock('framer-motion', () => ({
@@ -272,5 +273,71 @@ describe('FullstackView — editor safety nets', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load theirs' }))
     expect(entityNames()).toEqual(['Ledger'])
     expect(document.querySelector('[data-external-draft]')).toBeNull()
+  })
+})
+
+describe('FullstackView — page layouts', () => {
+  const example: ExampleModel = {
+    id: 'desk', name: 'Desk', description: 'A support desk', icon: 'support_agent',
+    entities: [{ name: 'Ticket', fields: [pk, { name: 'status', type: 'ENUM', enumValues: ['OPEN', 'DONE'] }] }],
+    pages: [
+      { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'kpi', entity: 'Ticket' }, { kind: 'bar', entity: 'Ticket' }] },
+      { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ title: 'Open', page: 'open' }, { page: 'all' }] },
+      { id: 'open', type: 'entity-list', entity: 'Ticket', hidden: true, presetFilter: { status: 'OPEN' } },
+      { id: 'all', type: 'entity-list', entity: 'Ticket', hidden: true },
+    ],
+    settings: { scaffold: ['csvExport'], dashboardTitle: 'Support' },
+  }
+
+  function mockServer() {
+    invalidateFullstackExamples()
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/metadata/fullstack/examples') return Promise.resolve(response(200, [example]))
+      if (url === '/starter-fullstack.zip' && init?.method === 'POST') return Promise.resolve(response(200, {}))
+      return Promise.resolve(response(404, {}))
+    })
+  }
+
+  async function loadDesk() {
+    fireEvent.click(await screen.findByTitle('Replace the current entities with the Desk example'))
+    const confirm = screen.queryByRole('button', { name: 'Load' })
+    if (confirm) fireEvent.click(confirm)
+    return screen.findByRole('region', { name: 'Frontend page layout' })
+  }
+
+  it('loads an example with its layout and settings, and sends both on Generate', async () => {
+    mockServer()
+    render(<FullstackView />)
+    expect(screen.queryByRole('region', { name: 'Frontend page layout' })).toBeNull()
+    const panel = await loadDesk()
+
+    expect(panel.querySelector('[data-page-id="home"]')?.textContent).toContain('1 count tile · 1 breakdown chart')
+    expect(panel.querySelector('[data-page-id="queue"]')?.textContent).toContain('Open | all')
+    expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('Tab only')
+    expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('filtered on status = OPEN')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Fullstack ZIP' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/starter-fullstack.zip', expect.objectContaining({ method: 'POST' })))
+    const post = fetchMock.mock.calls.find(([url, init]) => url === '/starter-fullstack.zip' && (init as RequestInit | undefined)?.method === 'POST')!
+    const body = JSON.parse((post[1] as RequestInit).body as string)
+    expect(body.pages.map((p: { id: string }) => p.id)).toEqual(['home', 'queue', 'open', 'all'])
+    expect(body.opts).toEqual({ scaffold: ['csvExport'] })
+    expect(body.dashboardTitle).toBe('Support')
+  })
+
+  it('flags a page whose entity was renamed away, and drops the layout on request (undoably)', async () => {
+    mockServer()
+    render(<FullstackView />)
+    const panel = await loadDesk()
+
+    fireEvent.change(screen.getByLabelText('Entity name'), { target: { value: 'Issue' } })
+    const problems = panel.querySelector('[data-page-layout-problems]')
+    expect(problems?.textContent).toContain('Page “open” lists “Ticket”, which is no longer an entity')
+    expect(problems?.textContent).toContain('Page “Home” has a widget for “Ticket”')
+
+    fireEvent.click(screen.getByRole('button', { name: /Use classic layout/ }))
+    expect(screen.queryByRole('region', { name: 'Frontend page layout' })).toBeNull()
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(await screen.findByRole('region', { name: 'Frontend page layout' })).toBeTruthy()
   })
 })

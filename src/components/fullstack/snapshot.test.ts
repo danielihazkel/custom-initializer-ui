@@ -120,3 +120,25 @@ describe('snapshotChangeKey', () => {
     expect(snapshotChangeKey(two, makeSnapshot(two))).toBe('none')
   })
 })
+
+describe('snapshot page layout', () => {
+  const pages = [{ id: 'home', type: 'dashboard' as const, widgets: [{ kind: 'kpi' as const, entity: 'Order' }] }]
+
+  it('carries a layout, and leaves the key out when there is none so older snapshots still compare equal', () => {
+    expect(makeSnapshot({ ...snapshot, pages }).pages).toEqual(pages)
+    expect('pages' in makeSnapshot({ ...snapshot, pages: [] })).toBe(false)
+    expect(makeSnapshot({ ...snapshot, pages: [] })).toEqual(makeSnapshot(snapshot))
+  })
+
+  it('round-trips through export and rejects a non-array layout', () => {
+    const result = parseExportedModel(JSON.stringify(toExportedModel({ ...snapshot, pages })))
+    expect('snapshot' in result && result.snapshot.pages).toEqual(pages)
+    expect(isSnapshot({ ...makeSnapshot(snapshot), pages: {} })).toBe(false)
+  })
+
+  it('names a layout change in the undo history', () => {
+    const next = makeSnapshot({ ...snapshot, pages })
+    expect(describeSnapshotChange(makeSnapshot(snapshot), next)).toBe('Changed page layout')
+    expect(snapshotChangeKey(makeSnapshot(snapshot), next)).toBe('pages')
+  })
+})

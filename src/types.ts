@@ -463,6 +463,8 @@ export interface FullstackStarterRequest {
   /** Seeded colour-palette id for the generated frontend; omitted = the frontend set's default. */
   colorPalette?: string
   entities: FullstackEntityDef[]
+  /** Frontend page layout; omitted = the classic shell (a dashboard + one list page per entity). */
+  pages?: FullstackPageDef[]
 }
 
 export interface AdminDepartment {
@@ -481,6 +483,8 @@ export interface AdminFullstackExample {
   description: string | null
   icon: string | null
   entities: FullstackEntityDef[]
+  pages: FullstackPageDef[] | null
+  settings: ExampleSettings | null
   sortOrder: number
   enabled: boolean
 }
@@ -493,6 +497,55 @@ export interface ExampleModel {
   /** Material Symbols icon name. */
   icon: string | null
   entities: FullstackEntityDef[]
+  /** The frontend page layout the example showcases; null = the classic shell. */
+  pages?: FullstackPageDef[] | null
+  /** Editor settings the example applies on load (only the keys present). */
+  settings?: ExampleSettings | null
+}
+
+/** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
+export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs'
+
+/** A dashboard widget: a record count, a count by an enum/boolean field, or the latest rows. */
+export interface FullstackWidgetDef {
+  kind: 'kpi' | 'bar' | 'recent'
+  entity: string
+  title?: string
+  /** bar: the enum/boolean field (default: the entity's first enum, else first boolean). */
+  groupBy?: string
+  /** recent: how many rows (1–20, default 5). */
+  limit?: number
+}
+
+/** One page of the generated frontend (the `pages` of a fullstack request). */
+export interface FullstackPageDef {
+  /** Lower-case slug: the nav id and the screen's file name (`tickets-open` → TicketsOpenScreen). */
+  id: string
+  type: FullstackPageType
+  /** Nav label; required for tabs, else defaults to the entity's plural label / "Dashboard". */
+  title?: string
+  description?: string
+  /** Out of the navigation — reachable only as a tab. */
+  hidden?: boolean
+  /** entity-list */
+  entity?: string
+  /** entity-list: enum/boolean field → value the page opens filtered on. */
+  presetFilter?: Record<string, string>
+  /** dashboard */
+  widgets?: FullstackWidgetDef[]
+  /** tabs: 2–6 other (non-tabs) pages. */
+  tabs?: { title?: string; page: string }[]
+}
+
+/** The editor state an example sets on load — FullstackExampleAdminController.validateSettings. */
+export interface ExampleSettings {
+  dashboardTitle?: string
+  dashboardOverview?: string
+  locale?: 'en' | 'he'
+  backendTemplateSet?: string
+  frontendTemplateSet?: string
+  colorPalette?: string
+  scaffold?: string[]
 }
 
 export interface AdminColorPalette {

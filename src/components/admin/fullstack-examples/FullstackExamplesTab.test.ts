@@ -35,4 +35,25 @@ describe('validateFullstackExample', () => {
     const noPk = JSON.stringify([{ name: 'Item', fields: [{ name: 'title', type: 'STRING' }] }])
     expect(validateFullstackExample(draft({ entitiesText: noPk })).errors.entitiesText).toMatch(/problem/)
   })
+
+  it('treats a blank layout / settings as none and parses them when given', () => {
+    const blank = validateFullstackExample(draft({ pagesText: '  ', settingsText: '' }))
+    expect(blank.errors).toEqual({})
+    expect(blank.pages).toBeNull()
+    expect(blank.settings).toBeNull()
+    const given = validateFullstackExample(draft({
+      pagesText: JSON.stringify([{ id: 'items', type: 'entity-list', entity: 'Item' }]),
+      settingsText: JSON.stringify({ locale: 'he' }),
+    }))
+    expect(given.errors).toEqual({})
+    expect(given.pages?.[0].id).toBe('items')
+    expect(given.settings?.locale).toBe('he')
+  })
+
+  it('rejects a layout that is not an array and settings that are not an object', () => {
+    const r = validateFullstackExample(draft({ pagesText: '{}', settingsText: '[]' }))
+    expect(r.errors.pagesText).toMatch(/JSON array of pages/)
+    expect(r.errors.settingsText).toMatch(/JSON object/)
+    expect(validateFullstackExample(draft({ pagesText: '[' })).errors.pagesText).toMatch(/Not valid JSON/)
+  })
 })
