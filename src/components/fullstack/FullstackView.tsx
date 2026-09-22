@@ -37,8 +37,8 @@ import { frontendSetDefaults } from './frontendSetDefaults'
 import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
-import { PageLayoutPanel } from './PageLayoutPanel'
-import { pageLayoutProblems } from './pageLayout'
+import { PagesEditor } from './PagesEditor'
+import { renameEntityInPages, renameFieldInPages, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
@@ -244,8 +244,8 @@ export function FullstackView() {
     [meta, bootVersions, javaVersions],
   )
   // A layout outlives the entities it names (rename / delete) — flagged here, not as a 400 later.
-  const pageProblems = useMemo(() => pageLayoutProblems(pages, entities), [pages, entities])
-  const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageProblems.length
+  const pageValidation = useMemo(() => validatePages(pages, entities), [pages, entities])
+  const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageValidation.count
   const hasErrors = errorCount > 0
 
   // Persist form state so a refresh doesn't lose the user's work (mirrors useProjectState).
@@ -295,6 +295,32 @@ export function FullstackView() {
   // The live entity list (with uids) for callbacks that outlive a render — undo's uid reconciliation.
   const entitiesRef = useRef(entities)
   entitiesRef.current = entities
+
+  // A page layout names entities and fields; the editor renames them by uid, so the references
+  // follow instead of breaking. (A *deleted* entity is left in place and flagged — silently
+  // dropping the page that shows it would lose more than it saves.)
+  const namesByUidRef = useRef<Map<string, string>>(new Map())
+  useEffect(() => {
+    const before = namesByUidRef.current
+    const now = new Map<string, string>()
+    for (const e of entities) {
+      if (e.uid) now.set(e.uid, e.name)
+      for (const f of e.fields) if (f.uid) now.set(f.uid, `${e.name}.${f.name}`)
+    }
+    if (before.size > 0) {
+      for (const [uid, name] of now) {
+        const was = before.get(uid)
+        if (!was || was === name) continue
+        const [wasEntity, wasField] = was.split('.')
+        const [nowEntity, nowField] = name.split('.')
+        if (wasField == null && nowEntity.trim()) setPages(ps => renameEntityInPages(ps, wasEntity, nowEntity))
+        else if (wasField != null && nowField?.trim() && wasField !== nowField) {
+          setPages(ps => renameFieldInPages(ps, nowEntity, wasField, nowField))
+        }
+      }
+    }
+    namesByUidRef.current = now
+  }, [entities])
 
   // Keep the URL in step (debounced) so the header's Share button copies a link that reproduces
   // this model elsewhere. The frontend tab does the same with plain query params; the entity
@@ -771,7 +797,7 @@ export function FullstackView() {
       revealRow(uid, { focus: '[aria-invalid="true"], [data-error]' })
       return
     }
-    if (entityErrors.count === 0 && pageProblems.length > 0) {
+    if (entityErrors.count === 0 && pageValidation.count > 0) {
       scrollToElement(document.getElementById('fs-pages'), 'center')
       return
     }
@@ -1206,7 +1232,14 @@ export function FullstackView() {
         )}
       </section>
 
-      <PageLayoutPanel pages={pages} problems={pageProblems} onClear={clearPageLayout} />
+      <PagesEditor
+        pages={pages}
+        entities={entities}
+        validation={pageValidation}
+        onChange={setPages}
+        pushUndo={pushUndoEntry}
+        onClear={clearPageLayout}
+      />
 
       <section id="fs-entities" className="space-y-4">
         <EntitiesToolbar

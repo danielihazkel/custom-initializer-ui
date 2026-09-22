@@ -504,7 +504,7 @@ export interface ExampleModel {
 }
 
 /** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
-export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs'
+export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record'
 
 /** A dashboard widget: a record count, a count by an enum/boolean field, or the latest rows. */
 export interface FullstackWidgetDef {
@@ -533,8 +533,18 @@ export interface FullstackPageDef {
   presetFilter?: Record<string, string>
   /** dashboard */
   widgets?: FullstackWidgetDef[]
-  /** tabs: 2–6 other (non-tabs) pages. */
+  /** tabs: 2–6 other pages (never a tabs or record page). */
   tabs?: { title?: string; page: string }[]
+  /** master-detail: the entity listed on the left. Needs a single primary key. */
+  parent?: string
+  /** master-detail: the entity listed for the selected parent. */
+  child?: string
+  /** master-detail: the child's MANY_TO_ONE field pointing at the parent. Optional while the
+   *  child has exactly one such relation; required when it has several. */
+  via?: string
+  /** record: the related entities shown as tabs under the record. Omitted = every entity with a
+   *  MANY_TO_ONE to it; an empty array = none. */
+  childTabs?: string[]
 }
 
 /** The editor state an example sets on load — FullstackExampleAdminController.validateSettings. */

@@ -308,7 +308,8 @@ describe('FullstackView — page layouts', () => {
   it('loads an example with its layout and settings, and sends both on Generate', async () => {
     mockServer()
     render(<FullstackView />)
-    expect(screen.queryByRole('region', { name: 'Frontend page layout' })).toBeNull()
+    // No layout yet: the editor offers to seed one instead of listing pages.
+    expect(document.querySelector('[data-seed-layout]')).toBeTruthy()
     const panel = await loadDesk()
 
     expect(panel.querySelector('[data-page-id="home"]')?.textContent).toContain('1 count tile · 1 breakdown chart')
@@ -325,19 +326,48 @@ describe('FullstackView — page layouts', () => {
     expect(body.dashboardTitle).toBe('Support')
   })
 
-  it('flags a page whose entity was renamed away, and drops the layout on request (undoably)', async () => {
+  it('follows an entity rename into the layout, and drops the layout on request (undoably)', async () => {
     mockServer()
     render(<FullstackView />)
     const panel = await loadDesk()
 
     fireEvent.change(screen.getByLabelText('Entity name'), { target: { value: 'Issue' } })
-    const problems = panel.querySelector('[data-page-layout-problems]')
-    expect(problems?.textContent).toContain('Page “open” lists “Ticket”, which is no longer an entity')
-    expect(problems?.textContent).toContain('Page “Home” has a widget for “Ticket”')
+    expect(panel.querySelector('[data-page-layout-problems]')).toBeNull()
+    expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('Issue list')
 
     fireEvent.click(screen.getByRole('button', { name: /Use classic layout/ }))
-    expect(screen.queryByRole('region', { name: 'Frontend page layout' })).toBeNull()
+    expect(document.querySelector('[data-page-id="open"]')).toBeNull()
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    expect(await screen.findByRole('region', { name: 'Frontend page layout' })).toBeTruthy()
+    await waitFor(() => expect(document.querySelector('[data-page-id="open"]')).toBeTruthy())
+  })
+
+  it('flags a page whose entity was deleted, rather than dropping the page', async () => {
+    mockServer()
+    render(<FullstackView />)
+    const panel = await loadDesk()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove entity' }))
+
+    await waitFor(() => {
+      const problems = panel.querySelector('[data-page-layout-problems]')
+      expect(problems?.textContent).toContain('Page “open” lists “Ticket”, which is no longer an entity')
+    })
+  })
+
+  it('starts a layout from the entities and sends it on Generate', async () => {
+    mockServer()
+    render(<FullstackView />)
+    fireEvent.change(await screen.findByLabelText('Entity name'), { target: { value: 'Invoice' } })
+    fireEvent.click(screen.getByRole('button', { name: /Start from my entities/ }))
+
+    const panel = screen.getByRole('region', { name: 'Frontend page layout' })
+    expect([...panel.querySelectorAll('[data-page-id]')].map(el => el.getAttribute('data-page-id')))
+      .toEqual(['dashboard', 'invoice'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Fullstack ZIP' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/starter-fullstack.zip', expect.objectContaining({ method: 'POST' })))
+    const post = fetchMock.mock.calls.find(([url, init]) => url === '/starter-fullstack.zip' && (init as RequestInit | undefined)?.method === 'POST')!
+    const body = JSON.parse((post[1] as RequestInit).body as string)
+    expect(body.pages.map((p: { id: string }) => p.id)).toEqual(['dashboard', 'invoice'])
   })
 })

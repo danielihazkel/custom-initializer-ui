@@ -64,6 +64,17 @@ a clickable issue count that jumps to the first problem (`#fs-meta`/`[data-entit
 (`shareLink.ts`, base64url JSON, debounced; `writeShareToLocation` returns `too-large` when it can't
 fit, which the sticky bar reports) so the header's Share button reproduces the model; on load `?fs=`
 beats localStorage, `App.tsx` keeps `?tab=fullstack` in step and strips `fs` when leaving the tab.
+**Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`, section `#fs-pages`): the layout the request
+sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
+*Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;
+*Use classic layout* drops it again (undoable). Pages are added from a type gallery (dashboard,
+list, tabs, master–detail, record), reordered by drag (`useDragReorder`), hidden from the nav,
+and configured in per-type forms; a page id follows its title (`slugify`) until it is typed by
+hand. `validatePages` mirrors `FullstackPageValidator` and returns both inline messages per control
+(`byPage[index][field]`) and the problem sentences the error count reads. Entity and field renames
+are followed into every reference (`renameEntityInPages`/`renameFieldInPages`, driven by a uid map
+in `FullstackView`); a *deleted* entity is deliberately left flagged rather than silently dropped.
+
 `snapshot.ts` defines `FullstackSnapshot`/`ProjectMeta` (uids stripped; `colorPalette` optional) — the
 unit presets, recents, undo, share links, team models and JSON files carry. `DEFAULT_PROJECT_META` +
 `normalizeMeta` fill in keys older stored models predate (name/description/version/packaging/`locale`),
