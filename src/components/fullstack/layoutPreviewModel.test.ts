@@ -86,4 +86,33 @@ describe('buildLayoutPreview', () => {
     expect(preview.screens[0].title).toBe('לוח בקרה')
     expect(preview.screens[6]).toMatchObject({ type: 'broken', message: 'No entity “Ghost”' })
   })
+
+  it('groups the nav and draws each page with its icon', () => {
+    const grouped: FullstackPageDef[] = pages.map(p =>
+      p.id === 'queue' ? { ...p, group: 'Work', icon: 'Inbox' as const } : p.id === 'revenue' ? { ...p, group: 'Work' } : p)
+    const preview = buildLayoutPreview(grouped, entities, ctx)
+    expect(preview.sections.map(s => [s.group, s.items.map(n => n.index)])).toEqual([
+      [undefined, [0]],
+      ['Work', [2, 5]],
+      [undefined, [3]],
+    ])
+    expect(preview.nav.map(n => n.index)).toEqual([0, 2, 5, 3])
+    expect(preview.nav.map(n => n.icon)).toEqual(['dashboard', 'inbox', 'bar_chart', 'vertical_split'])
+    expect(preview.nav[0].start).toBe(true)
+  })
+
+  it('lays widgets out by span and shows the period and a widget’s filter', () => {
+    const dashboard: FullstackPageDef = {
+      id: 'desk', type: 'dashboard', dateRange: 'ytd', widgets: [
+        { kind: 'kpi', entity: 'Order', presetFilter: { status: 'OPEN' } },
+        { kind: 'line', entity: 'Order', span: 4 },
+        { kind: 'bar', entity: 'Order', span: 1 },
+      ],
+    }
+    const screen = buildLayoutPreview([dashboard], entities, ctx).screens[0]
+    if (screen.type !== 'dashboard') throw new Error(screen.type)
+    expect(screen.period).toBe('This year')
+    expect(screen.widgets.map(w => w.span)).toEqual([1, 4, 1])
+    expect(screen.widgets[0].filters).toEqual(['Status: Waiting'])
+  })
 })

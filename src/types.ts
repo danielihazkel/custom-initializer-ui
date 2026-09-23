@@ -506,11 +506,20 @@ export interface ExampleModel {
 /** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
 export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record' | 'report'
 
+/** The lucide icons a page may show in the generated nav (FullstackPageValidator.NAV_ICONS). */
+export type FullstackNavIcon =
+  | 'BarChart3' | 'Building2' | 'Calendar' | 'FileText' | 'Inbox' | 'Layers' | 'LayoutDashboard' | 'ListChecks'
+  | 'Package' | 'PanelLeft' | 'Settings' | 'ShoppingCart' | 'Star' | 'Table2' | 'Tag' | 'Ticket' | 'Truck' | 'Users'
+  | 'Wallet' | 'Wand2'
+
 /** How a tile or chart reduces the rows it covers. Anything but `count` needs a numeric field. */
 export type FullstackAgg = 'count' | 'sum' | 'avg' | 'min' | 'max'
 
 /** The granularity a time series buckets its date field into. */
 export type FullstackBucket = 'day' | 'month' | 'year'
+
+/** The periods a dashboard's picker offers, each ending today. */
+export type FullstackDateRange = 'all' | '7d' | '30d' | '90d' | 'ytd' | '12m'
 
 /** A dashboard widget: one number, a breakdown by an enum/boolean field, a time series over a
  *  date field, or the latest rows. */
@@ -528,6 +537,14 @@ export interface FullstackWidgetDef {
   field?: string
   /** recent: how many rows (1–20, default 5). */
   limit?: number
+  /** Dashboard grid columns (1–4); default 1 for a tile, 2 for a chart or list. */
+  span?: number
+  /** Enum/boolean field → value the widget is limited to. */
+  presetFilter?: Record<string, string>
+  /** recent: the column it orders by, newest first (default: the primary key). */
+  sortBy?: string
+  /** The date the dashboard's period picker limits (default: the entity's first filterable date). */
+  dateField?: string
 }
 
 /** A report page's single chart: bars when `groupBy` is an enum/boolean, a line when it is a date. */
@@ -548,12 +565,18 @@ export interface FullstackPageDef {
   description?: string
   /** Out of the navigation — reachable only as a tab. */
   hidden?: boolean
+  /** Nav section (visible pages only): pages sharing a group are listed together under its name. */
+  group?: string
+  /** Nav icon (visible pages only); default: the page type's own. */
+  icon?: FullstackNavIcon
   /** entity-list */
   entity?: string
   /** entity-list: enum/boolean field → value the page opens filtered on. */
   presetFilter?: Record<string, string>
   /** dashboard */
   widgets?: FullstackWidgetDef[]
+  /** dashboard: a period picker over the widgets' dates, opening on this period. */
+  dateRange?: FullstackDateRange
   /** tabs: 2–6 other pages (never a tabs or record page). */
   tabs?: { title?: string; page: string }[]
   /** master-detail: the entity listed on the left. Needs a single primary key. */

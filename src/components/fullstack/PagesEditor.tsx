@@ -3,7 +3,9 @@ import type {
   FullstackAgg,
   FullstackBucket,
   FullstackChartDef,
+  FullstackDateRange,
   FullstackEntityDef,
+  FullstackNavIcon,
   FullstackPageDef,
   FullstackPageType,
   FullstackWidgetDef,
@@ -18,21 +20,29 @@ import { useStableKeys } from './rowKeys'
 import { focusWithoutClipping, scrollToElement } from './scroll'
 import { useDragReorder } from './useDragReorder'
 import {
+  DATE_RANGES,
+  DEFAULT_NAV_ICON,
+  MAX_GROUP,
   MAX_PAGES,
   MAX_RECENT_LIMIT,
+  MAX_SPAN,
+  NAV_ICONS,
   MAX_TABS,
   MAX_WIDGETS,
   PAGE_TYPE_META,
   chartableFields,
   dateFields,
   defaultBarGroupBy,
+  defaultSpan,
   defaultLineGroupBy,
   defaultOptionLabel,
   defaultReportGroupBy,
   describePage,
   dropTabsTo,
   duplicatePage,
+  filterableDateFields,
   groupableFields,
+  inNav,
   numericFields,
   pageFromSuggestion,
   pageLabel,
@@ -468,7 +478,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                     {page.type !== 'record' && (
                       <button
                         type="button"
-                        onClick={() => update(index, { hidden: !page.hidden })}
+                        onClick={() => update(index, page.hidden ? { hidden: false } : { hidden: true, group: undefined, icon: undefined })}
                         className={ICON_BUTTON}
                         aria-pressed={Boolean(page.hidden)}
                         title={page.hidden ? 'Show in the navigation' : 'Hide from the navigation (tab only)'}
@@ -546,6 +556,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                           />
                         </Field>
                       </div>
+                      {inNav(page) && (
+                        <NavFields page={page} index={index} pages={pages} errors={errors} update={update} />
+                      )}
 
                       {page.type === 'entity-list' && (
                         <EntityListForm page={page} index={index} entities={named} errors={errors} update={update} />
@@ -625,6 +638,56 @@ interface FormProps {
   update: Update
 }
 
+/** Where a nav page sits in the generated nav: its section (group) and its icon. */
+function NavFields({ page, index, pages, errors, update }: Omit<FormProps, 'entities'> & { pages: FullstackPageDef[] }) {
+  const groups = [...new Set(pages.map(p => p.group?.trim()).filter((g): g is string => Boolean(g)))]
+  const fallback = DEFAULT_NAV_ICON[page.type]
+  const current = page.icon ?? fallback
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[12rem_minmax(0,1fr)]">
+      <Field label="Nav group" error={errors.group} control="group" hint="Pages with the same group are listed together">
+        <input
+          type="text"
+          list={`nav-groups-${index}`}
+          aria-label="Nav group"
+          aria-invalid={Boolean(errors.group)}
+          maxLength={MAX_GROUP + 10}
+          value={page.group ?? ''}
+          onChange={e => update(index, { group: e.target.value || undefined })}
+          placeholder="None"
+          className={inputClass(errors.group)}
+        />
+        <datalist id={`nav-groups-${index}`}>
+          {groups.map(g => <option key={g} value={g} />)}
+        </datalist>
+      </Field>
+      <Field label="Nav icon" error={errors.icon} control="icon">
+        <div role="radiogroup" aria-label="Nav icon" className="flex flex-wrap gap-1">
+          {(Object.keys(NAV_ICONS) as FullstackNavIcon[]).map(name => {
+            const selected = current === name
+            const label = `${NAV_ICONS[name].label}${name === fallback ? ' (default)' : ''}`
+            return (
+              <button
+                key={name}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                aria-label={label}
+                title={label}
+                data-nav-icon={name}
+                onClick={() => update(index, { icon: name === fallback ? undefined : name })}
+                className={`rounded p-1 transition-colors ${selected ? 'bg-primary/15 text-primary ring-1 ring-primary/40' : 'text-secondary hover:bg-primary/5 hover:text-primary'}`}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">{NAV_ICONS[name].symbol}</span>
+              </button>
+            )
+          })}
+        </div>
+      </Field>
+    </div>
+  )
+}
+
 /** Up/down buttons — the keyboard alternative to dragging a row. */
 function MoveButtons({ label, canUp, canDown, onMove }: { label: string; canUp: boolean; canDown: boolean; onMove: (delta: number) => void }) {
   return (
@@ -655,30 +718,31 @@ function MoveButtons({ label, canUp, canDown, onMove }: { label: string; canUp: 
 
 /** The "opens filtered on" rows of a list or report page: equality on a filterable enum/boolean
  *  column, which is exactly what the backend accepts as a preset filter. */
-function PresetFilters({ page, index, entity, errors, update }: {
-  page: FullstackPageDef
-  index: number
+function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filtered on' }: {
+  filter: Record<string, string> | undefined
   entity: FullstackEntityDef | undefined
+  /** Per-field messages under `presetFilter.<field>` (a widget reports on its row instead). */
   errors: Record<string, string>
-  update: Update
+  onChange: (next: Record<string, string> | undefined) => void
+  heading?: string
 }) {
   const filterable = groupableFields(entity)
-  const filters = Object.entries(page.presetFilter ?? {})
-  const unused = filterable.filter(f => !(f.name in (page.presetFilter ?? {})))
+  const filters = Object.entries(filter ?? {})
+  const unused = filterable.filter(f => !(f.name in (filter ?? {})))
 
   function setFilter(field: string, value: string | null, rename?: string) {
     const next: Record<string, string> = {}
-    for (const [k, v] of Object.entries(page.presetFilter ?? {})) {
+    for (const [k, v] of Object.entries(filter ?? {})) {
       if (k !== field) next[k] = v
       else if (value !== null) next[rename ?? k] = value
     }
-    if (!(field in (page.presetFilter ?? {})) && value !== null) next[field] = value
-    update(index, { presetFilter: Object.keys(next).length ? next : undefined })
+    if (!(field in (filter ?? {})) && value !== null) next[field] = value
+    onChange(Object.keys(next).length ? next : undefined)
   }
 
   return (
     <div className="space-y-1">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Opens filtered on</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{heading}</p>
       {filters.length === 0 && (
         <p className="text-[11px] text-secondary">
           {filterable.length === 0
@@ -750,7 +814,12 @@ function EntityListForm({ page, index, entities, errors, update }: FormProps) {
           onChange={name => update(index, { entity: name, presetFilter: undefined })}
         />
       </Field>
-      <PresetFilters page={page} index={index} entity={entity} errors={errors} update={update} />
+      <PresetFilters
+        filter={page.presetFilter}
+        entity={entity}
+        errors={errors}
+        onChange={presetFilter => update(index, { presetFilter })}
+      />
     </div>
   )
 }
@@ -760,6 +829,14 @@ function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps
   const list = `widgets:${index}`
   const keys = useStableKeys(widgets, w => `${w.kind}:${w.entity}:${w.groupBy ?? ''}:${w.title ?? ''}`)
   const atCap = widgets.length >= MAX_WIDGETS
+  // Rows whose layout/filter options are unfolded (by row key).
+  const [unfolded, setUnfolded] = useState<Set<string>>(() => new Set())
+  const toggleOptions = (key: string) => setUnfolded(prev => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    return next
+  })
 
   function setWidgets(next: FullstackWidgetDef[]) {
     update(index, { widgets: next })
@@ -774,165 +851,288 @@ function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps
       groupBy: undefined,
       limit: undefined,
       bucket: undefined,
+      sortBy: undefined,
       // A recent list shows rows, so it can carry no aggregate.
       ...(kind === 'recent' ? { agg: undefined, field: undefined } : {}),
     })
   }
 
   return (
-    <div className="space-y-1" data-control="widgets">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
-        Widgets <span className="font-normal normal-case tracking-normal">· number tiles take one column, charts and lists two</span>
-      </p>
-      {errors.widgets && <p className="text-[11px] text-error">{errors.widgets}</p>}
-      {widgets.map((widget, wi) => {
-        const entity = entities.find(e => e.name === widget.entity)
-        const error = errors[`widget.${wi}`]
-        return (
-          <div
-            key={keys[wi]}
-            {...dnd.rowProps(list, wi)}
-            data-widget={wi}
-            data-control={`widget.${wi}`}
-            className={`flex flex-wrap items-center gap-2 rounded border px-2 py-1.5 ${error ? 'border-error/50' : 'border-outline-variant'}`}
-          >
-            <span
-              {...dnd.handleProps(list, wi)}
-              className="cursor-grab text-secondary/70"
-              aria-hidden="true"
-              title="Drag to reorder"
+    <div className="space-y-2">
+      <Field
+        label="Period picker"
+        error={errors.dateRange}
+        control="dateRange"
+        hint={page.dateRange ? 'The dashboard opens on this period; widgets with a date follow the picker' : 'Off — every widget covers all rows'}
+      >
+        <select
+          aria-label="Period picker"
+          aria-invalid={Boolean(errors.dateRange)}
+          value={page.dateRange ?? ''}
+          onChange={e => update(index, {
+            dateRange: (e.target.value || undefined) as FullstackDateRange | undefined,
+            // A widget's date field only means something under a picker.
+            ...(e.target.value ? {} : { widgets: widgets.map(w => (w.dateField ? { ...w, dateField: undefined } : w)) }),
+          })}
+          className={`${inputClass(errors.dateRange)} max-w-[14rem]`}
+        >
+          <option value="">Off</option>
+          {DATE_RANGES.map(r => <option key={r.value} value={r.value}>Opens on: {r.label}</option>)}
+        </select>
+      </Field>
+      <div className="space-y-1" data-control="widgets">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
+          Widgets <span className="font-normal normal-case tracking-normal">· number tiles take one column, charts and lists two, on a four-column grid</span>
+        </p>
+        {errors.widgets && <p className="text-[11px] text-error">{errors.widgets}</p>}
+        {widgets.map((widget, wi) => {
+          const entity = entities.find(e => e.name === widget.entity)
+          const error = errors[`widget.${wi}`]
+          const key = keys[wi]
+          const customized = widget.span != null || widget.presetFilter != null || widget.sortBy != null || widget.dateField != null
+          const open = unfolded.has(key) || customized
+          return (
+            <div
+              key={keys[wi]}
+              {...dnd.rowProps(list, wi)}
+              data-widget={wi}
+              data-control={`widget.${wi}`}
+              className={`flex flex-wrap items-center gap-2 rounded border px-2 py-1.5 ${error ? 'border-error/50' : 'border-outline-variant'}`}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>drag_indicator</span>
-            </span>
-            <MoveButtons
-              label={`widget ${wi + 1}`}
-              canUp={wi > 0}
-              canDown={wi < widgets.length - 1}
-              onMove={delta => setWidgets(moveItem(widgets, wi, wi + delta))}
-            />
-            <div role="radiogroup" aria-label="Widget kind" className="inline-flex overflow-hidden rounded border border-outline-variant">
-              {WIDGET_KINDS.map(k => {
-                const on = widget.kind === k.kind
-                return (
-                  <button
-                    key={k.kind}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    aria-label={k.label}
-                    title={k.label}
-                    onClick={() => setKind(wi, k.kind)}
-                    className={`px-1.5 py-0.5 ${on ? 'bg-primary/15 text-primary' : 'text-secondary hover:bg-primary/5 hover:text-primary'}`}
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>{k.icon}</span>
-                  </button>
-                )
-              })}
-            </div>
-            <EntitySelect
-              label="Widget entity"
-              value={widget.entity}
-              options={entities.map(e => e.name)}
-              error={error}
-              className="max-w-[10rem]"
-              onChange={name => setWidget(wi, { entity: name, groupBy: undefined })}
-            />
-            {widget.kind === 'bar' && (
-              <select
-                aria-label="Group by"
-                value={widget.groupBy ?? ''}
-                onChange={e => setWidget(wi, { groupBy: e.target.value || undefined })}
-                className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+              <span
+                {...dnd.handleProps(list, wi)}
+                className="cursor-grab text-secondary/70"
+                aria-hidden="true"
+                title="Drag to reorder"
               >
-                <option value="">{defaultOptionLabel(defaultBarGroupBy(entity), 'enum or boolean')}</option>
-                {groupableFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
-                {widget.groupBy && !groupableFields(entity).some(f => f.name === widget.groupBy) && (
-                  <option value={widget.groupBy}>{widget.groupBy}</option>
-                )}
-              </select>
-            )}
-            {widget.kind === 'line' && (
-              <>
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>drag_indicator</span>
+              </span>
+              <MoveButtons
+                label={`widget ${wi + 1}`}
+                canUp={wi > 0}
+                canDown={wi < widgets.length - 1}
+                onMove={delta => setWidgets(moveItem(widgets, wi, wi + delta))}
+              />
+              <div role="radiogroup" aria-label="Widget kind" className="inline-flex overflow-hidden rounded border border-outline-variant">
+                {WIDGET_KINDS.map(k => {
+                  const on = widget.kind === k.kind
+                  return (
+                    <button
+                      key={k.kind}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      aria-label={k.label}
+                      title={k.label}
+                      onClick={() => setKind(wi, k.kind)}
+                      className={`px-1.5 py-0.5 ${on ? 'bg-primary/15 text-primary' : 'text-secondary hover:bg-primary/5 hover:text-primary'}`}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>{k.icon}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <EntitySelect
+                label="Widget entity"
+                value={widget.entity}
+                options={entities.map(e => e.name)}
+                error={error}
+                className="max-w-[10rem]"
+                onChange={name => setWidget(wi, { entity: name, groupBy: undefined, presetFilter: undefined, sortBy: undefined, dateField: undefined })}
+              />
+              {widget.kind === 'bar' && (
                 <select
-                  aria-label="Date field"
+                  aria-label="Group by"
                   value={widget.groupBy ?? ''}
                   onChange={e => setWidget(wi, { groupBy: e.target.value || undefined })}
                   className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
                 >
-                  <option value="">{defaultOptionLabel(defaultLineGroupBy(entity), 'date field')}</option>
-                  {dateFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
-                  {widget.groupBy && !dateFields(entity).some(f => f.name === widget.groupBy) && (
+                  <option value="">{defaultOptionLabel(defaultBarGroupBy(entity), 'enum or boolean')}</option>
+                  {groupableFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+                  {widget.groupBy && !groupableFields(entity).some(f => f.name === widget.groupBy) && (
                     <option value={widget.groupBy}>{widget.groupBy}</option>
                   )}
                 </select>
-                <BucketSelect value={widget.bucket} onChange={bucket => setWidget(wi, { bucket })} />
-              </>
-            )}
-            {widget.kind !== 'recent' && (
-              <AggFields
-                agg={widget.agg}
-                field={widget.field}
-                entity={entity}
-                error={error}
-                onChange={patch => setWidget(wi, patch)}
-              />
-            )}
-            {widget.kind === 'recent' && (
+              )}
+              {widget.kind === 'line' && (
+                <>
+                  <select
+                    aria-label="Date field"
+                    value={widget.groupBy ?? ''}
+                    onChange={e => setWidget(wi, { groupBy: e.target.value || undefined })}
+                    className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                  >
+                    <option value="">{defaultOptionLabel(defaultLineGroupBy(entity), 'date field')}</option>
+                    {dateFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+                    {widget.groupBy && !dateFields(entity).some(f => f.name === widget.groupBy) && (
+                      <option value={widget.groupBy}>{widget.groupBy}</option>
+                    )}
+                  </select>
+                  <BucketSelect value={widget.bucket} onChange={bucket => setWidget(wi, { bucket })} />
+                </>
+              )}
+              {widget.kind !== 'recent' && (
+                <AggFields
+                  agg={widget.agg}
+                  field={widget.field}
+                  entity={entity}
+                  error={error}
+                  onChange={patch => setWidget(wi, patch)}
+                />
+              )}
+              {widget.kind === 'recent' && (
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_RECENT_LIMIT}
+                  aria-label="How many rows"
+                  value={widget.limit ?? ''}
+                  placeholder="5"
+                  onChange={e => setWidget(wi, { limit: e.target.value === '' ? undefined : Number(e.target.value) })}
+                  className={`${inputClass(error)} max-w-[5rem] py-1 text-xs`}
+                />
+              )}
               <input
-                type="number"
-                min={1}
-                max={MAX_RECENT_LIMIT}
-                aria-label="How many rows"
-                value={widget.limit ?? ''}
-                placeholder="5"
-                onChange={e => setWidget(wi, { limit: e.target.value === '' ? undefined : Number(e.target.value) })}
-                className={`${inputClass(error)} max-w-[5rem] py-1 text-xs`}
+                type="text"
+                aria-label="Widget title"
+                value={widget.title ?? ''}
+                placeholder="Title (optional)"
+                onChange={e => setWidget(wi, { title: e.target.value || undefined })}
+                className={`${inputClass()} min-w-[8rem] flex-1 py-1 text-xs`}
               />
-            )}
-            <input
-              type="text"
-              aria-label="Widget title"
-              value={widget.title ?? ''}
-              placeholder="Title (optional)"
-              onChange={e => setWidget(wi, { title: e.target.value || undefined })}
-              className={`${inputClass()} min-w-[8rem] flex-1 py-1 text-xs`}
-            />
+              <button
+                type="button"
+                onClick={() => {
+                  const next = [...widgets]
+                  next.splice(wi + 1, 0, { ...widget })
+                  setWidgets(next)
+                }}
+                disabled={atCap}
+                className={ICON_BUTTON}
+                aria-label={`Duplicate widget ${wi + 1}`}
+                title={atCap ? `A dashboard can have at most ${MAX_WIDGETS} widgets` : 'Duplicate this widget'}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>content_copy</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleOptions(key)}
+                disabled={customized}
+                className={`${ICON_BUTTON} ${open ? 'text-primary' : ''}`}
+                aria-expanded={open}
+                aria-label={`Layout and filter of widget ${wi + 1}`}
+                title={customized ? 'This widget has its own width, filter or sort' : 'Width, filter and sort'}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>tune</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWidgets(widgets.filter((_, i) => i !== wi))}
+                className={ICON_BUTTON}
+                aria-label={`Remove widget ${wi + 1}`}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+              </button>
+              {open && (
+                <WidgetOptions
+                  widget={widget}
+                  entity={entity}
+                  dateRange={page.dateRange}
+                  onChange={patch => setWidget(wi, patch)}
+                />
+              )}
+              {error && <p className="w-full text-[11px] text-error">{error}</p>}
+            </div>
+          )
+        })}
+        <button
+          type="button"
+          onClick={() => setWidgets([...widgets, { kind: 'kpi', entity: entities[0]?.name ?? '' }])}
+          disabled={atCap}
+          className={SMALL_BUTTON}
+          title={atCap ? `A dashboard can have at most ${MAX_WIDGETS} widgets` : undefined}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
+          Add widget
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** A widget's second line: its width on the grid, the rows it is limited to, what a recent list
+ *  sorts by, and the date the dashboard's period applies to. */
+function WidgetOptions({ widget, entity, dateRange, onChange }: {
+  widget: FullstackWidgetDef
+  entity: FullstackEntityDef | undefined
+  dateRange: FullstackDateRange | undefined
+  onChange: (patch: Partial<FullstackWidgetDef>) => void
+}) {
+  const fallbackSpan = defaultSpan(widget.kind)
+  const span = widget.span ?? fallbackSpan
+  const dates = filterableDateFields(entity)
+  const pk = entity?.fields.find(f => f.primaryKey)?.name
+  return (
+    <div className="flex w-full flex-wrap items-start gap-x-4 gap-y-2 border-t border-outline-variant/60 pt-1.5" data-widget-options>
+      <div className="space-y-1">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Width</p>
+        <div role="radiogroup" aria-label="Widget width" className="inline-flex overflow-hidden rounded border border-outline-variant">
+          {Array.from({ length: MAX_SPAN }, (_, i) => i + 1).map(n => (
             <button
+              key={n}
               type="button"
-              onClick={() => {
-                const next = [...widgets]
-                next.splice(wi + 1, 0, { ...widget })
-                setWidgets(next)
-              }}
-              disabled={atCap}
-              className={ICON_BUTTON}
-              aria-label={`Duplicate widget ${wi + 1}`}
-              title={atCap ? `A dashboard can have at most ${MAX_WIDGETS} widgets` : 'Duplicate this widget'}
+              role="radio"
+              aria-checked={span === n}
+              aria-label={`${n} column${n === 1 ? '' : 's'}${n === fallbackSpan ? ' (default)' : ''}`}
+              onClick={() => onChange({ span: n === fallbackSpan ? undefined : n })}
+              className={`px-2 py-0.5 text-xs ${span === n ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5'}`}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>content_copy</span>
+              {n}
             </button>
-            <button
-              type="button"
-              onClick={() => setWidgets(widgets.filter((_, i) => i !== wi))}
-              className={ICON_BUTTON}
-              aria-label={`Remove widget ${wi + 1}`}
+          ))}
+        </div>
+      </div>
+      {widget.kind === 'recent' && (
+        <div className="space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Newest by</p>
+          <select
+            aria-label="Sort by"
+            value={widget.sortBy ?? ''}
+            onChange={e => onChange({ sortBy: e.target.value || undefined })}
+            className={`${inputClass()} max-w-[11rem] py-1 text-xs`}
+          >
+            <option value="">{defaultOptionLabel(pk, 'key')}</option>
+            {(entity?.fields ?? []).filter(f => !f.primaryKey).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+          </select>
+        </div>
+      )}
+      {dateRange && (
+        <div className="space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Period applies to</p>
+          {dates.length === 0 ? (
+            <p className="text-[11px] text-secondary">No filterable date — all rows</p>
+          ) : (
+            <select
+              aria-label="Period date field"
+              value={widget.dateField ?? ''}
+              onChange={e => onChange({ dateField: e.target.value || undefined })}
+              className={`${inputClass()} max-w-[11rem] py-1 text-xs`}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
-            </button>
-            {error && <p className="w-full text-[11px] text-error">{error}</p>}
-          </div>
-        )
-      })}
-      <button
-        type="button"
-        onClick={() => setWidgets([...widgets, { kind: 'kpi', entity: entities[0]?.name ?? '' }])}
-        disabled={atCap}
-        className={SMALL_BUTTON}
-        title={atCap ? `A dashboard can have at most ${MAX_WIDGETS} widgets` : undefined}
-      >
-        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
-        Add widget
-      </button>
+              <option value="">{defaultOptionLabel(dates[0]?.name, 'date field')}</option>
+              {dates.map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+            </select>
+          )}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <PresetFilters
+          filter={widget.presetFilter}
+          entity={entity}
+          errors={{}}
+          onChange={presetFilter => onChange({ presetFilter })}
+          heading="Only rows where"
+        />
+      </div>
     </div>
   )
 }
@@ -1062,7 +1262,7 @@ function ReportForm({ page, index, entities, errors, update }: FormProps) {
       {errors['chart.groupBy'] && <p className="text-[11px] text-error">{errors['chart.groupBy']}</p>}
       {errors['chart.field'] && <p className="text-[11px] text-error">{errors['chart.field']}</p>}
       {errors['chart.bucket'] && <p className="text-[11px] text-error">{errors['chart.bucket']}</p>}
-      <PresetFilters page={page} index={index} entity={entity} errors={errors} update={update} />
+      <PresetFilters filter={page.presetFilter} entity={entity} errors={errors} onChange={presetFilter => update(index, { presetFilter })} />
     </div>
   )
 }

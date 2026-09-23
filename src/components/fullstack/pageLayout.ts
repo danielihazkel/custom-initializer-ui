@@ -1,7 +1,9 @@
 import type {
   FullstackAgg,
+  FullstackDateRange,
   FullstackEntityDef,
   FullstackFieldDef,
+  FullstackNavIcon,
   FullstackPageDef,
   FullstackPageType,
   FullstackWidgetDef,
@@ -22,6 +24,94 @@ export const MIN_TABS = 2
 export const MAX_TABS = 6
 export const MAX_CHILD_TABS = MAX_TABS - 1
 export const MAX_RECENT_LIMIT = 20
+export const MAX_GROUP = 40
+export const MAX_SPAN = 4
+
+/** The dashboard period picker's options, in the order the generated picker shows them. */
+export const DATE_RANGES: { value: FullstackDateRange; label: string }[] = [
+  { value: 'all', label: 'All time' },
+  { value: '7d', label: 'Last 7 days' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: '90d', label: 'Last 90 days' },
+  { value: 'ytd', label: 'This year' },
+  { value: '12m', label: 'Last 12 months' },
+]
+
+/** Grid columns a widget takes when it names none: a tile one, a chart or list two. */
+export function defaultSpan(kind: FullstackWidgetDef['kind']): number {
+  return kind === 'kpi' ? 1 : 2
+}
+
+/** The nav icons a page may pick (the generated app draws the lucide icon; the editor shows the
+ *  Material Symbol that looks like it). */
+export const NAV_ICONS: Record<FullstackNavIcon, { symbol: string; label: string }> = {
+  LayoutDashboard: { symbol: 'dashboard', label: 'Dashboard' },
+  Table2: { symbol: 'table', label: 'Table' },
+  Layers: { symbol: 'layers', label: 'Layers' },
+  PanelLeft: { symbol: 'vertical_split', label: 'Split panel' },
+  BarChart3: { symbol: 'bar_chart', label: 'Chart' },
+  ListChecks: { symbol: 'checklist', label: 'Checklist' },
+  Users: { symbol: 'group', label: 'People' },
+  ShoppingCart: { symbol: 'shopping_cart', label: 'Cart' },
+  Package: { symbol: 'package_2', label: 'Package' },
+  Ticket: { symbol: 'confirmation_number', label: 'Ticket' },
+  Inbox: { symbol: 'inbox', label: 'Inbox' },
+  Calendar: { symbol: 'calendar_month', label: 'Calendar' },
+  FileText: { symbol: 'description', label: 'Document' },
+  Settings: { symbol: 'settings', label: 'Settings' },
+  Truck: { symbol: 'local_shipping', label: 'Truck' },
+  Wallet: { symbol: 'account_balance_wallet', label: 'Wallet' },
+  Building2: { symbol: 'apartment', label: 'Building' },
+  Tag: { symbol: 'sell', label: 'Tag' },
+  Star: { symbol: 'star', label: 'Star' },
+  Wand2: { symbol: 'auto_fix_high', label: 'Wand' },
+}
+
+/** The icon a page shows in the nav when it names none (EntityScaffoldContext.putPageContext). */
+export const DEFAULT_NAV_ICON: Record<FullstackPageType, FullstackNavIcon> = {
+  dashboard: 'LayoutDashboard',
+  'entity-list': 'Table2',
+  tabs: 'Layers',
+  'master-detail': 'PanelLeft',
+  record: 'Table2',
+  report: 'BarChart3',
+}
+
+/** Whether a page is listed in the generated nav (a record page never is). */
+export function inNav(page: FullstackPageDef): boolean {
+  return !page.hidden && page.type !== 'record'
+}
+
+/**
+ * The nav as the generated shell groups it: pages sharing a group gathered where the group first
+ * appears, ungrouped runs as label-less sections between them. Indices point into `pages`.
+ */
+export function navSections(pages: FullstackPageDef[]): { group?: string; items: number[] }[] {
+  const sections: { group?: string; items: number[] }[] = []
+  const byGroup = new Map<string, { group?: string; items: number[] }>()
+  let loose: { items: number[] } | null = null
+  pages.forEach((page, index) => {
+    if (!inNav(page)) return
+    const group = page.group?.trim()
+    if (!group) {
+      if (!loose) {
+        loose = { items: [] }
+        sections.push(loose)
+      }
+      loose.items.push(index)
+      return
+    }
+    loose = null
+    let section = byGroup.get(group)
+    if (!section) {
+      section = { group, items: [] }
+      byGroup.set(group, section)
+      sections.push(section)
+    }
+    section.items.push(index)
+  })
+  return sections
+}
 
 /** What the generated app can group or preset-filter by: a filterable, non-key enum/boolean field. */
 export function groupableFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
@@ -31,6 +121,16 @@ export function groupableFields(entity: FullstackEntityDef | undefined): Fullsta
 /** What a time series can be bucketed over: a non-key date column. */
 export function dateFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
   return (entity?.fields ?? []).filter(f => !f.primaryKey && (f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'))
+}
+
+/** What the dashboard period can limit: a filterable, non-key date (the list's own date filter). */
+export function filterableDateFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
+  return dateFields(entity).filter(f => f.filterable !== false)
+}
+
+/** The date a widget's period applies to: its own, else the entity's first filterable one. */
+export function widgetDateField(w: FullstackWidgetDef, entity: FullstackEntityDef | undefined): string | undefined {
+  return w.dateField || filterableDateFields(entity)[0]?.name
 }
 
 /** What sum/avg/min/max can reduce: a non-key numeric column. */
@@ -104,18 +204,19 @@ export function pageLayoutProblems(pages: FullstackPageDef[], entities: Fullstac
 type AddIssue = (field: string, message: string, summary?: string) => void
 
 /** The opening filters of a list or report page: equality on a filterable enum/boolean column. */
-function checkPresetFilter(page: FullstackPageDef, e: FullstackEntityDef, add: AddIssue, where: string): void {
+function checkPresetFilter(filter: Record<string, string> | undefined, e: FullstackEntityDef, add: AddIssue, where: string,
+                           control: (field: string) => string = field => `presetFilter.${field}`): void {
   const groupable = groupableFields(e)
-  for (const [field, value] of Object.entries(page.presetFilter ?? {})) {
+  for (const [field, value] of Object.entries(filter ?? {})) {
     const f = e.fields.find(x => x.name === field)
     if (!f) {
-      add(`presetFilter.${field}`, `${e.name} no longer has “${field}”`,
+      add(control(field), `${e.name} no longer has “${field}”`,
         `${where} filters on “${field}”, which ${e.name} no longer has`)
     } else if (!groupable.includes(f)) {
-      add(`presetFilter.${field}`, 'only a filterable enum or boolean field can be preset',
+      add(control(field), 'only a filterable enum or boolean field can be preset',
         `${where} filters on “${field}”, which is not a filterable enum or boolean field`)
     } else if (f.type === 'ENUM' && !(f.enumValues ?? []).includes(value)) {
-      add(`presetFilter.${field}`, `“${value}” is not one of the values of ${f.name}`,
+      add(control(field), `“${value}” is not one of the values of ${f.name}`,
         `${where} filters ${field} on “${value}”, which is not one of its values`)
     }
   }
@@ -167,6 +268,14 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
     seenIds.add(page.id)
     if ((page.title ?? '').length > 80) add('title', 'is longer than 80 characters')
     if ((page.description ?? '').length > 300) add('description', 'is longer than 300 characters')
+    if (page.group?.trim() || page.icon) {
+      if (!inNav(page)) {
+        add(page.group?.trim() ? 'group' : 'icon', 'only applies to a page in the navigation',
+          `${where} is not in the navigation, so it takes no nav ${page.group?.trim() ? 'group' : 'icon'}`)
+      }
+      if ((page.group ?? '').trim().length > MAX_GROUP) add('group', `is longer than ${MAX_GROUP} characters`)
+      if (page.icon && !(page.icon in NAV_ICONS)) add('icon', `“${page.icon}” is not a nav icon`)
+    }
 
     switch (page.type) {
       case 'entity-list': {
@@ -176,7 +285,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
             page.entity ? `${where} lists “${page.entity}”, which is no longer an entity` : `${where} lists no entity`)
           break
         }
-        checkPresetFilter(page, e, add, where)
+        checkPresetFilter(page.presetFilter, e, add, where)
         break
       }
       case 'dashboard': {
@@ -224,7 +333,36 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
             add(`widget.${wi}`, `between 1 and ${MAX_RECENT_LIMIT} rows`,
               `${where} shows a recent list of ${w.limit} rows (1–${MAX_RECENT_LIMIT})`)
           }
+          if (w.span != null && (!Number.isInteger(w.span) || w.span < 1 || w.span > MAX_SPAN)) {
+            add(`widget.${wi}`, `spans 1 to ${MAX_SPAN} columns`, `${where} has a widget ${w.span} columns wide (1–${MAX_SPAN})`)
+          }
+          if (w.sortBy) {
+            if (w.kind !== 'recent') {
+              add(`widget.${wi}`, 'only a recent list takes a sort', `${where} sorts a ${w.kind} widget`)
+            } else if (!e.fields.some(f => f.name === w.sortBy)) {
+              add(`widget.${wi}`, `${e.name} has no field “${w.sortBy}”`,
+                `${where} sorts ${e.name} by “${w.sortBy}”, which it no longer has`)
+            }
+          }
+          checkPresetFilter(w.presetFilter, e, add, `${where} has a widget that`, () => `widget.${wi}`)
+          if (w.dateField) {
+            if (!page.dateRange) {
+              add(`widget.${wi}`, 'a date field needs the dashboard’s period picker',
+                `${where} limits a widget by “${w.dateField}”, but has no period picker`)
+            } else if (!filterableDateFields(e).some(f => f.name === w.dateField)) {
+              add(`widget.${wi}`, `${e.name} has no filterable date field “${w.dateField}”`,
+                `${where} limits ${e.name} by “${w.dateField}”, which is not one of its filterable date fields`)
+            }
+          }
         })
+        if (page.dateRange) {
+          if (!DATE_RANGES.some(r => r.value === page.dateRange)) {
+            add('dateRange', `“${page.dateRange}” is not a period`)
+          } else if (widgets.length > 0 && !widgets.some(w => widgetDateField(w, entityOf(w.entity)))) {
+            add('dateRange', 'no widget counts an entity with a filterable date',
+              `${where} has a period picker, but none of its widgets has a date for it to limit`)
+          }
+        }
         break
       }
       case 'tabs': {
@@ -303,7 +441,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
         for (const issue of aggIssues(chart.agg, chart.field, e, false)) {
           add(issue.field, issue.message, `${where} ${issue.summary}`)
         }
-        checkPresetFilter(page, e, add, where)
+        checkPresetFilter(page.presetFilter, e, add, where)
         break
       }
       case 'record': {
@@ -471,6 +609,13 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
         const patched: FullstackWidgetDef = { ...w }
         if (patched.groupBy === from) patched.groupBy = to
         if (patched.field === from) patched.field = to
+        if (patched.sortBy === from) patched.sortBy = to
+        if (patched.dateField === from) patched.dateField = to
+        if (patched.presetFilter && from in patched.presetFilter) {
+          const filter: Record<string, string> = {}
+          for (const [k, v] of Object.entries(patched.presetFilter)) filter[k === from ? to : k] = v
+          patched.presetFilter = filter
+        }
         return patched
       })
     }

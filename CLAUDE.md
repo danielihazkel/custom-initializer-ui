@@ -86,7 +86,10 @@ wireframe of the generated shell (dark sidebar, or the Menora top bar when the f
 `MENORA_DIGITAL`) with seeded sample data and titles that mirror `EntityScaffoldContext`'s defaults
 in en/he; clicking a part of it opens that control. The add gallery also offers `suggestPages`
 (master-detail/record where relations exist, a report, a trend dashboard). The admin examples form
-reuses `PagesEditor` (`layout="stacked"`) with a JSON fallback.
+reuses `PagesEditor` (`layout="stacked"`) with a JSON fallback. A nav page can take a **group** and an
+**icon** (`NavFields`; `NAV_ICONS` maps the backend's lucide whitelist to look-alike Material Symbols,
+`DEFAULT_NAV_ICON` is the type's own); `navSections` groups the nav exactly as the generated shell
+does (a group gathered where it first appears), and hiding a page drops both.
 
 `snapshot.ts` defines `FullstackSnapshot`/`ProjectMeta` (uids stripped; `colorPalette` optional) — the
 unit presets, recents, undo, share links, team models and JSON files carry. `DEFAULT_PROJECT_META` +

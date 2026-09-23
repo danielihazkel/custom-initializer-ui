@@ -328,4 +328,50 @@ describe('PagesEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /Hide preview/ }))
     expect(document.querySelector('[data-layout-preview]')).toBeNull()
   })
+
+  it('places a nav page in a group with an icon, and drops both when the page is hidden', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }, { id: 'customers', type: 'entity-list', entity: 'Customer' }]} />)
+    const row = openRow('orders')
+
+    fireEvent.change(within(row as HTMLElement).getByLabelText('Nav group'), { target: { value: 'Sales' } })
+    fireEvent.click(within(row as HTMLElement).getByRole('radio', { name: 'Cart' }))
+    expect(latest[0]).toMatchObject({ group: 'Sales', icon: 'ShoppingCart' })
+    // Picking the type's own icon again stores nothing.
+    fireEvent.click(within(row as HTMLElement).getByRole('radio', { name: 'Table (default)' }))
+    expect(latest[0].icon).toBeUndefined()
+
+    fireEvent.click(within(row as HTMLElement).getByRole('radio', { name: 'Cart' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Order from the navigation' }))
+    expect(latest[0]).toMatchObject({ hidden: true })
+    expect(latest[0].group).toBeUndefined()
+    expect(latest[0].icon).toBeUndefined()
+    expect(within(row as HTMLElement).queryByLabelText('Nav group')).toBeNull()
+  })
+
+  it('sets a dashboard period picker and a widget’s width, filter and sort', () => {
+    render(<Harness initial={[{ id: 'desk', type: 'dashboard', widgets: [{ kind: 'recent', entity: 'Order' }] }]} />)
+    const row = openRow('desk') as HTMLElement
+
+    fireEvent.change(within(row).getByLabelText('Period picker'), { target: { value: '90d' } })
+    expect(latest[0].dateRange).toBe('90d')
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Layout and filter of widget 1' }))
+    const options = row.querySelector('[data-widget-options]') as HTMLElement
+    fireEvent.click(within(options).getByRole('radio', { name: '4 columns' }))
+    fireEvent.change(within(options).getByLabelText('Sort by'), { target: { value: 'placedOn' } })
+    fireEvent.change(within(options).getByLabelText('Period date field'), { target: { value: 'placedOn' } })
+    fireEvent.click(within(options).getByRole('button', { name: /Add filter/ }))
+    expect(latest[0].widgets?.[0]).toEqual({
+      kind: 'recent', entity: 'Order', span: 4, sortBy: 'placedOn', dateField: 'placedOn', presetFilter: { status: 'OPEN' },
+    })
+    // Back to the default width stores nothing.
+    fireEvent.click(within(options).getByRole('radio', { name: '2 columns (default)' }))
+    expect(latest[0].widgets?.[0].span).toBeUndefined()
+
+    // Turning the picker off drops the widgets' period dates with it.
+    fireEvent.change(within(row).getByLabelText('Period picker'), { target: { value: '' } })
+    expect(latest[0].dateRange).toBeUndefined()
+    expect(latest[0].widgets?.[0].dateField).toBeUndefined()
+    expect(validatePages(latest, entities).count).toBe(0)
+  })
 })

@@ -29,7 +29,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, skin, offNa
   const menora = skin === 'menora'
   const accent = menora ? MENORA.purple : 'var(--color-primary)'
 
-  const navItems = preview.nav.map(item => {
+  const navButton = (item: LayoutPreviewModel['nav'][number]) => {
     const active = item.index === selected
     return (
       <button
@@ -50,7 +50,23 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, skin, offNa
         )}
       </button>
     )
-  })
+  }
+  // Grouped like the generated nav: a labelled section in the sidebar, a caret item in the Menora
+  // top bar (its menu is not drawn — the pages are listed after it, dimmed, instead).
+  const navItems = preview.sections.map((section, i) => (
+    <div key={i} className={menora ? 'flex shrink-0 items-center gap-1' : 'space-y-0.5'} data-preview-nav-group={section.group ?? ''}>
+      {section.group && (
+        menora ? (
+          <span className="shrink-0 whitespace-nowrap px-1 text-[10px] font-semibold text-[#37374e]">
+            {section.group}<span aria-hidden="true"> ▾</span>
+          </span>
+        ) : (
+          <div className="px-1.5 pt-1 text-[8px] font-semibold uppercase tracking-wider text-slate-500">{section.group}</div>
+        )
+      )}
+      {section.items.map(navButton)}
+    </div>
+  ))
 
   const body = (
     <div className="min-w-0 flex-1 overflow-hidden p-2.5 space-y-2" data-preview-screen={screen?.type}>
@@ -142,7 +158,17 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
     case 'dashboard':
       return (
         <div className="space-y-2">
-          {heading}
+          <div className="flex items-start justify-between gap-2">
+            {heading}
+            {screen.period && (
+              <Editable onClick={() => onEdit({ page, control: 'dateRange' })} label="Edit the period picker" className="shrink-0">
+                <span className="inline-flex items-center gap-0.5 rounded border border-outline-variant px-1 py-0.5 text-[9px] text-secondary" data-preview-period>
+                  <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">date_range</span>
+                  {screen.period}
+                </span>
+              </Editable>
+            )}
+          </div>
           <div className="grid grid-cols-4 gap-1.5">
             {screen.widgets.map(w => (
               <Widget key={w.index} widget={w} accent={accent} viewAll={preview.strings.viewAll}
@@ -306,16 +332,21 @@ function Editable({ onClick, label, className, children }: { onClick: () => void
   )
 }
 
+/** Literal classes, so Tailwind's scanner keeps them. */
+const SPAN = ['col-span-1', 'col-span-2', 'col-span-3', 'col-span-4']
+
 function Widget({ widget, accent, viewAll, onEdit }: { widget: PreviewWidget; accent: string; viewAll: string; onEdit: () => void }) {
-  const wide = widget.kind !== 'kpi'
   return (
-    <Editable onClick={onEdit} label={`Edit widget ${widget.index + 1}`} className={`${wide ? 'col-span-2' : 'col-span-1'} block min-w-0 text-start`}>
+    <Editable onClick={onEdit} label={`Edit widget ${widget.index + 1}`} className={`${SPAN[widget.span - 1] ?? 'col-span-1'} block min-w-0 text-start`}>
       <div
         className={`h-full rounded border p-1.5 ${widget.kind === 'broken' ? 'border-error/50 bg-error/5' : 'border-outline-variant bg-surface-container-lowest'}`}
         data-preview-widget={widget.index}
       >
         <p className="truncate text-[9px] font-semibold text-secondary">{widget.title}</p>
-        {widget.kind === 'kpi' && <p className="text-[15px] font-bold tabular-nums text-on-surface">{widget.value}</p>}
+        {widget.filters.length > 0 && (
+          <p className="truncate text-[8px] text-secondary" data-preview-widget-filter>{widget.filters.join(' · ')}</p>
+        )}
+        {widget.kind === 'kpi' &&<p className="text-[15px] font-bold tabular-nums text-on-surface">{widget.value}</p>}
         {widget.kind === 'bar' && <Bars bars={widget.bars.slice(0, 4)} accent={accent} />}
         {widget.kind === 'line' && <LineChart points={widget.points} accent={accent} />}
         {widget.kind === 'recent' && (

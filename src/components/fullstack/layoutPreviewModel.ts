@@ -2,10 +2,14 @@ import type { FullstackAgg, FullstackBucket, FullstackEntityDef, FullstackFieldD
 import { enumLabel } from './enumLabels'
 import { humanize } from './naming'
 import {
+  DEFAULT_NAV_ICON,
+  defaultSpan,
+  NAV_ICONS,
   defaultBarGroupBy,
   defaultLineGroupBy,
   defaultReportGroupBy,
   dateFields,
+  navSections,
   relationsTo,
 } from './pageLayout'
 import { buildUiPreview, fieldLabel } from './uiPreview'
@@ -35,12 +39,22 @@ export interface PreviewNavItem {
 
 export interface PreviewBar { label: string; value: number }
 
-export type PreviewWidget =
-  | { kind: 'kpi'; index: number; title: string; value: string }
-  | { kind: 'bar'; index: number; title: string; bars: PreviewBar[] }
-  | { kind: 'line'; index: number; title: string; points: PreviewBar[] }
-  | { kind: 'recent'; index: number; title: string; rows: string[] }
-  | { kind: 'broken'; index: number; title: string; message: string }
+/** What every widget carries: where it sits and how wide it is (grid columns out of four). */
+interface WidgetBase {
+  index: number
+  title: string
+  span: number
+  /** "Status: Open" chips for the rows the widget is limited to. */
+  filters: string[]
+}
+
+export type PreviewWidget = WidgetBase & (
+  | { kind: 'kpi'; value: string }
+  | { kind: 'bar'; bars: PreviewBar[] }
+  | { kind: 'line'; points: PreviewBar[] }
+  | { kind: 'recent'; rows: string[] }
+  | { kind: 'broken'; message: string }
+)
 
 export interface PreviewTable {
   /** The entity's plural label. */
@@ -56,7 +70,7 @@ export interface PreviewTable {
 }
 
 export type PreviewScreen =
-  | { type: 'dashboard'; title: string; description?: string; widgets: PreviewWidget[] }
+  | { type: 'dashboard'; title: string; description?: string; widgets: PreviewWidget[]; period: string | null }
   | { type: 'entity-list'; title: string; description?: string; table: PreviewTable }
   | { type: 'tabs'; title: string; description?: string; tabs: { label: string; target: number | null }[] }
   | { type: 'master-detail'; title: string; description?: string; parentTitle: string; parentItems: string[]; child: PreviewTable; childTitle: string }
@@ -76,9 +90,17 @@ export type PreviewScreen =
   }
   | { type: 'broken'; title: string; message: string }
 
+export interface PreviewNavSection {
+  /** The nav group; absent for a run of ungrouped pages. */
+  group?: string
+  items: PreviewNavItem[]
+}
+
 export interface LayoutPreview {
   rtl: boolean
+  /** The nav in the order the generated shell lists it (sections flattened). */
   nav: PreviewNavItem[]
+  sections: PreviewNavSection[]
   /** One per page, index-aligned with the layout. */
   screens: PreviewScreen[]
   strings: { viewAll: string; search: string; filters: string; total: string; startPage: string }
@@ -92,14 +114,17 @@ const STRINGS = {
     xReport: '{x} report', total: 'Total', aggSum: 'Total {x}', aggAvg: 'Average {x}', aggMin: 'Lowest {x}',
     aggMax: 'Highest {x}', viewAll: 'View all', back: 'Back', exportCsv: 'Export CSV', newX: 'New {x}',
     xDetails: '{x} details', search: 'Search…', filters: 'Filters', trueLabel: 'True', falseLabel: 'False',
-    count: 'Count', startPage: 'Start page',
+    count: 'Count', startPage: 'Start page', periodAll: 'All time', period7d: 'Last 7 days',
+    period30d: 'Last 30 days', period90d: 'Last 90 days', periodYtd: 'This year', period12m: 'Last 12 months',
   },
   he: {
     dashboard: 'לוח בקרה', xByY: '{x} לפי {y}', recentX: '{x} – אחרונים', xOverTime: '{x} לאורך זמן',
     xReport: 'דוח {x}', total: 'סך הכול', aggSum: 'סך {x}', aggAvg: '{x} ממוצע', aggMin: '{x} מינימלי',
     aggMax: '{x} מקסימלי', viewAll: 'הצג הכל', back: 'חזרה', exportCsv: 'ייצוא ל-CSV', newX: '{x} חדש',
     xDetails: 'פרטי {x}', search: 'חיפוש…', filters: 'מסננים', trueLabel: 'כן', falseLabel: 'לא',
-    count: 'כמות', startPage: 'דף פתיחה',
+    count: 'כמות', startPage: 'דף פתיחה', periodAll: 'כל הזמן', period7d: '7 הימים האחרונים',
+    period30d: '30 הימים האחרונים', period90d: '90 הימים האחרונים', periodYtd: 'מתחילת השנה',
+    period12m: '12 החודשים האחרונים',
   },
 } as const
 
@@ -112,13 +137,14 @@ function translator(locale: 'en' | 'he') {
 }
 type T = ReturnType<typeof translator>
 
-export const PAGE_NAV_ICON: Record<FullstackPageType, string> = {
-  dashboard: 'dashboard',
-  'entity-list': 'table_rows',
-  tabs: 'tab',
-  'master-detail': 'vertical_split',
-  record: 'article',
-  report: 'monitoring',
+const PERIOD_KEYS = {
+  all: 'periodAll', '7d': 'period7d', '30d': 'period30d', '90d': 'period90d', ytd: 'periodYtd', '12m': 'period12m',
+} as const
+
+/** The Material Symbol that stands in for a page's (lucide) nav icon. */
+export function navSymbol(page: FullstackPageDef): string {
+  const icon = page.icon && page.icon in NAV_ICONS ? page.icon : DEFAULT_NAV_ICON[page.type as FullstackPageType]
+  return icon ? NAV_ICONS[icon].symbol : 'web_asset'
 }
 
 // ── Sample data ─────────────────────────────────────────────────────────────
@@ -289,28 +315,33 @@ export function buildLayoutPreview(
         const widgets: PreviewWidget[] = (page.widgets ?? []).map((w, wi): PreviewWidget => {
           const e = entityOf(w.entity)
           const seed = `${seedBase}:${wi}:${w.kind}:${w.entity}:${w.groupBy ?? ''}:${w.agg ?? ''}:${w.field ?? ''}`
-          if (!e) return { kind: 'broken', index: wi, title: w.title || w.entity || '?', message: `No entity “${w.entity}”` }
+          const base = {
+            index: wi,
+            span: Math.min(Math.max(w.span ?? defaultSpan(w.kind), 1), 4),
+            filters: e ? presetChips(e, w.presetFilter) : [],
+          }
+          if (!e) return { ...base, kind: 'broken', title: w.title || w.entity || '?', message: `No entity “${w.entity}”` }
           const { plural } = labels(e)
           const reduces = !!w.agg && w.agg !== 'count'
           const valueField = reduces ? fieldOf(e, w.field) : undefined
           const measured = reduces ? aggTitle(w.agg!, valueField) : plural
           switch (w.kind) {
             case 'kpi':
-              return { kind: 'kpi', index: wi, title: w.title || measured, value: kpiValue(w.agg, valueField, seed) }
+              return { ...base, kind: 'kpi', title: w.title || measured, value: kpiValue(w.agg, valueField, seed) }
             case 'bar': {
               const group = fieldOf(e, w.groupBy ?? defaultBarGroupBy(e))
-              if (!group) return { kind: 'broken', index: wi, title: w.title || plural, message: `${e.name} has nothing to group by` }
+              if (!group) return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} has nothing to group by` }
               return {
-                kind: 'bar', index: wi,
+                ...base, kind: 'bar',
                 title: w.title || t('xByY', { x: measured, y: fieldLabel(group) }),
                 bars: breakdown(group, w.agg, valueField, seed),
               }
             }
             case 'line': {
               const date = fieldOf(e, w.groupBy ?? defaultLineGroupBy(e))
-              if (!date) return { kind: 'broken', index: wi, title: w.title || plural, message: `${e.name} has no date field` }
+              if (!date) return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} has no date field` }
               return {
-                kind: 'line', index: wi,
+                ...base, kind: 'line',
                 title: w.title || t('xOverTime', { x: measured }),
                 points: series(w.bucket, w.agg, valueField, seed),
               }
@@ -320,14 +351,15 @@ export function buildLayoutPreview(
               const { singular } = labels(e)
               // Newest first: the generated list sorts by key, descending.
               return {
-                kind: 'recent', index: wi,
+                ...base, kind: 'recent',
                 title: w.title || t('recentX', { x: plural }),
                 rows: Array.from({ length: Math.min(limit, 5) }, (_, i) => rowLabel(e, limit - i + 20, singular, t)),
               }
             }
           }
         })
-        return { type: 'dashboard', title: page.title || t('dashboard'), description, widgets }
+        const period = page.dateRange ? t(PERIOD_KEYS[page.dateRange]) : null
+        return { type: 'dashboard', title: page.title || t('dashboard'), description, widgets, period }
       }
       case 'entity-list': {
         const e = entityOf(page.entity)
@@ -425,17 +457,21 @@ export function buildLayoutPreview(
     }
   }
 
-  const visible = pages.map((p, index) => ({ p, index })).filter(({ p }) => !p.hidden && p.type !== 'record')
-  const nav: PreviewNavItem[] = visible.map(({ p, index }, i) => ({
-    index,
-    label: screens[index]?.title ?? defaultTitle(p),
-    icon: PAGE_NAV_ICON[p.type] ?? 'web_asset',
-    start: i === 0,
+  const startIndex = pages.findIndex(p => !p.hidden && p.type !== 'record')
+  const sections: PreviewNavSection[] = navSections(pages).map(section => ({
+    group: section.group,
+    items: section.items.map(index => ({
+      index,
+      label: screens[index]?.title ?? defaultTitle(pages[index]),
+      icon: navSymbol(pages[index]),
+      start: index === startIndex,
+    })),
   }))
 
   return {
     rtl: ctx.locale === 'he',
-    nav,
+    nav: sections.flatMap(section => section.items),
+    sections,
     screens,
     strings: { viewAll: t('viewAll'), search: t('search'), filters: t('filters'), total: t('total'), startPage: t('startPage') },
   }

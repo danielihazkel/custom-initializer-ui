@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import {
   defaultBarGroupBy, defaultLineGroupBy, defaultOptionLabel, defaultReportGroupBy, describePagesChange,
-  dropTabsTo, duplicatePage, pageFromSuggestion, pagesEmbedding, renamePageIdInPages, renameRelationInPages,
-  suggestPages, validatePages,
+  dropTabsTo, duplicatePage, navSections, pageFromSuggestion, pagesEmbedding, renameFieldInPages, renamePageIdInPages,
+  renameRelationInPages, suggestPages, validatePages,
 } from './pageLayout'
 
 const entities: FullstackEntityDef[] = [
@@ -92,5 +92,71 @@ describe('describePagesChange', () => {
       .toBe('Renamed the “Inbox” page')
     expect(describePagesChange(layout, layout.map((p, i) => (i === 0 ? { ...p, hidden: false } : p))))
       .toBe('Showed “Order” in the navigation')
+  })
+})
+
+describe('nav sections', () => {
+  const nav: FullstackPageDef[] = [
+    { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] },
+    { id: 'orders', type: 'entity-list', entity: 'Order', group: 'Sales', icon: 'ShoppingCart' },
+    { id: 'people', type: 'entity-list', entity: 'Customer', group: 'People' },
+    { id: 'more-orders', type: 'entity-list', entity: 'Order', group: 'Sales' },
+    { id: 'tab-only', type: 'entity-list', entity: 'Order', hidden: true },
+    { id: 'loose', type: 'entity-list', entity: 'Customer' },
+  ]
+
+  it('gathers a group where it first appears, like the generated shell', () => {
+    expect(navSections(nav)).toEqual([
+      { items: [0] },
+      { group: 'Sales', items: [1, 3] },
+      { group: 'People', items: [2] },
+      { items: [5] },
+    ])
+    expect(validatePages(nav, entities).count).toBe(0)
+  })
+
+  it('puts a group or icon only on a page that is in the nav', () => {
+    const v = validatePages(nav.map((p, i) => (i === 4 ? { ...p, group: 'Sales' } : p)), entities)
+    expect(v.byPage[4]?.group).toBe('only applies to a page in the navigation')
+    const long = validatePages(nav.map((p, i) => (i === 2 ? { ...p, group: 'x'.repeat(41) } : p)), entities)
+    expect(long.byPage[2]?.group).toBe('is longer than 40 characters')
+  })
+})
+
+describe('dashboard layout and filters', () => {
+  const dash = (widgets: FullstackPageDef['widgets'], extra: Partial<FullstackPageDef> = {}): FullstackPageDef[] =>
+    [{ id: 'desk', type: 'dashboard', widgets, ...extra }]
+
+  it('accepts spans, widget filters, a recent sort and a period picker over a date', () => {
+    const pages = dash([
+      { kind: 'kpi', entity: 'Order', presetFilter: { status: 'OPEN' }, span: 2 },
+      { kind: 'recent', entity: 'Order', sortBy: 'placedOn', dateField: 'placedOn' },
+    ], { dateRange: '30d' })
+    expect(validatePages(pages, entities).count).toBe(0)
+  })
+
+  it('flags what the generator would reject', () => {
+    const v = validatePages(dash([
+      { kind: 'kpi', entity: 'Order', span: 5 },
+      { kind: 'bar', entity: 'Order', sortBy: 'placedOn' },
+      { kind: 'kpi', entity: 'Order', presetFilter: { status: 'LOST' } },
+      { kind: 'kpi', entity: 'Order', dateField: 'placedOn' },
+    ]), entities)
+    expect(v.byPage[0]).toMatchObject({
+      'widget.0': 'spans 1 to 4 columns',
+      'widget.1': 'only a recent list takes a sort',
+      'widget.2': '“LOST” is not one of the values of status',
+      'widget.3': 'a date field needs the dashboard’s period picker',
+    })
+    // A period picker needs some widget with a date to limit.
+    expect(validatePages(dash([{ kind: 'kpi', entity: 'Customer' }], { dateRange: '7d' }), entities).byPage[0]?.dateRange)
+      .toBe('no widget counts an entity with a filterable date')
+  })
+
+  it('follows a field rename into a widget’s filter, sort and date', () => {
+    const pages = dash([{ kind: 'recent', entity: 'Order', sortBy: 'placedOn', dateField: 'placedOn', presetFilter: { status: 'OPEN' } }],
+      { dateRange: '30d' })
+    const renamed = renameFieldInPages(renameFieldInPages(pages, 'Order', 'placedOn', 'orderedOn'), 'Order', 'status', 'state')
+    expect(renamed[0].widgets?.[0]).toMatchObject({ sortBy: 'orderedOn', dateField: 'orderedOn', presetFilter: { state: 'OPEN' } })
   })
 })
