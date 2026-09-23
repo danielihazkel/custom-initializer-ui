@@ -38,7 +38,7 @@ import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writ
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesEditor } from './PagesEditor'
-import { renameEntityInPages, renameFieldInPages, renameRelationInPages, validatePages } from './pageLayout'
+import { pageOfServerError, renameEntityInPages, renameFieldInPages, renameRelationInPages, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
@@ -166,6 +166,9 @@ export function FullstackView() {
   const [colorPalette, setColorPalette] = useState<string>(() => shared ? (shared.colorPalette ?? '') : (localStorage.getItem(LS.palette) ?? ''))
   // The frontend page layout — empty = the classic shell. Arrives with an example / preset / link.
   const [pages, setPages] = useState<FullstackPageDef[]>(() => shared ? (shared.pages ?? []) : loadJson<FullstackPageDef[]>(LS.pages, []))
+  // A Generate 400 that names a page: shown on that page until the layout changes.
+  const [pageServerIssue, setPageServerIssue] = useState<{ page: number; message: string } | null>(null)
+  useEffect(() => { setPageServerIssue(null) }, [pages])
   // Bumped to make the page editor open its first problem (the sticky bar's "jump to error").
   const [pagesReveal, setPagesReveal] = useState(0)
   // Collapsed cards survive a refresh: entities persist with their uids, so the uid set stays valid.
@@ -895,7 +898,14 @@ export function FullstackView() {
         setToast({ message: 'Generation cancelled', type: 'success' })
         return false
       }
-      setToast({ message: `Generation failed: ${(err as Error).message}`, type: 'error' })
+      const message = (err as Error).message
+      const page = pageOfServerError(message, pages)
+      if (page != null) {
+        setPageServerIssue({ page, message })
+        setToast({ message: 'Generation failed — the server rejected a page; it is highlighted in the page layout', type: 'error' })
+      } else {
+        setToast({ message: `Generation failed: ${message}`, type: 'error' })
+      }
       return false
     } finally {
       // A newer Generate may already own the ref — only the request that set it clears the state.
@@ -1258,6 +1268,13 @@ export function FullstackView() {
         onClear={clearPageLayout}
         previewSettings={pagesPreviewSettings}
         revealRequest={pagesReveal}
+        serverIssue={pageServerIssue}
+        history={{
+          undoLabel: lastUndo ? `Undo: ${lastUndo.label}` : null,
+          redoLabel: nextRedo ? `Redo: ${nextRedo.label}` : null,
+          onUndo: undo,
+          onRedo: redo,
+        }}
       />
 
       <section id="fs-entities" className="space-y-4">

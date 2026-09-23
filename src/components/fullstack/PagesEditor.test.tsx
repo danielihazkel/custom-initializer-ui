@@ -355,7 +355,6 @@ describe('PagesEditor', () => {
     fireEvent.change(within(row).getByLabelText('Period picker'), { target: { value: '90d' } })
     expect(latest[0].dateRange).toBe('90d')
 
-    fireEvent.click(within(row).getByRole('button', { name: 'Layout and filter of widget 1' }))
     const options = row.querySelector('[data-widget-options]') as HTMLElement
     fireEvent.click(within(options).getByRole('radio', { name: '4 columns' }))
     fireEvent.change(within(options).getByLabelText('Sort by'), { target: { value: 'placedOn' } })
@@ -432,5 +431,61 @@ describe('PagesEditor', () => {
     expect(latest[1].headerStats).toEqual([{ child: 'Order' }])
     fireEvent.click(within(row).getByRole('radio', { name: 'A count per tab' }))
     expect(latest[1].headerStats).toBeUndefined()
+  })
+
+  it('keeps a widget’s settings across a kind switch and says what it dropped', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[{ id: 'desk', type: 'dashboard', widgets: [{ kind: 'progress', entity: 'Order', agg: 'sum', field: 'total', target: '900' }] }]} />)
+    const row = openRow('desk') as HTMLElement
+    fireEvent.click(within(row).getByRole('radio', { name: 'Number tile' }))
+    expect(latest[0].widgets?.[0]).toEqual({ kind: 'kpi', entity: 'Order', agg: 'sum', field: 'total' })
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the target setting')
+    // A switch that keeps everything is silent.
+    fireEvent.click(within(row).getByRole('radio', { name: 'Breakdown chart' }))
+    expect(latest[0].widgets?.[0]).toMatchObject({ kind: 'bar', agg: 'sum', field: 'total' })
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+  })
+
+  it('lists a server rejection on the page it names', () => {
+    const pages: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }]
+    render(
+      <PagesEditor
+        pages={pages}
+        entities={entities}
+        validation={validatePages(pages, entities)}
+        onChange={() => {}}
+        pushUndo={pushUndo}
+        onClear={() => {}}
+        serverIssue={{ page: 0, message: "Page 'orders': something the editor does not check" }}
+      />,
+    )
+    expect(document.querySelector('[data-page-layout-problems]')?.textContent).toContain('The server rejected “Order”')
+  })
+
+  it('flags required fields a wizard never asks for', () => {
+    render(<Harness initial={[{ id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ fields: ['status', 'total'] }] }]} />)
+    openRow('new-order')
+    expect(document.querySelector('[data-wizard-unasked-required]')?.textContent).toContain('id')
+    expect(document.querySelector('[data-wizard-unasked]')?.textContent).toContain('placedOn')
+  })
+
+  it('offers undo and redo in the header', () => {
+    const onUndo = vi.fn()
+    const pages: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }]
+    render(
+      <PagesEditor
+        pages={pages}
+        entities={entities}
+        validation={validatePages(pages, entities)}
+        onChange={() => {}}
+        pushUndo={pushUndo}
+        onClear={() => {}}
+        history={{ undoLabel: 'Undo: Added a page', redoLabel: null, onUndo, onRedo: () => {} }}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Undo: Added a page' }))
+    expect(onUndo).toHaveBeenCalled()
+    expect((screen.getByRole('button', { name: 'Redo (nothing to redo)' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

@@ -146,7 +146,7 @@ describe('dashboard layout and filters', () => {
     expect(v.byPage[0]).toMatchObject({
       'widget.0': 'spans 1 to 4 columns',
       'widget.1': 'only a recent list takes a sort',
-      'widget.2': '“LOST” is not one of the values of status',
+      'widget.2.presetFilter.status': '“LOST” is not one of the values of status',
       'widget.3': 'a date field needs the dashboard’s period picker',
     })
     // A period picker needs some widget with a date to limit.

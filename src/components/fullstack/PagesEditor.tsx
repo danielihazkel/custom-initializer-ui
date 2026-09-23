@@ -18,7 +18,7 @@ import { LayoutPreview, type EditTarget } from './LayoutPreview'
 import { moveItem } from './reorder'
 import { useStableKeys } from './rowKeys'
 import { focusWithoutClipping, scrollToElement } from './scroll'
-import { useDragReorder } from './useDragReorder'
+import { dropIndicatorClass, useDragReorder } from './useDragReorder'
 import {
   DATE_RANGES,
   DEFAULT_NAV_ICON,
@@ -58,6 +58,10 @@ import {
   relationsTo,
   reportCharts,
   renamePageIdInPages,
+  keptPresetFilter,
+  retargetReport,
+  retargetWidget,
+  retargetWizardSteps,
   seedLayout,
   slugify,
   suggestPages,
@@ -89,6 +93,15 @@ interface Props {
   /** `stacked` puts the preview under the page list at every width — for narrow hosts (the
    *  admin drawer), where the viewport-wide split would squeeze both. */
   layout?: 'split' | 'stacked'
+  /** The editor's undo/redo, offered in the header too (the entities toolbar is far below). */
+  history?: {
+    undoLabel: string | null
+    redoLabel: string | null
+    onUndo: () => void
+    onRedo: () => void
+  }
+  /** A 400 from Generate that names a page of this layout — listed with the problems and revealed. */
+  serverIssue?: { page: number; message: string } | null
 }
 
 const CHIP = 'rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide'
@@ -96,13 +109,13 @@ const ICON_BUTTON = 'shrink-0 rounded-lg p-1.5 text-secondary hover:text-primary
 const SMALL_BUTTON = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-colors disabled:opacity-40 disabled:hover:text-secondary disabled:hover:border-outline-variant disabled:hover:bg-transparent'
 const PREVIEW_KEY = 'fullstack:layoutPreview'
 
-const WIDGET_KINDS: { kind: FullstackWidgetDef['kind']; icon: string; label: string }[] = [
-  { kind: 'kpi', icon: 'counter_1', label: 'Number tile' },
-  { kind: 'bar', icon: 'bar_chart', label: 'Breakdown chart' },
-  { kind: 'line', icon: 'show_chart', label: 'Trend over time' },
-  { kind: 'recent', icon: 'list', label: 'Recent rows' },
-  { kind: 'top', icon: 'format_list_numbered', label: 'Top list' },
-  { kind: 'progress', icon: 'data_usage', label: 'Progress to target' },
+const WIDGET_KINDS: { kind: FullstackWidgetDef['kind']; icon: string; label: string; short: string; hint: string }[] = [
+  { kind: 'kpi', icon: 'counter_1', label: 'Number tile', short: 'Number', hint: 'One number: a count or an aggregate' },
+  { kind: 'bar', icon: 'bar_chart', label: 'Breakdown chart', short: 'Breakdown', hint: 'Bars per value of an enum or boolean field' },
+  { kind: 'line', icon: 'show_chart', label: 'Trend over time', short: 'Trend', hint: 'A line over a date, per day, month or year' },
+  { kind: 'recent', icon: 'list', label: 'Recent rows', short: 'Recent', hint: 'The latest rows, newest first' },
+  { kind: 'top', icon: 'format_list_numbered', label: 'Top list', short: 'Top', hint: 'The largest groups, ranked' },
+  { kind: 'progress', icon: 'data_usage', label: 'Progress to target', short: 'Progress', hint: 'An aggregate against a fixed target' },
 ]
 
 function readPreviewOpen(): boolean {
@@ -115,7 +128,7 @@ function readPreviewOpen(): boolean {
  * dashboard plus one list page per entity), which "Start from my entities" materializes as an
  * editable starting point.
  */
-export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, layout = 'split' }: Props) {
+export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, layout = 'split', history, serverIssue }: Props) {
   const keys = useStableKeys(pages, p => p.id)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -125,16 +138,36 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const [confirmClassic, setConfirmClassic] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(readPreviewOpen)
   const [previewKey, setPreviewKey] = useState<string | null>(null)
+  // Below the wide split the preview opens as a slide-over instead of dropping under the list.
+  const [previewDrawer, setPreviewDrawer] = useState(false)
+  // "Changed widget 2 — dropped: target" after a switch that could not keep everything.
+  const [notice, setNotice] = useState<string | null>(null)
   const sectionRef = useRef<HTMLElement>(null)
 
   const named = entities.filter(e => e.name.trim())
   const atPageCap = pages.length >= MAX_PAGES
   const dnd = useDragReorder((list, from, to) => {
     if (list === 'pages') return onChange(moveItem(pages, from, to))
-    const index = Number(list.slice('widgets:'.length))
+    const [kind, at] = list.split(':')
+    const index = Number(at)
     const page = pages[index]
-    if (page) update(index, { widgets: moveItem(page.widgets ?? [], from, to) })
+    if (!page) return
+    if (kind === 'widgets') update(index, { widgets: moveItem(page.widgets ?? [], from, to) })
+    else if (kind === 'tabs') update(index, { tabs: moveItem(page.tabs ?? [], from, to) })
+    else if (kind === 'charts') {
+      const charts = moveItem(reportCharts(page), from, to)
+      update(index, charts.length <= 1 ? { chart: charts[0] ?? {}, charts: undefined } : { charts, chart: undefined })
+    } else if (kind === 'childTabs') {
+      const related = entities.filter(e => relationsTo(e, page.entity).length > 0).map(e => e.name)
+      update(index, { childTabs: moveItem(page.childTabs ?? related, from, to) })
+    } else if (kind === 'steps') update(index, { steps: moveItem(page.steps ?? [], from, to) })
   })
+
+  const lossy: Lossy = (label, dropped) => {
+    if (dropped.length === 0) return
+    pushUndo(label)
+    setNotice(`${label} — dropped the ${dropped.join(', ')} setting${dropped.length === 1 ? '' : 's'}, which no longer fit.`)
+  }
 
   useEffect(() => {
     try { localStorage.setItem(PREVIEW_KEY, previewOpen ? 'open' : 'closed') } catch { /* preference only */ }
@@ -253,6 +286,11 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     else scrollToElement(sectionRef.current, 'center')
   }, [revealRequest])
 
+  // A server 400 about a page opens that page, like a local problem does.
+  useEffect(() => {
+    if (serverIssue) reveal({ page: serverIssue.page })
+  }, [serverIssue])
+
   const settings = previewSettings ?? { locale: 'en' as const, projectOpts: [], skin: 'tailwind' as const }
   const preview = useMemo(
     () => buildLayoutPreview(pages, entities, { locale: settings.locale, projectOpts: settings.projectOpts }),
@@ -269,7 +307,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         : undefined
   const suggestions = useMemo(() => suggestPages(entities, pages), [entities, pages])
 
-  const issues = validation.issues
+  const issues = serverIssue && pages[serverIssue.page]
+    ? [{ page: serverIssue.page, field: undefined, summary: `The server rejected “${pageLabel(pages[serverIssue.page])}”: ${serverIssue.message}` }, ...validation.issues]
+    : validation.issues
   const showPreview = pages.length > 0 && previewOpen
 
   return (
@@ -293,13 +333,51 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {history && (
+            <span className="inline-flex items-center">
+              <button
+                type="button"
+                onClick={history.onUndo}
+                disabled={!history.undoLabel}
+                className={ICON_BUTTON}
+                title={history.undoLabel ? `${history.undoLabel} (Ctrl+Z)` : 'Nothing to undo'}
+                aria-label={history.undoLabel ?? 'Undo (nothing to undo)'}
+                data-pages-undo
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>undo</span>
+              </button>
+              <button
+                type="button"
+                onClick={history.onRedo}
+                disabled={!history.redoLabel}
+                className={ICON_BUTTON}
+                title={history.redoLabel ? `${history.redoLabel} (Ctrl+Shift+Z)` : 'Nothing to redo'}
+                aria-label={history.redoLabel ?? 'Redo (nothing to redo)'}
+                data-pages-redo
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>redo</span>
+              </button>
+            </span>
+          )}
+          {pages.length > 0 && layout === 'split' && (
+            <button
+              type="button"
+              onClick={() => setPreviewDrawer(true)}
+              className={`${SMALL_BUTTON} xl:hidden`}
+              title="Open a preview of the generated app"
+              data-open-preview-drawer
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>preview</span>
+              Open preview
+            </button>
+          )}
           {pages.length > 0 && (
             <button
               type="button"
               onClick={() => setPreviewOpen(o => !o)}
               aria-pressed={previewOpen}
-              className={SMALL_BUTTON}
+              className={`${SMALL_BUTTON} ${layout === 'split' ? 'hidden xl:inline-flex' : ''}`}
               title={previewOpen ? 'Hide the layout preview' : 'Show a preview of the generated app'}
               data-toggle-preview
             >
@@ -331,6 +409,29 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           </button>
         </div>
       </div>
+
+      {named.length === 0 && (
+        <p className="text-[11px] text-secondary" data-pages-need-entity>
+          Pages are built from your entities — name at least one entity in the Entities section below, then add pages here.
+        </p>
+      )}
+      {atPageCap && (
+        <p className="text-[11px] text-secondary">This layout has the maximum of {MAX_PAGES} pages — remove one to add another.</p>
+      )}
+      {notice && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-[11px] text-on-surface" role="status" data-pages-notice>
+          <span className="material-symbols-outlined text-amber-600 dark:text-amber-300" style={{ fontSize: '14px' }} aria-hidden="true">info</span>
+          <span className="flex-1">{notice}</span>
+          {history?.undoLabel && (
+            <button type="button" onClick={() => { setNotice(null); history.onUndo() }} className="font-semibold text-primary hover:underline">
+              Undo
+            </button>
+          )}
+          <button type="button" onClick={() => setNotice(null)} className={ICON_BUTTON} aria-label="Dismiss">
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
+          </button>
+        </div>
+      )}
 
       {addOpen && (
         <div className="space-y-2" data-page-gallery>
@@ -541,7 +642,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                           label="Id"
                           error={errors.id}
                           control="id"
-                          hint={customIds.has(key) || page.type === 'dashboard' ? 'Screen file and nav id' : 'Follows the title until you edit it'}
+                          hint={`${customIds.has(key) || page.type === 'dashboard' ? 'The URL and screen file' : 'Follows the title until you edit it'} · lower-case letters, digits and dashes`}
                         >
                           <input
                             type="text"
@@ -572,25 +673,25 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                       )}
 
                       {page.type === 'entity-list' && (
-                        <EntityListForm page={page} index={index} entities={named} errors={errors} update={update} />
+                        <EntityListForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} />
                       )}
                       {page.type === 'dashboard' && (
-                        <DashboardForm page={page} index={index} entities={named} errors={errors} update={update} dnd={dnd} />
+                        <DashboardForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} dnd={dnd} />
                       )}
                       {page.type === 'tabs' && (
-                        <TabsForm page={page} index={index} pages={pages} errors={errors} update={update} />
+                        <TabsForm page={page} index={index} pages={pages} errors={errors} update={update} dnd={dnd} />
                       )}
                       {page.type === 'master-detail' && (
-                        <MasterDetailForm page={page} index={index} entities={named} errors={errors} update={update} />
+                        <MasterDetailForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} />
                       )}
                       {page.type === 'record' && (
-                        <RecordForm page={page} index={index} entities={named} errors={errors} update={update} />
+                        <RecordForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} dnd={dnd} />
                       )}
                       {page.type === 'report' && (
-                        <ReportForm page={page} index={index} entities={named} errors={errors} update={update} />
+                        <ReportForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} dnd={dnd} />
                       )}
                       {page.type === 'wizard' && (
-                        <WizardForm page={page} index={index} entities={named} errors={errors} update={update} />
+                        <WizardForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} dnd={dnd} />
                       )}
                     </div>
                   )}
@@ -599,7 +700,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             })}
           </ol>
           {showPreview && (
-            <aside className={`min-w-0 space-y-1.5 ${layout === 'split' ? 'xl:sticky xl:top-20 xl:self-start' : ''}`} aria-label="Layout preview">
+            <aside className={`min-w-0 space-y-1.5 ${layout === 'split' ? 'hidden xl:block xl:sticky xl:top-20 xl:self-start' : ''}`} aria-label="Layout preview">
               <p className="flex items-center justify-between gap-2 text-[11px] text-secondary">
                 <span className="font-semibold uppercase tracking-wider">Preview</span>
                 <span>Sample data · click a part to edit it</span>
@@ -617,6 +718,18 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         </div>
       )}
 
+      {previewDrawer && pages.length > 0 && (
+        <PreviewDrawer onClose={() => setPreviewDrawer(false)}>
+          <LayoutPreview
+            preview={preview}
+            selected={previewIndex}
+            onSelect={i => setPreviewKey(keys[i] ?? null)}
+            onEdit={target => { setPreviewDrawer(false); reveal(target) }}
+            skin={settings.skin}
+            offNavNote={offNavNote}
+          />
+        </PreviewDrawer>
+      )}
       {confirmRemove != null && pages[confirmRemove] && (
         <ConfirmDialog
           title={`Remove “${pageLabel(pages[confirmRemove])}”?`}
@@ -644,28 +757,31 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
 // ── Per-type forms ─────────────────────────────────────────────────────────
 
 type Update = (index: number, patch: Partial<FullstackPageDef>) => void
+/** Records an undo entry before a change that drops settings, and says what was dropped. */
+type Lossy = (label: string, dropped: string[]) => void
 interface FormProps {
   page: FullstackPageDef
   index: number
   entities: FullstackEntityDef[]
   errors: Record<string, string>
   update: Update
+  lossy: Lossy
 }
 
 /** Where a nav page sits in the generated nav: its section (group) and its icon. */
-function NavFields({ page, index, pages, errors, update }: Omit<FormProps, 'entities'> & { pages: FullstackPageDef[] }) {
+function NavFields({ page, index, pages, errors, update }: Omit<FormProps, 'entities' | 'lossy'> & { pages: FullstackPageDef[] }) {
   const groups = [...new Set(pages.map(p => p.group?.trim()).filter((g): g is string => Boolean(g)))]
   const fallback = DEFAULT_NAV_ICON[page.type]
   const current = page.icon ?? fallback
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[12rem_minmax(0,1fr)]">
-      <Field label="Nav group" error={errors.group} control="group" hint="Pages with the same group are listed together">
+      <Field label="Nav group" error={errors.group} control="group" hint={`Pages with the same group are listed together · up to ${MAX_GROUP} characters`}>
         <input
           type="text"
           list={`nav-groups-${index}`}
           aria-label="Nav group"
           aria-invalid={Boolean(errors.group)}
-          maxLength={MAX_GROUP + 10}
+          maxLength={MAX_GROUP}
           value={page.group ?? ''}
           onChange={e => update(index, { group: e.target.value || undefined })}
           placeholder="None"
@@ -732,13 +848,15 @@ function MoveButtons({ label, canUp, canDown, onMove }: { label: string; canUp: 
 
 /** The "opens filtered on" rows of a list or report page: equality on a filterable enum/boolean
  *  column, which is exactly what the backend accepts as a preset filter. */
-function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filtered on' }: {
+function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filtered on', controlPrefix = 'presetFilter.' }: {
   filter: Record<string, string> | undefined
   entity: FullstackEntityDef | undefined
-  /** Per-field messages under `presetFilter.<field>` (a widget reports on its row instead). */
+  /** Per-field messages under `presetFilter.<field>`. */
   errors: Record<string, string>
   onChange: (next: Record<string, string> | undefined) => void
   heading?: string
+  /** The `data-control` prefix a problem reveals — a widget's filters live under its own. */
+  controlPrefix?: string
 }) {
   const filterable = groupableFields(entity)
   const filters = Object.entries(filter ?? {})
@@ -768,7 +886,7 @@ function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filt
         const f = filterable.find(x => x.name === field)
         const error = errors[`presetFilter.${field}`]
         return (
-          <div key={field} className="flex items-center gap-2" data-preset-filter={field} data-control={`presetFilter.${field}`}>
+          <div key={field} className="flex items-center gap-2" data-preset-filter={field} data-control={`${controlPrefix}${field}`}>
             <select
               aria-label="Filter field"
               aria-invalid={Boolean(error)}
@@ -814,7 +932,7 @@ function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filt
   )
 }
 
-function EntityListForm({ page, index, entities, errors, update }: FormProps) {
+function EntityListForm({ page, index, entities, errors, update, lossy }: FormProps) {
   const entity = entities.find(e => e.name === page.entity)
 
   return (
@@ -825,7 +943,13 @@ function EntityListForm({ page, index, entities, errors, update }: FormProps) {
           value={page.entity ?? ''}
           options={entities.map(e => e.name)}
           error={errors.entity}
-          onChange={name => update(index, { entity: name, presetFilter: undefined })}
+          onChange={name => {
+            const kept = keptPresetFilter(page.presetFilter, entities.find(e => e.name === name))
+            if (Object.keys(kept ?? {}).length < Object.keys(page.presetFilter ?? {}).length) {
+              lossy(`Listed ${name} on “${pageLabel(page)}”`, ['filter'])
+            }
+            update(index, { entity: name, presetFilter: kept })
+          }}
         />
       </Field>
       <PresetFilters
@@ -838,19 +962,11 @@ function EntityListForm({ page, index, entities, errors, update }: FormProps) {
   )
 }
 
-function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
+function DashboardForm({ page, index, entities, errors, update, dnd, lossy }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
   const widgets = page.widgets ?? []
   const list = `widgets:${index}`
   const keys = useStableKeys(widgets, w => `${w.kind}:${w.entity}:${w.groupBy ?? ''}:${w.title ?? ''}`)
   const atCap = widgets.length >= MAX_WIDGETS
-  // Rows whose layout/filter options are unfolded (by row key).
-  const [unfolded, setUnfolded] = useState<Set<string>>(() => new Set())
-  const toggleOptions = (key: string) => setUnfolded(prev => {
-    const next = new Set(prev)
-    if (next.has(key)) next.delete(key)
-    else next.add(key)
-    return next
-  })
 
   function setWidgets(next: FullstackWidgetDef[]) {
     update(index, { widgets: next })
@@ -858,19 +974,13 @@ function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps
   function setWidget(wi: number, patch: Partial<FullstackWidgetDef>) {
     setWidgets(widgets.map((w, i) => (i === wi ? { ...w, ...patch } : w)))
   }
-  function setKind(wi: number, kind: FullstackWidgetDef['kind']) {
-    if (widgets[wi].kind === kind) return
-    setWidget(wi, {
-      kind,
-      groupBy: undefined,
-      limit: undefined,
-      bucket: undefined,
-      sortBy: undefined,
-      compare: undefined,
-      target: undefined,
-      // A recent list shows rows, so it can carry no aggregate.
-      ...(kind === 'recent' ? { agg: undefined, field: undefined } : {}),
-    })
+  /** A new kind or entity keeps what still fits; anything dropped is named, with an undo. */
+  function retarget(wi: number, patch: { kind?: FullstackWidgetDef['kind']; entity?: string }) {
+    const before = widgets[wi]
+    if ((patch.kind ?? before.kind) === before.kind && (patch.entity ?? before.entity) === before.entity) return
+    const { widget, dropped } = retargetWidget(before, patch, entities.find(e => e.name === (patch.entity ?? before.entity)))
+    lossy(`Changed widget ${wi + 1} of “${pageLabel(page)}”`, dropped)
+    setWidgets(widgets.map((w, i) => (i === wi ? widget : w)))
   }
 
   return (
@@ -898,212 +1008,34 @@ function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps
           {DATE_RANGES.map(r => <option key={r.value} value={r.value}>Opens on: {r.label}</option>)}
         </select>
       </Field>
-      <div className="space-y-1" data-control="widgets">
+      <div className="space-y-2" data-control="widgets">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
-          Widgets <span className="font-normal normal-case tracking-normal">· number tiles take one column, charts and lists two, on a four-column grid</span>
+          Widgets <span className="font-normal normal-case tracking-normal">· laid out left to right on a four-column grid</span>
         </p>
         {errors.widgets && <p className="text-[11px] text-error">{errors.widgets}</p>}
-        {widgets.map((widget, wi) => {
-          const entity = entities.find(e => e.name === widget.entity)
-          const error = errors[`widget.${wi}`]
-          const key = keys[wi]
-          const customized = widget.span != null || widget.presetFilter != null || widget.sortBy != null || widget.dateField != null
-          const open = unfolded.has(key) || customized
-          return (
-            <div
-              key={keys[wi]}
-              {...dnd.rowProps(list, wi)}
-              data-widget={wi}
-              data-control={`widget.${wi}`}
-              className={`flex flex-wrap items-center gap-2 rounded border px-2 py-1.5 ${error ? 'border-error/50' : 'border-outline-variant'}`}
-            >
-              <span
-                {...dnd.handleProps(list, wi)}
-                className="cursor-grab text-secondary/70"
-                aria-hidden="true"
-                title="Drag to reorder"
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>drag_indicator</span>
-              </span>
-              <MoveButtons
-                label={`widget ${wi + 1}`}
-                canUp={wi > 0}
-                canDown={wi < widgets.length - 1}
-                onMove={delta => setWidgets(moveItem(widgets, wi, wi + delta))}
-              />
-              <div role="radiogroup" aria-label="Widget kind" className="inline-flex overflow-hidden rounded border border-outline-variant">
-                {WIDGET_KINDS.map(k => {
-                  const on = widget.kind === k.kind
-                  return (
-                    <button
-                      key={k.kind}
-                      type="button"
-                      role="radio"
-                      aria-checked={on}
-                      aria-label={k.label}
-                      title={k.label}
-                      onClick={() => setKind(wi, k.kind)}
-                      className={`px-1.5 py-0.5 ${on ? 'bg-primary/15 text-primary' : 'text-secondary hover:bg-primary/5 hover:text-primary'}`}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>{k.icon}</span>
-                    </button>
-                  )
-                })}
-              </div>
-              <EntitySelect
-                label="Widget entity"
-                value={widget.entity}
-                options={entities.map(e => e.name)}
-                error={error}
-                className="max-w-[10rem]"
-                onChange={name => setWidget(wi, { entity: name, groupBy: undefined, presetFilter: undefined, sortBy: undefined, dateField: undefined })}
-              />
-              {widget.kind === 'bar' && (
-                <select
-                  aria-label="Group by"
-                  value={widget.groupBy ?? ''}
-                  onChange={e => setWidget(wi, { groupBy: e.target.value || undefined })}
-                  className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
-                >
-                  <option value="">{defaultOptionLabel(defaultBarGroupBy(entity), 'enum or boolean')}</option>
-                  {groupableFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
-                  {widget.groupBy && !groupableFields(entity).some(f => f.name === widget.groupBy) && (
-                    <option value={widget.groupBy}>{widget.groupBy}</option>
-                  )}
-                </select>
-              )}
-              {widget.kind === 'line' && (
-                <>
-                  <select
-                    aria-label="Date field"
-                    value={widget.groupBy ?? ''}
-                    onChange={e => setWidget(wi, { groupBy: e.target.value || undefined })}
-                    className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
-                  >
-                    <option value="">{defaultOptionLabel(defaultLineGroupBy(entity), 'date field')}</option>
-                    {dateFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
-                    {widget.groupBy && !dateFields(entity).some(f => f.name === widget.groupBy) && (
-                      <option value={widget.groupBy}>{widget.groupBy}</option>
-                    )}
-                  </select>
-                  <BucketSelect value={widget.bucket} onChange={bucket => setWidget(wi, { bucket })} />
-                </>
-              )}
-              {widget.kind !== 'recent' && (
-                <AggFields
-                  agg={widget.agg}
-                  field={widget.field}
-                  entity={entity}
-                  error={error}
-                  onChange={patch => setWidget(wi, patch)}
-                />
-              )}
-              {widget.kind === 'top' && (
-                <select
-                  aria-label="Rank by"
-                  value={widget.groupBy ?? ''}
-                  onChange={e => setWidget(wi, { groupBy: e.target.value || undefined })}
-                  className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
-                >
-                  <option value="">{defaultOptionLabel(defaultTopGroupBy(entity), 'enum, boolean or relation')}</option>
-                  {rankableKeys(entity).map(k => <option key={k} value={k}>{k}</option>)}
-                  {widget.groupBy && !rankableKeys(entity).includes(widget.groupBy) && (
-                    <option value={widget.groupBy}>{widget.groupBy}</option>
-                  )}
-                </select>
-              )}
-              {widget.kind === 'progress' && (
-                <input
-                  type="number"
-                  min={0}
-                  step="any"
-                  aria-label="Target"
-                  aria-invalid={Boolean(error) && !widget.target}
-                  value={widget.target ?? ''}
-                  placeholder="Target"
-                  onChange={e => setWidget(wi, { target: e.target.value || undefined })}
-                  className={`${inputClass(error)} max-w-[7rem] py-1 text-xs`}
-                />
-              )}
-              {widget.kind === 'kpi' && (
-                <label
-                  className={`inline-flex items-center gap-1 text-xs ${page.dateRange ? 'text-on-surface' : 'text-secondary/60'}`}
-                  title={page.dateRange ? 'Show the change against the previous period' : 'Turn on the period picker to compare periods'}
-                >
-                  <input
-                    type="checkbox"
-                    checked={Boolean(widget.compare)}
-                    disabled={!page.dateRange && !widget.compare}
-                    onChange={e => setWidget(wi, { compare: e.target.checked || undefined })}
-                  />
-                  vs previous period
-                </label>
-              )}
-              {(widget.kind === 'recent' || widget.kind === 'top') && (
-                <input
-                  type="number"
-                  min={1}
-                  max={MAX_RECENT_LIMIT}
-                  aria-label="How many rows"
-                  value={widget.limit ?? ''}
-                  placeholder="5"
-                  onChange={e => setWidget(wi, { limit: e.target.value === '' ? undefined : Number(e.target.value) })}
-                  className={`${inputClass(error)} max-w-[5rem] py-1 text-xs`}
-                />
-              )}
-              <input
-                type="text"
-                aria-label="Widget title"
-                value={widget.title ?? ''}
-                placeholder="Title (optional)"
-                onChange={e => setWidget(wi, { title: e.target.value || undefined })}
-                className={`${inputClass()} min-w-[8rem] flex-1 py-1 text-xs`}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const next = [...widgets]
-                  next.splice(wi + 1, 0, { ...widget })
-                  setWidgets(next)
-                }}
-                disabled={atCap}
-                className={ICON_BUTTON}
-                aria-label={`Duplicate widget ${wi + 1}`}
-                title={atCap ? `A dashboard can have at most ${MAX_WIDGETS} widgets` : 'Duplicate this widget'}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>content_copy</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => toggleOptions(key)}
-                disabled={customized}
-                className={`${ICON_BUTTON} ${open ? 'text-primary' : ''}`}
-                aria-expanded={open}
-                aria-label={`Layout and filter of widget ${wi + 1}`}
-                title={customized ? 'This widget has its own width, filter or sort' : 'Width, filter and sort'}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>tune</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setWidgets(widgets.filter((_, i) => i !== wi))}
-                className={ICON_BUTTON}
-                aria-label={`Remove widget ${wi + 1}`}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
-              </button>
-              {open && (
-                <WidgetOptions
-                  widget={widget}
-                  entity={entity}
-                  dateRange={page.dateRange}
-                  onChange={patch => setWidget(wi, patch)}
-                />
-              )}
-              {error && <p className="w-full text-[11px] text-error">{error}</p>}
-            </div>
-          )
-        })}
+        {widgets.map((widget, wi) => (
+          <WidgetCard
+            key={keys[wi]}
+            widget={widget}
+            wi={wi}
+            count={widgets.length}
+            entities={entities}
+            dateRange={page.dateRange}
+            errors={errors}
+            atCap={atCap}
+            dnd={dnd}
+            list={list}
+            onChange={patch => setWidget(wi, patch)}
+            onRetarget={patch => retarget(wi, patch)}
+            onMove={delta => setWidgets(moveItem(widgets, wi, wi + delta))}
+            onDuplicate={() => {
+              const next = [...widgets]
+              next.splice(wi + 1, 0, { ...widget })
+              setWidgets(next)
+            }}
+            onRemove={() => setWidgets(widgets.filter((_, i) => i !== wi))}
+          />
+        ))}
         <button
           type="button"
           onClick={() => setWidgets([...widgets, { kind: 'kpi', entity: entities[0]?.name ?? '' }])}
@@ -1119,79 +1051,296 @@ function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps
   )
 }
 
-/** A widget's second line: its width on the grid, the rows it is limited to, what a recent list
- *  sorts by, and the date the dashboard's period applies to. */
-function WidgetOptions({ widget, entity, dateRange, onChange }: {
+/**
+ * One dashboard widget as a card: a header (reorder, kind, duplicate, remove), then labelled
+ * "Data" (what it measures) and "Display" (how it is shown) columns, then the rows it is limited to.
+ */
+function WidgetCard({ widget, wi, count, entities, dateRange, errors, atCap, dnd, list, onChange, onRetarget, onMove, onDuplicate, onRemove }: {
   widget: FullstackWidgetDef
-  entity: FullstackEntityDef | undefined
+  wi: number
+  count: number
+  entities: FullstackEntityDef[]
   dateRange: FullstackDateRange | undefined
+  errors: Record<string, string>
+  atCap: boolean
+  dnd: ReturnType<typeof useDragReorder>
+  list: string
   onChange: (patch: Partial<FullstackWidgetDef>) => void
+  onRetarget: (patch: { kind?: FullstackWidgetDef['kind']; entity?: string }) => void
+  onMove: (delta: number) => void
+  onDuplicate: () => void
+  onRemove: () => void
 }) {
+  const entity = entities.find(e => e.name === widget.entity)
+  const error = errors[`widget.${wi}`]
+  const filterPrefix = `widget.${wi}.presetFilter.`
+  const filterErrors = Object.fromEntries(
+    Object.entries(errors).filter(([k]) => k.startsWith(filterPrefix)).map(([k, v]) => [`presetFilter.${k.slice(filterPrefix.length)}`, v]),
+  )
+  const invalid = Boolean(error) || Object.keys(filterErrors).length > 0
+  const indicator = dnd.indicatorFor(list, wi)
   const fallbackSpan = defaultSpan(widget.kind)
   const span = widget.span ?? fallbackSpan
   const dates = filterableDateFields(entity)
   const pk = entity?.fields.find(f => f.primaryKey)?.name
+
   return (
-    <div className="flex w-full flex-wrap items-start gap-x-4 gap-y-2 border-t border-outline-variant/60 pt-1.5" data-widget-options>
-      <div className="space-y-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Width</p>
-        <div role="radiogroup" aria-label="Widget width" className="inline-flex overflow-hidden rounded border border-outline-variant">
-          {Array.from({ length: MAX_SPAN }, (_, i) => i + 1).map(n => (
-            <button
-              key={n}
-              type="button"
-              role="radio"
-              aria-checked={span === n}
-              aria-label={`${n} column${n === 1 ? '' : 's'}${n === fallbackSpan ? ' (default)' : ''}`}
-              onClick={() => onChange({ span: n === fallbackSpan ? undefined : n })}
-              className={`px-2 py-0.5 text-xs ${span === n ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5'}`}
-            >
-              {n}
-            </button>
-          ))}
+    <div
+      {...dnd.rowProps(list, wi)}
+      data-widget={wi}
+      data-control={`widget.${wi}`}
+      className={`space-y-2 rounded-lg border px-2.5 py-2 ${invalid ? 'border-error/50' : 'border-outline-variant'} ${
+        dnd.isDragging(list, wi) ? 'opacity-40' : ''} ${dropIndicatorClass(indicator)}`}
+    >
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span {...dnd.handleProps(list, wi)} className="cursor-grab text-secondary/70" aria-hidden="true" title="Drag to reorder">
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>drag_indicator</span>
+        </span>
+        <MoveButtons label={`widget ${wi + 1}`} canUp={wi > 0} canDown={wi < count - 1} onMove={onMove} />
+        <div role="radiogroup" aria-label="Widget kind" className="inline-flex flex-wrap overflow-hidden rounded border border-outline-variant">
+          {WIDGET_KINDS.map(k => {
+            const on = widget.kind === k.kind
+            return (
+              <button
+                key={k.kind}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                aria-label={k.label}
+                title={k.hint}
+                onClick={() => onRetarget({ kind: k.kind })}
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] ${on ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5 hover:text-primary'}`}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">{k.icon}</span>
+                {k.short}
+              </button>
+            )
+          })}
+        </div>
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={onDuplicate}
+          disabled={atCap}
+          className={ICON_BUTTON}
+          aria-label={`Duplicate widget ${wi + 1}`}
+          title={atCap ? `A dashboard can have at most ${MAX_WIDGETS} widgets` : 'Duplicate this widget'}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>content_copy</span>
+        </button>
+        <button type="button" onClick={onRemove} className={ICON_BUTTON} aria-label={`Remove widget ${wi + 1}`} title="Remove this widget">
+          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-x-4 gap-y-2 md:grid-cols-2" data-widget-options>
+        <fieldset className="min-w-0 space-y-1.5">
+          <legend className="text-[10px] font-semibold uppercase tracking-wider text-secondary/80">Data</legend>
+          <div className="flex flex-wrap items-end gap-2">
+            <MiniField label="Entity">
+              <EntitySelect
+                label="Widget entity"
+                value={widget.entity}
+                options={entities.map(e => e.name)}
+                error={error}
+                className="max-w-[10rem]"
+                onChange={name => onRetarget({ entity: name })}
+              />
+            </MiniField>
+            {widget.kind === 'bar' && (
+              <MiniField label="Group by" hint="One bar per value">
+                <select
+                  aria-label="Group by"
+                  value={widget.groupBy ?? ''}
+                  onChange={e => onChange({ groupBy: e.target.value || undefined })}
+                  className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                >
+                  <option value="">{defaultOptionLabel(defaultBarGroupBy(entity), 'enum or boolean')}</option>
+                  {groupableFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+                  {widget.groupBy && !groupableFields(entity).some(f => f.name === widget.groupBy) && (
+                    <option value={widget.groupBy}>{widget.groupBy}</option>
+                  )}
+                </select>
+              </MiniField>
+            )}
+            {widget.kind === 'line' && (
+              <>
+                <MiniField label="Over" hint="One point per bucket of this date">
+                  <select
+                    aria-label="Date field"
+                    value={widget.groupBy ?? ''}
+                    onChange={e => onChange({ groupBy: e.target.value || undefined })}
+                    className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                  >
+                    <option value="">{defaultOptionLabel(defaultLineGroupBy(entity), 'date field')}</option>
+                    {dateFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+                    {widget.groupBy && !dateFields(entity).some(f => f.name === widget.groupBy) && (
+                      <option value={widget.groupBy}>{widget.groupBy}</option>
+                    )}
+                  </select>
+                </MiniField>
+                <MiniField label="Bucket">
+                  <BucketSelect value={widget.bucket} onChange={bucket => onChange({ bucket })} />
+                </MiniField>
+              </>
+            )}
+            {widget.kind === 'top' && (
+              <MiniField label="Rank by" hint="The largest groups, biggest first">
+                <select
+                  aria-label="Rank by"
+                  value={widget.groupBy ?? ''}
+                  onChange={e => onChange({ groupBy: e.target.value || undefined })}
+                  className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                >
+                  <option value="">{defaultOptionLabel(defaultTopGroupBy(entity), 'enum, boolean or relation')}</option>
+                  {rankableKeys(entity).map(k => <option key={k} value={k}>{k}</option>)}
+                  {widget.groupBy && !rankableKeys(entity).includes(widget.groupBy) && (
+                    <option value={widget.groupBy}>{widget.groupBy}</option>
+                  )}
+                </select>
+              </MiniField>
+            )}
+            {widget.kind !== 'recent' && (
+              <MiniField label="Measure" hint={AGG_HINT}>
+                <span className="inline-flex flex-wrap gap-2">
+                  <AggFields agg={widget.agg} field={widget.field} entity={entity} error={error} onChange={onChange} />
+                </span>
+              </MiniField>
+            )}
+            {widget.kind === 'progress' && (
+              <MiniField label="Target" hint="The value the bar fills up to">
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  aria-label="Target"
+                  aria-invalid={Boolean(error) && !widget.target}
+                  value={widget.target ?? ''}
+                  placeholder="e.g. 1000"
+                  onChange={e => onChange({ target: e.target.value || undefined })}
+                  className={`${inputClass(error)} max-w-[7rem] py-1 text-xs`}
+                />
+              </MiniField>
+            )}
+            {widget.kind === 'kpi' && (
+              <label
+                className={`inline-flex items-center gap-1 pb-1 text-xs ${dateRange ? 'text-on-surface' : 'text-secondary/60'}`}
+                title={dateRange ? 'Show the change against the previous period' : 'Turn on the period picker to compare periods'}
+              >
+                <input
+                  type="checkbox"
+                  checked={Boolean(widget.compare)}
+                  disabled={!dateRange && !widget.compare}
+                  onChange={e => onChange({ compare: e.target.checked || undefined })}
+                />
+                vs previous period
+              </label>
+            )}
+          </div>
+        </fieldset>
+
+        <fieldset className="min-w-0 space-y-1.5">
+          <legend className="text-[10px] font-semibold uppercase tracking-wider text-secondary/80">Display</legend>
+          <div className="flex flex-wrap items-end gap-2">
+            <MiniField label="Title" grow>
+              <input
+                type="text"
+                aria-label="Widget title"
+                value={widget.title ?? ''}
+                placeholder="Optional — named after the data"
+                onChange={e => onChange({ title: e.target.value || undefined })}
+                className={`${inputClass()} min-w-[8rem] w-full py-1 text-xs`}
+              />
+            </MiniField>
+            <MiniField label="Width" hint={`Columns of 4 · default ${fallbackSpan}`}>
+              <div role="radiogroup" aria-label="Widget width" className="inline-flex overflow-hidden rounded border border-outline-variant">
+                {Array.from({ length: MAX_SPAN }, (_, i) => i + 1).map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    role="radio"
+                    aria-checked={span === n}
+                    aria-label={`${n} column${n === 1 ? '' : 's'}${n === fallbackSpan ? ' (default)' : ''}`}
+                    onClick={() => onChange({ span: n === fallbackSpan ? undefined : n })}
+                    className={`px-2 py-0.5 text-xs ${span === n ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5'}`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </MiniField>
+            {(widget.kind === 'recent' || widget.kind === 'top') && (
+              <MiniField label="Rows" hint={`1–${MAX_RECENT_LIMIT}`}>
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_RECENT_LIMIT}
+                  aria-label="How many rows"
+                  value={widget.limit ?? ''}
+                  placeholder="5"
+                  onChange={e => onChange({ limit: e.target.value === '' ? undefined : Number(e.target.value) })}
+                  className={`${inputClass(error)} w-[4.5rem] py-1 text-xs`}
+                />
+              </MiniField>
+            )}
+            {widget.kind === 'recent' && (
+              <MiniField label="Newest by" hint="Ordered by this, newest first">
+                <select
+                  aria-label="Sort by"
+                  value={widget.sortBy ?? ''}
+                  onChange={e => onChange({ sortBy: e.target.value || undefined })}
+                  className={`${inputClass()} max-w-[11rem] py-1 text-xs`}
+                >
+                  <option value="">{defaultOptionLabel(pk, 'key')}</option>
+                  {(entity?.fields ?? []).filter(f => !f.primaryKey).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+                </select>
+              </MiniField>
+            )}
+            {dateRange && (
+              <MiniField label="Period applies to" hint="The date the picker limits">
+                {dates.length === 0 ? (
+                  <p className="py-1 text-[11px] text-secondary">No filterable date — all rows</p>
+                ) : (
+                  <select
+                    aria-label="Period date field"
+                    value={widget.dateField ?? ''}
+                    onChange={e => onChange({ dateField: e.target.value || undefined })}
+                    className={`${inputClass()} max-w-[11rem] py-1 text-xs`}
+                  >
+                    <option value="">{defaultOptionLabel(dates[0]?.name, 'date field')}</option>
+                    {dates.map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+                  </select>
+                )}
+              </MiniField>
+            )}
+          </div>
+        </fieldset>
+
+        <div className="min-w-0 md:col-span-2">
+          <PresetFilters
+            filter={widget.presetFilter}
+            entity={entity}
+            errors={filterErrors}
+            controlPrefix={filterPrefix}
+            onChange={presetFilter => onChange({ presetFilter })}
+            heading="Only rows where"
+          />
         </div>
       </div>
-      {widget.kind === 'recent' && (
-        <div className="space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Newest by</p>
-          <select
-            aria-label="Sort by"
-            value={widget.sortBy ?? ''}
-            onChange={e => onChange({ sortBy: e.target.value || undefined })}
-            className={`${inputClass()} max-w-[11rem] py-1 text-xs`}
-          >
-            <option value="">{defaultOptionLabel(pk, 'key')}</option>
-            {(entity?.fields ?? []).filter(f => !f.primaryKey).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
-          </select>
-        </div>
-      )}
-      {dateRange && (
-        <div className="space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Period applies to</p>
-          {dates.length === 0 ? (
-            <p className="text-[11px] text-secondary">No filterable date — all rows</p>
-          ) : (
-            <select
-              aria-label="Period date field"
-              value={widget.dateField ?? ''}
-              onChange={e => onChange({ dateField: e.target.value || undefined })}
-              className={`${inputClass()} max-w-[11rem] py-1 text-xs`}
-            >
-              <option value="">{defaultOptionLabel(dates[0]?.name, 'date field')}</option>
-              {dates.map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
-            </select>
-          )}
-        </div>
-      )}
-      <div className="min-w-0 flex-1">
-        <PresetFilters
-          filter={widget.presetFilter}
-          entity={entity}
-          errors={{}}
-          onChange={presetFilter => onChange({ presetFilter })}
-          heading="Only rows where"
-        />
-      </div>
+      {error && <p className="text-[11px] text-error">{error}</p>}
+    </div>
+  )
+}
+
+const AGG_HINT = 'Count the rows, or sum / average / min / max a number column'
+
+/** A small labelled control inside a widget card. */
+function MiniField({ label, hint, grow, children }: { label: string; hint?: string; grow?: boolean; children: ReactNode }) {
+  return (
+    <div className={`space-y-0.5 ${grow ? 'min-w-[8rem] flex-1' : ''}`}>
+      <span className="block text-[10px] font-semibold text-secondary">{label}</span>
+      {children}
+      {hint && <span className="block text-[10px] text-secondary/70">{hint}</span>}
     </div>
   )
 }
@@ -1257,7 +1406,7 @@ function AggFields({ agg, field, entity, error, onChange }: {
   )
 }
 
-function ReportForm({ page, index, entities, errors, update }: FormProps) {
+function ReportForm({ page, index, entities, errors, update, lossy, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
   const entity = entities.find(e => e.name === page.entity)
   const charts = reportCharts(page)
   // One chart is sent as `chart`, several as `charts` — the backend takes either spelling.
@@ -1266,22 +1415,30 @@ function ReportForm({ page, index, entities, errors, update }: FormProps) {
 
   return (
     <div className="space-y-2">
-      <label className="flex flex-col gap-1" data-control="entity">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Entity</span>
+      <Field label="Entity" error={errors.entity} control="entity" hint="The report charts and filters this entity's rows">
         <EntitySelect
           label="Report entity"
           value={page.entity ?? ''}
           options={entities.map(e => e.name)}
           error={errors.entity}
           className="max-w-[12rem]"
-          // A different entity has different columns, so the charts and filters start over.
-          onChange={name => update(index, { entity: name, chart: {}, charts: undefined, presetFilter: undefined })}
+          // The charts and filter keep whatever the new entity also has.
+          onChange={name => {
+            const { patch, dropped } = retargetReport(page, entities.find(e => e.name === name))
+            lossy(`Reported on ${name} in “${pageLabel(page)}”`, dropped)
+            update(index, patch)
+          }}
         />
-      </label>
-      {errors.entity && <p className="text-[11px] text-error">{errors.entity}</p>}
+      </Field>
       {charts.map((chart, ci) => (
-        <div key={ci} className="space-y-1 rounded border border-outline-variant px-2 py-1.5" data-report-chart={ci}>
+        <div
+          key={ci}
+          {...(charts.length > 1 ? dnd.rowProps(`charts:${index}`, ci) : {})}
+          className={`space-y-1 rounded border border-outline-variant px-2 py-1.5 ${dnd.isDragging(`charts:${index}`, ci) ? 'opacity-40' : ''} ${dropIndicatorClass(dnd.indicatorFor(`charts:${index}`, ci))}`}
+          data-report-chart={ci}
+        >
           <div className="flex items-center gap-1.5">
+            {charts.length > 1 && <DragGrip dnd={dnd} list={`charts:${index}`} index={ci} />}
             {charts.length > 1 && (
               <MoveButtons
                 label={`chart ${ci + 1}`}
@@ -1392,7 +1549,7 @@ function ChartFields({ chart, chartIndex, entity, errors, onChange }: {
   )
 }
 
-function TabsForm({ page, index, pages, errors, update }: Omit<FormProps, 'entities'> & { pages: FullstackPageDef[] }) {
+function TabsForm({ page, index, pages, errors, update, dnd }: Omit<FormProps, 'entities' | 'lossy'> & { pages: FullstackPageDef[]; dnd: ReturnType<typeof useDragReorder> }) {
   const tabs = page.tabs ?? []
   const targets = pages.filter(p => p.id !== page.id && p.type !== 'tabs' && p.type !== 'record')
   const nextTarget = targets.find(t => !tabs.some(x => x.page === t.id))
@@ -1405,7 +1562,14 @@ function TabsForm({ page, index, pages, errors, update }: Omit<FormProps, 'entit
       {tabs.map((tab, ti) => {
         const error = errors[`tab.${ti}`]
         return (
-          <div key={`${ti}:${tab.page}`} className="flex items-center gap-2" data-tab={ti} data-control={`tab.${ti}`}>
+          <div
+            key={`${ti}:${tab.page}`}
+            {...dnd.rowProps(`tabs:${index}`, ti)}
+            className={`flex items-center gap-2 rounded ${dnd.isDragging(`tabs:${index}`, ti) ? 'opacity-40' : ''} ${dropIndicatorClass(dnd.indicatorFor(`tabs:${index}`, ti))}`}
+            data-tab={ti}
+            data-control={`tab.${ti}`}
+          >
+            <DragGrip dnd={dnd} list={`tabs:${index}`} index={ti} />
             <MoveButtons
               label={`tab ${ti + 1}`}
               canUp={ti > 0}
@@ -1499,6 +1663,11 @@ function MasterDetailForm({ page, index, entities, errors, update }: FormProps) 
           empty={children.length === 0 ? 'No entity points at this parent' : undefined}
           onChange={name => update(index, { child: name, via: undefined })}
         />
+        {parent && children.length === 0 && (
+          <p className="text-[10px] text-secondary" data-md-no-child>
+            Add a many-to-one relation to {parent.name} on another entity (its Relations table), then pick it here.
+          </p>
+        )}
       </Field>
       {vias.length > 1 && (
         <Field label="Linked through" error={errors.via} control="via">
@@ -1518,7 +1687,7 @@ function MasterDetailForm({ page, index, entities, errors, update }: FormProps) 
   )
 }
 
-function RecordForm({ page, index, entities, errors, update }: FormProps) {
+function RecordForm({ page, index, entities, errors, update, lossy, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
   const entity = entities.find(e => e.name === page.entity)
   const related = entities.filter(e => relationsTo(e, page.entity).length > 0).map(e => e.name)
   // Omitted childTabs means "every related list" — the same default the generator applies.
@@ -1554,7 +1723,12 @@ function RecordForm({ page, index, entities, errors, update }: FormProps) {
               const on = selected.includes(name)
               const at = selected.indexOf(name)
               return (
-                <li key={name} className="flex items-center gap-1.5">
+                <li
+                  key={name}
+                  {...(on ? dnd.rowProps(`childTabs:${index}`, at) : {})}
+                  className={`flex items-center gap-1.5 ${on ? dropIndicatorClass(dnd.indicatorFor(`childTabs:${index}`, at)) : ''}`}
+                >
+                  {on ? <DragGrip dnd={dnd} list={`childTabs:${index}`} index={at} /> : <span className="w-[14px]" />}
                   {on ? (
                     <MoveButtons
                       label={`the ${name} tab`}
@@ -1579,7 +1753,7 @@ function RecordForm({ page, index, entities, errors, update }: FormProps) {
         )}
         {errors.childTabs && <p className="text-[11px] text-error">{errors.childTabs}</p>}
       </div>
-      <HeaderStatsFields page={page} index={index} entities={entities} errors={errors} update={update} />
+      <HeaderStatsFields page={page} index={index} entities={entities} errors={errors} update={update} lossy={lossy} />
     </div>
   )
 }
@@ -1665,13 +1839,18 @@ function HeaderStatsFields({ page, index, entities, errors, update }: FormProps)
 }
 
 /** A wizard: its entity, and the form's fields dealt into steps (each field in exactly one). */
-function WizardForm({ page, index, entities, errors, update }: FormProps) {
+function WizardForm({ page, index, entities, errors, update, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
   const entity = entities.find(e => e.name === page.entity)
   const askable = askableFields(entity)
   const steps = page.steps ?? defaultWizardSteps(entity)
   const setSteps = (next: { title?: string; fields: string[] }[]) => update(index, { steps: next })
   const stepOf = (name: string) => steps.findIndex(s => s.fields.includes(name))
   const unasked = askable.filter(a => stepOf(a.name) < 0)
+
+  // The field chip being dragged to another step (native drag, across steps).
+  const [draggedField, setDraggedField] = useState<string | null>(null)
+  const [dropStep, setDropStep] = useState<number | null>(null)
+  const unaskedRequired = unasked.filter(a => a.required)
 
   // Moves a field into step `si`, out of whichever step had it.
   const place = (name: string, si: number) => setSteps(steps.map((s, i) => ({
@@ -1687,7 +1866,8 @@ function WizardForm({ page, index, entities, errors, update }: FormProps) {
           value={page.entity ?? ''}
           options={entities.filter(e => !e.readOnly).map(e => e.name)}
           error={errors.entity}
-          onChange={name => update(index, { entity: name, steps: defaultWizardSteps(entities.find(e => e.name === name)) })}
+          // Steps keep the fields the new entity also has; the rest are dealt in after them.
+          onChange={name => update(index, { entity: name, steps: retargetWizardSteps(page.steps, entities.find(e => e.name === name)) })}
         />
       </Field>
       <div className="space-y-1" data-control="steps">
@@ -1697,8 +1877,30 @@ function WizardForm({ page, index, entities, errors, update }: FormProps) {
         {steps.map((step, si) => {
           const error = errors[`step.${si}`]
           return (
-            <div key={si} className={`space-y-1 rounded border px-2 py-1.5 ${error ? 'border-error/50' : 'border-outline-variant'}`} data-control={`step.${si}`} data-wizard-step={si}>
+            <div
+              key={si}
+              {...dnd.rowProps(`steps:${index}`, si)}
+              onDragOver={e => {
+                if (draggedField) {
+                  e.preventDefault()
+                  if (dropStep !== si) setDropStep(si)
+                } else dnd.rowProps(`steps:${index}`, si).onDragOver(e)
+              }}
+              onDrop={e => {
+                if (draggedField) {
+                  e.preventDefault()
+                  place(draggedField, si)
+                  setDraggedField(null)
+                  setDropStep(null)
+                } else dnd.rowProps(`steps:${index}`, si).onDrop(e)
+              }}
+              className={`space-y-1 rounded border px-2 py-1.5 ${error ? 'border-error/50' : draggedField && dropStep === si ? 'border-primary bg-primary/5' : 'border-outline-variant'} ${
+                dnd.isDragging(`steps:${index}`, si) ? 'opacity-40' : ''} ${dropIndicatorClass(dnd.indicatorFor(`steps:${index}`, si))}`}
+              data-control={`step.${si}`}
+              data-wizard-step={si}
+            >
               <div className="flex items-center gap-1.5">
+                <DragGrip dnd={dnd} list={`steps:${index}`} index={si} />
                 <MoveButtons
                   label={`step ${si + 1}`}
                   canUp={si > 0}
@@ -1728,7 +1930,20 @@ function WizardForm({ page, index, entities, errors, update }: FormProps) {
                 {step.fields.map(name => {
                   const a = askable.find(x => x.name === name)
                   return (
-                    <span key={name} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${a ? 'bg-primary/10 text-primary' : 'bg-error/10 text-error'}`} data-step-field={name}>
+                    <span
+                      key={name}
+                      draggable
+                      onDragStart={e => {
+                        e.stopPropagation()
+                        e.dataTransfer.effectAllowed = 'move'
+                        e.dataTransfer.setData('text/plain', name)
+                        setDraggedField(name)
+                      }}
+                      onDragEnd={() => { setDraggedField(null); setDropStep(null) }}
+                      title="Drag to another step"
+                      className={`inline-flex cursor-grab items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${a ? 'bg-primary/10 text-primary' : 'bg-error/10 text-error'} ${draggedField === name ? 'opacity-40' : ''}`}
+                      data-step-field={name}
+                    >
                       {a?.relation && <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">link</span>}
                       {name}{a?.required && <span aria-label="required">*</span>}
                       <button
@@ -1762,11 +1977,17 @@ function WizardForm({ page, index, entities, errors, update }: FormProps) {
             </div>
           )
         })}
-        {unasked.length > 0 && (
-          <p className="text-[11px] text-secondary" data-wizard-unasked>
-            Not asked: {unasked.map(a => `${a.name}${a.required ? ' (required)' : ''}`).join(', ')}
+        {unaskedRequired.length > 0 && (
+          <p className="text-[11px] text-error" data-wizard-unasked-required>
+            Required but not asked: {unaskedRequired.map(a => a.name).join(', ')} — add each to a step, or the wizard cannot save.
           </p>
         )}
+        {unasked.length > unaskedRequired.length && (
+          <p className="text-[11px] text-secondary" data-wizard-unasked>
+            Not asked (optional): {unasked.filter(a => !a.required).map(a => a.name).join(', ')}
+          </p>
+        )}
+        <p className="text-[10px] text-secondary/80">Drag a field chip onto another step to move it.</p>
         <button
           type="button"
           onClick={() => setSteps([...steps, { fields: [] }])}
@@ -1784,6 +2005,40 @@ function WizardForm({ page, index, entities, errors, update }: FormProps) {
 }
 
 // ── Small shared pieces ────────────────────────────────────────────────────
+
+/** The grip that starts a drag of a row in `list` (the row itself is the drop target). */
+function DragGrip({ dnd, list, index }: { dnd: ReturnType<typeof useDragReorder>; list: string; index: number }) {
+  return (
+    <span {...dnd.handleProps(list, index)} className="cursor-grab select-none text-secondary/70 hover:text-secondary" title="Drag to reorder" aria-hidden="true">
+      <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>drag_indicator</span>
+    </span>
+  )
+}
+
+/** The layout preview as a slide-over, for widths where it cannot sit beside the page list. */
+function PreviewDrawer({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end" data-preview-drawer>
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
+      <div role="dialog" aria-modal="true" aria-label="Layout preview" className="relative flex h-full w-full max-w-md flex-col gap-2 overflow-y-auto bg-surface-container-lowest p-4 shadow-xl">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] text-secondary">
+            <span className="font-semibold uppercase tracking-wider">Preview</span> · sample data · click a part to edit it
+          </p>
+          <button type="button" onClick={onClose} className={ICON_BUTTON} aria-label="Close the preview" autoFocus>
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>close</span>
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
 
 function Field({ label, error, hint, control, children }: { label: string; error?: string; hint?: string; control?: string; children: ReactNode }) {
   return (

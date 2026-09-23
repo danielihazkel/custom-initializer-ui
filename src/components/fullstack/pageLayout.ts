@@ -421,7 +421,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
                 `${where} sorts ${e.name} by “${w.sortBy}”, which it no longer has`)
             }
           }
-          checkPresetFilter(w.presetFilter, e, add, `${where} has a widget that`, () => `widget.${wi}`)
+          checkPresetFilter(w.presetFilter, e, add, `${where} has a widget that`, field => `widget.${wi}.presetFilter.${field}`)
           if (w.dateField) {
             if (!page.dateRange) {
               add(`widget.${wi}`, 'a date field needs the dashboard’s period picker',
@@ -1020,4 +1020,129 @@ export function describePagesChange(prev: FullstackPageDef[], next: FullstackPag
     return `Edited the “${name}” page`
   }
   return 'Changed page layout'
+}
+
+// ── Keeping settings across a kind / entity switch ──────────────────────────
+
+/** Preset-filter entries that still apply to `entity` (a filterable enum/boolean with that value). */
+export function keptPresetFilter(filter: Record<string, string> | undefined, entity: FullstackEntityDef | undefined): Record<string, string> | undefined {
+  if (!filter) return undefined
+  const groupable = groupableFields(entity)
+  const kept: Record<string, string> = {}
+  for (const [k, v] of Object.entries(filter)) {
+    const f = groupable.find(x => x.name === k)
+    if (f && (f.type === 'BOOLEAN' ? v === 'true' || v === 'false' : (f.enumValues ?? []).includes(v))) kept[k] = v
+  }
+  return Object.keys(kept).length ? kept : undefined
+}
+
+/**
+ * A widget moved to another kind and/or entity, keeping every setting the new combination can
+ * still use. `dropped` names what had to go, so the editor can say so instead of wiping silently.
+ */
+export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: FullstackWidgetDef['kind']; entity?: string },
+                               entity: FullstackEntityDef | undefined): { widget: FullstackWidgetDef; dropped: string[] } {
+  const kind = patch.kind ?? widget.kind
+  const next: FullstackWidgetDef = { ...widget, ...patch, kind }
+  const dropped: string[] = []
+  const drop = (keys: (keyof FullstackWidgetDef)[], label: string) => {
+    if (keys.some(k => next[k] != null)) dropped.push(label)
+    for (const k of keys) delete next[k]
+  }
+  if (next.groupBy != null) {
+    const fits = kind === 'bar' ? groupableFields(entity).some(f => f.name === next.groupBy)
+      : kind === 'line' ? dateFields(entity).some(f => f.name === next.groupBy)
+        : kind === 'top' ? rankableKeys(entity).includes(next.groupBy)
+          : false
+    if (!fits) drop(['groupBy'], 'group by')
+  }
+  if (kind !== 'line') drop(['bucket'], 'bucket')
+  if (kind === 'recent') drop(['agg', 'field'], 'aggregate')
+  else if (next.field != null && !numericFields(entity).some(f => f.name === next.field)) drop(['agg', 'field'], 'aggregate')
+  if (kind !== 'recent' && kind !== 'top') drop(['limit'], 'row limit')
+  if (next.sortBy != null && (kind !== 'recent' || !(entity?.fields ?? []).some(f => !f.primaryKey && f.name === next.sortBy))) {
+    drop(['sortBy'], 'sort')
+  }
+  if (kind !== 'kpi') drop(['compare'], 'period comparison')
+  if (kind !== 'progress') drop(['target'], 'target')
+  if (next.dateField != null && !filterableDateFields(entity).some(f => f.name === next.dateField)) drop(['dateField'], 'period date')
+  if (next.presetFilter) {
+    const kept = keptPresetFilter(next.presetFilter, entity)
+    if (Object.keys(kept ?? {}).length < Object.keys(next.presetFilter).length) dropped.push('filter')
+    if (kept) next.presetFilter = kept
+    else delete next.presetFilter
+  }
+  if (next.span != null && next.span === defaultSpan(kind)) delete next.span
+  return { widget: next, dropped }
+}
+
+/** A report page moved to another entity: the charts and filter keep whatever the new entity has. */
+export function retargetReport(page: FullstackPageDef, entity: FullstackEntityDef | undefined): { patch: Partial<FullstackPageDef>; dropped: string[] } {
+  const dropped: string[] = []
+  const chartable = chartableFields(entity)
+  const numeric = numericFields(entity)
+  const charts = reportCharts(page).map(c => {
+    const n: FullstackChartDef = { ...c }
+    if (n.groupBy != null && !chartable.some(f => f.name === n.groupBy)) {
+      dropped.push('group by')
+      delete n.groupBy
+      delete n.bucket
+    }
+    if (n.bucket != null && n.groupBy != null && !dateFields(entity).some(f => f.name === n.groupBy)) delete n.bucket
+    if (n.field != null && !numeric.some(f => f.name === n.field)) {
+      dropped.push('aggregate')
+      delete n.agg
+      delete n.field
+    }
+    return n
+  })
+  const presetFilter = keptPresetFilter(page.presetFilter, entity)
+  if (Object.keys(presetFilter ?? {}).length < Object.keys(page.presetFilter ?? {}).length) dropped.push('filter')
+  return {
+    patch: {
+      entity: entity?.name ?? page.entity,
+      presetFilter,
+      ...(charts.length <= 1 ? { chart: charts[0] ?? {}, charts: undefined } : { charts, chart: undefined }),
+    },
+    dropped: [...new Set(dropped)],
+  }
+}
+
+/** A wizard moved to another entity: steps keep the fields the new entity also has (by name), and
+ *  whatever else it asks for is dealt into steps after them. Falls back to the default steps. */
+export function retargetWizardSteps(steps: { title?: string; fields: string[] }[] | undefined, entity: FullstackEntityDef | undefined): { title?: string; fields: string[] }[] {
+  const askable = askableFields(entity).map(a => a.name)
+  const kept = (steps ?? []).map(s => ({ ...s, fields: s.fields.filter(f => askable.includes(f)) })).filter(s => s.fields.length > 0)
+  // Keep the old shape only when it still covers most of the new form; otherwise start over.
+  if (kept.flatMap(s => s.fields).length * 2 < askable.length) return defaultWizardSteps(entity)
+  const placed = new Set(kept.flatMap(s => s.fields))
+  const rest = askable.filter(a => !placed.has(a))
+  for (let i = 0; i < rest.length; i += DEFAULT_STEP_SIZE) {
+    if (kept.length >= MAX_STEPS) {
+      kept[kept.length - 1].fields.push(...rest.slice(i))
+      break
+    }
+    kept.push({ fields: rest.slice(i, i + DEFAULT_STEP_SIZE) })
+  }
+  return kept
+}
+
+// ── Server errors ────────────────────────────────────────────────────────────
+
+/**
+ * Finds the page a server-side 400 is about: FullstackPageValidator names a page as
+ * `Page '<id>'…` or `pages[<i>]…`. Null when the message is not about a page of this layout.
+ */
+export function pageOfServerError(message: string, pages: FullstackPageDef[]): number | null {
+  const byId = /Page '([^']+)'/.exec(message)
+  if (byId) {
+    const i = pages.findIndex(p => p.id === byId[1])
+    if (i >= 0) return i
+  }
+  const byIndex = /pages\[(\d+)\]/.exec(message)
+  if (byIndex) {
+    const i = Number(byIndex[1])
+    if (i < pages.length) return i
+  }
+  return null
 }
