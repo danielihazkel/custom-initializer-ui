@@ -89,7 +89,13 @@ in en/he; clicking a part of it opens that control. The add gallery also offers 
 reuses `PagesEditor` (`layout="stacked"`) with a JSON fallback. A nav page can take a **group** and an
 **icon** (`NavFields`; `NAV_ICONS` maps the backend's lucide whitelist to look-alike Material Symbols,
 `DEFAULT_NAV_ICON` is the type's own); `navSections` groups the nav exactly as the generated shell
-does (a group gathered where it first appears), and hiding a page drops both.
+does (a group gathered where it first appears), and hiding a page drops both. Dashboards have a
+**period picker** (`dateRange`) and per-widget options behind the row's tune button (`WidgetOptions`:
+width/`span`, `presetFilter` via the shared `PresetFilters`, recent `sortBy`, period `dateField`);
+widget kinds include `top` (ranked by `rankableKeys` — groupable fields or MANY_TO_ONE relations) and
+`progress` (`target`), and a kpi can `compare` with the previous period (needs the picker). Reports
+edit a list of charts (`reportCharts` reads either spelling; one chart is written back as `chart`,
+several as `charts`), each under its own control keys (`chartControl`: `chart.*`, `chart2.*`…).
 
 `snapshot.ts` defines `FullstackSnapshot`/`ProjectMeta` (uids stripped; `colorPalette` optional) — the
 unit presets, recents, undo, share links, team models and JSON files carry. `DEFAULT_PROJECT_META` +

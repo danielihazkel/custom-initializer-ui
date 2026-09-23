@@ -115,4 +115,23 @@ describe('buildLayoutPreview', () => {
     expect(screen.widgets.map(w => w.span)).toEqual([1, 4, 1])
     expect(screen.widgets[0].filters).toEqual(['Status: Waiting'])
   })
+
+  it('draws top lists, progress tiles, compared tiles and a report’s extra charts', () => {
+    const dashboard: FullstackPageDef = {
+      id: 'desk', type: 'dashboard', dateRange: '30d', widgets: [
+        { kind: 'top', entity: 'Order', groupBy: 'customer', limit: 2 },
+        { kind: 'progress', entity: 'Order', target: '1000' },
+        { kind: 'kpi', entity: 'Order', compare: true },
+      ],
+    }
+    const report: FullstackPageDef = { id: 'r', type: 'report', entity: 'Order', charts: [{ groupBy: 'status' }, { groupBy: 'placedOn' }] }
+    const [desk, rep] = buildLayoutPreview([dashboard, report], entities, ctx).screens
+    if (desk.type !== 'dashboard' || rep.type !== 'report') throw new Error('types')
+    const [top, progress, kpi] = desk.widgets
+    expect(top.kind === 'top' && [top.title, top.rows.length]).toEqual(['Top Orders by Customer', 2])
+    expect(progress.kind === 'progress' && progress.target).toBe('1,000')
+    expect(kpi.kind === 'kpi' && kpi.delta).toMatch(/^[▲▼] \d+%$/)
+    expect(rep.moreCharts).toHaveLength(1)
+    expect(rep.moreCharts[0]).toMatchObject({ title: 'Orders over time', line: true })
+  })
 })

@@ -4,6 +4,8 @@ import { humanize } from './naming'
 import {
   DEFAULT_NAV_ICON,
   defaultSpan,
+  defaultTopGroupBy,
+  reportCharts,
   NAV_ICONS,
   defaultBarGroupBy,
   defaultLineGroupBy,
@@ -49,7 +51,9 @@ interface WidgetBase {
 }
 
 export type PreviewWidget = WidgetBase & (
-  | { kind: 'kpi'; value: string }
+  | { kind: 'kpi'; value: string; /** "▲ 12%" when the tile compares periods. */ delta: string | null }
+  | { kind: 'progress'; value: string; target: string; percent: number }
+  | { kind: 'top'; rows: PreviewBar[] }
   | { kind: 'bar'; bars: PreviewBar[] }
   | { kind: 'line'; points: PreviewBar[] }
   | { kind: 'recent'; rows: string[] }
@@ -83,6 +87,8 @@ export type PreviewScreen =
     presetChips: string[]
     chartTitle: string
     chart: { line: boolean; bars: PreviewBar[] }
+    /** A report's second to fourth charts, drawn under the totals table. */
+    moreCharts: { title: string; line: boolean; bars: PreviewBar[] }[]
     groupLabel: string
     valueLabel: string
     totalLabel: string
@@ -114,7 +120,8 @@ const STRINGS = {
     xReport: '{x} report', total: 'Total', aggSum: 'Total {x}', aggAvg: 'Average {x}', aggMin: 'Lowest {x}',
     aggMax: 'Highest {x}', viewAll: 'View all', back: 'Back', exportCsv: 'Export CSV', newX: 'New {x}',
     xDetails: '{x} details', search: 'Search…', filters: 'Filters', trueLabel: 'True', falseLabel: 'False',
-    count: 'Count', startPage: 'Start page', periodAll: 'All time', period7d: 'Last 7 days',
+    count: 'Count', startPage: 'Start page', topXByY: 'Top {x} by {y}', vsPrevious: 'vs previous period',
+    percentOfTarget: '{x}% of target', periodAll: 'All time', period7d: 'Last 7 days',
     period30d: 'Last 30 days', period90d: 'Last 90 days', periodYtd: 'This year', period12m: 'Last 12 months',
   },
   he: {
@@ -122,7 +129,8 @@ const STRINGS = {
     xReport: 'דוח {x}', total: 'סך הכול', aggSum: 'סך {x}', aggAvg: '{x} ממוצע', aggMin: '{x} מינימלי',
     aggMax: '{x} מקסימלי', viewAll: 'הצג הכל', back: 'חזרה', exportCsv: 'ייצוא ל-CSV', newX: '{x} חדש',
     xDetails: 'פרטי {x}', search: 'חיפוש…', filters: 'מסננים', trueLabel: 'כן', falseLabel: 'לא',
-    count: 'כמות', startPage: 'דף פתיחה', periodAll: 'כל הזמן', period7d: '7 הימים האחרונים',
+    count: 'כמות', startPage: 'דף פתיחה', topXByY: '{x} מובילים לפי {y}', vsPrevious: 'לעומת התקופה הקודמת',
+    percentOfTarget: '{x}% מהיעד', periodAll: 'כל הזמן', period7d: '7 הימים האחרונים',
     period30d: '30 הימים האחרונים', period90d: '90 הימים האחרונים', periodYtd: 'מתחילת השנה',
     period12m: '12 החודשים האחרונים',
   },
@@ -326,8 +334,50 @@ export function buildLayoutPreview(
           const valueField = reduces ? fieldOf(e, w.field) : undefined
           const measured = reduces ? aggTitle(w.agg!, valueField) : plural
           switch (w.kind) {
-            case 'kpi':
-              return { ...base, kind: 'kpi', title: w.title || measured, value: kpiValue(w.agg, valueField, seed) }
+            case 'kpi': {
+              const change = seeded(`${seed}:change`)() * 40 - 12
+              return {
+                ...base, kind: 'kpi', title: w.title || measured, value: kpiValue(w.agg, valueField, seed),
+                delta: w.compare ? `${change >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(change))}%` : null,
+              }
+            }
+            case 'progress': {
+              const target = Number(w.target)
+              const percent = Math.round(20 + seeded(seed)() * 75)
+              return {
+                ...base, kind: 'progress', title: w.title || measured,
+                value: Number.isFinite(target) && target > 0 ? formatNumber(Math.round((target * percent) / 100), ctx.locale) : '—',
+                target: Number.isFinite(target) && target > 0 ? formatNumber(target, ctx.locale) : '?',
+                percent,
+              }
+            }
+            case 'top': {
+              const by = w.groupBy ?? defaultTopGroupBy(e)
+              const relation = (e.relations ?? []).find(r => r.fieldName === by && r.type === 'MANY_TO_ONE')
+              const limit = Math.min(Math.max(w.limit ?? 5, 1), 20)
+              const rand = seeded(seed)
+              const [lo, hi] = magnitude(w.agg, valueField)
+              let rows: PreviewBar[]
+              let groupLabel: string
+              if (relation) {
+                const target = entityOf(relation.targetEntity)
+                groupLabel = humanize(relation.fieldName)
+                rows = Array.from({ length: Math.min(limit, 5) }, (_, i) => ({
+                  label: target ? rowLabel(target, i + 1, labels(target).singular, t) : `#${i + 1}`,
+                  value: between(rand, lo, hi),
+                }))
+              } else {
+                const group = fieldOf(e, by)
+                if (!group) return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} has nothing to rank by` }
+                groupLabel = fieldLabel(group)
+                rows = breakdown(group, w.agg, valueField, seed).slice(0, limit)
+              }
+              return {
+                ...base, kind: 'top',
+                title: w.title || t('topXByY', { x: measured, y: groupLabel }),
+                rows: rows.sort((a, b) => b.value - a.value),
+              }
+            }
             case 'bar': {
               const group = fieldOf(e, w.groupBy ?? defaultBarGroupBy(e))
               if (!group) return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} has nothing to group by` }
@@ -417,14 +467,19 @@ export function buildLayoutPreview(
         const e = entityOf(page.entity)
         if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
         const { plural, ui } = labels(e)
-        const chart = page.chart ?? {}
-        const group = fieldOf(e, chart.groupBy ?? defaultReportGroupBy(e))
-        const reduces = !!chart.agg && chart.agg !== 'count'
-        const valueField = reduces ? fieldOf(e, chart.field) : undefined
-        const measured = reduces ? aggTitle(chart.agg!, valueField) : plural
-        const line = !!group && dateFields(e).some(f => f.name === group.name)
-        const seed = `${seedBase}:${chart.groupBy ?? ''}:${chart.agg ?? ''}:${chart.field ?? ''}:${chart.bucket ?? ''}`
-        const bars = !group ? [] : line ? series(chart.bucket, chart.agg, valueField, seed) : breakdown(group, chart.agg, valueField, seed)
+        // Each chart: its bars (or points), title and headings, from the same seeded sample data.
+        const drawn = reportCharts(page).map((chart, ci) => {
+          const group = fieldOf(e, chart.groupBy ?? defaultReportGroupBy(e))
+          const reduces = !!chart.agg && chart.agg !== 'count'
+          const valueField = reduces ? fieldOf(e, chart.field) : undefined
+          const measured = reduces ? aggTitle(chart.agg!, valueField) : plural
+          const line = !!group && dateFields(e).some(f => f.name === group.name)
+          const seed = `${seedBase}:${ci}:${chart.groupBy ?? ''}:${chart.agg ?? ''}:${chart.field ?? ''}:${chart.bucket ?? ''}`
+          const bars = !group ? [] : line ? series(chart.bucket, chart.agg, valueField, seed) : breakdown(group, chart.agg, valueField, seed)
+          const title = group ? (line ? t('xOverTime', { x: measured }) : t('xByY', { x: measured, y: fieldLabel(group) })) : measured
+          return { group, reduces, measured, line, bars, title }
+        })
+        const { group, reduces, measured, line, bars } = drawn[0]
         const csv = (e.opts?.csvExport ?? ctx.projectOpts.includes('csvExport'))
         return {
           type: 'report',
@@ -432,8 +487,9 @@ export function buildLayoutPreview(
           description,
           filters: ui.filters,
           presetChips: presetChips(e, page.presetFilter),
-          chartTitle: group ? (line ? t('xOverTime', { x: measured }) : t('xByY', { x: measured, y: fieldLabel(group) })) : measured,
+          chartTitle: drawn[0].title,
           chart: { line, bars },
+          moreCharts: drawn.slice(1).map(c => ({ title: c.title, line: c.line, bars: c.bars })),
           groupLabel: group ? fieldLabel(group) : '—',
           valueLabel: reduces ? measured : t('count'),
           totalLabel: t('total'),

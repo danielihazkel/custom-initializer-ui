@@ -374,4 +374,31 @@ describe('PagesEditor', () => {
     expect(latest[0].widgets?.[0].dateField).toBeUndefined()
     expect(validatePages(latest, entities).count).toBe(0)
   })
+
+  it('edits a top list, a progress target and a report with two charts', () => {
+    render(<Harness initial={[
+      { id: 'desk', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] },
+      { id: 'r', type: 'report', entity: 'Order', chart: { groupBy: 'status' } },
+    ]} />)
+    const desk = openRow('desk') as HTMLElement
+    fireEvent.click(within(desk).getByRole('radio', { name: 'Top list' }))
+    fireEvent.change(within(desk).getByLabelText('Rank by'), { target: { value: 'customer' } })
+    expect(latest[0].widgets?.[0]).toMatchObject({ kind: 'top', groupBy: 'customer' })
+    fireEvent.click(within(desk).getByRole('radio', { name: 'Progress to target' }))
+    fireEvent.change(within(desk).getByLabelText('Target'), { target: { value: '750' } })
+    expect(latest[0].widgets?.[0]).toMatchObject({ kind: 'progress', target: '750' })
+    expect(latest[0].widgets?.[0].groupBy).toBeUndefined()
+    // Comparing needs the period picker first.
+    fireEvent.click(within(desk).getByRole('radio', { name: 'Number tile' }))
+    expect((within(desk).getByRole('checkbox') as HTMLInputElement).disabled).toBe(true)
+
+    const report = openRow('r') as HTMLElement
+    fireEvent.click(within(report).getByRole('button', { name: /Add chart/ }))
+    expect(latest[1].chart).toBeUndefined()
+    expect(latest[1].charts).toEqual([{ groupBy: 'status' }, {}])
+    fireEvent.click(within(report).getByRole('button', { name: 'Remove chart 1' }))
+    // Back to one chart: the one-chart spelling again.
+    expect(latest[1]).toMatchObject({ chart: {} })
+    expect(latest[1].charts).toBeUndefined()
+  })
 })

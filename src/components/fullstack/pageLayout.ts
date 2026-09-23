@@ -1,5 +1,6 @@
 import type {
   FullstackAgg,
+  FullstackChartDef,
   FullstackDateRange,
   FullstackEntityDef,
   FullstackFieldDef,
@@ -26,6 +27,31 @@ export const MAX_CHILD_TABS = MAX_TABS - 1
 export const MAX_RECENT_LIMIT = 20
 export const MAX_GROUP = 40
 export const MAX_SPAN = 4
+export const MAX_CHARTS = 4
+
+/** A report's charts, whichever way the page spells them (`chart` or `charts`). */
+export function reportCharts(page: FullstackPageDef): FullstackChartDef[] {
+  if (page.charts && page.charts.length > 0) return page.charts
+  return [page.chart ?? {}]
+}
+
+/** The control key of one chart's setting: `chart.groupBy` for the first, `chart2.groupBy`… after. */
+export function chartControl(index: number, key: 'groupBy' | 'bucket' | 'field'): string {
+  return `${index === 0 ? 'chart' : `chart${index + 1}`}.${key}`
+}
+
+/** What a top list can rank by: a groupable field, or a MANY_TO_ONE relation (its field name). */
+export function rankableKeys(entity: FullstackEntityDef | undefined): string[] {
+  return [
+    ...groupableFields(entity).map(f => f.name),
+    ...(entity?.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => r.fieldName),
+  ]
+}
+
+/** What a top list ranks by when it names nothing: the first enum, else boolean, else relation. */
+export function defaultTopGroupBy(entity: FullstackEntityDef | undefined): string | undefined {
+  return defaultBarGroupBy(entity) ?? (entity?.relations ?? []).find(r => r.type === 'MANY_TO_ONE')?.fieldName
+}
 
 /** The dashboard period picker's options, in the order the generated picker shows them. */
 export const DATE_RANGES: { value: FullstackDateRange; label: string }[] = [
@@ -319,6 +345,32 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
                 `${where} plots ${e.name} over time, but it has no date field`)
             }
           }
+          if (w.kind === 'top') {
+            const ranks = rankableKeys(e)
+            if (w.groupBy && !ranks.some(k => k.toLowerCase() === w.groupBy!.toLowerCase())) {
+              add(`widget.${wi}`, `${e.name} has no enum, boolean or relation “${w.groupBy}”`,
+                `${where} ranks ${e.name} by “${w.groupBy}”, which it no longer has`)
+            } else if (!w.groupBy && ranks.length === 0) {
+              add(`widget.${wi}`, `${e.name} has no enum, boolean or relation to rank by`,
+                `${where} ranks ${e.name}, which has nothing to rank by`)
+            }
+          }
+          if (w.kind === 'progress') {
+            const target = Number(w.target)
+            if (!w.target?.trim()) {
+              add(`widget.${wi}`, 'needs a target', `${where} has a progress tile without a target`)
+            } else if (!Number.isFinite(target) || target <= 0) {
+              add(`widget.${wi}`, 'the target must be a number above 0', `${where} has a progress target of “${w.target}”`)
+            }
+          }
+          if (w.compare) {
+            if (w.kind !== 'kpi') {
+              add(`widget.${wi}`, 'only a number tile compares periods', `${where} compares periods on a ${w.kind} widget`)
+            } else if (!page.dateRange || !widgetDateField(w, e)) {
+              add(`widget.${wi}`, 'comparing needs the period picker and a filterable date',
+                `${where} compares periods, but ${!page.dateRange ? 'has no period picker' : `${e.name} has no filterable date`}`)
+            }
+          }
           if (w.bucket && w.kind !== 'line') {
             add(`widget.${wi}`, 'only a trend takes a bucket', `${where} buckets a ${w.kind} widget`)
           }
@@ -329,9 +381,9 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
             add(`widget.${wi}`, 'a recent list shows rows, not an aggregate',
               `${where} asks a recent list for an aggregate`)
           }
-          if (w.kind === 'recent' && w.limit != null && (w.limit < 1 || w.limit > MAX_RECENT_LIMIT)) {
+          if ((w.kind === 'recent' || w.kind === 'top') && w.limit != null && (w.limit < 1 || w.limit > MAX_RECENT_LIMIT)) {
             add(`widget.${wi}`, `between 1 and ${MAX_RECENT_LIMIT} rows`,
-              `${where} shows a recent list of ${w.limit} rows (1–${MAX_RECENT_LIMIT})`)
+              `${where} shows a ${w.kind} list of ${w.limit} rows (1–${MAX_RECENT_LIMIT})`)
           }
           if (w.span != null && (!Number.isInteger(w.span) || w.span < 1 || w.span > MAX_SPAN)) {
             add(`widget.${wi}`, `spans 1 to ${MAX_SPAN} columns`, `${where} has a widget ${w.span} columns wide (1–${MAX_SPAN})`)
@@ -423,24 +475,31 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
               : `${where} reports on no entity`)
           break
         }
-        const chart = page.chart ?? {}
+        const charts = reportCharts(page)
+        if (page.chart && page.charts?.length) {
+          add('chart.groupBy', 'has both a chart and a list of charts', `${where} sets both “chart” and “charts”`)
+        }
+        if (charts.length > MAX_CHARTS) add('chart.groupBy', `has more than ${MAX_CHARTS} charts`)
         const chartable = chartableFields(e)
-        const grouped = chart.groupBy ? e.fields.find(f => f.name === chart.groupBy) : undefined
-        if (chart.groupBy && !chartable.some(f => f.name === chart.groupBy)) {
-          add('chart.groupBy', `${e.name} has no enum, boolean or date field “${chart.groupBy}”`,
-            `${where} groups by “${chart.groupBy}”, which is not an enum, boolean or date field of ${e.name}`)
-        } else if (!chart.groupBy && chartable.length === 0) {
-          add('chart.groupBy', `${e.name} has no enum, boolean or date field to group by`,
-            `${where} reports on ${e.name}, which has no enum, boolean or date field to group by`)
-        }
-        const overTime = grouped ? dateFields(e).some(f => f.name === grouped.name) : false
-        if (chart.bucket && !overTime) {
-          add('chart.bucket', 'a bucket applies to a date grouping',
-            `${where} buckets by ${chart.bucket}, but it does not group over a date`)
-        }
-        for (const issue of aggIssues(chart.agg, chart.field, e, false)) {
-          add(issue.field, issue.message, `${where} ${issue.summary}`)
-        }
+        charts.forEach((chart, ci) => {
+          const which = charts.length > 1 ? `${where} (chart ${ci + 1})` : where
+          const grouped = chart.groupBy ? e.fields.find(f => f.name === chart.groupBy) : undefined
+          if (chart.groupBy && !chartable.some(f => f.name === chart.groupBy)) {
+            add(chartControl(ci, 'groupBy'), `${e.name} has no enum, boolean or date field “${chart.groupBy}”`,
+              `${which} groups by “${chart.groupBy}”, which is not an enum, boolean or date field of ${e.name}`)
+          } else if (!chart.groupBy && chartable.length === 0) {
+            add(chartControl(ci, 'groupBy'), `${e.name} has no enum, boolean or date field to group by`,
+              `${which} reports on ${e.name}, which has no enum, boolean or date field to group by`)
+          }
+          const overTime = grouped ? dateFields(e).some(f => f.name === grouped.name) : false
+          if (chart.bucket && !overTime) {
+            add(chartControl(ci, 'bucket'), 'a bucket applies to a date grouping',
+              `${which} buckets by ${chart.bucket}, but it does not group over a date`)
+          }
+          for (const issue of aggIssues(chart.agg, chart.field, e, false)) {
+            add(chartControl(ci, 'field'), issue.message, `${which} ${issue.summary}`)
+          }
+        })
         checkPresetFilter(page.presetFilter, e, add, where)
         break
       }
@@ -496,12 +555,14 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       return filter ? `${page.entity} list · filtered on ${filter}` : `${page.entity} list`
     }
     case 'dashboard': {
-      const counts = { kpi: 0, bar: 0, line: 0, recent: 0 }
-      for (const w of page.widgets ?? []) counts[w.kind]++
+      const counts = { kpi: 0, bar: 0, line: 0, recent: 0, top: 0, progress: 0 }
+      for (const w of page.widgets ?? []) if (w.kind in counts) counts[w.kind]++
       const parts = [
         counts.kpi && `${counts.kpi} tile${counts.kpi === 1 ? '' : 's'}`,
+        counts.progress && `${counts.progress} target${counts.progress === 1 ? '' : 's'}`,
         counts.bar && `${counts.bar} breakdown chart${counts.bar === 1 ? '' : 's'}`,
         counts.line && `${counts.line} trend${counts.line === 1 ? '' : 's'}`,
+        counts.top && `${counts.top} top list${counts.top === 1 ? '' : 's'}`,
         counts.recent && `${counts.recent} recent list${counts.recent === 1 ? '' : 's'}`,
       ].filter(Boolean)
       return parts.join(' · ') || 'No widgets'
@@ -513,10 +574,12 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
     case 'master-detail':
       return `${page.parent ?? '?'} → ${page.child ?? '?'}${page.via ? ` via ${page.via}` : ''}`
     case 'report': {
-      const chart = page.chart ?? {}
+      const charts = reportCharts(page)
+      const chart = charts[0]
       const by = chart.groupBy ?? 'its first enum, boolean or date field'
       const how = !chart.agg || chart.agg === 'count' ? 'row count' : `${chart.agg} of ${chart.field}`
-      return `${page.entity ?? '?'} · ${how} by ${by}${chart.bucket ? ` per ${chart.bucket}` : ''}`
+      const more = charts.length > 1 ? ` · +${charts.length - 1} chart${charts.length === 2 ? '' : 's'}` : ''
+      return `${page.entity ?? '?'} · ${how} by ${by}${chart.bucket ? ` per ${chart.bucket}` : ''}${more}`
     }
     case 'record': {
       const tabs = page.childTabs
@@ -619,12 +682,13 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
         return patched
       })
     }
-    if (isEntity(next.entity) && next.chart) {
-      const chart = { ...next.chart }
-      if (chart.groupBy === from) chart.groupBy = to
-      if (chart.field === from) chart.field = to
-      next.chart = chart
-    }
+    const renameChart = (c: FullstackChartDef): FullstackChartDef => ({
+      ...c,
+      ...(c.groupBy === from ? { groupBy: to } : {}),
+      ...(c.field === from ? { field: to } : {}),
+    })
+    if (isEntity(next.entity) && next.chart) next.chart = renameChart(next.chart)
+    if (isEntity(next.entity) && next.charts) next.charts = next.charts.map(renameChart)
     return next
   })
 }
@@ -697,9 +761,14 @@ export function dropTabsTo(pages: FullstackPageDef[], id: string): FullstackPage
 /** Follows a relation rename on `child` into the master-detail pages that link through it. */
 export function renameRelationInPages(pages: FullstackPageDef[], child: string, from: string, to: string): FullstackPageDef[] {
   if (!child || !from || !to || from === to) return pages
+  // `child` is the entity that owns the relation.
   const isChild = (name: string | undefined) => name != null && name.trim().toLowerCase() === child.trim().toLowerCase()
   let changed = false
   const next = pages.map(page => {
+    if (page.type === 'dashboard' && page.widgets?.some(w => w.kind === 'top' && isChild(w.entity) && w.groupBy === from)) {
+      changed = true
+      return { ...page, widgets: page.widgets.map(w => (w.kind === 'top' && isChild(w.entity) && w.groupBy === from ? { ...w, groupBy: to } : w)) }
+    }
     if (page.type !== 'master-detail' || !isChild(page.child) || page.via !== from) return page
     changed = true
     return { ...page, via: to }

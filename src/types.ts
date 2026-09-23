@@ -522,9 +522,9 @@ export type FullstackBucket = 'day' | 'month' | 'year'
 export type FullstackDateRange = 'all' | '7d' | '30d' | '90d' | 'ytd' | '12m'
 
 /** A dashboard widget: one number, a breakdown by an enum/boolean field, a time series over a
- *  date field, or the latest rows. */
+ *  date field, the latest rows, the largest groups ranked, or one number against a target. */
 export interface FullstackWidgetDef {
-  kind: 'kpi' | 'bar' | 'line' | 'recent'
+  kind: 'kpi' | 'bar' | 'line' | 'recent' | 'top' | 'progress'
   entity: string
   title?: string
   /** bar: the enum/boolean field; line: the date field. Defaults to the entity's first of that kind. */
@@ -545,6 +545,10 @@ export interface FullstackWidgetDef {
   sortBy?: string
   /** The date the dashboard's period picker limits (default: the entity's first filterable date). */
   dateField?: string
+  /** kpi: also show the change against the previous period of the dashboard's picker. */
+  compare?: boolean
+  /** progress: the value the bar fills up to (a positive number, as written). */
+  target?: string
 }
 
 /** A report page's single chart: bars when `groupBy` is an enum/boolean, a line when it is a date. */
@@ -589,9 +593,11 @@ export interface FullstackPageDef {
   /** record: the related entities shown as tabs under the record. Omitted = every entity with a
    *  MANY_TO_ONE to it; an empty array = none. */
   childTabs?: string[]
-  /** report: the single chart the page is built around (its entity and opening filters are the
-   *  shared `entity` / `presetFilter`). */
+  /** report: its chart when it has one (its entity and opening filters are the shared `entity` /
+   *  `presetFilter`). */
   chart?: FullstackChartDef
+  /** report: its charts when it has several (2–4); the first gets the totals table. */
+  charts?: FullstackChartDef[]
 }
 
 /** The editor state an example sets on load — FullstackExampleAdminController.validateSettings. */

@@ -22,6 +22,7 @@ import { useDragReorder } from './useDragReorder'
 import {
   DATE_RANGES,
   DEFAULT_NAV_ICON,
+  MAX_CHARTS,
   MAX_GROUP,
   MAX_PAGES,
   MAX_RECENT_LIMIT,
@@ -34,11 +35,13 @@ import {
   dateFields,
   defaultBarGroupBy,
   defaultSpan,
+  defaultTopGroupBy,
   defaultLineGroupBy,
   defaultOptionLabel,
   defaultReportGroupBy,
   describePage,
   dropTabsTo,
+  chartControl,
   duplicatePage,
   filterableDateFields,
   groupableFields,
@@ -47,7 +50,9 @@ import {
   pageFromSuggestion,
   pageLabel,
   pagesEmbedding,
+  rankableKeys,
   relationsTo,
+  reportCharts,
   renamePageIdInPages,
   seedLayout,
   slugify,
@@ -92,6 +97,8 @@ const WIDGET_KINDS: { kind: FullstackWidgetDef['kind']; icon: string; label: str
   { kind: 'bar', icon: 'bar_chart', label: 'Breakdown chart' },
   { kind: 'line', icon: 'show_chart', label: 'Trend over time' },
   { kind: 'recent', icon: 'list', label: 'Recent rows' },
+  { kind: 'top', icon: 'format_list_numbered', label: 'Top list' },
+  { kind: 'progress', icon: 'data_usage', label: 'Progress to target' },
 ]
 
 function readPreviewOpen(): boolean {
@@ -852,6 +859,8 @@ function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps
       limit: undefined,
       bucket: undefined,
       sortBy: undefined,
+      compare: undefined,
+      target: undefined,
       // A recent list shows rows, so it can carry no aggregate.
       ...(kind === 'recent' ? { agg: undefined, field: undefined } : {}),
     })
@@ -872,7 +881,9 @@ function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps
           onChange={e => update(index, {
             dateRange: (e.target.value || undefined) as FullstackDateRange | undefined,
             // A widget's date field only means something under a picker.
-            ...(e.target.value ? {} : { widgets: widgets.map(w => (w.dateField ? { ...w, dateField: undefined } : w)) }),
+            ...(e.target.value ? {} : {
+              widgets: widgets.map(w => (w.dateField || w.compare ? { ...w, dateField: undefined, compare: undefined } : w)),
+            }),
           })}
           className={`${inputClass(errors.dateRange)} max-w-[14rem]`}
         >
@@ -980,7 +991,48 @@ function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps
                   onChange={patch => setWidget(wi, patch)}
                 />
               )}
-              {widget.kind === 'recent' && (
+              {widget.kind === 'top' && (
+                <select
+                  aria-label="Rank by"
+                  value={widget.groupBy ?? ''}
+                  onChange={e => setWidget(wi, { groupBy: e.target.value || undefined })}
+                  className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                >
+                  <option value="">{defaultOptionLabel(defaultTopGroupBy(entity), 'enum, boolean or relation')}</option>
+                  {rankableKeys(entity).map(k => <option key={k} value={k}>{k}</option>)}
+                  {widget.groupBy && !rankableKeys(entity).includes(widget.groupBy) && (
+                    <option value={widget.groupBy}>{widget.groupBy}</option>
+                  )}
+                </select>
+              )}
+              {widget.kind === 'progress' && (
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  aria-label="Target"
+                  aria-invalid={Boolean(error) && !widget.target}
+                  value={widget.target ?? ''}
+                  placeholder="Target"
+                  onChange={e => setWidget(wi, { target: e.target.value || undefined })}
+                  className={`${inputClass(error)} max-w-[7rem] py-1 text-xs`}
+                />
+              )}
+              {widget.kind === 'kpi' && (
+                <label
+                  className={`inline-flex items-center gap-1 text-xs ${page.dateRange ? 'text-on-surface' : 'text-secondary/60'}`}
+                  title={page.dateRange ? 'Show the change against the previous period' : 'Turn on the period picker to compare periods'}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(widget.compare)}
+                    disabled={!page.dateRange && !widget.compare}
+                    onChange={e => setWidget(wi, { compare: e.target.checked || undefined })}
+                  />
+                  vs previous period
+                </label>
+              )}
+              {(widget.kind === 'recent' || widget.kind === 'top') && (
                 <input
                   type="number"
                   min={1}
@@ -1200,34 +1252,102 @@ function AggFields({ agg, field, entity, error, onChange }: {
 
 function ReportForm({ page, index, entities, errors, update }: FormProps) {
   const entity = entities.find(e => e.name === page.entity)
-  const chart = page.chart ?? {}
-  const effectiveGroupBy = chart.groupBy ?? defaultReportGroupBy(entity)
-  const overTime = !!effectiveGroupBy && dateFields(entity).some(f => f.name === effectiveGroupBy)
-  const setChart = (patch: Partial<FullstackChartDef>) => update(index, { chart: { ...chart, ...patch } })
+  const charts = reportCharts(page)
+  // One chart is sent as `chart`, several as `charts` — the backend takes either spelling.
+  const setCharts = (next: FullstackChartDef[]) =>
+    update(index, next.length <= 1 ? { chart: next[0] ?? {}, charts: undefined } : { charts: next, chart: undefined })
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1" data-control="entity">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Entity</span>
-          <EntitySelect
-            label="Report entity"
-            value={page.entity ?? ''}
-            options={entities.map(e => e.name)}
-            error={errors.entity}
-            className="max-w-[12rem]"
-            // A different entity has different columns, so the chart and filters start over.
-            onChange={name => update(index, { entity: name, chart: {}, presetFilter: undefined })}
+      <label className="flex flex-col gap-1" data-control="entity">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Entity</span>
+        <EntitySelect
+          label="Report entity"
+          value={page.entity ?? ''}
+          options={entities.map(e => e.name)}
+          error={errors.entity}
+          className="max-w-[12rem]"
+          // A different entity has different columns, so the charts and filters start over.
+          onChange={name => update(index, { entity: name, chart: {}, charts: undefined, presetFilter: undefined })}
+        />
+      </label>
+      {errors.entity && <p className="text-[11px] text-error">{errors.entity}</p>}
+      {charts.map((chart, ci) => (
+        <div key={ci} className="space-y-1 rounded border border-outline-variant px-2 py-1.5" data-report-chart={ci}>
+          <div className="flex items-center gap-1.5">
+            {charts.length > 1 && (
+              <MoveButtons
+                label={`chart ${ci + 1}`}
+                canUp={ci > 0}
+                canDown={ci < charts.length - 1}
+                onMove={delta => setCharts(moveItem(charts, ci, ci + delta))}
+              />
+            )}
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
+              Chart {charts.length > 1 ? ci + 1 : ''}{ci === 0 && <span className="font-normal normal-case tracking-normal"> · with the totals table</span>}
+            </span>
+            <span className="flex-1" />
+            {charts.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setCharts(charts.filter((_, i) => i !== ci))}
+                className={ICON_BUTTON}
+                aria-label={`Remove chart ${ci + 1}`}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+              </button>
+            )}
+          </div>
+          <ChartFields
+            chart={chart}
+            chartIndex={ci}
+            entity={entity}
+            errors={errors}
+            onChange={patch => setCharts(charts.map((c, i) => (i === ci ? { ...c, ...patch } : c)))}
           />
-        </label>
-        <label className="flex flex-col gap-1" data-control="chart.groupBy">
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => setCharts([...charts, {}])}
+        disabled={charts.length >= MAX_CHARTS}
+        className={SMALL_BUTTON}
+        title={charts.length >= MAX_CHARTS ? `A report can have at most ${MAX_CHARTS} charts` : undefined}
+      >
+        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
+        Add chart
+      </button>
+      <PresetFilters filter={page.presetFilter} entity={entity} errors={errors} onChange={presetFilter => update(index, { presetFilter })} />
+    </div>
+  )
+}
+
+/** One report chart: what it groups by (a breakdown or a time series), its bucket and reduction. */
+function ChartFields({ chart, chartIndex, entity, errors, onChange }: {
+  chart: FullstackChartDef
+  chartIndex: number
+  entity: FullstackEntityDef | undefined
+  errors: Record<string, string>
+  onChange: (patch: Partial<FullstackChartDef>) => void
+}) {
+  const effectiveGroupBy = chart.groupBy ?? defaultReportGroupBy(entity)
+  const overTime = !!effectiveGroupBy && dateFields(entity).some(f => f.name === effectiveGroupBy)
+  const setChart = onChange
+  const groupKey = chartControl(chartIndex, 'groupBy')
+  const bucketKey = chartControl(chartIndex, 'bucket')
+  const fieldKey = chartControl(chartIndex, 'field')
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1" data-control={groupKey}>
           <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Group by</span>
           <select
             aria-label="Group by"
-            aria-invalid={Boolean(errors['chart.groupBy'])}
+            aria-invalid={Boolean(errors[groupKey])}
             value={chart.groupBy ?? ''}
             onChange={e => setChart({ groupBy: e.target.value || undefined, bucket: undefined })}
-            className={`${inputClass(errors['chart.groupBy'])} max-w-[12rem] py-1 text-xs`}
+            className={`${inputClass(errors[groupKey])} max-w-[12rem] py-1 text-xs`}
           >
             <option value="">{defaultOptionLabel(defaultReportGroupBy(entity), 'enum, boolean or date')}</option>
             {groupableFields(entity).length > 0 && (
@@ -1246,23 +1366,21 @@ function ReportForm({ page, index, entities, errors, update }: FormProps) {
           </select>
         </label>
         {overTime && chart.groupBy && (
-          <span data-control="chart.bucket"><BucketSelect value={chart.bucket} onChange={bucket => setChart({ bucket })} /></span>
+          <span data-control={bucketKey}><BucketSelect value={chart.bucket} onChange={bucket => setChart({ bucket })} /></span>
         )}
-        <span className="inline-flex flex-wrap items-center gap-2" data-control="chart.field">
+        <span className="inline-flex flex-wrap items-center gap-2" data-control={fieldKey}>
           <AggFields
             agg={chart.agg}
             field={chart.field}
             entity={entity}
-            error={errors['chart.field']}
+            error={errors[fieldKey]}
             onChange={patch => setChart(patch)}
           />
         </span>
       </div>
-      {errors.entity && <p className="text-[11px] text-error">{errors.entity}</p>}
-      {errors['chart.groupBy'] && <p className="text-[11px] text-error">{errors['chart.groupBy']}</p>}
-      {errors['chart.field'] && <p className="text-[11px] text-error">{errors['chart.field']}</p>}
-      {errors['chart.bucket'] && <p className="text-[11px] text-error">{errors['chart.bucket']}</p>}
-      <PresetFilters filter={page.presetFilter} entity={entity} errors={errors} onChange={presetFilter => update(index, { presetFilter })} />
+      {errors[groupKey] && <p className="text-[11px] text-error">{errors[groupKey]}</p>}
+      {errors[fieldKey] && <p className="text-[11px] text-error">{errors[fieldKey]}</p>}
+      {errors[bucketKey] && <p className="text-[11px] text-error">{errors[bucketKey]}</p>}
     </div>
   )
 }

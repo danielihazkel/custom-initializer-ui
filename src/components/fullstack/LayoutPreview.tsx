@@ -270,6 +270,18 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
               </tr>
             </tbody>
           </table>
+          {screen.moreCharts.length > 0 && (
+            <div className="grid grid-cols-2 gap-1.5">
+              {screen.moreCharts.map((c, ci) => (
+                <Editable key={ci} onClick={() => onEdit({ page, control: `chart${ci + 2}.groupBy` })} label={`Edit chart ${ci + 2}`} className="block min-w-0">
+                  <div className="rounded border border-outline-variant p-1.5" data-preview-chart={ci + 1}>
+                    <p className="mb-1 truncate text-[9px] font-semibold text-on-surface">{c.title}</p>
+                    {c.line ? <LineChart points={c.bars} accent={accent} /> : <Bars bars={c.bars.slice(0, 4)} accent={accent} />}
+                  </div>
+                </Editable>
+              ))}
+            </div>
+          )}
         </div>
       )
   }
@@ -346,7 +358,30 @@ function Widget({ widget, accent, viewAll, onEdit }: { widget: PreviewWidget; ac
         {widget.filters.length > 0 && (
           <p className="truncate text-[8px] text-secondary" data-preview-widget-filter>{widget.filters.join(' · ')}</p>
         )}
-        {widget.kind === 'kpi' &&<p className="text-[15px] font-bold tabular-nums text-on-surface">{widget.value}</p>}
+        {widget.kind === 'kpi' && <p className="text-[15px] font-bold tabular-nums text-on-surface">{widget.value}</p>}
+        {widget.kind === 'kpi' && widget.delta && (
+          <p className={`text-[8px] font-semibold ${widget.delta.startsWith('▲') ? 'text-emerald-600' : 'text-error'}`} data-preview-delta>{widget.delta}</p>
+        )}
+        {widget.kind === 'progress' && (
+          <>
+            <p className="text-[13px] font-bold tabular-nums text-on-surface">
+              {widget.value} <span className="text-[9px] font-normal text-secondary">/ {widget.target}</span>
+            </p>
+            <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-surface-container" data-preview-progress>
+              <div className="h-full rounded-full" style={{ width: `${Math.min(widget.percent, 100)}%`, background: accent }} />
+            </div>
+          </>
+        )}
+        {widget.kind === 'top' && (
+          <ol className="mt-0.5 space-y-0.5">
+            {widget.rows.slice(0, 4).map((r, i) => (
+              <li key={i} className="flex justify-between gap-1 text-[10px] text-on-surface">
+                <span className="truncate"><span className="text-secondary">{i + 1}.</span> {r.label}</span>
+                <span className="tabular-nums">{r.value}</span>
+              </li>
+            ))}
+          </ol>
+        )}
         {widget.kind === 'bar' && <Bars bars={widget.bars.slice(0, 4)} accent={accent} />}
         {widget.kind === 'line' && <LineChart points={widget.points} accent={accent} />}
         {widget.kind === 'recent' && (

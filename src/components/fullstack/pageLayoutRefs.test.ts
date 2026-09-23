@@ -3,7 +3,7 @@ import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import {
   defaultBarGroupBy, defaultLineGroupBy, defaultOptionLabel, defaultReportGroupBy, describePagesChange,
   dropTabsTo, duplicatePage, navSections, pageFromSuggestion, pagesEmbedding, renameFieldInPages, renamePageIdInPages,
-  renameRelationInPages, suggestPages, validatePages,
+  renameRelationInPages, reportCharts, suggestPages, validatePages,
 } from './pageLayout'
 
 const entities: FullstackEntityDef[] = [
@@ -158,5 +158,57 @@ describe('dashboard layout and filters', () => {
       { dateRange: '30d' })
     const renamed = renameFieldInPages(renameFieldInPages(pages, 'Order', 'placedOn', 'orderedOn'), 'Order', 'status', 'state')
     expect(renamed[0].widgets?.[0]).toMatchObject({ sortBy: 'orderedOn', dateField: 'orderedOn', presetFilter: { state: 'OPEN' } })
+  })
+})
+
+describe('top lists, targets, comparisons and report charts', () => {
+  it('ranks by an enum or a relation, and checks targets and comparisons', () => {
+    const ok: FullstackPageDef[] = [{
+      id: 'desk', type: 'dashboard', dateRange: '30d', widgets: [
+        { kind: 'top', entity: 'Order', groupBy: 'customer', agg: 'sum', field: 'total', limit: 3 },
+        { kind: 'top', entity: 'Order' },
+        { kind: 'progress', entity: 'Order', agg: 'sum', field: 'total', target: '5000' },
+        { kind: 'kpi', entity: 'Order', compare: true },
+      ],
+    }]
+    expect(validatePages(ok, entities).count).toBe(0)
+
+    const bad = validatePages([{
+      id: 'desk', type: 'dashboard', widgets: [
+        { kind: 'top', entity: 'Order', groupBy: 'total' },
+        { kind: 'progress', entity: 'Order' },
+        { kind: 'progress', entity: 'Order', target: '-1' },
+        { kind: 'kpi', entity: 'Order', compare: true },
+        { kind: 'top', entity: 'Customer' },
+      ],
+    }], entities)
+    expect(bad.byPage[0]).toMatchObject({
+      'widget.0': 'Order has no enum, boolean or relation “total”',
+      'widget.1': 'needs a target',
+      'widget.2': 'the target must be a number above 0',
+      'widget.3': 'comparing needs the period picker and a filterable date',
+      'widget.4': 'Customer has no enum, boolean or relation to rank by',
+    })
+  })
+
+  it('validates every chart of a report under its own control', () => {
+    const v = validatePages([{
+      id: 'r', type: 'report', entity: 'Order', charts: [{ groupBy: 'status' }, { groupBy: 'nope' }, { agg: 'sum' }],
+    }], entities)
+    expect(v.byPage[0]).toMatchObject({
+      'chart2.groupBy': 'Order has no enum, boolean or date field “nope”',
+      'chart3.field': 'sum needs a numeric field of Order',
+    })
+    expect(v.byPage[0]?.['chart.groupBy']).toBeUndefined()
+    expect(reportCharts({ id: 'r', type: 'report', chart: { groupBy: 'status' } })).toEqual([{ groupBy: 'status' }])
+  })
+
+  it('follows relation and field renames into top lists and report charts', () => {
+    const pages: FullstackPageDef[] = [
+      { id: 'desk', type: 'dashboard', widgets: [{ kind: 'top', entity: 'Order', groupBy: 'customer' }] },
+      { id: 'r', type: 'report', entity: 'Order', charts: [{ groupBy: 'status' }, { groupBy: 'placedOn', bucket: 'month' }] },
+    ]
+    expect(renameRelationInPages(pages, 'Order', 'customer', 'buyer')[0].widgets?.[0].groupBy).toBe('buyer')
+    expect(renameFieldInPages(pages, 'Order', 'placedOn', 'orderedOn')[1].charts?.[1].groupBy).toBe('orderedOn')
   })
 })
