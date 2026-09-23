@@ -1,0 +1,451 @@
+import { useState, type ReactNode } from 'react'
+import type { LayoutPreview as LayoutPreviewModel, PreviewBar, PreviewScreen, PreviewTable, PreviewWidget } from './layoutPreviewModel'
+
+/** Where a click in the preview should land in the editor: a page, and optionally one control
+ *  (the same keys validatePages reports errors under). */
+export interface EditTarget { page: number; control?: string }
+
+interface Props {
+  preview: LayoutPreviewModel
+  /** The page shown — follows the row opened in the editor, and the preview's own nav. */
+  selected: number
+  onSelect: (index: number) => void
+  onEdit: (target: EditTarget) => void
+  /** The frontend set's look: the default dark-sidebar shell, or the Menora Digital top bar. */
+  skin: 'tailwind' | 'menora'
+  /** Why the selected page is not in the nav, when it is not ("Tab only", "Opens from a row"). */
+  offNavNote?: string
+}
+
+const MENORA = { purple: '#684eed', yellow: '#ffc700', ink: '#37374e' }
+
+/**
+ * A wireframe of the generated frontend for the page layout being edited — the shell with its
+ * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
+ * a click on a part of a screen asks the editor to open that page on the matching control.
+ */
+export function LayoutPreview({ preview, selected, onSelect, onEdit, skin, offNavNote }: Props) {
+  const screen = preview.screens[selected]
+  const menora = skin === 'menora'
+  const accent = menora ? MENORA.purple : 'var(--color-primary)'
+
+  const navItems = preview.nav.map(item => {
+    const active = item.index === selected
+    return (
+      <button
+        key={item.index}
+        type="button"
+        onClick={() => onSelect(item.index)}
+        aria-current={active ? 'page' : undefined}
+        data-preview-nav={item.index}
+        title={item.start ? `${item.label} — ${preview.strings.startPage}` : item.label}
+        className={menora
+          ? `shrink-0 whitespace-nowrap border-b-2 px-1.5 py-1 text-[10px] font-semibold ${active ? 'border-[#684eed] text-[#684eed]' : 'border-transparent text-[#37374e]/70'}`
+          : `flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-start text-[10px] ${active ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/5'}`}
+      >
+        {!menora && <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>{item.icon}</span>}
+        <span className="truncate">{item.label}</span>
+        {item.start && (
+          <span className="material-symbols-outlined ms-auto text-amber-300" style={{ fontSize: '10px' }} aria-label={preview.strings.startPage}>home</span>
+        )}
+      </button>
+    )
+  })
+
+  const body = (
+    <div className="min-w-0 flex-1 overflow-hidden p-2.5 space-y-2" data-preview-screen={screen?.type}>
+      {offNavNote && (
+        <p className="rounded bg-surface-container px-2 py-1 text-[10px] text-secondary">{offNavNote}</p>
+      )}
+      {screen ? (
+        <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} onSelect={onSelect} accent={accent} menora={menora} />
+      ) : (
+        <p className="text-[11px] text-secondary">Nothing to show.</p>
+      )}
+    </div>
+  )
+
+  return (
+    <div
+      dir={preview.rtl ? 'rtl' : 'ltr'}
+      className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest shadow-sm"
+      data-layout-preview
+    >
+      {/* Window chrome, so the mock reads as "the app", not as part of the editor. */}
+      <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 py-1" dir="ltr">
+        <span className="h-1.5 w-1.5 rounded-full bg-error/60" />
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-400/70" />
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/60" />
+        <span className="ms-2 truncate font-mono text-[9px] text-secondary">localhost:5173</span>
+      </div>
+      {menora ? (
+        <div className="flex min-h-[18rem] flex-col">
+          <div className="flex items-center gap-2 border-b border-outline-variant bg-white px-2.5 py-1.5">
+            <span className="shrink-0 rounded px-1 text-[10px] font-black" style={{ color: MENORA.purple }}>menora</span>
+            <nav className="flex min-w-0 gap-1 overflow-x-auto" aria-label="Preview navigation">{navItems}</nav>
+          </div>
+          {body}
+          <div className="h-3" style={{ background: MENORA.ink }} />
+        </div>
+      ) : (
+        <div className="flex min-h-[18rem]">
+          <nav
+            className="w-28 shrink-0 space-y-0.5 p-1.5"
+            style={{ background: '#2B2F4C' }}
+            aria-label="Preview navigation"
+          >
+            <div className="mb-1.5 h-1 rounded-full" style={{ background: 'linear-gradient(90deg,#9A83F7,#FEDB41)' }} />
+            {navItems}
+          </nav>
+          {body}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Screens ─────────────────────────────────────────────────────────────────
+
+interface ScreenProps {
+  screen: PreviewScreen
+  page: number
+  preview: LayoutPreviewModel
+  onEdit: (target: EditTarget) => void
+  onSelect: (index: number) => void
+  accent: string
+  menora: boolean
+  /** Inside a tabs page: no second heading. */
+  embedded?: boolean
+}
+
+function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embedded }: ScreenProps) {
+  const heading = !embedded && (
+    <Editable onClick={() => onEdit({ page, control: 'title' })} label="Edit the page title" className="block text-start">
+      <h3 className="text-[13px] font-bold text-on-surface">
+        {screen.title}
+        {menora && <span style={{ color: MENORA.yellow }}>.</span>}
+      </h3>
+      {'description' in screen && screen.description && (
+        <p className="text-[10px] text-secondary">{screen.description}</p>
+      )}
+    </Editable>
+  )
+
+  switch (screen.type) {
+    case 'broken':
+      return (
+        <div className="space-y-1">
+          {heading}
+          <p className="rounded border border-error/40 bg-error/5 px-2 py-1.5 text-[10px] text-error">{screen.message}</p>
+        </div>
+      )
+    case 'dashboard':
+      return (
+        <div className="space-y-2">
+          {heading}
+          <div className="grid grid-cols-4 gap-1.5">
+            {screen.widgets.map(w => (
+              <Widget key={w.index} widget={w} accent={accent} viewAll={preview.strings.viewAll}
+                onEdit={() => onEdit({ page, control: `widget.${w.index}` })} />
+            ))}
+          </div>
+          {screen.widgets.length === 0 && <p className="text-[10px] text-secondary">No widgets yet.</p>}
+        </div>
+      )
+    case 'entity-list':
+      return (
+        <div className="space-y-2">
+          {heading}
+          <Editable onClick={() => onEdit({ page, control: 'entity' })} label="Edit the listed entity" className="block w-full">
+            <MiniTable table={screen.table} preview={preview} accent={accent} menora={menora} />
+          </Editable>
+        </div>
+      )
+    case 'tabs':
+      return <TabsScreen screen={screen} page={page} preview={preview} onEdit={onEdit} onSelect={onSelect} accent={accent} menora={menora} heading={heading} />
+    case 'master-detail':
+      return (
+        <div className="space-y-2">
+          {heading}
+          <div className="flex gap-1.5">
+            <Editable onClick={() => onEdit({ page, control: 'parent' })} label="Edit the parent entity" className="w-[34%] shrink-0">
+              <div className="rounded border border-outline-variant p-1">
+                <p className="px-1 pb-0.5 text-[9px] font-semibold uppercase tracking-wide text-secondary">{screen.parentTitle}</p>
+                {screen.parentItems.map((item, i) => (
+                  <p
+                    key={i}
+                    className={`truncate rounded px-1 py-0.5 text-[10px] ${i === 0 ? 'font-semibold text-white' : 'text-on-surface'}`}
+                    style={i === 0 ? { background: accent } : undefined}
+                  >
+                    {item}
+                  </p>
+                ))}
+              </div>
+            </Editable>
+            <Editable onClick={() => onEdit({ page, control: 'child' })} label="Edit the child entity" className="min-w-0 flex-1">
+              <MiniTable table={screen.child} preview={preview} accent={accent} menora={menora} compact />
+            </Editable>
+          </div>
+        </div>
+      )
+    case 'record':
+      return (
+        <div className="space-y-2">
+          {screen.back && <p className="text-[10px] text-secondary">{preview.rtl ? '→' : '←'} {screen.back}</p>}
+          <Editable onClick={() => onEdit({ page, control: 'entity' })} label="Edit the record entity" className="block text-start">
+            <h3 className="text-[13px] font-bold text-on-surface">{screen.heading}</h3>
+          </Editable>
+          <Editable onClick={() => onEdit({ page, control: 'childTabs' })} label="Edit the related tabs" className="block w-full">
+            <TabStrip labels={screen.tabs} active={0} accent={accent} />
+          </Editable>
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1 rounded border border-outline-variant p-2">
+            {screen.details.map(d => (
+              <div key={d.label} className="min-w-0">
+                <dt className="truncate text-[9px] uppercase tracking-wide text-secondary">{d.label}</dt>
+                <dd className="truncate text-[10px] text-on-surface">{d.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )
+    case 'report':
+      return (
+        <div className="space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            {heading}
+            {screen.exportLabel && <FakeButton outline>{screen.exportLabel}</FakeButton>}
+          </div>
+          <FilterRow filters={screen.filters} chips={screen.presetChips} label={preview.strings.filters} />
+          <Editable onClick={() => onEdit({ page, control: 'chart.groupBy' })} label="Edit the chart" className="block w-full">
+            <div className="rounded border border-outline-variant p-2">
+              <p className="mb-1 text-[10px] font-semibold text-on-surface">{screen.chartTitle}</p>
+              {screen.chart.line
+                ? <LineChart points={screen.chart.bars} accent={accent} />
+                : <Bars bars={screen.chart.bars} accent={accent} />}
+            </div>
+          </Editable>
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="text-secondary">
+                <th className="text-start font-semibold">{screen.groupLabel}</th>
+                <th className="text-end font-semibold">{screen.valueLabel}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {screen.chart.bars.slice(0, 4).map(b => (
+                <tr key={b.label} className="border-t border-outline-variant/60">
+                  <td className="truncate text-on-surface">{b.label}</td>
+                  <td className="text-end tabular-nums text-on-surface">{b.value}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-outline-variant font-semibold">
+                <td className="text-on-surface">{screen.totalLabel}</td>
+                <td className="text-end tabular-nums text-on-surface">{screen.chart.bars.reduce((s, b) => s + b.value, 0)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )
+  }
+}
+
+function TabsScreen({ screen, page, preview, onEdit, onSelect, accent, menora, heading }:
+  Omit<ScreenProps, 'screen'> & { screen: Extract<PreviewScreen, { type: 'tabs' }>; heading: ReactNode }) {
+  const [active, setActive] = useState(0)
+  const current = Math.min(active, Math.max(screen.tabs.length - 1, 0))
+  const target = screen.tabs[current]?.target
+  const embedded = target != null ? preview.screens[target] : undefined
+  return (
+    <div className="space-y-2">
+      {heading}
+      {screen.tabs.length === 0 ? (
+        <Editable onClick={() => onEdit({ page, control: 'tabs' })} label="Add tabs" className="block w-full">
+          <p className="rounded border border-dashed border-outline-variant px-2 py-3 text-center text-[10px] text-secondary">No tabs yet</p>
+        </Editable>
+      ) : (
+        <div role="tablist" className="flex gap-3 border-b border-outline-variant">
+          {screen.tabs.map((tab, i) => (
+            <button
+              key={i}
+              type="button"
+              role="tab"
+              aria-selected={i === current}
+              onClick={() => setActive(i)}
+              className={`-mb-px border-b-2 pb-1 text-[10px] font-semibold ${i === current ? '' : 'border-transparent text-secondary'}`}
+              style={i === current ? { borderColor: accent, color: accent } : undefined}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {embedded && target != null && embedded.type !== 'tabs' && (
+        <Screen screen={embedded} page={target} preview={preview} onEdit={onEdit} onSelect={onSelect} accent={accent} menora={menora} embedded />
+      )}
+      {screen.tabs.length > 0 && target == null && (
+        <p className="text-[10px] text-error">This tab points at no page.</p>
+      )}
+    </div>
+  )
+}
+
+// ── Pieces ──────────────────────────────────────────────────────────────────
+
+/** A part of the mock that jumps to its control in the editor. */
+function Editable({ onClick, label, className, children }: { onClick: () => void; label: string; className?: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={`rounded outline-offset-2 hover:outline hover:outline-1 hover:outline-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${className ?? ''}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function Widget({ widget, accent, viewAll, onEdit }: { widget: PreviewWidget; accent: string; viewAll: string; onEdit: () => void }) {
+  const wide = widget.kind !== 'kpi'
+  return (
+    <Editable onClick={onEdit} label={`Edit widget ${widget.index + 1}`} className={`${wide ? 'col-span-2' : 'col-span-1'} block min-w-0 text-start`}>
+      <div
+        className={`h-full rounded border p-1.5 ${widget.kind === 'broken' ? 'border-error/50 bg-error/5' : 'border-outline-variant bg-surface-container-lowest'}`}
+        data-preview-widget={widget.index}
+      >
+        <p className="truncate text-[9px] font-semibold text-secondary">{widget.title}</p>
+        {widget.kind === 'kpi' && <p className="text-[15px] font-bold tabular-nums text-on-surface">{widget.value}</p>}
+        {widget.kind === 'bar' && <Bars bars={widget.bars.slice(0, 4)} accent={accent} />}
+        {widget.kind === 'line' && <LineChart points={widget.points} accent={accent} />}
+        {widget.kind === 'recent' && (
+          <ul className="mt-0.5 space-y-0.5">
+            {widget.rows.slice(0, 4).map((r, i) => <li key={i} className="truncate text-[10px] text-on-surface">{r}</li>)}
+            <li className="text-[9px] font-semibold" style={{ color: accent }}>{viewAll}</li>
+          </ul>
+        )}
+        {widget.kind === 'broken' && <p className="text-[10px] text-error">{widget.message}</p>}
+      </div>
+    </Editable>
+  )
+}
+
+function Bars({ bars, accent }: { bars: PreviewBar[]; accent: string }) {
+  const max = Math.max(1, ...bars.map(b => b.value))
+  return (
+    <div className="mt-0.5 space-y-0.5">
+      {bars.map(b => (
+        <div key={b.label} className="flex items-center gap-1">
+          <span className="w-12 shrink-0 truncate text-[9px] text-secondary">{b.label}</span>
+          <span className="h-1.5 rounded-full" style={{ width: `${Math.max(4, (b.value / max) * 100)}%`, background: accent, opacity: 0.85 }} />
+        </div>
+      ))}
+      {bars.length === 0 && <p className="text-[9px] text-secondary">No groups</p>}
+    </div>
+  )
+}
+
+function LineChart({ points, accent }: { points: PreviewBar[]; accent: string }) {
+  if (points.length < 2) return <p className="text-[9px] text-secondary">No data</p>
+  const max = Math.max(...points.map(p => p.value))
+  const min = Math.min(...points.map(p => p.value))
+  const span = max - min || 1
+  const xy = points.map((p, i) => [(i / (points.length - 1)) * 100, 36 - ((p.value - min) / span) * 30] as const)
+  const d = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
+  return (
+    <div className="mt-0.5">
+      <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="h-10 w-full" aria-hidden="true" style={{ direction: 'ltr' }}>
+        <path d={`${d} L100,40 L0,40 Z`} fill={accent} opacity={0.12} />
+        <path d={d} fill="none" stroke={accent} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="flex justify-between text-[8px] text-secondary" dir="ltr">
+        <span>{points[0].label}</span>
+        <span>{points[points.length - 1].label}</span>
+      </div>
+    </div>
+  )
+}
+
+function TabStrip({ labels, active, accent }: { labels: string[]; active: number; accent: string }) {
+  return (
+    <div className="flex gap-3 border-b border-outline-variant">
+      {labels.map((label, i) => (
+        <span
+          key={i}
+          className={`-mb-px truncate border-b-2 pb-1 text-[10px] font-semibold ${i === active ? '' : 'border-transparent text-secondary'}`}
+          style={i === active ? { borderColor: accent, color: accent } : undefined}
+        >
+          {label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function FilterRow({ filters, chips, label }: { filters: string[]; chips: string[]; label: string }) {
+  if (filters.length === 0 && chips.length === 0) return null
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {filters.length > 0 && (
+        <span className="inline-flex items-center gap-0.5 rounded border border-outline-variant px-1 py-0.5 text-[9px] text-secondary">
+          <span className="material-symbols-outlined" style={{ fontSize: '10px' }}>filter_alt</span>
+          {label}
+        </span>
+      )}
+      {chips.map(c => (
+        <span key={c} className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary" data-preview-chip>{c}</span>
+      ))}
+    </div>
+  )
+}
+
+function FakeButton({ children, outline, style }: { children: ReactNode; outline?: boolean; style?: React.CSSProperties }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[9px] font-semibold ${outline ? 'border border-outline-variant text-secondary' : ''}`}
+      style={style}
+    >
+      {children}
+    </span>
+  )
+}
+
+function MiniTable({ table, preview, accent, menora, compact }: {
+  table: PreviewTable
+  preview: LayoutPreviewModel
+  accent: string
+  menora: boolean
+  compact?: boolean
+}) {
+  const primary = menora ? { background: MENORA.yellow, color: MENORA.ink } : { background: accent, color: 'white' }
+  return (
+    <div className="space-y-1 text-start">
+      <div className="flex items-center gap-1">
+        {compact && <span className="truncate text-[10px] font-semibold text-on-surface">{table.title}</span>}
+        {table.showSearch && (
+          <span className="min-w-0 flex-1 truncate rounded border border-outline-variant px-1.5 py-0.5 text-[9px] text-secondary">
+            {preview.strings.search}
+          </span>
+        )}
+        {!table.showSearch && <span className="flex-1" />}
+        {table.hasExport && <FakeButton outline>CSV</FakeButton>}
+        {table.newLabel && <FakeButton style={primary}>{table.newLabel}</FakeButton>}
+      </div>
+      <FilterRow filters={table.filters} chips={table.presetChips} label={preview.strings.filters} />
+      <table className="w-full table-fixed text-[9px]">
+        <thead>
+          <tr className="text-secondary">
+            {table.columns.map(c => <th key={c} className="truncate pb-0.5 text-start font-semibold">{c}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, i) => (
+            <tr key={i} className="border-t border-outline-variant/60">
+              {row.map((cell, j) => <td key={j} className="truncate py-0.5 text-on-surface">{cell}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}

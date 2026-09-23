@@ -38,7 +38,7 @@ import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writ
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesEditor } from './PagesEditor'
-import { renameEntityInPages, renameFieldInPages, validatePages } from './pageLayout'
+import { renameEntityInPages, renameFieldInPages, renameRelationInPages, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
@@ -166,6 +166,8 @@ export function FullstackView() {
   const [colorPalette, setColorPalette] = useState<string>(() => shared ? (shared.colorPalette ?? '') : (localStorage.getItem(LS.palette) ?? ''))
   // The frontend page layout — empty = the classic shell. Arrives with an example / preset / link.
   const [pages, setPages] = useState<FullstackPageDef[]>(() => shared ? (shared.pages ?? []) : loadJson<FullstackPageDef[]>(LS.pages, []))
+  // Bumped to make the page editor open its first problem (the sticky bar's "jump to error").
+  const [pagesReveal, setPagesReveal] = useState(0)
   // Collapsed cards survive a refresh: entities persist with their uids, so the uid set stays valid.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(shared ? [] : loadJson<string[]>(LS.collapsed, [])))
   const [history, setHistory] = useState<History<FullstackSnapshot>>(() => emptyHistory())
@@ -228,6 +230,12 @@ export function FullstackView() {
   const { rules: compatibilityRules } = useCompatibility('BACKEND')
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
   const currentFrontendSet = availableSets.find(s => s.setKey === frontendSet)
+  // The layout preview draws the shell of the chosen frontend set, in the chosen chrome language.
+  const pagesPreviewSettings = useMemo(() => ({
+    locale: meta.locale,
+    projectOpts: scaffoldOpts,
+    skin: (currentFrontendSet?.designSystem === 'MENORA_DIGITAL' || frontendSet.includes('menora') ? 'menora' : 'tailwind') as 'menora' | 'tailwind',
+  }), [meta.locale, scaffoldOpts, currentFrontendSet, frontendSet])
   const currentDefaults = currentBackendSet?.defaultDeps ?? []
   const palettes = feMetadata?.colorPalettes ?? []
   // What the generator will actually use: the explicit pick, else the set's default, else the
@@ -306,11 +314,18 @@ export function FullstackView() {
     for (const e of entities) {
       if (e.uid) now.set(e.uid, e.name)
       for (const f of e.fields) if (f.uid) now.set(f.uid, `${e.name}.${f.name}`)
+      for (const r of e.relations ?? []) if (r.uid) now.set(r.uid, `${e.name}#${r.fieldName}`)
     }
     if (before.size > 0) {
       for (const [uid, name] of now) {
         const was = before.get(uid)
         if (!was || was === name) continue
+        if (was.includes('#')) {
+          const [, wasRelation] = was.split('#')
+          const [nowEntity, nowRelation] = name.split('#')
+          if (nowRelation?.trim()) setPages(ps => renameRelationInPages(ps, nowEntity, wasRelation, nowRelation))
+          continue
+        }
         const [wasEntity, wasField] = was.split('.')
         const [nowEntity, nowField] = name.split('.')
         if (wasField == null && nowEntity.trim()) setPages(ps => renameEntityInPages(ps, wasEntity, nowEntity))
@@ -358,7 +373,7 @@ export function FullstackView() {
 
   // Drop a stale preview error once the user changes any input, so the Explore button
   // doesn't stay error-styled (with the message hidden in a tooltip) after they've moved on.
-  useEffect(() => { clearError() }, [meta, entities, selectedDeps, backendSet, frontendSet, scaffoldOpts, colorPalette, clearError])
+  useEffect(() => { clearError() }, [meta, entities, selectedDeps, backendSet, frontendSet, scaffoldOpts, colorPalette, pages, clearError])
 
   // Reseed deps + pre-fill Boot/Java versions from the chosen backend set's pins. We only do
   // this on a *genuine* user change of the backend set — never on initial hydration, so a
@@ -798,7 +813,8 @@ export function FullstackView() {
       return
     }
     if (entityErrors.count === 0 && pageValidation.count > 0) {
-      scrollToElement(document.getElementById('fs-pages'), 'center')
+      // The editor opens the first page with a problem and focuses the offending control.
+      setPagesReveal(n => n + 1)
       return
     }
     requestAnimationFrame(() => {
@@ -908,6 +924,7 @@ export function FullstackView() {
     setFrontendSet('react-tailwind-crud')
     setScaffoldOpts([])
     setColorPalette('')
+    setPages([])
     setCollapsed(new Set())
     setLastGenerated(null)
     baselineRef.current = null
@@ -1239,6 +1256,8 @@ export function FullstackView() {
         onChange={setPages}
         pushUndo={pushUndoEntry}
         onClear={clearPageLayout}
+        previewSettings={pagesPreviewSettings}
+        revealRequest={pagesReveal}
       />
 
       <section id="fs-entities" className="space-y-4">

@@ -1,5 +1,7 @@
-import { useState } from 'react'
-import type { TeamModelSummary } from '../../../types'
+import { useMemo, useState } from 'react'
+import type { FullstackEntityDef, FullstackPageDef, TeamModelSummary } from '../../../types'
+import { PagesEditor } from '../../fullstack/PagesEditor'
+import { validatePages } from '../../fullstack/pageLayout'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 import type { ExampleDraft } from './FullstackExamplesTab'
 
@@ -15,6 +17,9 @@ interface Props {
 export function FullstackExampleForm({ data, errors, onChange, teamModels, onImportTeamModel }: Props) {
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [pagesMode, setPagesMode] = useState<'visual' | 'json'>('visual')
+  const visual = useMemo(() => parseForVisualEditor(data.entitiesText, data.pagesText, data.settingsText), [data.entitiesText, data.pagesText, data.settingsText])
+  const showVisual = pagesMode === 'visual' && !('error' in visual)
 
   async function importTeam(id: string) {
     if (!id) return
@@ -95,15 +100,48 @@ export function FullstackExampleForm({ data, errors, onChange, teamModels, onImp
           onChange={e => onChange({ entitiesText: e.target.value })}
         />
       </FieldRow>
-      <FieldRow label="Pages (JSON)" error={errors.pagesText}
-                hint="Optional frontend page layout — the pages array of a POST /starter-fullstack.zip body. Blank = the classic dashboard + one list page per entity">
-        <textarea
-          className={`${inputClass} font-mono text-xs`}
-          rows={8}
-          spellCheck={false}
-          value={data.pagesText ?? ''}
-          onChange={e => onChange({ pagesText: e.target.value })}
-        />
+      <FieldRow label="Pages" error={errors.pagesText}
+                hint="Optional frontend page layout — the pages array of a POST /starter-fullstack.zip body. None = the classic dashboard + one list page per entity">
+        <div className="space-y-2">
+          <div role="radiogroup" aria-label="Pages editor" className="inline-flex overflow-hidden rounded-lg border border-outline-variant text-xs">
+            {(['visual', 'json'] as const).map(mode => (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={pagesMode === mode}
+                onClick={() => setPagesMode(mode)}
+                className={`px-3 py-1 font-semibold ${pagesMode === mode ? 'bg-primary/15 text-primary' : 'text-secondary hover:text-primary'}`}
+              >
+                {mode === 'visual' ? 'Visual' : 'JSON'}
+              </button>
+            ))}
+          </div>
+          {pagesMode === 'visual' && 'error' in visual && (
+            <p className="text-xs text-secondary" data-pages-visual-unavailable>{visual.error} — edit it as JSON instead.</p>
+          )}
+          {showVisual && !('error' in visual) ? (
+            <PagesEditor
+              pages={visual.pages}
+              entities={visual.entities}
+              validation={validatePages(visual.pages, visual.entities)}
+              onChange={next => onChange({ pagesText: next.length ? JSON.stringify(next, null, 2) : '' })}
+              pushUndo={() => {}}
+              onClear={() => onChange({ pagesText: '' })}
+              previewSettings={{ locale: visual.locale, projectOpts: visual.scaffold, skin: visual.menora ? 'menora' : 'tailwind' }}
+              layout="stacked"
+            />
+          ) : (
+            <textarea
+              className={`${inputClass} font-mono text-xs`}
+              rows={8}
+              spellCheck={false}
+              aria-label="Pages (JSON)"
+              value={data.pagesText ?? ''}
+              onChange={e => onChange({ pagesText: e.target.value })}
+            />
+          )}
+        </div>
       </FieldRow>
       <FieldRow label="Settings (JSON)" error={errors.settingsText}
                 hint="Optional editor settings applied on load: locale, dashboardTitle, dashboardOverview, backendTemplateSet, frontendTemplateSet, colorPalette, scaffold[]">
@@ -135,4 +173,30 @@ export function FullstackExampleForm({ data, errors, onChange, teamModels, onImp
       </FieldRow>
     </>
   )
+}
+
+/** What the visual page editor needs from the form's JSON fields — or why it cannot be shown
+ *  (it edits a parsed layout, so broken JSON has to be fixed in the text first). */
+function parseForVisualEditor(entitiesText: string, pagesText: string | undefined, settingsText: string | undefined):
+  { entities: FullstackEntityDef[]; pages: FullstackPageDef[]; locale: 'en' | 'he'; scaffold: string[]; menora: boolean } | { error: string } {
+  let entities: unknown
+  try { entities = JSON.parse(entitiesText || '[]') } catch { return { error: 'The entities are not valid JSON' } }
+  if (!Array.isArray(entities)) return { error: 'The entities are not a JSON array' }
+  let pages: unknown = []
+  if (pagesText?.trim()) {
+    try { pages = JSON.parse(pagesText) } catch { return { error: 'The pages are not valid JSON' } }
+  }
+  if (!Array.isArray(pages)) return { error: 'The pages are not a JSON array' }
+  let settings: Record<string, unknown> = {}
+  try { settings = settingsText?.trim() ? JSON.parse(settingsText) as Record<string, unknown> : {} } catch { /* preview falls back to defaults */ }
+  const safeEntities = (entities as FullstackEntityDef[])
+    .filter(e => e && typeof e.name === 'string')
+    .map(e => ({ ...e, fields: Array.isArray(e.fields) ? e.fields : [] }))
+  return {
+    entities: safeEntities,
+    pages: pages as FullstackPageDef[],
+    locale: settings.locale === 'he' ? 'he' : 'en',
+    scaffold: Array.isArray(settings.scaffold) ? (settings.scaffold as unknown[]).filter((x): x is string => typeof x === 'string') : [],
+    menora: typeof settings.frontendTemplateSet === 'string' && settings.frontendTemplateSet.includes('menora'),
+  }
 }

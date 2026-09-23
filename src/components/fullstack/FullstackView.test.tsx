@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { ReactNode } from 'react'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { FullstackView } from './FullstackView'
 import { encodeShare } from './shareLink'
 import { DEFAULT_PROJECT_META, makeSnapshot, type FullstackSnapshot } from './snapshot'
@@ -336,6 +336,9 @@ describe('FullstackView — page layouts', () => {
     expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('Issue list')
 
     fireEvent.click(screen.getByRole('button', { name: /Use classic layout/ }))
+    // The layout is only dropped once the confirmation is accepted.
+    expect(document.querySelector('[data-page-id="open"]')).toBeTruthy()
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Use classic layout' }))
     expect(document.querySelector('[data-page-id="open"]')).toBeNull()
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(document.querySelector('[data-page-id="open"]')).toBeTruthy())

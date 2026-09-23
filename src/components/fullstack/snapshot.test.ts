@@ -138,7 +138,7 @@ describe('snapshot page layout', () => {
 
   it('names a layout change in the undo history', () => {
     const next = makeSnapshot({ ...snapshot, pages })
-    expect(describeSnapshotChange(makeSnapshot(snapshot), next)).toBe('Changed page layout')
+    expect(describeSnapshotChange(makeSnapshot(snapshot), next)).toBe('Started a page layout')
     expect(snapshotChangeKey(makeSnapshot(snapshot), next)).toBe('pages')
   })
 })

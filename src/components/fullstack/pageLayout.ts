@@ -59,6 +59,8 @@ export interface PageLayoutValidation {
   general: string[]
   /** Everything, as sentences naming the page — what the caller counts as errors. */
   problems: string[]
+  /** The same problems with where they live, so the list can jump to the offending control. */
+  issues: { page?: number; field?: string; summary: string }[]
   count: number
 }
 
@@ -85,7 +87,13 @@ export function validatePages(pages: FullstackPageDef[], entities: FullstackEnti
       fields[issue.field ?? 'page'] ??= issue.message
     }
   }
-  return { byPage, general, problems: issues.map(i => i.summary), count: issues.length }
+  return {
+    byPage,
+    general,
+    problems: issues.map(i => i.summary),
+    issues: issues.map(({ page, field, summary }) => ({ page, field, summary })),
+    count: issues.length,
+  }
 }
 
 /** Flat problem sentences — the layout summary and the error count read these. */
@@ -484,4 +492,215 @@ export const PAGE_TYPE_META: Record<FullstackPageType, { icon: string; label: st
   'master-detail': { icon: 'vertical_split', label: 'Master–detail', blurb: 'A parent list beside the selected parent’s rows.' },
   record: { icon: 'article', label: 'Record', blurb: 'One row opened from a list, with its related lists as tabs.' },
   report: { icon: 'monitoring', label: 'Report', blurb: 'Filters, one chart and grouped totals, with a CSV export.' },
+}
+
+// ── Defaults the generator resolves ─────────────────────────────────────────
+
+const nonKey = (e: FullstackEntityDef | undefined) => (e?.fields ?? []).filter(f => !f.primaryKey)
+const isDate = (f: FullstackFieldDef) => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'
+
+/** The field a breakdown chart groups by when none is picked: the first enum, else the first
+ *  boolean (FullstackPageValidator.groupBy). */
+export function defaultBarGroupBy(entity: FullstackEntityDef | undefined): string | undefined {
+  const fields = nonKey(entity)
+  return (fields.find(f => f.type === 'ENUM') ?? fields.find(f => f.type === 'BOOLEAN'))?.name
+}
+
+/** The date field a trend plots over when none is picked: the first one. */
+export function defaultLineGroupBy(entity: FullstackEntityDef | undefined): string | undefined {
+  return dateFields(entity)[0]?.name
+}
+
+/** A report's grouping when none is picked: the first enum/boolean, else the first date field
+ *  (FullstackPageValidator.chart). */
+export function defaultReportGroupBy(entity: FullstackEntityDef | undefined): string | undefined {
+  const fields = nonKey(entity)
+  return (fields.find(f => f.type === 'ENUM' || f.type === 'BOOLEAN') ?? fields.find(isDate))?.name
+}
+
+/** The label of a "use the default" option: `Default (status)`, or what it would look for. */
+export function defaultOptionLabel(resolved: string | undefined, looksFor: string): string {
+  return resolved ? `Default (${resolved})` : `Default (first ${looksFor})`
+}
+
+// ── Page references (tabs point at pages by id) ─────────────────────────────
+
+/** Follows a page id change into every tab that embeds the page. */
+export function renamePageIdInPages(pages: FullstackPageDef[], from: string, to: string): FullstackPageDef[] {
+  if (!from || from === to) return pages
+  let changed = false
+  const next = pages.map(page => {
+    if (!page.tabs?.some(t => t.page === from)) return page
+    changed = true
+    return { ...page, tabs: page.tabs.map(t => (t.page === from ? { ...t, page: to } : t)) }
+  })
+  return changed ? next : pages
+}
+
+/** The tabs pages that embed the page with `id`. */
+export function pagesEmbedding(pages: FullstackPageDef[], id: string): FullstackPageDef[] {
+  return pages.filter(p => p.type === 'tabs' && (p.tabs ?? []).some(t => t.page === id))
+}
+
+/** Drops the tabs pointing at `id` (the page is being removed). */
+export function dropTabsTo(pages: FullstackPageDef[], id: string): FullstackPageDef[] {
+  return pages.map(page => (page.tabs?.some(t => t.page === id)
+    ? { ...page, tabs: page.tabs.filter(t => t.page !== id) }
+    : page))
+}
+
+/** Follows a relation rename on `child` into the master-detail pages that link through it. */
+export function renameRelationInPages(pages: FullstackPageDef[], child: string, from: string, to: string): FullstackPageDef[] {
+  if (!child || !from || !to || from === to) return pages
+  const isChild = (name: string | undefined) => name != null && name.trim().toLowerCase() === child.trim().toLowerCase()
+  let changed = false
+  const next = pages.map(page => {
+    if (page.type !== 'master-detail' || !isChild(page.child) || page.via !== from) return page
+    changed = true
+    return { ...page, via: to }
+  })
+  return changed ? next : pages
+}
+
+/** A copy of `page` under a fresh id and a "(copy)" title; the caller places it. */
+export function duplicatePage(page: FullstackPageDef, taken: Iterable<string>): FullstackPageDef {
+  const copy = JSON.parse(JSON.stringify(page)) as FullstackPageDef
+  copy.id = uniquePageId(`${page.id || 'page'}-copy`.slice(0, 40).replace(/-+$/, ''), taken)
+  copy.title = `${pageLabel(page)} (copy)`
+  return copy
+}
+
+// ── Suggestions for the "Add page" gallery ──────────────────────────────────
+
+export interface PageSuggestion {
+  key: string
+  icon: string
+  label: string
+  blurb: string
+  /** The page to add; `idBase` becomes its id once made unique. */
+  page: Omit<FullstackPageDef, 'id'> & { idBase: string }
+}
+
+const sameName = (a: string | undefined, b: string) => (a ?? '').trim().toLowerCase() === b.trim().toLowerCase()
+
+/**
+ * Pages the model is shaped for and the layout lacks: a master-detail and a record page where
+ * one entity points at another, a report for an entity with something to group by, a trend
+ * dashboard for an entity with a date. At most `limit`, most specific first.
+ */
+export function suggestPages(entities: FullstackEntityDef[], pages: FullstackPageDef[], limit = 4): PageSuggestion[] {
+  const named = entities.filter(e => e.name.trim())
+  const out: PageSuggestion[] = []
+
+  for (const child of named) {
+    for (const r of child.relations ?? []) {
+      if (r.type !== 'MANY_TO_ONE') continue
+      const parent = named.find(e => sameName(e.name, r.targetEntity))
+      if (!parent || parent === child || !singlePk(parent)) continue
+      const key = `md:${parent.name}:${child.name}`
+      if (out.some(s => s.key === key)) continue
+      if (pages.some(p => p.type === 'master-detail' && sameName(p.parent, parent.name) && sameName(p.child, child.name))) continue
+      const via = relationsTo(child, parent.name).length > 1 ? r.fieldName : undefined
+      out.push({
+        key,
+        icon: PAGE_TYPE_META['master-detail'].icon,
+        label: `${parent.name} → ${child.name}`,
+        blurb: `Pick a ${parent.name} on the left, see its ${child.name} rows on the right.`,
+        page: { idBase: parent.name, type: 'master-detail', parent: parent.name, child: child.name, ...(via ? { via } : {}) },
+      })
+    }
+  }
+  for (const parent of named) {
+    if (!singlePk(parent) || !named.some(c => c !== parent && relationsTo(c, parent.name).length > 0)) continue
+    if (pages.some(p => p.type === 'record' && sameName(p.entity, parent.name))) continue
+    out.push({
+      key: `record:${parent.name}`,
+      icon: PAGE_TYPE_META.record.icon,
+      label: `${parent.name} record`,
+      blurb: `Open one ${parent.name} with its related lists as tabs.`,
+      page: { idBase: parent.name, type: 'record', entity: parent.name, hidden: true },
+    })
+  }
+  for (const e of named) {
+    const groupBy = defaultBarGroupBy(e)
+    if (!groupBy || !groupableFields(e).some(f => f.name === groupBy)) continue
+    if (pages.some(p => p.type === 'report' && sameName(p.entity, e.name))) continue
+    const number = numericFields(e)[0]
+    out.push({
+      key: `report:${e.name}`,
+      icon: PAGE_TYPE_META.report.icon,
+      label: number ? `${e.name}: ${number.name} by ${groupBy}` : `${e.name} by ${groupBy}`,
+      blurb: 'Filters, a chart and grouped totals.',
+      page: {
+        idBase: `${e.name}-report`,
+        type: 'report',
+        entity: e.name,
+        chart: number ? { groupBy, agg: 'sum', field: number.name } : { groupBy },
+      },
+    })
+  }
+  for (const e of named) {
+    const date = defaultLineGroupBy(e)
+    if (!date) continue
+    if (pages.some(p => (p.widgets ?? []).some(w => w.kind === 'line' && sameName(w.entity, e.name)))) continue
+    const bar = defaultBarGroupBy(e)
+    out.push({
+      key: `trend:${e.name}`,
+      icon: 'show_chart',
+      label: `${e.name} trends`,
+      blurb: `A dashboard with ${e.name} counted per month.`,
+      page: {
+        idBase: `${e.name}-trends`,
+        type: 'dashboard',
+        title: `${e.name} trends`,
+        widgets: [
+          { kind: 'kpi', entity: e.name },
+          { kind: 'line', entity: e.name, groupBy: date },
+          ...(bar && groupableFields(e).some(f => f.name === bar) ? [{ kind: 'bar' as const, entity: e.name, groupBy: bar }] : []),
+        ],
+      },
+    })
+  }
+  return out.slice(0, limit)
+}
+
+/** Materializes a suggestion under a free id. */
+export function pageFromSuggestion(s: PageSuggestion, taken: Iterable<string>): FullstackPageDef {
+  const { idBase, ...rest } = JSON.parse(JSON.stringify(s.page)) as PageSuggestion['page']
+  return { id: uniquePageId(slugify(idBase) || 'page', taken), ...rest }
+}
+
+// ── Undo labels ──────────────────────────────────────────────────────────────
+
+/** A short name for what changed between two layouts — the undo history's entry label. */
+export function describePagesChange(prev: FullstackPageDef[], next: FullstackPageDef[]): string {
+  if (prev.length === 0 && next.length > 0) return 'Started a page layout'
+  if (next.length === 0 && prev.length > 0) return 'Switched to the classic page layout'
+  if (next.length > prev.length) {
+    const added = next.find(n => !prev.some(p => p.id === n.id)) ?? next[next.length - 1]
+    return `Added the “${pageLabel(added)}” page`
+  }
+  if (next.length < prev.length) {
+    const gone = prev.find(p => !next.some(n => n.id === p.id))
+    return gone ? `Removed the “${pageLabel(gone)}” page` : 'Removed a page'
+  }
+  const key = (p: FullstackPageDef) => JSON.stringify(p)
+  if (prev.map(key).sort().join('\n') === next.map(key).sort().join('\n')) return 'Reordered pages'
+  for (let i = 0; i < next.length; i++) {
+    const a = prev[i]; const b = next[i]
+    if (key(a) === key(b)) continue
+    const name = pageLabel(b)
+    if (a.title !== b.title || a.id !== b.id) return `Renamed the “${name}” page`
+    const wa = a.widgets ?? []; const wb = b.widgets ?? []
+    if (wb.length > wa.length) return `Added a widget to “${name}”`
+    if (wb.length < wa.length) return `Removed a widget from “${name}”`
+    const ta = a.tabs ?? []; const tb = b.tabs ?? []
+    if (tb.length > ta.length) return `Added a tab to “${name}”`
+    if (tb.length < ta.length) return `Removed a tab from “${name}”`
+    if (Boolean(a.hidden) !== Boolean(b.hidden)) {
+      return b.hidden ? `Hid “${name}” from the navigation` : `Showed “${name}” in the navigation`
+    }
+    return `Edited the “${name}” page`
+  }
+  return 'Changed page layout'
 }

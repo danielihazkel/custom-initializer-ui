@@ -74,6 +74,19 @@ hand. `validatePages` mirrors `FullstackPageValidator` and returns both inline m
 (`byPage[index][field]`) and the problem sentences the error count reads. Entity and field renames
 are followed into every reference (`renameEntityInPages`/`renameFieldInPages`, driven by a uid map
 in `FullstackView`); a *deleted* entity is deliberately left flagged rather than silently dropped.
+Relation renames follow into a master-detail's `via` (`renameRelationInPages`), a page id change
+follows into the tabs that embed it (`renamePageIdInPages`), and removing a page that is a tab asks
+first and drops the tab with it. Pages carry no uid (they go to the server verbatim), so rows are
+keyed by `rowKeys.ts` (`useStableKeys`: same object → same id → same position) — never by index.
+`validation.issues` carries page + control for every problem; the problem list and the sticky bar's
+jump (`revealRequest`) open the page and focus the `[data-control="…"]` element named by it.
+Beside the list sits a **layout preview** (`LayoutPreview.tsx`, model in `layoutPreviewModel.ts` —
+not `layoutPreview.ts`, which collides with the component on Windows' case-insensitive FS): a
+wireframe of the generated shell (dark sidebar, or the Menora top bar when the frontend set is
+`MENORA_DIGITAL`) with seeded sample data and titles that mirror `EntityScaffoldContext`'s defaults
+in en/he; clicking a part of it opens that control. The add gallery also offers `suggestPages`
+(master-detail/record where relations exist, a report, a trend dashboard). The admin examples form
+reuses `PagesEditor` (`layout="stacked"`) with a JSON fallback.
 
 `snapshot.ts` defines `FullstackSnapshot`/`ProjectMeta` (uids stripped; `colorPalette` optional) — the
 unit presets, recents, undo, share links, team models and JSON files carry. `DEFAULT_PROJECT_META` +

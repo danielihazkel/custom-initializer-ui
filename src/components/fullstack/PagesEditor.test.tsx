@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { useState } from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import { PagesEditor } from './PagesEditor'
 import { validatePages } from './pageLayout'
@@ -102,8 +102,8 @@ describe('PagesEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
     expect(latest[0].widgets).toHaveLength(2)
 
-    const kinds = screen.getAllByLabelText('Widget kind')
-    fireEvent.change(kinds[1], { target: { value: 'bar' } })
+    const kinds = screen.getAllByRole('radiogroup', { name: 'Widget kind' })
+    fireEvent.click(within(kinds[1]).getByRole('radio', { name: 'Breakdown chart' }))
     fireEvent.change(screen.getAllByLabelText('Widget entity')[1], { target: { value: 'Order' } })
     fireEvent.change(screen.getByLabelText('Group by'), { target: { value: 'status' } })
     expect(latest[0].widgets?.[1]).toEqual({ kind: 'bar', entity: 'Order', groupBy: 'status' })
@@ -150,7 +150,7 @@ describe('PagesEditor', () => {
     openRow('home')
 
     expect(screen.queryByLabelText('Date field')).toBeNull()
-    fireEvent.change(screen.getByLabelText('Widget kind'), { target: { value: 'line' } })
+    fireEvent.click(screen.getByRole('radio', { name: 'Trend over time' }))
     expect(latest[0].widgets?.[0]).toEqual({ kind: 'line', entity: 'Order' })
 
     fireEvent.change(screen.getByLabelText('Date field'), { target: { value: 'placedOn' } })
@@ -166,7 +166,10 @@ describe('PagesEditor', () => {
     // A count needs no field, so no field picker is offered.
     expect(screen.queryByLabelText('Value field')).toBeNull()
     fireEvent.change(screen.getByLabelText('Aggregate'), { target: { value: 'sum' } })
-    expect(latest[0].widgets?.[0]).toEqual({ kind: 'kpi', entity: 'Order', agg: 'sum' })
+    // Order has one numeric field, so it is picked straight away.
+    expect(latest[0].widgets?.[0]).toEqual({ kind: 'kpi', entity: 'Order', agg: 'sum', field: 'total' })
+    fireEvent.change(screen.getByLabelText('Value field'), { target: { value: '' } })
+    expect(latest[0].widgets?.[0]).toMatchObject({ agg: 'sum', field: undefined })
     expect(document.querySelector('[data-page-layout-problems]')?.textContent)
       .toContain('reduces Order with sum but names no numeric field')
 
@@ -207,6 +210,122 @@ describe('PagesEditor', () => {
     expect(latest.map(p => p.id)).toEqual(['dashboard', 'customer', 'order'])
 
     fireEvent.click(screen.getByRole('button', { name: /Use classic layout/ }))
+    expect(onClear).not.toHaveBeenCalled()
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Use classic layout' }))
     expect(onClear).toHaveBeenCalled()
+  })
+
+  it('keeps the tabs pointing at a page when the page is renamed', () => {
+    render(<Harness initial={[
+      { id: 'open', type: 'entity-list', entity: 'Order', hidden: true },
+      { id: 'all', type: 'entity-list', entity: 'Order', hidden: true },
+      { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ page: 'open' }, { page: 'all' }] },
+    ]} />)
+    openRow('open')
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Open orders' } })
+    expect(latest[0].id).toBe('open-orders')
+    expect(latest[2].tabs).toEqual([{ page: 'open-orders' }, { page: 'all' }])
+
+    fireEvent.change(screen.getByLabelText('Page id'), { target: { value: 'inbox' } })
+    expect(latest[2].tabs?.[0].page).toBe('inbox')
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+  })
+
+  it('warns before removing a page that is a tab, and removes the tab with it', () => {
+    render(<Harness initial={[
+      { id: 'open', type: 'entity-list', entity: 'Order', hidden: true },
+      { id: 'all', type: 'entity-list', entity: 'Order' },
+      { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ page: 'open' }, { page: 'all' }] },
+    ]} />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove Order' })[0])
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('It is a tab of “Queue”')
+    expect(latest).toHaveLength(3)
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove page and tab' }))
+    expect(latest.map(p => p.id)).toEqual(['all', 'queue'])
+    expect(latest[1].tabs).toEqual([{ page: 'all' }])
+  })
+
+  it('keeps the open page open when it is moved, and moves pages from the keyboard', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+    ]} />)
+    openRow('orders')
+    fireEvent.click(screen.getByRole('button', { name: 'Move Order up' }))
+    expect(latest.map(p => p.id)).toEqual(['orders', 'home'])
+    // The open form followed the page, not the position.
+    expect(screen.getByLabelText('List entity')).toBeTruthy()
+    expect(document.querySelector('[data-page-id="orders"] [aria-expanded="true"]')).toBeTruthy()
+    expect(document.querySelector('[data-page-id="orders"] [data-start-page]')).toBeTruthy()
+  })
+
+  it('duplicates a page and a widget', () => {
+    render(<Harness initial={[{ id: 'home', type: 'dashboard', widgets: [{ kind: 'bar', entity: 'Order', groupBy: 'status' }] }]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate Dashboard' }))
+    expect(latest.map(p => p.id)).toEqual(['home', 'home-copy'])
+    expect(latest[1]).toMatchObject({ title: 'Dashboard (copy)', widgets: [{ kind: 'bar', entity: 'Order', groupBy: 'status' }] })
+
+    // The copy opens, so its widget is the one on screen.
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate widget 1' }))
+    expect(latest[1].widgets).toHaveLength(2)
+  })
+
+  it('says which field a default resolves to', () => {
+    render(<Harness initial={[{ id: 'home', type: 'dashboard', widgets: [{ kind: 'bar', entity: 'Order' }] }]} />)
+    openRow('home')
+    const groupBy = screen.getByLabelText('Group by') as HTMLSelectElement
+    expect(groupBy.options[0].textContent).toBe('Default (status)')
+  })
+
+  it('starts a tabs page from two existing pages, so it is valid on sight', () => {
+    render(<Harness initial={[
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer' },
+    ]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Tabs/ }))
+    expect(latest[2]).toMatchObject({ type: 'tabs', tabs: [{ page: 'orders' }, { page: 'customers' }] })
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+    // Every candidate is already a tab.
+    expect((screen.getByRole('button', { name: /Add tab/ }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('offers pages the model is shaped for', () => {
+    render(<Harness initial={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    const suggestion = document.querySelector('[data-suggestion="record:Customer"]') as HTMLButtonElement
+    fireEvent.click(suggestion)
+    expect(latest).toEqual([{ id: 'customer', type: 'record', entity: 'Customer', hidden: true }])
+  })
+
+  it('opens the page at the problem when the problem is clicked', () => {
+    render(<Harness initial={[
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+      { id: 'desk', type: 'master-detail', parent: 'Customer', child: 'Order' },
+    ]} />)
+    expect(screen.queryByLabelText('Relation to link through')).toBeNull()
+    fireEvent.click(within(document.querySelector('[data-page-layout-problems]') as HTMLElement).getByRole('button'))
+    expect(screen.getByLabelText('Relation to link through')).toBeTruthy()
+  })
+
+  it('previews the layout and jumps from the preview to the editor', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'bar', entity: 'Order' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order', presetFilter: { status: 'PAID' } },
+    ]} />)
+    const preview = document.querySelector('[data-layout-preview]') as HTMLElement
+    expect(preview.querySelectorAll('[data-preview-widget]')).toHaveLength(2)
+
+    fireEvent.click(within(preview).getByRole('button', { name: /Orders/ }))
+    expect(preview.querySelector('[data-preview-screen="entity-list"]')).toBeTruthy()
+    expect(preview.querySelector('[data-preview-chip]')?.textContent).toBe('Status: Paid')
+
+    fireEvent.click(within(preview).getByRole('button', { name: 'Edit the listed entity' }))
+    expect(screen.getByLabelText('List entity')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /Hide preview/ }))
+    expect(document.querySelector('[data-layout-preview]')).toBeNull()
   })
 })
