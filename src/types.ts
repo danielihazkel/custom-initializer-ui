@@ -504,7 +504,7 @@ export interface ExampleModel {
 }
 
 /** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
-export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record' | 'report'
+export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record' | 'report' | 'wizard'
 
 /** The lucide icons a page may show in the generated nav (FullstackPageValidator.NAV_ICONS). */
 export type FullstackNavIcon =
@@ -598,6 +598,12 @@ export interface FullstackPageDef {
   chart?: FullstackChartDef
   /** report: its charts when it has several (2–4); the first gets the totals table. */
   charts?: FullstackChartDef[]
+  /** wizard: the create form split into steps — field names, and relation field names for the
+   *  pickers. Omitted: the form's fields four to a step, relations last. */
+  steps?: { title?: string; fields: string[] }[]
+  /** record: number tiles over its related lists (default: one row count per related tab;
+   *  an empty array: none). */
+  headerStats?: { child: string; agg?: FullstackAgg; field?: string; title?: string }[]
 }
 
 /** The editor state an example sets on load — FullstackExampleAdminController.validateSettings. */

@@ -221,6 +221,18 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
           <Editable onClick={() => onEdit({ page, control: 'entity' })} label="Edit the record entity" className="block text-start">
             <h3 className="text-[13px] font-bold text-on-surface">{screen.heading}</h3>
           </Editable>
+          {screen.stats.length > 0 && (
+            <Editable onClick={() => onEdit({ page, control: 'headerStats' })} label="Edit the header numbers" className="block w-full">
+              <div className="grid grid-cols-4 gap-1.5" data-preview-stats>
+                {screen.stats.map((s, i) => (
+                  <div key={i} className="min-w-0 rounded border border-outline-variant p-1">
+                    <p className="truncate text-[8px] text-secondary">{s.title}</p>
+                    <p className="text-[12px] font-bold tabular-nums text-on-surface">{s.value}</p>
+                  </div>
+                ))}
+              </div>
+            </Editable>
+          )}
           <Editable onClick={() => onEdit({ page, control: 'childTabs' })} label="Edit the related tabs" className="block w-full">
             <TabStrip labels={screen.tabs} active={0} accent={accent} />
           </Editable>
@@ -232,6 +244,37 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
               </div>
             ))}
           </dl>
+        </div>
+      )
+    case 'wizard':
+      return (
+        <div className="space-y-2">
+          {heading}
+          <Editable onClick={() => onEdit({ page, control: 'steps' })} label="Edit the steps" className="block w-full">
+            <ol className="flex flex-wrap gap-1" data-preview-steps>
+              {screen.steps.map((s, i) => (
+                <li
+                  key={i}
+                  className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold"
+                  style={i === 0 ? { borderColor: accent, color: accent } : undefined}
+                >
+                  {i + 1} {s}
+                </li>
+              ))}
+            </ol>
+          </Editable>
+          <div className="space-y-1 rounded border border-outline-variant p-2">
+            {screen.fields.map(label => (
+              <div key={label}>
+                <p className="text-[9px] text-secondary">{label}</p>
+                <div className="h-3 rounded border border-outline-variant bg-surface-container-lowest" />
+              </div>
+            ))}
+            <div className="flex justify-between pt-1">
+              <FakeButton outline>{screen.back}</FakeButton>
+              <FakeButton style={menora ? { background: MENORA.yellow, color: MENORA.ink } : { background: accent, color: 'white' }}>{screen.next}</FakeButton>
+            </div>
+          </div>
         </div>
       )
     case 'report':

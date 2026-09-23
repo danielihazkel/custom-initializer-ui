@@ -401,4 +401,36 @@ describe('PagesEditor', () => {
     expect(latest[1]).toMatchObject({ chart: {} })
     expect(latest[1].charts).toBeUndefined()
   })
+
+  it('adds a wizard with its steps spelled out, and moves a field between steps', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Wizard/ }))
+    const wizard = latest[1]
+    expect(wizard).toMatchObject({ type: 'wizard', entity: 'Customer', steps: [{ fields: ['id', 'name'] }] })
+
+    const row = document.querySelector(`[data-page-id="${wizard.id}"]`) as HTMLElement
+    fireEvent.change(within(row).getByLabelText('Wizard entity'), { target: { value: 'Order' } })
+    expect(latest[1].steps).toEqual([{ fields: ['id', 'status', 'total', 'placedOn'] }, { fields: ['customer', 'billTo'] }])
+    // Taking a required field out is flagged; putting it in another step moves it.
+    fireEvent.click(within(row).getByRole('button', { name: 'Take id out of step 1' }))
+    expect(document.querySelector('[data-page-layout-problems]')?.textContent).toContain('never asks for “id”')
+    fireEvent.change(within(row).getByLabelText('Add a field to step 2'), { target: { value: 'id' } })
+    expect(latest[1].steps?.[1].fields).toEqual(['customer', 'billTo', 'id'])
+    expect(validatePages(latest, entities).byPage[1]).toBeUndefined()
+  })
+
+  it('switches a record page’s header numbers between the default, none and a chosen list', () => {
+    render(<Harness initial={[
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true },
+    ]} />)
+    const row = openRow('customer') as HTMLElement
+    fireEvent.click(within(row).getByRole('radio', { name: 'None' }))
+    expect(latest[1].headerStats).toEqual([])
+    fireEvent.click(within(row).getByRole('radio', { name: 'Choose' }))
+    expect(latest[1].headerStats).toEqual([{ child: 'Order' }])
+    fireEvent.click(within(row).getByRole('radio', { name: 'A count per tab' }))
+    expect(latest[1].headerStats).toBeUndefined()
+  })
 })

@@ -134,4 +134,13 @@ describe('buildLayoutPreview', () => {
     expect(rep.moreCharts).toHaveLength(1)
     expect(rep.moreCharts[0]).toMatchObject({ title: 'Orders over time', line: true })
   })
+
+  it('draws a wizard’s steps and a record page’s header tiles', () => {
+    const wizard: FullstackPageDef = { id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ title: 'Who', fields: ['customer', 'status'] }] }
+    const [w, , record] = buildLayoutPreview([wizard, ...pages.slice(0, 4), pages[4]], entities, ctx).screens.filter((_, i) => i === 0 || i === 1 || i === 5)
+    if (w.type !== 'wizard' || record.type !== 'record') throw new Error('types')
+    expect(w).toMatchObject({ title: 'New Order', steps: ['Who', 'Review'], fields: ['Customer', 'Status'] })
+    // A record page counts each related tab by default.
+    expect(record.stats.map(s => s.title)).toEqual(['Orders'])
+  })
 })

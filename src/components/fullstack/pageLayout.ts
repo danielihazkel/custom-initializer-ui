@@ -28,6 +28,29 @@ export const MAX_RECENT_LIMIT = 20
 export const MAX_GROUP = 40
 export const MAX_SPAN = 4
 export const MAX_CHARTS = 4
+export const MAX_STEPS = 8
+export const DEFAULT_STEP_SIZE = 4
+export const MAX_HEADER_STATS = 4
+
+/** What a wizard step can ask for: every field but a generated key, then the MANY_TO_ONE
+ *  relations (by field name) — what the entity's form shows. */
+export function askableFields(entity: FullstackEntityDef | undefined): { name: string; required: boolean; relation: boolean }[] {
+  if (!entity) return []
+  return [
+    ...entity.fields.filter(f => f.name.trim() && !(f.primaryKey && f.generated))
+      .map(f => ({ name: f.name, required: Boolean(f.required || f.primaryKey), relation: false })),
+    ...(entity.relations ?? []).filter(r => r.type === 'MANY_TO_ONE' && r.fieldName.trim())
+      .map(r => ({ name: r.fieldName, required: Boolean(r.required), relation: true })),
+  ]
+}
+
+/** The steps a wizard gets when it names none (FullstackPageValidator): four fields to a step. */
+export function defaultWizardSteps(entity: FullstackEntityDef | undefined): { title?: string; fields: string[] }[] {
+  const names = askableFields(entity).map(f => f.name)
+  const steps: { fields: string[] }[] = []
+  for (let i = 0; i < names.length; i += DEFAULT_STEP_SIZE) steps.push({ fields: names.slice(i, i + DEFAULT_STEP_SIZE) })
+  return steps
+}
 
 /** A report's charts, whichever way the page spells them (`chart` or `charts`). */
 export function reportCharts(page: FullstackPageDef): FullstackChartDef[] {
@@ -101,6 +124,7 @@ export const DEFAULT_NAV_ICON: Record<FullstackPageType, FullstackNavIcon> = {
   'master-detail': 'PanelLeft',
   record: 'Table2',
   report: 'BarChart3',
+  wizard: 'Wand2',
 }
 
 /** Whether a page is listed in the generated nav (a record page never is). */
@@ -277,6 +301,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
   const typeById = new Map(pages.map(p => [p.id, p.type]))
   const seenIds = new Set<string>()
   const recordEntities = new Map<string, string>()
+  const wizardEntities = new Map<string, string>()
 
   if (pages.length > MAX_PAGES) {
     issues.push({ message: '', summary: `A layout can have at most ${MAX_PAGES} pages` })
@@ -536,6 +561,57 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
           if (child) seenChildren.add(child.name)
         })
         if (childTabs.length > MAX_CHILD_TABS) add('childTabs', `has more than ${MAX_CHILD_TABS} related lists`)
+        const stats = page.headerStats ?? []
+        if (stats.length > MAX_HEADER_STATS) add('headerStats', `has more than ${MAX_HEADER_STATS} header tiles`)
+        stats.forEach((s, si) => {
+          const child = entityOf(s.child)
+          if (!child) {
+            add(`headerStat.${si}`, `“${s.child}” is no longer an entity`,
+              `${where} has a header tile for “${s.child}”, which is no longer an entity`)
+          } else if (relationsTo(child, e.name).length === 0) {
+            add(`headerStat.${si}`, `${child.name} has no relation to ${e.name}`,
+              `${where} has a header tile for ${child.name}, which has no relation to ${e.name}`)
+          } else {
+            for (const issue of aggIssues(s.agg, s.field, child, false)) {
+              add(`headerStat.${si}`, issue.message, `${where} has a header tile that ${issue.summary}`)
+            }
+          }
+        })
+        break
+      }
+      case 'wizard': {
+        const e = entityOf(page.entity)
+        if (!e) {
+          add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
+            `${where} creates “${page.entity ?? ''}”, which is no longer an entity`)
+          break
+        }
+        if (e.readOnly) add('entity', `${e.name} is read-only`, `${where} creates ${e.name}, which is read-only`)
+        const already = wizardEntities.get(e.name)
+        if (already) add('entity', `${e.name} already has the wizard “${already}”`, `${where} is a second wizard for ${e.name}`)
+        wizardEntities.set(e.name, page.id)
+        const askable = askableFields(e)
+        const steps = page.steps ?? []
+        if (steps.length > MAX_STEPS) add('steps', `has more than ${MAX_STEPS} steps`)
+        const asked = new Set<string>()
+        steps.forEach((step, si) => {
+          if (step.fields.length === 0) add(`step.${si}`, 'asks for nothing', `${where} has an empty step ${si + 1}`)
+          for (const name of step.fields) {
+            if (!askable.some(a => a.name === name)) {
+              add(`step.${si}`, `${e.name} has no field “${name}”`, `${where} asks for “${name}”, which ${e.name} no longer has`)
+            } else if (asked.has(name)) {
+              add(`step.${si}`, `“${name}” is already asked for`, `${where} asks for “${name}” twice`)
+            }
+            asked.add(name)
+          }
+        })
+        if (steps.length > 0) {
+          const missing = askable.filter(a => a.required && !asked.has(a.name)).map(a => a.name)
+          if (missing.length > 0) {
+            add('steps', `never asks for ${missing.map(m => `“${m}”`).join(', ')}, which ${missing.length === 1 ? 'is' : 'are'} required`)
+          }
+        }
+        if (askable.length === 0) add('entity', `${e.name} has no field to ask for`)
         break
       }
     }
@@ -580,6 +656,10 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       const how = !chart.agg || chart.agg === 'count' ? 'row count' : `${chart.agg} of ${chart.field}`
       const more = charts.length > 1 ? ` · +${charts.length - 1} chart${charts.length === 2 ? '' : 's'}` : ''
       return `${page.entity ?? '?'} · ${how} by ${by}${chart.bucket ? ` per ${chart.bucket}` : ''}${more}`
+    }
+    case 'wizard': {
+      const steps = page.steps?.length
+      return `${page.entity ?? '?'} · ${steps ? `${steps} step${steps === 1 ? '' : 's'}` : 'default steps'} and a review`
     }
     case 'record': {
       const tabs = page.childTabs
@@ -651,6 +731,7 @@ export function renameEntityInPages(pages: FullstackPageDef[], from: string, to:
     if (same(next.child)) next.child = to
     if (next.widgets) next.widgets = next.widgets.map(w => (same(w.entity) ? { ...w, entity: to } : w))
     if (next.childTabs) next.childTabs = next.childTabs.map(name => (same(name) ? to : name))
+    if (next.headerStats) next.headerStats = next.headerStats.map(s => (same(s.child) ? { ...s, child: to } : s))
     return next
   })
 }
@@ -687,6 +768,12 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
       ...(c.groupBy === from ? { groupBy: to } : {}),
       ...(c.field === from ? { field: to } : {}),
     })
+    if (isEntity(next.entity) && next.steps) {
+      next.steps = next.steps.map(step => ({ ...step, fields: step.fields.map(name => (name === from ? to : name)) }))
+    }
+    if (next.headerStats) {
+      next.headerStats = next.headerStats.map(s => (isEntity(s.child) && s.field === from ? { ...s, field: to } : s))
+    }
     if (isEntity(next.entity) && next.chart) next.chart = renameChart(next.chart)
     if (isEntity(next.entity) && next.charts) next.charts = next.charts.map(renameChart)
     return next
@@ -700,7 +787,8 @@ export const PAGE_TYPE_META: Record<FullstackPageType, { icon: string; label: st
   tabs: { icon: 'tab', label: 'Tabs', blurb: 'Two to six other pages side by side as tabs.' },
   'master-detail': { icon: 'vertical_split', label: 'Master–detail', blurb: 'A parent list beside the selected parent’s rows.' },
   record: { icon: 'article', label: 'Record', blurb: 'One row opened from a list, with its related lists as tabs.' },
-  report: { icon: 'monitoring', label: 'Report', blurb: 'Filters, one chart and grouped totals, with a CSV export.' },
+  report: { icon: 'monitoring', label: 'Report', blurb: 'Filters, charts and grouped totals, with a CSV export.' },
+  wizard: { icon: 'auto_fix_high', label: 'Wizard', blurb: 'A create form split into steps, with a review before saving.' },
 }
 
 // ── Defaults the generator resolves ─────────────────────────────────────────
@@ -765,6 +853,10 @@ export function renameRelationInPages(pages: FullstackPageDef[], child: string, 
   const isChild = (name: string | undefined) => name != null && name.trim().toLowerCase() === child.trim().toLowerCase()
   let changed = false
   const next = pages.map(page => {
+    if (page.type === 'wizard' && isChild(page.entity) && page.steps?.some(step => step.fields.includes(from))) {
+      changed = true
+      return { ...page, steps: page.steps.map(step => ({ ...step, fields: step.fields.map(name => (name === from ? to : name)) })) }
+    }
     if (page.type === 'dashboard' && page.widgets?.some(w => w.kind === 'top' && isChild(w.entity) && w.groupBy === from)) {
       changed = true
       return { ...page, widgets: page.widgets.map(w => (w.kind === 'top' && isChild(w.entity) && w.groupBy === from ? { ...w, groupBy: to } : w)) }
@@ -873,6 +965,17 @@ export function suggestPages(entities: FullstackEntityDef[], pages: FullstackPag
           ...(bar && groupableFields(e).some(f => f.name === bar) ? [{ kind: 'bar' as const, entity: e.name, groupBy: bar }] : []),
         ],
       },
+    })
+  }
+  for (const e of named) {
+    if (e.readOnly || askableFields(e).length < 6) continue
+    if (pages.some(p => p.type === 'wizard' && sameName(p.entity, e.name))) continue
+    out.push({
+      key: `wizard:${e.name}`,
+      icon: PAGE_TYPE_META.wizard.icon,
+      label: `New ${e.name} wizard`,
+      blurb: `${askableFields(e).length} fields is a long form — ask for them step by step.`,
+      page: { idBase: `new-${e.name}`, type: 'wizard', entity: e.name, title: `New ${e.name}`, steps: defaultWizardSteps(e) },
     })
   }
   return out.slice(0, limit)

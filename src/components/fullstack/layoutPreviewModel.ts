@@ -4,6 +4,7 @@ import { humanize } from './naming'
 import {
   DEFAULT_NAV_ICON,
   defaultSpan,
+  defaultWizardSteps,
   defaultTopGroupBy,
   reportCharts,
   NAV_ICONS,
@@ -78,7 +79,21 @@ export type PreviewScreen =
   | { type: 'entity-list'; title: string; description?: string; table: PreviewTable }
   | { type: 'tabs'; title: string; description?: string; tabs: { label: string; target: number | null }[] }
   | { type: 'master-detail'; title: string; description?: string; parentTitle: string; parentItems: string[]; child: PreviewTable; childTitle: string }
-  | { type: 'record'; title: string; description?: string; heading: string; back: string | null; tabs: string[]; details: { label: string; value: string }[] }
+  | {
+    type: 'record'; title: string; description?: string; heading: string; back: string | null; tabs: string[]
+    details: { label: string; value: string }[]
+    /** The number tiles above the tabs. */
+    stats: { title: string; value: string }[]
+  }
+  | {
+    type: 'wizard'; title: string; description?: string
+    /** The step titles, then the review. */
+    steps: string[]
+    /** The first step's field labels, as its form shows them. */
+    fields: string[]
+    next: string
+    back: string
+  }
   | {
     type: 'report'
     title: string
@@ -120,7 +135,7 @@ const STRINGS = {
     xReport: '{x} report', total: 'Total', aggSum: 'Total {x}', aggAvg: 'Average {x}', aggMin: 'Lowest {x}',
     aggMax: 'Highest {x}', viewAll: 'View all', back: 'Back', exportCsv: 'Export CSV', newX: 'New {x}',
     xDetails: '{x} details', search: 'Search…', filters: 'Filters', trueLabel: 'True', falseLabel: 'False',
-    count: 'Count', startPage: 'Start page', topXByY: 'Top {x} by {y}', vsPrevious: 'vs previous period',
+    count: 'Count', startPage: 'Start page', stepX: 'Step {x}', review: 'Review', next: 'Next', topXByY: 'Top {x} by {y}', vsPrevious: 'vs previous period',
     percentOfTarget: '{x}% of target', periodAll: 'All time', period7d: 'Last 7 days',
     period30d: 'Last 30 days', period90d: 'Last 90 days', periodYtd: 'This year', period12m: 'Last 12 months',
   },
@@ -129,7 +144,7 @@ const STRINGS = {
     xReport: 'דוח {x}', total: 'סך הכול', aggSum: 'סך {x}', aggAvg: '{x} ממוצע', aggMin: '{x} מינימלי',
     aggMax: '{x} מקסימלי', viewAll: 'הצג הכל', back: 'חזרה', exportCsv: 'ייצוא ל-CSV', newX: '{x} חדש',
     xDetails: 'פרטי {x}', search: 'חיפוש…', filters: 'מסננים', trueLabel: 'כן', falseLabel: 'לא',
-    count: 'כמות', startPage: 'דף פתיחה', topXByY: '{x} מובילים לפי {y}', vsPrevious: 'לעומת התקופה הקודמת',
+    count: 'כמות', startPage: 'דף פתיחה', stepX: 'שלב {x}', review: 'סקירה', next: 'הבא', topXByY: '{x} מובילים לפי {y}', vsPrevious: 'לעומת התקופה הקודמת',
     percentOfTarget: '{x}% מהיעד', periodAll: 'כל הזמן', period7d: '7 הימים האחרונים',
     period30d: '30 הימים האחרונים', period90d: '90 הימים האחרונים', periodYtd: 'מתחילת השנה',
     period12m: '12 החודשים האחרונים',
@@ -461,6 +476,36 @@ export function buildLayoutPreview(
             return c ? labels(c).plural : name
           })],
           details: e.fields.slice(0, 6).map(f => ({ label: fieldLabel(f), value: sampleCell(f, 1, t) })),
+          // The generator's default: a row count per related tab.
+          stats: (page.headerStats ?? related.slice(0, 4).map(child => ({ child } as { child: string; agg?: FullstackAgg; field?: string; title?: string })))
+            .map((s, si) => {
+              const c = entityOf(s.child)
+              const reduces = !!s.agg && s.agg !== 'count'
+              const valueField = c && reduces ? fieldOf(c, s.field) : undefined
+              return {
+                title: s.title || (reduces ? aggTitle(s.agg!, valueField) : c ? labels(c).plural : s.child),
+                value: kpiValue(s.agg, valueField, `${seedBase}:stat:${si}`),
+              }
+            }),
+        }
+      }
+      case 'wizard': {
+        const e = entityOf(page.entity)
+        if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
+        const { singular } = labels(e)
+        const steps = page.steps ?? defaultWizardSteps(e)
+        const labelOf = (name: string) => {
+          const f = fieldOf(e, name)
+          return f ? fieldLabel(f) : humanize(name)
+        }
+        return {
+          type: 'wizard',
+          title: page.title || t('newX', { x: singular }),
+          description,
+          steps: [...steps.map((s, i) => s.title || t('stepX', { x: String(i + 1) })), t('review')],
+          fields: (steps[0]?.fields ?? []).map(labelOf),
+          next: t('next'),
+          back: t('back'),
         }
       }
       case 'report': {
@@ -508,6 +553,7 @@ export function buildLayoutPreview(
       case 'entity-list': return e ? labels(e).plural : p.entity ?? p.id
       case 'master-detail': return e ? labels(e).plural : p.parent ?? p.id
       case 'report': return e ? t('xReport', { x: labels(e).plural }) : p.id
+      case 'wizard': return e ? t('newX', { x: labels(e).singular }) : p.id
       case 'record': return e ? labels(e).singular : p.id
       default: return p.id
     }

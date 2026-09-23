@@ -24,6 +24,8 @@ import {
   DEFAULT_NAV_ICON,
   MAX_CHARTS,
   MAX_GROUP,
+  MAX_HEADER_STATS,
+  MAX_STEPS,
   MAX_PAGES,
   MAX_RECENT_LIMIT,
   MAX_SPAN,
@@ -41,7 +43,9 @@ import {
   defaultReportGroupBy,
   describePage,
   dropTabsTo,
+  askableFields,
   chartControl,
+  defaultWizardSteps,
   duplicatePage,
   filterableDateFields,
   groupableFields,
@@ -584,6 +588,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                       )}
                       {page.type === 'report' && (
                         <ReportForm page={page} index={index} entities={named} errors={errors} update={update} />
+                      )}
+                      {page.type === 'wizard' && (
+                        <WizardForm page={page} index={index} entities={named} errors={errors} update={update} />
                       )}
                     </div>
                   )}
@@ -1572,6 +1579,206 @@ function RecordForm({ page, index, entities, errors, update }: FormProps) {
         )}
         {errors.childTabs && <p className="text-[11px] text-error">{errors.childTabs}</p>}
       </div>
+      <HeaderStatsFields page={page} index={index} entities={entities} errors={errors} update={update} />
+    </div>
+  )
+}
+
+/** A record page's header tiles: none, the default (a count per related tab), or a list of
+ *  counts/aggregates over related entities. */
+function HeaderStatsFields({ page, index, entities, errors, update }: FormProps) {
+  const related = entities.filter(e => relationsTo(e, page.entity).length > 0)
+  const stats = page.headerStats
+  const set = (next: FullstackPageDef['headerStats']) => update(index, { headerStats: next })
+  return (
+    <div className="space-y-1" data-control="headerStats">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
+        Header numbers <span className="font-normal normal-case tracking-normal">· tiles above the tabs</span>
+      </p>
+      <div role="radiogroup" aria-label="Header numbers" className="inline-flex overflow-hidden rounded border border-outline-variant text-xs">
+        {([['default', 'A count per tab'], ['none', 'None'], ['custom', 'Choose']] as const).map(([mode, label]) => {
+          const current = stats == null ? 'default' : stats.length === 0 ? 'none' : 'custom'
+          return (
+            <button
+              key={mode}
+              type="button"
+              role="radio"
+              aria-checked={current === mode}
+              onClick={() => set(mode === 'default' ? undefined : mode === 'none' ? [] : [{ child: related[0]?.name ?? '' }])}
+              disabled={mode === 'custom' && related.length === 0}
+              className={`px-2 py-0.5 ${current === mode ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5'} disabled:opacity-40`}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      {stats?.map((s, si) => {
+        const child = entities.find(e => e.name === s.child)
+        const error = errors[`headerStat.${si}`]
+        return (
+          <div key={si} className="flex flex-wrap items-center gap-2" data-control={`headerStat.${si}`} data-header-stat={si}>
+            <EntitySelect
+              label="Counted entity"
+              value={s.child}
+              options={related.map(e => e.name)}
+              error={error}
+              className="max-w-[10rem]"
+              onChange={name => set(stats.map((x, i) => (i === si ? { child: name } : x)))}
+            />
+            <AggFields
+              agg={s.agg}
+              field={s.field}
+              entity={child}
+              error={error}
+              onChange={patch => set(stats.map((x, i) => (i === si ? { ...x, ...patch } : x)))}
+            />
+            <input
+              type="text"
+              aria-label="Tile title"
+              value={s.title ?? ''}
+              placeholder="Title (optional)"
+              onChange={e => set(stats.map((x, i) => (i === si ? { ...x, title: e.target.value || undefined } : x)))}
+              className={`${inputClass()} min-w-[8rem] flex-1 py-1 text-xs`}
+            />
+            <button
+              type="button"
+              onClick={() => set(stats.filter((_, i) => i !== si))}
+              className={ICON_BUTTON}
+              aria-label={`Remove header number ${si + 1}`}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+            </button>
+            {error && <p className="w-full text-[11px] text-error">{error}</p>}
+          </div>
+        )
+      })}
+      {stats && stats.length > 0 && stats.length < MAX_HEADER_STATS && (
+        <button type="button" onClick={() => set([...stats, { child: related[0]?.name ?? '' }])} className={SMALL_BUTTON}>
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
+          Add number
+        </button>
+      )}
+      {errors.headerStats && <p className="text-[11px] text-error">{errors.headerStats}</p>}
+    </div>
+  )
+}
+
+/** A wizard: its entity, and the form's fields dealt into steps (each field in exactly one). */
+function WizardForm({ page, index, entities, errors, update }: FormProps) {
+  const entity = entities.find(e => e.name === page.entity)
+  const askable = askableFields(entity)
+  const steps = page.steps ?? defaultWizardSteps(entity)
+  const setSteps = (next: { title?: string; fields: string[] }[]) => update(index, { steps: next })
+  const stepOf = (name: string) => steps.findIndex(s => s.fields.includes(name))
+  const unasked = askable.filter(a => stepOf(a.name) < 0)
+
+  // Moves a field into step `si`, out of whichever step had it.
+  const place = (name: string, si: number) => setSteps(steps.map((s, i) => ({
+    ...s,
+    fields: i === si ? (s.fields.includes(name) ? s.fields : [...s.fields, name]) : s.fields.filter(f => f !== name),
+  })))
+
+  return (
+    <div className="space-y-2">
+      <Field label="Entity" error={errors.entity} control="entity">
+        <EntitySelect
+          label="Wizard entity"
+          value={page.entity ?? ''}
+          options={entities.filter(e => !e.readOnly).map(e => e.name)}
+          error={errors.entity}
+          onChange={name => update(index, { entity: name, steps: defaultWizardSteps(entities.find(e => e.name === name)) })}
+        />
+      </Field>
+      <div className="space-y-1" data-control="steps">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
+          Steps <span className="font-normal normal-case tracking-normal">· then a review before saving</span>
+        </p>
+        {steps.map((step, si) => {
+          const error = errors[`step.${si}`]
+          return (
+            <div key={si} className={`space-y-1 rounded border px-2 py-1.5 ${error ? 'border-error/50' : 'border-outline-variant'}`} data-control={`step.${si}`} data-wizard-step={si}>
+              <div className="flex items-center gap-1.5">
+                <MoveButtons
+                  label={`step ${si + 1}`}
+                  canUp={si > 0}
+                  canDown={si < steps.length - 1}
+                  onMove={delta => setSteps(moveItem(steps, si, si + delta))}
+                />
+                <span className="text-xs font-semibold text-secondary">{si + 1}.</span>
+                <input
+                  type="text"
+                  aria-label={`Step ${si + 1} title`}
+                  value={step.title ?? ''}
+                  placeholder={`Step ${si + 1}`}
+                  onChange={e => setSteps(steps.map((s, i) => (i === si ? { ...s, title: e.target.value || undefined } : s)))}
+                  className={`${inputClass()} min-w-[8rem] flex-1 py-1 text-xs`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setSteps(steps.filter((_, i) => i !== si))}
+                  disabled={steps.length === 1}
+                  className={ICON_BUTTON}
+                  aria-label={`Remove step ${si + 1}`}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {step.fields.map(name => {
+                  const a = askable.find(x => x.name === name)
+                  return (
+                    <span key={name} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${a ? 'bg-primary/10 text-primary' : 'bg-error/10 text-error'}`} data-step-field={name}>
+                      {a?.relation && <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">link</span>}
+                      {name}{a?.required && <span aria-label="required">*</span>}
+                      <button
+                        type="button"
+                        onClick={() => setSteps(steps.map((s, i) => (i === si ? { ...s, fields: s.fields.filter(f => f !== name) } : s)))}
+                        className="leading-none hover:text-error"
+                        aria-label={`Take ${name} out of step ${si + 1}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )
+                })}
+                {askable.some(a => stepOf(a.name) !== si) && (
+                  <select
+                    aria-label={`Add a field to step ${si + 1}`}
+                    value=""
+                    onChange={e => e.target.value && place(e.target.value, si)}
+                    className={`${inputClass()} max-w-[10rem] py-0.5 text-[11px]`}
+                  >
+                    <option value="">+ field</option>
+                    {askable.filter(a => stepOf(a.name) !== si).map(a => (
+                      <option key={a.name} value={a.name}>
+                        {a.name}{a.required ? ' *' : ''}{stepOf(a.name) >= 0 ? ` (from step ${stepOf(a.name) + 1})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {error && <p className="text-[11px] text-error">{error}</p>}
+            </div>
+          )
+        })}
+        {unasked.length > 0 && (
+          <p className="text-[11px] text-secondary" data-wizard-unasked>
+            Not asked: {unasked.map(a => `${a.name}${a.required ? ' (required)' : ''}`).join(', ')}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => setSteps([...steps, { fields: [] }])}
+          disabled={steps.length >= MAX_STEPS}
+          className={SMALL_BUTTON}
+          title={steps.length >= MAX_STEPS ? `A wizard can have at most ${MAX_STEPS} steps` : undefined}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
+          Add step
+        </button>
+        {errors.steps && <p className="text-[11px] text-error">{errors.steps}</p>}
+      </div>
     </div>
   )
 }
@@ -1646,6 +1853,11 @@ function blankPage(type: FullstackPageType, entities: FullstackEntityDef[], page
       // Prefer an entity that actually has something to chart, so the page is valid on sight.
       const e = entities.find(x => chartableFields(x).length > 0) ?? entities[0]
       return { id: id(`${e?.name ?? 'report'}-report`), type, entity: e?.name ?? first, chart: {} }
+    }
+    case 'wizard': {
+      // A writable entity, with its default steps spelled out so they can be edited.
+      const e = entities.find(x => !x.readOnly && askableFields(x).length > 0) ?? entities[0]
+      return { id: id(`new-${e?.name ?? 'record'}`), type, entity: e?.name ?? first, title: `New ${e?.name ?? 'record'}`, steps: defaultWizardSteps(e) }
     }
   }
 }

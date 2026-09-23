@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import {
+  defaultWizardSteps, renameEntityInPages,
   defaultBarGroupBy, defaultLineGroupBy, defaultOptionLabel, defaultReportGroupBy, describePagesChange,
   dropTabsTo, duplicatePage, navSections, pageFromSuggestion, pagesEmbedding, renameFieldInPages, renamePageIdInPages,
   renameRelationInPages, reportCharts, suggestPages, validatePages,
@@ -71,11 +72,11 @@ describe('page references', () => {
 describe('suggestPages', () => {
   it('suggests what the model is shaped for, and stops once the layout has it', () => {
     const keys = suggestPages(entities, [], 10).map(s => s.key)
-    expect(keys).toEqual(['md:Customer:Order', 'record:Customer', 'report:Order', 'trend:Order'])
+    expect(keys).toEqual(['md:Customer:Order', 'record:Customer', 'report:Order', 'trend:Order', 'wizard:Order'])
 
     const added: FullstackPageDef[] = []
     for (const s of suggestPages(entities, [], 10)) added.push(pageFromSuggestion(s, added.map(p => p.id)))
-    expect(added.map(p => p.id)).toEqual(['customer', 'customer-2', 'order-report', 'order-trends'])
+    expect(added.map(p => p.id)).toEqual(['customer', 'customer-2', 'order-report', 'order-trends', 'new-order'])
     expect(validatePages(added, entities).count).toBe(0)
     expect(added[2]).toMatchObject({ id: 'order-report', type: 'report', chart: { groupBy: 'status', agg: 'sum', field: 'total' } })
     expect(suggestPages(entities, added, 10)).toEqual([])
@@ -210,5 +211,44 @@ describe('top lists, targets, comparisons and report charts', () => {
     ]
     expect(renameRelationInPages(pages, 'Order', 'customer', 'buyer')[0].widgets?.[0].groupBy).toBe('buyer')
     expect(renameFieldInPages(pages, 'Order', 'placedOn', 'orderedOn')[1].charts?.[1].groupBy).toBe('orderedOn')
+  })
+})
+
+describe('wizard pages and record header stats', () => {
+  it('deals the form into steps and wants every required field asked for', () => {
+    expect(defaultWizardSteps(entities[1])).toEqual([
+      { fields: ['id', 'paid', 'status', 'total'] },
+      { fields: ['placedOn', 'customer'] },
+    ])
+    const wizard = (steps: { fields: string[] }[]): FullstackPageDef[] => [{ id: 'new-order', type: 'wizard', entity: 'Order', steps }]
+    expect(validatePages(wizard(defaultWizardSteps(entities[1])), entities).count).toBe(0)
+    const v = validatePages(wizard([{ fields: ['status', 'nope'] }, { fields: ['status'] }]), entities)
+    expect(v.byPage[0]).toMatchObject({
+      'step.0': 'Order has no field “nope”',
+      'step.1': '“status” is already asked for',
+      steps: 'never asks for “id”, which is required',
+    })
+  })
+
+  it('checks a record page’s header tiles', () => {
+    const v = validatePages([
+      { id: 'home', type: 'entity-list', entity: 'Customer' },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, headerStats: [{ child: 'Order', agg: 'sum' }, { child: 'Customer' }] },
+    ], entities)
+    expect(v.byPage[1]).toMatchObject({
+      'headerStat.0': 'sum needs a numeric field of Order',
+      'headerStat.1': 'Customer has no relation to Customer',
+    })
+  })
+
+  it('follows field, relation and entity renames into steps and tiles', () => {
+    const pages: FullstackPageDef[] = [
+      { id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ fields: ['status', 'customer'] }] },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, headerStats: [{ child: 'Order', agg: 'sum', field: 'total' }] },
+    ]
+    expect(renameFieldInPages(pages, 'Order', 'status', 'state')[0].steps?.[0].fields).toEqual(['state', 'customer'])
+    expect(renameRelationInPages(pages, 'Order', 'customer', 'buyer')[0].steps?.[0].fields).toEqual(['status', 'buyer'])
+    expect(renameFieldInPages(pages, 'Order', 'total', 'amount')[1].headerStats?.[0].field).toBe('amount')
+    expect(renameEntityInPages(pages, 'Order', 'Purchase')[1].headerStats?.[0].child).toBe('Purchase')
   })
 })
