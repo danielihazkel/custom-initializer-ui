@@ -41,3 +41,25 @@ describe('validating the donut, stacked and text widgets', () => {
       .toBe('1 donut · 1 note')
   })
 })
+
+describe('page roles', () => {
+  const pages: FullstackPageDef[] = [
+    { id: 'desk', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Ticket' }] },
+    { id: 'open', type: 'entity-list', entity: 'Ticket', hidden: true },
+    { id: 'all', type: 'entity-list', entity: 'Ticket', hidden: true },
+    { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ page: 'open' }, { page: 'all' }] },
+    { id: 'tickets', type: 'entity-list', entity: 'Ticket', roles: ['ADMIN'] },
+  ]
+
+  it('accepts roles on a nav page when ldap-auth is on', () => {
+    expect(validatePages(pages, entities, { ldapAuth: true }).count).toBe(0)
+  })
+
+  it('flags roles the generator would reject', () => {
+    expect(validatePages(pages, entities, { ldapAuth: false }).byPage[4]).toEqual({ roles: 'needs the ldap-auth dependency' })
+    const start = pages.map((p, i) => (i === 0 ? { ...p, roles: ['USER' as const] } : p))
+    expect(validatePages(start, entities, { ldapAuth: true }).byPage[0]).toEqual({ roles: 'the start page is open to everyone' })
+    const tab = pages.map((p, i) => (i === 1 ? { ...p, roles: ['USER' as const] } : p))
+    expect(validatePages(tab, entities, { ldapAuth: true }).byPage[1]).toEqual({ roles: 'restrict the tabs page instead' })
+  })
+})

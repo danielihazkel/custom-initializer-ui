@@ -7,6 +7,7 @@ import type {
   FullstackFieldDef,
   FullstackNavIcon,
   FullstackPageDef,
+  FullstackPageRole,
   FullstackPageType,
   FullstackWidgetDef,
 } from '../../types'
@@ -247,8 +248,17 @@ interface Issue {
 
 const singlePk = (e: FullstackEntityDef) => e.fields.filter(f => f.primaryKey).length === 1
 
-export function validatePages(pages: FullstackPageDef[], entities: FullstackEntityDef[]): PageLayoutValidation {
+/** What the page checks need beyond the layout: whether an ldap-auth dependency is selected
+ *  (page roles need one). Omitted, that check is skipped. */
+export interface PageLayoutContext {
+  ldapAuth?: boolean
+}
+
+export const PAGE_ROLES: FullstackPageRole[] = ['ADMIN', 'USER']
+
+export function validatePages(pages: FullstackPageDef[], entities: FullstackEntityDef[], context: PageLayoutContext = {}): PageLayoutValidation {
   const issues = collect(pages, entities)
+  issues.push(...roleIssues(pages, context))
   const byPage: Record<number, Record<string, string>> = {}
   const general: string[] = []
   for (const issue of issues) {
@@ -266,6 +276,24 @@ export function validatePages(pages: FullstackPageDef[], entities: FullstackEnti
     issues: issues.map(({ page, field, summary }) => ({ page, field, summary })),
     count: issues.length,
   }
+}
+
+/** Page roles: known values, not on the start page or on a tab, and only with ldap-auth. */
+function roleIssues(pages: FullstackPageDef[], context: PageLayoutContext): Issue[] {
+  const out: Issue[] = []
+  const start = pages.find(p => !p.hidden && p.type !== 'record')
+  const tabbed = new Set(pages.flatMap(p => (p.type === 'tabs' ? (p.tabs ?? []).map(t => t.page) : [])))
+  pages.forEach((page, index) => {
+    const roles = page.roles ?? []
+    if (roles.length === 0) return
+    const where = `“${pageLabel(page)}”`
+    const add = (message: string, summary: string) => out.push({ page: index, field: 'roles', message, summary })
+    if (roles.some(r => !PAGE_ROLES.includes(r))) add('unknown role', `${where} names an unknown role`)
+    else if (page === start) add('the start page is open to everyone', `${where} is the start page, so it cannot be restricted to roles`)
+    else if (tabbed.has(page.id)) add('restrict the tabs page instead', `${where} is a tab, so it cannot be restricted to roles`)
+    else if (context.ldapAuth === false) add('needs the ldap-auth dependency', `${where} is restricted to roles, which need the ldap-auth dependency`)
+  })
+  return out
 }
 
 /** Flat problem sentences — the layout summary and the error count read these. */

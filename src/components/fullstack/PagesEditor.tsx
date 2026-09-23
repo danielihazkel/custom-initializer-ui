@@ -7,6 +7,7 @@ import type {
   FullstackEntityDef,
   FullstackNavIcon,
   FullstackPageDef,
+  FullstackPageRole,
   FullstackPageType,
   FullstackWidgetDef,
 } from '../../types'
@@ -30,6 +31,7 @@ import {
   MAX_RECENT_LIMIT,
   MAX_SPAN,
   NAV_ICONS,
+  PAGE_ROLES,
   MAX_TABS,
   MAX_TEXT,
   MAX_WIDGETS,
@@ -107,6 +109,8 @@ interface Props {
   }
   /** A 400 from Generate that names a page of this layout — listed with the problems and revealed. */
   serverIssue?: { page: number; message: string } | null
+  /** An ldap-auth dependency is selected, so pages can be restricted to roles. */
+  ldapAuth?: boolean
 }
 
 const CHIP = 'rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide'
@@ -136,7 +140,7 @@ function readPreviewOpen(): boolean {
  * dashboard plus one list page per entity), which "Start from my entities" materializes as an
  * editable starting point.
  */
-export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, layout = 'split', history, serverIssue }: Props) {
+export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, layout = 'split', history, serverIssue, ldapAuth = false }: Props) {
   const keys = useStableKeys(pages, p => p.id)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -580,6 +584,11 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                           Start page
                         </span>
                       )}
+                      {(page.roles?.length ?? 0) > 0 && (
+                        <span className={`${CHIP} bg-surface-container text-secondary`} title="Only users with these roles see this page" data-page-roles>
+                          <span className="material-symbols-outlined align-[-2px]" style={{ fontSize: '11px' }} aria-hidden="true">lock</span> {page.roles!.join(' / ')}
+                        </span>
+                      )}
                       {page.hidden && page.type !== 'record' && (
                         <span className={`${CHIP} bg-surface-container text-secondary`}>Tab only</span>
                       )}
@@ -678,6 +687,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                       </div>
                       {inNav(page) && (
                         <NavFields page={page} index={index} pages={pages} errors={errors} update={update} />
+                      )}
+                      {(ldapAuth || (page.roles?.length ?? 0) > 0) && (
+                        <RolesField page={page} index={index} errors={errors} update={update} ldapAuth={ldapAuth} />
                       )}
 
                       {page.type === 'entity-list' && (
@@ -823,6 +835,34 @@ function NavFields({ page, index, pages, errors, update }: Omit<FormProps, 'enti
         </div>
       </Field>
     </div>
+  )
+}
+
+/** Who may open a page: everyone, or users holding one of the generated security's roles. */
+function RolesField({ page, index, errors, update, ldapAuth }: Omit<FormProps, 'entities' | 'lossy'> & { ldapAuth: boolean }) {
+  const roles = page.roles ?? []
+  const toggle = (role: FullstackPageRole) => {
+    const next = roles.includes(role) ? roles.filter(r => r !== role) : [...roles, role]
+    update(index, { roles: next.length ? next : undefined })
+  }
+  return (
+    <Field
+      label="Who can open it"
+      error={errors.roles}
+      control="roles"
+      hint={roles.length
+        ? 'Hidden from the nav, and blocked, for users without one of these roles (checked against their LDAP groups)'
+        : ldapAuth ? 'Everyone — tick a role to restrict the page' : 'Page roles need the ldap-auth dependency'}
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        {PAGE_ROLES.map(role => (
+          <label key={role} className="inline-flex items-center gap-1.5 text-xs text-on-surface">
+            <input type="checkbox" checked={roles.includes(role)} onChange={() => toggle(role)} className="accent-primary" aria-label={`Only ${role}`} />
+            {role === 'ADMIN' ? 'Admins' : 'Users'} <span className="font-mono text-[10px] text-secondary">{role}</span>
+          </label>
+        ))}
+      </div>
+    </Field>
   )
 }
 
@@ -1946,7 +1986,12 @@ function WizardForm({ page, index, entities, errors, update, dnd }: FormProps & 
 
   return (
     <div className="space-y-2">
-      <Field label="Entity" error={errors.entity} control="entity">
+      <Field
+        label="Entity"
+        error={errors.entity}
+        control="entity"
+        hint="Creates rows — and edits them too (#/page/<id>); a record page's Edit opens the wizard"
+      >
         <EntitySelect
           label="Wizard entity"
           value={page.entity ?? ''}

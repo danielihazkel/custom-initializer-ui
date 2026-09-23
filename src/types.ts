@@ -564,6 +564,9 @@ export interface FullstackChartDef {
   field?: string
 }
 
+/** The generated security's logical roles (its Constants). */
+export type FullstackPageRole = 'ADMIN' | 'USER'
+
 /** A record page's related-list tab: the entity, or `{ entity, via }` to pick which of its
  *  relations to the record entity links them (default: the first). */
 export type FullstackChildTabDef = string | { entity: string; via?: string }
@@ -578,6 +581,8 @@ export interface FullstackPageDef {
   description?: string
   /** Out of the navigation — reachable only as a tab. */
   hidden?: boolean
+  /** The roles (any of) that may open the page — needs an ldap-auth dependency. Absent: everyone. */
+  roles?: FullstackPageRole[]
   /** Nav section (visible pages only): pages sharing a group are listed together under its name. */
   group?: string
   /** Nav icon (visible pages only); default: the page type's own. */
