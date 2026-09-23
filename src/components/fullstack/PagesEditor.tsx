@@ -31,11 +31,13 @@ import {
   MAX_SPAN,
   NAV_ICONS,
   MAX_TABS,
+  MAX_TEXT,
   MAX_WIDGETS,
   PAGE_TYPE_META,
   chartableFields,
   dateFields,
   defaultBarGroupBy,
+  defaultSeries,
   defaultSpan,
   defaultTopGroupBy,
   defaultLineGroupBy,
@@ -45,6 +47,9 @@ import {
   dropTabsTo,
   askableFields,
   chartControl,
+  childTab,
+  childTabEntity,
+  childTabVia,
   defaultWizardSteps,
   duplicatePage,
   filterableDateFields,
@@ -112,10 +117,13 @@ const PREVIEW_KEY = 'fullstack:layoutPreview'
 const WIDGET_KINDS: { kind: FullstackWidgetDef['kind']; icon: string; label: string; short: string; hint: string }[] = [
   { kind: 'kpi', icon: 'counter_1', label: 'Number tile', short: 'Number', hint: 'One number: a count or an aggregate' },
   { kind: 'bar', icon: 'bar_chart', label: 'Breakdown chart', short: 'Breakdown', hint: 'Bars per value of an enum or boolean field' },
+  { kind: 'donut', icon: 'donut_large', label: 'Donut chart', short: 'Donut', hint: 'Shares of an enum or boolean field, as a ring' },
+  { kind: 'stacked', icon: 'stacked_bar_chart', label: 'Stacked chart', short: 'Stacked', hint: 'Bars per value, each split by a second field' },
   { kind: 'line', icon: 'show_chart', label: 'Trend over time', short: 'Trend', hint: 'A line over a date, per day, month or year' },
   { kind: 'recent', icon: 'list', label: 'Recent rows', short: 'Recent', hint: 'The latest rows, newest first' },
   { kind: 'top', icon: 'format_list_numbered', label: 'Top list', short: 'Top', hint: 'The largest groups, ranked' },
   { kind: 'progress', icon: 'data_usage', label: 'Progress to target', short: 'Progress', hint: 'An aggregate against a fixed target' },
+  { kind: 'text', icon: 'notes', label: 'Text note', short: 'Text', hint: 'A heading and paragraphs of your own — no data' },
 ]
 
 function readPreviewOpen(): boolean {
@@ -1108,7 +1116,7 @@ function WidgetCard({ widget, wi, count, entities, dateRange, errors, atCap, dnd
                 aria-checked={on}
                 aria-label={k.label}
                 title={k.hint}
-                onClick={() => onRetarget({ kind: k.kind })}
+                onClick={() => onRetarget(k.kind !== 'text' && !widget.entity ? { kind: k.kind, entity: entities[0]?.name ?? '' } : { kind: k.kind })}
                 className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] ${on ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5 hover:text-primary'}`}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">{k.icon}</span>
@@ -1133,6 +1141,37 @@ function WidgetCard({ widget, wi, count, entities, dateRange, errors, atCap, dnd
         </button>
       </div>
 
+      {widget.kind === 'text' ? (
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]" data-widget-options>
+          <MiniField label="Title" grow>
+            <input
+              type="text"
+              aria-label="Widget title"
+              value={widget.title ?? ''}
+              placeholder="Optional heading"
+              onChange={e => onChange({ title: e.target.value || undefined })}
+              className={`${inputClass()} w-full py-1 text-xs`}
+            />
+          </MiniField>
+          <MiniField label="Width" hint={`Columns of 4 · default ${fallbackSpan}`}>
+            <SpanPicker span={span} fallback={fallbackSpan} onChange={s => onChange({ span: s })} />
+          </MiniField>
+          <div className="md:col-span-2">
+            <MiniField label="Text" hint={`Plain text; a blank line starts a new paragraph · ${(widget.text ?? '').length}/${MAX_TEXT}`}>
+              <textarea
+                aria-label="Widget text"
+                aria-invalid={Boolean(error)}
+                value={widget.text ?? ''}
+                rows={4}
+                maxLength={MAX_TEXT}
+                placeholder="e.g. How the team triages new tickets, who to call, links to the runbook…"
+                onChange={e => onChange({ text: e.target.value || undefined })}
+                className={`${inputClass(error)} w-full py-1 text-xs`}
+              />
+            </MiniField>
+          </div>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 gap-x-4 gap-y-2 md:grid-cols-2" data-widget-options>
         <fieldset className="min-w-0 space-y-1.5">
           <legend className="text-[10px] font-semibold uppercase tracking-wider text-secondary/80">Data</legend>
@@ -1147,8 +1186,8 @@ function WidgetCard({ widget, wi, count, entities, dateRange, errors, atCap, dnd
                 onChange={name => onRetarget({ entity: name })}
               />
             </MiniField>
-            {widget.kind === 'bar' && (
-              <MiniField label="Group by" hint="One bar per value">
+            {(widget.kind === 'bar' || widget.kind === 'donut' || widget.kind === 'stacked') && (
+              <MiniField label="Group by" hint={widget.kind === 'donut' ? 'One slice per value' : 'One bar per value'}>
                 <select
                   aria-label="Group by"
                   value={widget.groupBy ?? ''}
@@ -1159,6 +1198,24 @@ function WidgetCard({ widget, wi, count, entities, dateRange, errors, atCap, dnd
                   {groupableFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
                   {widget.groupBy && !groupableFields(entity).some(f => f.name === widget.groupBy) && (
                     <option value={widget.groupBy}>{widget.groupBy}</option>
+                  )}
+                </select>
+              </MiniField>
+            )}
+            {widget.kind === 'stacked' && (
+              <MiniField label="Split by" hint="Each bar's segments">
+                <select
+                  aria-label="Split by"
+                  value={widget.series ?? ''}
+                  onChange={e => onChange({ series: e.target.value || undefined })}
+                  className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                >
+                  <option value="">{defaultOptionLabel(defaultSeries(entity, widget.groupBy ?? defaultBarGroupBy(entity)), 'second enum or boolean')}</option>
+                  {groupableFields(entity).filter(f => f.name !== (widget.groupBy ?? defaultBarGroupBy(entity))).map(f => (
+                    <option key={f.name} value={f.name}>{f.name}</option>
+                  ))}
+                  {widget.series && !groupableFields(entity).some(f => f.name === widget.series) && (
+                    <option value={widget.series}>{widget.series}</option>
                   )}
                 </select>
               </MiniField>
@@ -1253,21 +1310,7 @@ function WidgetCard({ widget, wi, count, entities, dateRange, errors, atCap, dnd
               />
             </MiniField>
             <MiniField label="Width" hint={`Columns of 4 · default ${fallbackSpan}`}>
-              <div role="radiogroup" aria-label="Widget width" className="inline-flex overflow-hidden rounded border border-outline-variant">
-                {Array.from({ length: MAX_SPAN }, (_, i) => i + 1).map(n => (
-                  <button
-                    key={n}
-                    type="button"
-                    role="radio"
-                    aria-checked={span === n}
-                    aria-label={`${n} column${n === 1 ? '' : 's'}${n === fallbackSpan ? ' (default)' : ''}`}
-                    onClick={() => onChange({ span: n === fallbackSpan ? undefined : n })}
-                    className={`px-2 py-0.5 text-xs ${span === n ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5'}`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
+              <SpanPicker span={span} fallback={fallbackSpan} onChange={s => onChange({ span: s })} />
             </MiniField>
             {(widget.kind === 'recent' || widget.kind === 'top') && (
               <MiniField label="Rows" hint={`1–${MAX_RECENT_LIMIT}`}>
@@ -1327,12 +1370,34 @@ function WidgetCard({ widget, wi, count, entities, dateRange, errors, atCap, dnd
           />
         </div>
       </div>
+      )}
       {error && <p className="text-[11px] text-error">{error}</p>}
     </div>
   )
 }
 
 const AGG_HINT = 'Count the rows, or sum / average / min / max a number column'
+
+/** A widget's width on the four-column grid; its kind's default is stored as nothing. */
+function SpanPicker({ span, fallback, onChange }: { span: number; fallback: number; onChange: (span: number | undefined) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Widget width" className="inline-flex overflow-hidden rounded border border-outline-variant">
+      {Array.from({ length: MAX_SPAN }, (_, i) => i + 1).map(n => (
+        <button
+          key={n}
+          type="button"
+          role="radio"
+          aria-checked={span === n}
+          aria-label={`${n} column${n === 1 ? '' : 's'}${n === fallback ? ' (default)' : ''}`}
+          onClick={() => onChange(n === fallback ? undefined : n)}
+          className={`px-2 py-0.5 text-xs ${span === n ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5'}`}
+        >
+          {n}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 /** A small labelled control inside a widget card. */
 function MiniField({ label, hint, grow, children }: { label: string; hint?: string; grow?: boolean; children: ReactNode }) {
@@ -1691,13 +1756,17 @@ function RecordForm({ page, index, entities, errors, update, lossy, dnd }: FormP
   const entity = entities.find(e => e.name === page.entity)
   const related = entities.filter(e => relationsTo(e, page.entity).length > 0).map(e => e.name)
   // Omitted childTabs means "every related list" — the same default the generator applies.
-  const selected = page.childTabs ?? related
+  const tabs = page.childTabs ?? related
+  const selected = tabs.map(childTabEntity)
   const ordered = [...selected, ...related.filter(n => !selected.includes(n))]
 
   function toggle(name: string) {
     update(index, {
-      childTabs: selected.includes(name) ? selected.filter(n => n !== name) : [...selected, name],
+      childTabs: selected.includes(name) ? tabs.filter(t => childTabEntity(t) !== name) : [...tabs, name],
     })
+  }
+  function setVia(name: string, via: string) {
+    update(index, { childTabs: tabs.map(t => (childTabEntity(t) === name ? childTab(name, via || undefined) : t)) })
   }
 
   return (
@@ -1734,7 +1803,7 @@ function RecordForm({ page, index, entities, errors, update, lossy, dnd }: FormP
                       label={`the ${name} tab`}
                       canUp={at > 0}
                       canDown={at < selected.length - 1}
-                      onMove={delta => update(index, { childTabs: moveItem(selected, at, at + delta) })}
+                      onMove={delta => update(index, { childTabs: moveItem(tabs, at, at + delta) })}
                     />
                   ) : <span className="w-[14px]" />}
                   <label className="inline-flex items-center gap-1.5 text-[11px] text-on-surface">
@@ -1746,6 +1815,16 @@ function RecordForm({ page, index, entities, errors, update, lossy, dnd }: FormP
                     />
                     {name}
                   </label>
+                  {on && (
+                    <ViaSelect
+                      label={`Link ${name} through`}
+                      relations={relationsTo(entities.find(e => e.name === name), page.entity)}
+                      value={childTabVia(tabs[at])}
+                      error={errors[`childTab.${at}`]}
+                      onChange={via => setVia(name, via)}
+                    />
+                  )}
+                  {on && errors[`childTab.${at}`] && <span className="text-[11px] text-error">{errors[`childTab.${at}`]}</span>}
                 </li>
               )
             })}
@@ -1799,6 +1878,13 @@ function HeaderStatsFields({ page, index, entities, errors, update }: FormProps)
               error={error}
               className="max-w-[10rem]"
               onChange={name => set(stats.map((x, i) => (i === si ? { child: name } : x)))}
+            />
+            <ViaSelect
+              label="Link the tile through"
+              relations={relationsTo(child, page.entity)}
+              value={s.via}
+              error={error}
+              onChange={via => set(stats.map((x, i) => (i === si ? { ...x, via: via || undefined } : x)))}
             />
             <AggFields
               agg={s.agg}
@@ -2047,6 +2133,32 @@ function Field({ label, error, hint, control, children }: { label: string; error
       {children}
       {error ? <p className="text-[11px] text-error">{error}</p> : hint ? <p className="text-[10px] text-secondary">{hint}</p> : null}
     </div>
+  )
+}
+
+/** Which of a child's several relations to the record entity links them — shown only when there
+ *  is a choice. The default (blank) is the first relation, as the generator picks it. */
+function ViaSelect({ label, relations, value, error, onChange }: {
+  label: string
+  relations: string[]
+  value: string | undefined
+  error?: string
+  onChange: (via: string) => void
+}) {
+  if (relations.length < 2 && !value) return null
+  return (
+    <select
+      aria-label={label}
+      title="Which relation links these rows to the record"
+      aria-invalid={Boolean(error)}
+      value={value ?? ''}
+      onChange={e => onChange(e.target.value)}
+      className={`${inputClass(error)} max-w-[10rem] py-0.5 text-[11px]`}
+    >
+      <option value="">via {relations[0] ?? '?'} (default)</option>
+      {relations.slice(1).map(r => <option key={r} value={r}>via {r}</option>)}
+      {value && !relations.includes(value) && <option value={value}>via {value}</option>}
+    </select>
   )
 }
 

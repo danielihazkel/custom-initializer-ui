@@ -1,6 +1,7 @@
 import type {
   FullstackAgg,
   FullstackChartDef,
+  FullstackChildTabDef,
   FullstackDateRange,
   FullstackEntityDef,
   FullstackFieldDef,
@@ -31,6 +32,7 @@ export const MAX_CHARTS = 4
 export const MAX_STEPS = 8
 export const DEFAULT_STEP_SIZE = 4
 export const MAX_HEADER_STATS = 4
+export const MAX_TEXT = 2000
 
 /** What a wizard step can ask for: every field but a generated key, then the MANY_TO_ONE
  *  relations (by field name) — what the entity's form shows. */
@@ -88,7 +90,12 @@ export const DATE_RANGES: { value: FullstackDateRange; label: string }[] = [
 
 /** Grid columns a widget takes when it names none: a tile one, a chart or list two. */
 export function defaultSpan(kind: FullstackWidgetDef['kind']): number {
-  return kind === 'kpi' ? 1 : 2
+  return kind === 'kpi' || kind === 'progress' ? 1 : 2
+}
+
+/** What a stacked chart splits by when no series is named: the next enum/boolean after `groupBy`. */
+export function defaultSeries(entity: FullstackEntityDef | undefined, groupBy: string | undefined): string | undefined {
+  return groupableFields(entity).find(f => f.name !== groupBy)?.name
 }
 
 /** The nav icons a page may pick (the generated app draws the lucide icon; the editor shows the
@@ -192,6 +199,21 @@ export function numericFields(entity: FullstackEntityDef | undefined): Fullstack
 /** What a report can group by: an enum/boolean draws bars, a date draws a line. */
 export function chartableFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
   return [...groupableFields(entity), ...dateFields(entity)]
+}
+
+/** The entity a record page's tab lists. */
+export function childTabEntity(tab: FullstackChildTabDef): string {
+  return typeof tab === 'string' ? tab : tab.entity
+}
+
+/** The relation a record page's tab links through, when one is named. */
+export function childTabVia(tab: FullstackChildTabDef): string | undefined {
+  return typeof tab === 'string' ? undefined : tab.via
+}
+
+/** A tab entry in its shortest spelling: the bare entity unless a relation is named. */
+export function childTab(entity: string, via?: string): FullstackChildTabDef {
+  return via ? { entity, via } : entity
 }
 
 /** The child's MANY_TO_ONE fields pointing at `parent`, in declaration order. */
@@ -344,13 +366,32 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
         if (widgets.length === 0) add('widgets', 'needs at least one widget')
         if (widgets.length > MAX_WIDGETS) add('widgets', `has more than ${MAX_WIDGETS} widgets`)
         widgets.forEach((w, wi) => {
+          if (w.kind === 'text') {
+            if (!w.text?.trim()) add(`widget.${wi}`, 'needs some text', `${where} has an empty text widget`)
+            else if (w.text.length > MAX_TEXT) add(`widget.${wi}`, `is longer than ${MAX_TEXT} characters`, `${where} has a text widget over ${MAX_TEXT} characters`)
+            return
+          }
           const e = entityOf(w.entity)
           if (!e) {
             add(`widget.${wi}`, w.entity ? `“${w.entity}” is no longer an entity` : 'needs an entity',
               `${where} has a widget for “${w.entity}”, which is no longer an entity`)
             return
           }
-          if (w.kind === 'bar') {
+          if (w.series && w.kind !== 'stacked') {
+            add(`widget.${wi}`, 'only a stacked chart takes a series', `${where} splits a ${w.kind} widget by a series`)
+          }
+          if (w.kind === 'stacked') {
+            const by = w.groupBy ?? defaultBarGroupBy(e)
+            const series = w.series ?? defaultSeries(e, by)
+            if (w.series && !groupableFields(e).some(f => f.name === w.series)) {
+              add(`widget.${wi}`, `${e.name} has no enum or boolean field “${w.series}”`,
+                `${where} splits ${e.name} by “${w.series}”, which it no longer has`)
+            } else if (!series || series === by) {
+              add(`widget.${wi}`, 'needs a second enum or boolean field to split by',
+                `${where} has a stacked chart of ${e.name}, which has no second enum or boolean field to split by`)
+            }
+          }
+          if (w.kind === 'bar' || w.kind === 'donut' || w.kind === 'stacked') {
             const groupable = groupableFields(e)
             if (w.groupBy && !groupable.some(f => f.name === w.groupBy)) {
               add(`widget.${wi}`, `${e.name} has no enum or boolean field “${w.groupBy}”`,
@@ -547,7 +588,9 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
         recordEntities.set(e.name, page.id)
         const seenChildren = new Set<string>()
         const childTabs = page.childTabs ?? []
-        childTabs.forEach((name, ci) => {
+        childTabs.forEach((tab, ci) => {
+          const name = childTabEntity(tab)
+          const via = childTabVia(tab)
           const child = entityOf(name)
           if (!child) {
             add(`childTab.${ci}`, `“${name}” is no longer an entity`,
@@ -557,6 +600,9 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
               `${where} has a tab for ${child.name}, which has no relation to ${e.name}`)
           } else if (seenChildren.has(child.name)) {
             add(`childTab.${ci}`, 'is already a tab', `${where} has ${child.name} as a tab twice`)
+          } else if (via && !relationsTo(child, e.name).includes(via)) {
+            add(`childTab.${ci}`, `${child.name} has no relation “${via}” to ${e.name}`,
+              `${where} links ${child.name} through “${via}”, which is not one of its relations to ${e.name}`)
           }
           if (child) seenChildren.add(child.name)
         })
@@ -571,6 +617,9 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
           } else if (relationsTo(child, e.name).length === 0) {
             add(`headerStat.${si}`, `${child.name} has no relation to ${e.name}`,
               `${where} has a header tile for ${child.name}, which has no relation to ${e.name}`)
+          } else if (s.via && !relationsTo(child, e.name).includes(s.via)) {
+            add(`headerStat.${si}`, `${child.name} has no relation “${s.via}” to ${e.name}`,
+              `${where} has a header tile linked through “${s.via}”, which is not a relation of ${child.name} to ${e.name}`)
           } else {
             for (const issue of aggIssues(s.agg, s.field, child, false)) {
               add(`headerStat.${si}`, issue.message, `${where} has a header tile that ${issue.summary}`)
@@ -631,15 +680,18 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       return filter ? `${page.entity} list · filtered on ${filter}` : `${page.entity} list`
     }
     case 'dashboard': {
-      const counts = { kpi: 0, bar: 0, line: 0, recent: 0, top: 0, progress: 0 }
+      const counts = { kpi: 0, bar: 0, donut: 0, stacked: 0, line: 0, recent: 0, top: 0, progress: 0, text: 0 }
       for (const w of page.widgets ?? []) if (w.kind in counts) counts[w.kind]++
       const parts = [
         counts.kpi && `${counts.kpi} tile${counts.kpi === 1 ? '' : 's'}`,
         counts.progress && `${counts.progress} target${counts.progress === 1 ? '' : 's'}`,
         counts.bar && `${counts.bar} breakdown chart${counts.bar === 1 ? '' : 's'}`,
+        counts.donut && `${counts.donut} donut${counts.donut === 1 ? '' : 's'}`,
+        counts.stacked && `${counts.stacked} stacked chart${counts.stacked === 1 ? '' : 's'}`,
         counts.line && `${counts.line} trend${counts.line === 1 ? '' : 's'}`,
         counts.top && `${counts.top} top list${counts.top === 1 ? '' : 's'}`,
         counts.recent && `${counts.recent} recent list${counts.recent === 1 ? '' : 's'}`,
+        counts.text && `${counts.text} note${counts.text === 1 ? '' : 's'}`,
       ].filter(Boolean)
       return parts.join(' · ') || 'No widgets'
     }
@@ -663,7 +715,8 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
     }
     case 'record': {
       const tabs = page.childTabs
-      const related = tabs == null ? 'its related lists' : tabs.length === 0 ? 'no related lists' : tabs.join(', ')
+      const related = tabs == null ? 'its related lists' : tabs.length === 0 ? 'no related lists'
+        : tabs.map(tab => (childTabVia(tab) ? `${childTabEntity(tab)} (${childTabVia(tab)})` : childTabEntity(tab))).join(', ')
       return `One ${page.entity ?? '?'} · ${related}`
     }
   }
@@ -730,7 +783,7 @@ export function renameEntityInPages(pages: FullstackPageDef[], from: string, to:
     if (same(next.parent)) next.parent = to
     if (same(next.child)) next.child = to
     if (next.widgets) next.widgets = next.widgets.map(w => (same(w.entity) ? { ...w, entity: to } : w))
-    if (next.childTabs) next.childTabs = next.childTabs.map(name => (same(name) ? to : name))
+    if (next.childTabs) next.childTabs = next.childTabs.map(tab => (same(childTabEntity(tab)) ? childTab(to, childTabVia(tab)) : tab))
     if (next.headerStats) next.headerStats = next.headerStats.map(s => (same(s.child) ? { ...s, child: to } : s))
     return next
   })
@@ -755,6 +808,7 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
         if (patched.field === from) patched.field = to
         if (patched.sortBy === from) patched.sortBy = to
         if (patched.dateField === from) patched.dateField = to
+        if (patched.series === from) patched.series = to
         if (patched.presetFilter && from in patched.presetFilter) {
           const filter: Record<string, string> = {}
           for (const [k, v] of Object.entries(patched.presetFilter)) filter[k === from ? to : k] = v
@@ -860,6 +914,15 @@ export function renameRelationInPages(pages: FullstackPageDef[], child: string, 
     if (page.type === 'dashboard' && page.widgets?.some(w => w.kind === 'top' && isChild(w.entity) && w.groupBy === from)) {
       changed = true
       return { ...page, widgets: page.widgets.map(w => (w.kind === 'top' && isChild(w.entity) && w.groupBy === from ? { ...w, groupBy: to } : w)) }
+    }
+    if (page.type === 'record' && (page.childTabs?.some(t => isChild(childTabEntity(t)) && childTabVia(t) === from)
+      || page.headerStats?.some(s => isChild(s.child) && s.via === from))) {
+      changed = true
+      return {
+        ...page,
+        childTabs: page.childTabs?.map(t => (isChild(childTabEntity(t)) && childTabVia(t) === from ? childTab(childTabEntity(t), to) : t)),
+        headerStats: page.headerStats?.map(s => (isChild(s.child) && s.via === from ? { ...s, via: to } : s)),
+      }
     }
     if (page.type !== 'master-detail' || !isChild(page.child) || page.via !== from) return page
     changed = true
@@ -1049,14 +1112,23 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     if (keys.some(k => next[k] != null)) dropped.push(label)
     for (const k of keys) delete next[k]
   }
+  if (kind === 'text') {
+    const kept: FullstackWidgetDef = { kind, entity: '', ...(next.title ? { title: next.title } : {}), ...(next.text ? { text: next.text } : {}) }
+    if (next.span != null && next.span !== defaultSpan(kind)) kept.span = next.span
+    const lost = (['groupBy', 'agg', 'limit', 'sortBy', 'compare', 'target', 'presetFilter', 'dateField', 'series'] as const)
+      .filter(k => next[k] != null)
+    return { widget: kept, dropped: lost.length ? ['data settings'] : [] }
+  }
+  if (next.text != null) drop(['text'], 'text')
   if (next.groupBy != null) {
-    const fits = kind === 'bar' ? groupableFields(entity).some(f => f.name === next.groupBy)
+    const fits = kind === 'bar' || kind === 'donut' || kind === 'stacked' ? groupableFields(entity).some(f => f.name === next.groupBy)
       : kind === 'line' ? dateFields(entity).some(f => f.name === next.groupBy)
         : kind === 'top' ? rankableKeys(entity).includes(next.groupBy)
           : false
     if (!fits) drop(['groupBy'], 'group by')
   }
   if (kind !== 'line') drop(['bucket'], 'bucket')
+  if (next.series != null && (kind !== 'stacked' || !groupableFields(entity).some(f => f.name === next.series))) drop(['series'], 'split by')
   if (kind === 'recent') drop(['agg', 'field'], 'aggregate')
   else if (next.field != null && !numericFields(entity).some(f => f.name === next.field)) drop(['agg', 'field'], 'aggregate')
   if (kind !== 'recent' && kind !== 'top') drop(['limit'], 'row limit')

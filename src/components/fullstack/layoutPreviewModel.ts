@@ -9,11 +9,13 @@ import {
   reportCharts,
   NAV_ICONS,
   defaultBarGroupBy,
+  defaultSeries,
   defaultLineGroupBy,
   defaultReportGroupBy,
   dateFields,
   navSections,
   relationsTo,
+  childTabEntity,
 } from './pageLayout'
 import { buildUiPreview, fieldLabel } from './uiPreview'
 
@@ -56,6 +58,9 @@ export type PreviewWidget = WidgetBase & (
   | { kind: 'progress'; value: string; target: string; percent: number }
   | { kind: 'top'; rows: PreviewBar[] }
   | { kind: 'bar'; bars: PreviewBar[] }
+  | { kind: 'donut'; bars: PreviewBar[] }
+  | { kind: 'stacked'; rows: { label: string; parts: number[] }[]; series: string[] }
+  | { kind: 'text'; paragraphs: string[] }
   | { kind: 'line'; points: PreviewBar[] }
   | { kind: 'recent'; rows: string[] }
   | { kind: 'broken'; message: string }
@@ -131,7 +136,7 @@ export interface LayoutPreview {
 
 const STRINGS = {
   en: {
-    dashboard: 'Dashboard', xByY: '{x} by {y}', recentX: 'Recent {x}', xOverTime: '{x} over time',
+    dashboard: 'Dashboard', xByY: '{x} by {y}', xByYAndZ: '{x} by {y} and {z}', recentX: 'Recent {x}', xOverTime: '{x} over time',
     xReport: '{x} report', total: 'Total', aggSum: 'Total {x}', aggAvg: 'Average {x}', aggMin: 'Lowest {x}',
     aggMax: 'Highest {x}', viewAll: 'View all', back: 'Back', exportCsv: 'Export CSV', newX: 'New {x}',
     xDetails: '{x} details', search: 'Search…', filters: 'Filters', trueLabel: 'True', falseLabel: 'False',
@@ -140,7 +145,7 @@ const STRINGS = {
     period30d: 'Last 30 days', period90d: 'Last 90 days', periodYtd: 'This year', period12m: 'Last 12 months',
   },
   he: {
-    dashboard: 'לוח בקרה', xByY: '{x} לפי {y}', recentX: '{x} – אחרונים', xOverTime: '{x} לאורך זמן',
+    dashboard: 'לוח בקרה', xByY: '{x} לפי {y}', xByYAndZ: '{x} לפי {y} ו{z}', recentX: '{x} – אחרונים', xOverTime: '{x} לאורך זמן',
     xReport: 'דוח {x}', total: 'סך הכול', aggSum: 'סך {x}', aggAvg: '{x} ממוצע', aggMin: '{x} מינימלי',
     aggMax: '{x} מקסימלי', viewAll: 'הצג הכל', back: 'חזרה', exportCsv: 'ייצוא ל-CSV', newX: '{x} חדש',
     xDetails: 'פרטי {x}', search: 'חיפוש…', filters: 'מסננים', trueLabel: 'כן', falseLabel: 'לא',
@@ -336,6 +341,16 @@ export function buildLayoutPreview(
     switch (page.type) {
       case 'dashboard': {
         const widgets: PreviewWidget[] = (page.widgets ?? []).map((w, wi): PreviewWidget => {
+          if (w.kind === 'text') {
+            return {
+              index: wi,
+              span: Math.min(Math.max(w.span ?? defaultSpan(w.kind), 1), 4),
+              filters: [],
+              kind: 'text',
+              title: w.title ?? '',
+              paragraphs: (w.text ?? '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean),
+            }
+          }
           const e = entityOf(w.entity)
           const seed = `${seedBase}:${wi}:${w.kind}:${w.entity}:${w.groupBy ?? ''}:${w.agg ?? ''}:${w.field ?? ''}`
           const base = {
@@ -393,13 +408,35 @@ export function buildLayoutPreview(
                 rows: rows.sort((a, b) => b.value - a.value),
               }
             }
-            case 'bar': {
+            case 'bar':
+            case 'donut': {
               const group = fieldOf(e, w.groupBy ?? defaultBarGroupBy(e))
               if (!group) return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} has nothing to group by` }
               return {
-                ...base, kind: 'bar',
+                ...base, kind: w.kind,
                 title: w.title || t('xByY', { x: measured, y: fieldLabel(group) }),
                 bars: breakdown(group, w.agg, valueField, seed),
+              }
+            }
+            case 'stacked': {
+              const by = w.groupBy ?? defaultBarGroupBy(e)
+              const group = fieldOf(e, by)
+              const split = fieldOf(e, w.series ?? defaultSeries(e, by))
+              if (!group || !split || group === split) {
+                return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} needs two enum or boolean fields` }
+              }
+              const seriesLabels = breakdown(split, undefined, undefined, `${seed}:series`).map(b => b.label)
+              const rows = breakdown(group, w.agg, valueField, seed).map((b, ri) => {
+                const rand = seeded(`${seed}:${ri}`)
+                const weights = seriesLabels.map(() => 0.2 + rand())
+                const sum = weights.reduce((a, x) => a + x, 0)
+                return { label: b.label, parts: weights.map(x => (b.value * x) / sum) }
+              })
+              return {
+                ...base, kind: 'stacked',
+                title: w.title || t('xByYAndZ', { x: measured, y: fieldLabel(group), z: fieldLabel(split) }),
+                rows,
+                series: seriesLabels,
               }
             }
             case 'line': {
@@ -462,7 +499,7 @@ export function buildLayoutPreview(
         const e = entityOf(page.entity)
         if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
         const { singular } = labels(e)
-        const related = page.childTabs ?? named.filter(c => relationsTo(c, e.name).length > 0).map(c => c.name).slice(0, 5)
+        const related = page.childTabs?.map(childTabEntity) ?? named.filter(c => relationsTo(c, e.name).length > 0).map(c => c.name).slice(0, 5)
         const home = pages.find(p => !p.hidden && ((p.type === 'entity-list' && sameName(p.entity, e.name))
           || (p.type === 'master-detail' && (sameName(p.parent, e.name) || sameName(p.child, e.name)))))
         return {

@@ -426,6 +426,31 @@ function Widget({ widget, accent, viewAll, onEdit }: { widget: PreviewWidget; ac
           </ol>
         )}
         {widget.kind === 'bar' && <Bars bars={widget.bars.slice(0, 4)} accent={accent} />}
+        {widget.kind === 'donut' && <Donut bars={widget.bars} accent={accent} />}
+        {widget.kind === 'stacked' && (
+          <div className="mt-0.5 space-y-0.5" data-preview-stacked>
+            {widget.rows.slice(0, 4).map(row => {
+              const max = Math.max(1, ...widget.rows.map(r => r.parts.reduce((a, b) => a + b, 0)))
+              return (
+                <div key={row.label} className="flex items-center gap-1">
+                  <span className="w-12 shrink-0 truncate text-[9px] text-secondary">{row.label}</span>
+                  <span className="flex h-1.5 flex-1 overflow-hidden rounded-full">
+                    {row.parts.map((v, i) => (
+                      <span key={i} style={{ width: `${(v / max) * 100}%`, background: accent, opacity: 1 - (i % 4) * 0.22 }} />
+                    ))}
+                  </span>
+                </div>
+              )
+            })}
+            <p className="truncate text-[8px] text-secondary">{widget.series.join(' · ')}</p>
+          </div>
+        )}
+        {widget.kind === 'text' && (
+          <div className="mt-0.5 space-y-0.5" data-preview-text>
+            {widget.paragraphs.slice(0, 3).map((p, i) => <p key={i} className="line-clamp-2 text-[9px] text-on-surface">{p}</p>)}
+            {widget.paragraphs.length === 0 && <p className="text-[9px] text-secondary">Empty note</p>}
+          </div>
+        )}
         {widget.kind === 'line' && <LineChart points={widget.points} accent={accent} />}
         {widget.kind === 'recent' && (
           <ul className="mt-0.5 space-y-0.5">
@@ -436,6 +461,32 @@ function Widget({ widget, accent, viewAll, onEdit }: { widget: PreviewWidget; ac
         {widget.kind === 'broken' && <p className="text-[10px] text-error">{widget.message}</p>}
       </div>
     </Editable>
+  )
+}
+
+/** A small ring of shares, shaded from the accent. */
+function Donut({ bars, accent }: { bars: PreviewBar[]; accent: string }) {
+  const total = bars.reduce((a, b) => a + b.value, 0) || 1
+  const c = 2 * Math.PI * 14
+  let offset = 0
+  return (
+    <div className="mt-0.5 flex items-center gap-1.5" data-preview-donut>
+      <svg viewBox="0 0 36 36" className="h-9 w-9 shrink-0 -rotate-90" aria-hidden="true">
+        <circle cx={18} cy={18} r={14} fill="none" strokeWidth={6} className="stroke-surface-container" />
+        {bars.map((b, i) => {
+          const length = (b.value / total) * c
+          const arc = (
+            <circle key={b.label} cx={18} cy={18} r={14} fill="none" strokeWidth={6} stroke={accent}
+              strokeOpacity={1 - (i % 5) * 0.18} strokeDasharray={`${length} ${c - length}`} strokeDashoffset={-offset} />
+          )
+          offset += length
+          return arc
+        })}
+      </svg>
+      <ul className="min-w-0 space-y-0.5">
+        {bars.slice(0, 3).map(b => <li key={b.label} className="truncate text-[9px] text-secondary">{b.label}</li>)}
+      </ul>
+    </div>
   )
 }
 

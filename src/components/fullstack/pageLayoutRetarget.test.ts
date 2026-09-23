@@ -86,3 +86,17 @@ describe('pageOfServerError', () => {
     expect(pageOfServerError('Entity Order has no primary key', pages)).toBeNull()
   })
 })
+
+describe('the donut, stacked and text widgets', () => {
+  it('keeps a breakdown’s group when it becomes a donut or a stacked chart', () => {
+    const { widget, dropped } = retargetWidget({ kind: 'bar', entity: 'Order', groupBy: 'status' }, { kind: 'stacked' }, order)
+    expect(widget).toEqual({ kind: 'stacked', entity: 'Order', groupBy: 'status' })
+    expect(dropped).toEqual([])
+  })
+
+  it('drops the data settings when a widget becomes a text note', () => {
+    const { widget, dropped } = retargetWidget({ kind: 'bar', entity: 'Order', groupBy: 'status', title: 'Mix' }, { kind: 'text' }, order)
+    expect(widget).toEqual({ kind: 'text', entity: '', title: 'Mix' })
+    expect(dropped).toEqual(['data settings'])
+  })
+})

@@ -524,7 +524,8 @@ export type FullstackDateRange = 'all' | '7d' | '30d' | '90d' | 'ytd' | '12m'
 /** A dashboard widget: one number, a breakdown by an enum/boolean field, a time series over a
  *  date field, the latest rows, the largest groups ranked, or one number against a target. */
 export interface FullstackWidgetDef {
-  kind: 'kpi' | 'bar' | 'line' | 'recent' | 'top' | 'progress'
+  kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'line' | 'recent' | 'top' | 'progress' | 'text'
+  /** The entity the widget reads — empty for a text widget. */
   entity: string
   title?: string
   /** bar: the enum/boolean field; line: the date field. Defaults to the entity's first of that kind. */
@@ -549,6 +550,10 @@ export interface FullstackWidgetDef {
   compare?: boolean
   /** progress: the value the bar fills up to (a positive number, as written). */
   target?: string
+  /** stacked: the enum/boolean field each bar is split by (default: the entity's next one). */
+  series?: string
+  /** text: the note itself; a blank line starts a new paragraph. */
+  text?: string
 }
 
 /** A report page's single chart: bars when `groupBy` is an enum/boolean, a line when it is a date. */
@@ -558,6 +563,10 @@ export interface FullstackChartDef {
   agg?: FullstackAgg
   field?: string
 }
+
+/** A record page's related-list tab: the entity, or `{ entity, via }` to pick which of its
+ *  relations to the record entity links them (default: the first). */
+export type FullstackChildTabDef = string | { entity: string; via?: string }
 
 /** One page of the generated frontend (the `pages` of a fullstack request). */
 export interface FullstackPageDef {
@@ -592,7 +601,7 @@ export interface FullstackPageDef {
   via?: string
   /** record: the related entities shown as tabs under the record. Omitted = every entity with a
    *  MANY_TO_ONE to it; an empty array = none. */
-  childTabs?: string[]
+  childTabs?: FullstackChildTabDef[]
   /** report: its chart when it has one (its entity and opening filters are the shared `entity` /
    *  `presetFilter`). */
   chart?: FullstackChartDef
@@ -603,7 +612,7 @@ export interface FullstackPageDef {
   steps?: { title?: string; fields: string[] }[]
   /** record: number tiles over its related lists (default: one row count per related tab;
    *  an empty array: none). */
-  headerStats?: { child: string; agg?: FullstackAgg; field?: string; title?: string }[]
+  headerStats?: { child: string; agg?: FullstackAgg; field?: string; title?: string; via?: string }[]
 }
 
 /** The editor state an example sets on load — FullstackExampleAdminController.validateSettings. */
