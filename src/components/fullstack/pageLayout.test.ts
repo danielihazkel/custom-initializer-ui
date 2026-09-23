@@ -46,7 +46,7 @@ describe('describePage / pageLabel', () => {
       { id: 'open', type: 'entity-list', entity: 'Ticket', title: 'Open tickets' },
       { id: 'q', type: 'tabs', title: 'Queue', tabs: [{ page: 'open' }, { title: 'Overview', page: 'home' }] },
     ]
-    expect(describePage(pages[0], pages)).toBe('2 count tiles · 1 recent list')
+    expect(describePage(pages[0], pages)).toBe('2 tiles · 1 recent list')
     expect(describePage(pages[1], pages)).toBe('Ticket list')
     expect(describePage(pages[2], pages)).toBe('Open tickets | Overview')
     expect(pages.map(pageLabel)).toEqual(['Dashboard', 'Open tickets', 'Queue'])
@@ -163,10 +163,94 @@ describe('seedLayout / renames / slugs', () => {
     expect(renamed[1].presetFilter).toEqual({ state: 'OPEN' })
   })
 
+  it('follows a field rename into widget and chart aggregates', () => {
+    const pages: FullstackPageDef[] = [
+      { id: 'home', type: 'dashboard', widgets: [
+        { kind: 'kpi', entity: 'Sale', agg: 'sum', field: 'amount' },
+        { kind: 'line', entity: 'Sale', groupBy: 'soldOn', agg: 'sum', field: 'amount' },
+      ] },
+      { id: 'rev', type: 'report', entity: 'Sale', chart: { groupBy: 'soldOn', agg: 'sum', field: 'amount' } },
+    ]
+    const renamed = renameFieldInPages(pages, 'Sale', 'amount', 'total')
+    expect(renamed[0].widgets?.map(w => w.field)).toEqual(['total', 'total'])
+    expect(renamed[1].chart).toEqual({ groupBy: 'soldOn', agg: 'sum', field: 'total' })
+
+    const byDate = renameFieldInPages(pages, 'Sale', 'soldOn', 'closedOn')
+    expect(byDate[0].widgets?.[1].groupBy).toBe('closedOn')
+    expect(byDate[1].chart?.groupBy).toBe('closedOn')
+  })
+
   it('slugifies titles and keeps page ids unique', () => {
     expect(slugify('Order lines!')).toBe('order-lines')
     expect(slugify('  42 ')).toBe('')
     expect(uniquePageId('orders', ['orders', 'orders-2'])).toBe('orders-3')
     expect(uniquePageId('', [])).toBe('page')
+  })
+})
+
+const sales: FullstackEntityDef[] = [
+  {
+    name: 'Sale',
+    fields: [
+      { name: 'id', type: 'LONG', primaryKey: true },
+      { name: 'reference', type: 'STRING' },
+      { name: 'region', type: 'ENUM', enumValues: ['NORTH', 'SOUTH'] },
+      { name: 'amount', type: 'BIG_DECIMAL' },
+      { name: 'soldOn', type: 'LOCAL_DATE' },
+    ],
+  },
+]
+
+describe('aggregate widgets and report pages', () => {
+  const ok = (pages: FullstackPageDef[]) => pageLayoutProblems(pages, sales)
+
+  it('accepts the aggregate tiles, a trend and a report the generator would', () => {
+    expect(ok([
+      { id: 'home', type: 'dashboard', widgets: [
+        { kind: 'kpi', entity: 'Sale' },
+        { kind: 'kpi', entity: 'Sale', agg: 'sum', field: 'amount' },
+        { kind: 'bar', entity: 'Sale', groupBy: 'region', agg: 'avg', field: 'amount' },
+        { kind: 'line', entity: 'Sale', groupBy: 'soldOn', bucket: 'month', agg: 'sum', field: 'amount' },
+      ] },
+      { id: 'rev', type: 'report', entity: 'Sale', chart: { groupBy: 'region', agg: 'sum', field: 'amount' } },
+    ])).toEqual([])
+  })
+
+  it('mirrors the backend on aggregates that name no numeric field, or a field a count cannot take', () => {
+    expect(ok([{ id: 'h', type: 'dashboard', title: 'H', widgets: [{ kind: 'kpi', entity: 'Sale', agg: 'sum' }] }]))
+      .toEqual(['Page “H” reduces Sale with sum but names no numeric field'])
+    expect(ok([{ id: 'h', type: 'dashboard', title: 'H', widgets: [{ kind: 'kpi', entity: 'Sale', agg: 'sum', field: 'reference' }] }]))
+      .toEqual(['Page “H” reduces “reference”, which is not a numeric field of Sale'])
+    expect(ok([{ id: 'h', type: 'dashboard', title: 'H', widgets: [{ kind: 'kpi', entity: 'Sale', field: 'amount' }] }]))
+      .toEqual(['Page “H” counts rows, so it takes no field'])
+    expect(ok([{ id: 'h', type: 'dashboard', title: 'H', widgets: [{ kind: 'recent', entity: 'Sale', agg: 'sum', field: 'amount' }] }]))
+      .toContain('Page “H” asks a recent list for an aggregate')
+  })
+
+  it('wants a date field for a trend, and a bucket only on one', () => {
+    expect(ok([{ id: 'h', type: 'dashboard', title: 'H', widgets: [{ kind: 'line', entity: 'Sale', groupBy: 'region' }] }]))
+      .toEqual(['Page “H” plots Sale over “region”, which is not one of its date fields'])
+    expect(ok([{ id: 'h', type: 'dashboard', title: 'H', widgets: [{ kind: 'bar', entity: 'Sale', groupBy: 'region', bucket: 'month' }] }]))
+      .toEqual(['Page “H” buckets a bar widget'])
+  })
+
+  it('checks a report’s entity, grouping and bucket', () => {
+    expect(ok([{ id: 'r', type: 'report', title: 'R', entity: 'Nope', chart: {} }]))
+      .toEqual(['Page “R” reports on “Nope”, which is no longer an entity'])
+    expect(ok([{ id: 'r', type: 'report', title: 'R', entity: 'Sale', chart: { groupBy: 'reference' } }]))
+      .toEqual(['Page “R” groups by “reference”, which is not an enum, boolean or date field of Sale'])
+    expect(ok([{ id: 'r', type: 'report', title: 'R', entity: 'Sale', chart: { groupBy: 'region', bucket: 'month' } }]))
+      .toEqual(['Page “R” buckets by month, but it does not group over a date'])
+    // A report is an ordinary visible page, so it satisfies the "something in the nav" rule.
+    expect(ok([{ id: 'r', type: 'report', entity: 'Sale', chart: {} }])).toEqual([])
+  })
+
+  it('describes a report and counts trends in a dashboard', () => {
+    expect(describePage({ id: 'r', type: 'report', entity: 'Sale', chart: { groupBy: 'region', agg: 'sum', field: 'amount' } }, []))
+      .toBe('Sale · sum of amount by region')
+    expect(describePage({ id: 'r', type: 'report', entity: 'Sale', chart: { groupBy: 'soldOn', bucket: 'month' } }, []))
+      .toBe('Sale · row count by soldOn per month')
+    expect(describePage({ id: 'h', type: 'dashboard', widgets: [{ kind: 'line', entity: 'Sale' }] }, []))
+      .toBe('1 trend')
   })
 })

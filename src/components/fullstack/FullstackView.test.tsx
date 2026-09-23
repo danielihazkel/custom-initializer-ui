@@ -312,7 +312,7 @@ describe('FullstackView — page layouts', () => {
     expect(document.querySelector('[data-seed-layout]')).toBeTruthy()
     const panel = await loadDesk()
 
-    expect(panel.querySelector('[data-page-id="home"]')?.textContent).toContain('1 count tile · 1 breakdown chart')
+    expect(panel.querySelector('[data-page-id="home"]')?.textContent).toContain('1 tile · 1 breakdown chart')
     expect(panel.querySelector('[data-page-id="queue"]')?.textContent).toContain('Open | all')
     expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('Tab only')
     expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('filtered on status = OPEN')

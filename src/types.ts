@@ -504,17 +504,38 @@ export interface ExampleModel {
 }
 
 /** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
-export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record'
+export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record' | 'report'
 
-/** A dashboard widget: a record count, a count by an enum/boolean field, or the latest rows. */
+/** How a tile or chart reduces the rows it covers. Anything but `count` needs a numeric field. */
+export type FullstackAgg = 'count' | 'sum' | 'avg' | 'min' | 'max'
+
+/** The granularity a time series buckets its date field into. */
+export type FullstackBucket = 'day' | 'month' | 'year'
+
+/** A dashboard widget: one number, a breakdown by an enum/boolean field, a time series over a
+ *  date field, or the latest rows. */
 export interface FullstackWidgetDef {
-  kind: 'kpi' | 'bar' | 'recent'
+  kind: 'kpi' | 'bar' | 'line' | 'recent'
   entity: string
   title?: string
-  /** bar: the enum/boolean field (default: the entity's first enum, else first boolean). */
+  /** bar: the enum/boolean field; line: the date field. Defaults to the entity's first of that kind. */
   groupBy?: string
+  /** line: the bucket granularity (default month). */
+  bucket?: FullstackBucket
+  /** kpi/bar/line: how the rows are reduced (default count). */
+  agg?: FullstackAgg
+  /** The numeric field `agg` reduces — required unless agg is count, and forbidden when it is. */
+  field?: string
   /** recent: how many rows (1–20, default 5). */
   limit?: number
+}
+
+/** A report page's single chart: bars when `groupBy` is an enum/boolean, a line when it is a date. */
+export interface FullstackChartDef {
+  groupBy?: string
+  bucket?: FullstackBucket
+  agg?: FullstackAgg
+  field?: string
 }
 
 /** One page of the generated frontend (the `pages` of a fullstack request). */
@@ -545,6 +566,9 @@ export interface FullstackPageDef {
   /** record: the related entities shown as tabs under the record. Omitted = every entity with a
    *  MANY_TO_ONE to it; an empty array = none. */
   childTabs?: string[]
+  /** report: the single chart the page is built around (its entity and opening filters are the
+   *  shared `entity` / `presetFilter`). */
+  chart?: FullstackChartDef
 }
 
 /** The editor state an example sets on load — FullstackExampleAdminController.validateSettings. */

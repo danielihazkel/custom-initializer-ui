@@ -12,6 +12,8 @@ const entities: FullstackEntityDef[] = [
     fields: [
       { name: 'id', type: 'LONG', primaryKey: true },
       { name: 'status', type: 'ENUM', enumValues: ['OPEN', 'PAID'] },
+      { name: 'total', type: 'BIG_DECIMAL' },
+      { name: 'placedOn', type: 'LOCAL_DATE' },
     ],
     relations: [
       { type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer' },
@@ -141,6 +143,59 @@ describe('PagesEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove Order' }))
     expect(pushUndo).toHaveBeenCalledWith('Removed the “Order” page')
     expect(latest.map(p => p.id)).toEqual(['home'])
+  })
+
+  it('turns a widget into a trend, and offers the date field and bucket it needs', () => {
+    render(<Harness initial={[{ id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] }]} />)
+    openRow('home')
+
+    expect(screen.queryByLabelText('Date field')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Widget kind'), { target: { value: 'line' } })
+    expect(latest[0].widgets?.[0]).toEqual({ kind: 'line', entity: 'Order' })
+
+    fireEvent.change(screen.getByLabelText('Date field'), { target: { value: 'placedOn' } })
+    fireEvent.change(screen.getByLabelText('Bucket'), { target: { value: 'year' } })
+    expect(latest[0].widgets?.[0]).toMatchObject({ groupBy: 'placedOn', bucket: 'year' })
+    expect(document.querySelector('[data-page-id="home"]')?.textContent).toContain('1 trend')
+  })
+
+  it('asks for a numeric field once a tile stops counting, and drops it when it counts again', () => {
+    render(<Harness initial={[{ id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] }]} />)
+    openRow('home')
+
+    // A count needs no field, so no field picker is offered.
+    expect(screen.queryByLabelText('Value field')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Aggregate'), { target: { value: 'sum' } })
+    expect(latest[0].widgets?.[0]).toEqual({ kind: 'kpi', entity: 'Order', agg: 'sum' })
+    expect(document.querySelector('[data-page-layout-problems]')?.textContent)
+      .toContain('reduces Order with sum but names no numeric field')
+
+    fireEvent.change(screen.getByLabelText('Value field'), { target: { value: 'total' } })
+    expect(latest[0].widgets?.[0]).toMatchObject({ agg: 'sum', field: 'total' })
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Aggregate'), { target: { value: 'count' } })
+    expect(latest[0].widgets?.[0]).toEqual({ kind: 'kpi', entity: 'Order', agg: undefined, field: undefined })
+  })
+
+  it('adds a report page and configures its chart', () => {
+    render(<Harness initial={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Report/ }))
+
+    // Pre-filled with an entity that has something to chart, so it is valid on sight.
+    expect(latest).toEqual([{ id: 'order-report', type: 'report', entity: 'Order', chart: {} }])
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    // A date grouping reveals the bucket; an enum one does not.
+    expect(screen.queryByLabelText('Bucket')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Group by'), { target: { value: 'placedOn' } })
+    fireEvent.change(screen.getByLabelText('Bucket'), { target: { value: 'month' } })
+    fireEvent.change(screen.getByLabelText('Aggregate'), { target: { value: 'sum' } })
+    fireEvent.change(screen.getByLabelText('Value field'), { target: { value: 'total' } })
+    expect(latest[0].chart).toEqual({ groupBy: 'placedOn', bucket: 'month', agg: 'sum', field: 'total' })
+    expect(document.querySelector('[data-page-id="order-report"]')?.textContent)
+      .toContain('sum of total by placedOn per month')
   })
 
   it('seeds a layout from the entities, and offers the classic shell back', () => {

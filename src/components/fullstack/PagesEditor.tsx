@@ -1,5 +1,13 @@
 import { useState, type ReactNode } from 'react'
-import type { FullstackEntityDef, FullstackPageDef, FullstackPageType, FullstackWidgetDef } from '../../types'
+import type {
+  FullstackAgg,
+  FullstackBucket,
+  FullstackChartDef,
+  FullstackEntityDef,
+  FullstackPageDef,
+  FullstackPageType,
+  FullstackWidgetDef,
+} from '../../types'
 import { inputClass } from './controls'
 import { moveItem } from './reorder'
 import { useDragReorder } from './useDragReorder'
@@ -8,7 +16,10 @@ import {
   MAX_RECENT_LIMIT,
   PAGE_TYPE_META,
   describePage,
+  chartableFields,
+  dateFields,
   groupableFields,
+  numericFields,
   pageLabel,
   relationsTo,
   seedLayout,
@@ -304,6 +315,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                     {page.type === 'record' && (
                       <RecordForm page={page} index={index} entities={named} errors={errors} update={update} />
                     )}
+                    {page.type === 'report' && (
+                      <ReportForm page={page} index={index} entities={named} errors={errors} update={update} />
+                    )}
                   </div>
                 )}
               </li>
@@ -326,8 +340,15 @@ interface FormProps {
   update: Update
 }
 
-function EntityListForm({ page, index, entities, errors, update }: FormProps) {
-  const entity = entities.find(e => e.name === page.entity)
+/** The "opens filtered on" rows of a list or report page: equality on a filterable enum/boolean
+ *  column, which is exactly what the backend accepts as a preset filter. */
+function PresetFilters({ page, index, entity, errors, update }: {
+  page: FullstackPageDef
+  index: number
+  entity: FullstackEntityDef | undefined
+  errors: Record<string, string>
+  update: Update
+}) {
   const filterable = groupableFields(entity)
   const filters = Object.entries(page.presetFilter ?? {})
   const unused = filterable.filter(f => !(f.name in (page.presetFilter ?? {})))
@@ -343,6 +364,62 @@ function EntityListForm({ page, index, entities, errors, update }: FormProps) {
   }
 
   return (
+    <div className="space-y-1">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Opens filtered on</p>
+      {filters.length === 0 && <p className="text-[11px] text-secondary">Every row (no preset filter).</p>}
+      {filters.map(([field, value]) => {
+        const f = filterable.find(x => x.name === field)
+        const error = errors[`presetFilter.${field}`]
+        return (
+          <div key={field} className="flex items-center gap-2" data-preset-filter={field}>
+            <select
+              aria-label="Filter field"
+              value={field}
+              onChange={e => setFilter(field, value, e.target.value)}
+              className={`${inputClass(error)} max-w-[12rem] py-1 text-xs`}
+            >
+              <option value={field}>{field}</option>
+              {unused.map(o => <option key={o.name} value={o.name}>{o.name}</option>)}
+            </select>
+            <select
+              aria-label={`Filter value for ${field}`}
+              value={value}
+              onChange={e => setFilter(field, e.target.value)}
+              className={`${inputClass(error)} max-w-[12rem] py-1 text-xs`}
+            >
+              {!valuesOf(f).includes(value) && <option value={value}>{value}</option>}
+              {valuesOf(f).map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+            <button
+              type="button"
+              onClick={() => setFilter(field, null)}
+              className={ICON_BUTTON}
+              aria-label={`Remove the ${field} filter`}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+            </button>
+            {error && <span className="text-[11px] text-error">{error}</span>}
+          </div>
+        )
+      })}
+      {unused.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setFilter(unused[0].name, valuesOf(unused[0])[0] ?? '')}
+          className={SMALL_BUTTON}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>filter_alt</span>
+          Add filter
+        </button>
+      )}
+    </div>
+  )
+}
+
+function EntityListForm({ page, index, entities, errors, update }: FormProps) {
+  const entity = entities.find(e => e.name === page.entity)
+
+  return (
     <div className="space-y-2">
       <Field label="Entity" error={errors.entity}>
         <EntitySelect
@@ -353,55 +430,7 @@ function EntityListForm({ page, index, entities, errors, update }: FormProps) {
           onChange={name => update(index, { entity: name, presetFilter: undefined })}
         />
       </Field>
-      <div className="space-y-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Opens filtered on</p>
-        {filters.length === 0 && <p className="text-[11px] text-secondary">Every row (no preset filter).</p>}
-        {filters.map(([field, value]) => {
-          const f = filterable.find(x => x.name === field)
-          const error = errors[`presetFilter.${field}`]
-          return (
-            <div key={field} className="flex items-center gap-2" data-preset-filter={field}>
-              <select
-                aria-label="Filter field"
-                value={field}
-                onChange={e => setFilter(field, value, e.target.value)}
-                className={`${inputClass(error)} max-w-[12rem] py-1 text-xs`}
-              >
-                <option value={field}>{field}</option>
-                {unused.map(o => <option key={o.name} value={o.name}>{o.name}</option>)}
-              </select>
-              <select
-                aria-label={`Filter value for ${field}`}
-                value={value}
-                onChange={e => setFilter(field, e.target.value)}
-                className={`${inputClass(error)} max-w-[12rem] py-1 text-xs`}
-              >
-                {!valuesOf(f).includes(value) && <option value={value}>{value}</option>}
-                {valuesOf(f).map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
-              <button
-                type="button"
-                onClick={() => setFilter(field, null)}
-                className={ICON_BUTTON}
-                aria-label={`Remove the ${field} filter`}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
-              </button>
-              {error && <span className="text-[11px] text-error">{error}</span>}
-            </div>
-          )
-        })}
-        {unused.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setFilter(unused[0].name, valuesOf(unused[0])[0] ?? '')}
-            className={SMALL_BUTTON}
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>filter_alt</span>
-            Add filter
-          </button>
-        )}
-      </div>
+      <PresetFilters page={page} index={index} entity={entity} errors={errors} update={update} />
     </div>
   )
 }
@@ -438,11 +467,19 @@ function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps
             <select
               aria-label="Widget kind"
               value={widget.kind}
-              onChange={e => setWidget(wi, { kind: e.target.value as FullstackWidgetDef['kind'], groupBy: undefined, limit: undefined })}
+              onChange={e => setWidget(wi, {
+                kind: e.target.value as FullstackWidgetDef['kind'],
+                groupBy: undefined,
+                limit: undefined,
+                bucket: undefined,
+                // A recent list shows rows, so it can carry no aggregate.
+                ...(e.target.value === 'recent' ? { agg: undefined, field: undefined } : {}),
+              })}
               className={`${inputClass()} max-w-[9rem] py-1 text-xs`}
             >
-              <option value="kpi">Count tile</option>
+              <option value="kpi">Number tile</option>
               <option value="bar">Breakdown chart</option>
+              <option value="line">Trend over time</option>
               <option value="recent">Recent rows</option>
             </select>
             <EntitySelect
@@ -466,6 +503,41 @@ function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps
                   <option value={widget.groupBy}>{widget.groupBy}</option>
                 )}
               </select>
+            )}
+            {widget.kind === 'line' && (
+              <>
+                <select
+                  aria-label="Date field"
+                  value={widget.groupBy ?? ''}
+                  onChange={e => setWidget(wi, { groupBy: e.target.value || undefined })}
+                  className={`${inputClass(error)} max-w-[10rem] py-1 text-xs`}
+                >
+                  <option value="">First date field</option>
+                  {dateFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+                  {widget.groupBy && !dateFields(entity).some(f => f.name === widget.groupBy) && (
+                    <option value={widget.groupBy}>{widget.groupBy}</option>
+                  )}
+                </select>
+                <select
+                  aria-label="Bucket"
+                  value={widget.bucket ?? 'month'}
+                  onChange={e => setWidget(wi, { bucket: e.target.value as FullstackBucket })}
+                  className={`${inputClass()} max-w-[7rem] py-1 text-xs`}
+                >
+                  <option value="day">Per day</option>
+                  <option value="month">Per month</option>
+                  <option value="year">Per year</option>
+                </select>
+              </>
+            )}
+            {widget.kind !== 'recent' && (
+              <AggFields
+                agg={widget.agg}
+                field={widget.field}
+                entity={entity}
+                error={error}
+                onChange={patch => setWidget(wi, patch)}
+              />
             )}
             {widget.kind === 'recent' && (
               <input
@@ -507,6 +579,122 @@ function DashboardForm({ page, index, entities, errors, update, dnd }: FormProps
         <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
         Add widget
       </button>
+    </div>
+  )
+}
+
+/** How to reduce the rows, and which numeric column — shared by the dashboard widgets and a
+ *  report's chart, because the backend validates both with the same rule. */
+function AggFields({ agg, field, entity, error, onChange }: {
+  agg: FullstackAgg | undefined
+  field: string | undefined
+  entity: FullstackEntityDef | undefined
+  error?: string
+  onChange: (patch: { agg?: FullstackAgg; field?: string }) => void
+}) {
+  const numeric = numericFields(entity)
+  const reduces = !!agg && agg !== 'count'
+  return (
+    <>
+      <select
+        aria-label="Aggregate"
+        value={agg ?? 'count'}
+        // Going back to a plain count drops the field with it, which the backend requires.
+        onChange={e => {
+          const next = e.target.value as FullstackAgg
+          onChange(next === 'count' ? { agg: undefined, field: undefined } : { agg: next })
+        }}
+        className={`${inputClass()} max-w-[8rem] py-1 text-xs`}
+      >
+        <option value="count">Count rows</option>
+        <option value="sum">Sum of…</option>
+        <option value="avg">Average of…</option>
+        <option value="min">Lowest…</option>
+        <option value="max">Highest…</option>
+      </select>
+      {reduces && (
+        <select
+          aria-label="Value field"
+          value={field ?? ''}
+          onChange={e => onChange({ field: e.target.value || undefined })}
+          className={`${inputClass(error)} max-w-[9rem] py-1 text-xs`}
+        >
+          <option value="">Pick a number…</option>
+          {numeric.map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+          {field && !numeric.some(f => f.name === field) && <option value={field}>{field}</option>}
+        </select>
+      )}
+    </>
+  )
+}
+
+function ReportForm({ page, index, entities, errors, update }: FormProps) {
+  const entity = entities.find(e => e.name === page.entity)
+  const chart = page.chart ?? {}
+  const grouped = chart.groupBy ? entity?.fields.find(f => f.name === chart.groupBy) : undefined
+  const overTime = !!grouped && dateFields(entity).some(f => f.name === grouped.name)
+  const setChart = (patch: Partial<FullstackChartDef>) => update(index, { chart: { ...chart, ...patch } })
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-end gap-2">
+        <EntitySelect
+          label="Report entity"
+          value={page.entity ?? ''}
+          options={entities.map(e => e.name)}
+          error={errors.entity}
+          className="max-w-[12rem]"
+          // A different entity has different columns, so the chart and filters start over.
+          onChange={name => update(index, { entity: name, chart: {}, presetFilter: undefined })}
+        />
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Group by</span>
+          <select
+            aria-label="Group by"
+            value={chart.groupBy ?? ''}
+            onChange={e => setChart({ groupBy: e.target.value || undefined, bucket: undefined })}
+            className={`${inputClass(errors['chart.groupBy'])} max-w-[12rem] py-1 text-xs`}
+          >
+            <option value="">First enum, boolean or date</option>
+            {groupableFields(entity).length > 0 && (
+              <optgroup label="Breakdown">
+                {groupableFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+              </optgroup>
+            )}
+            {dateFields(entity).length > 0 && (
+              <optgroup label="Over time">
+                {dateFields(entity).map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+              </optgroup>
+            )}
+            {chart.groupBy && !chartableFields(entity).some(f => f.name === chart.groupBy) && (
+              <option value={chart.groupBy}>{chart.groupBy}</option>
+            )}
+          </select>
+        </label>
+        {overTime && (
+          <select
+            aria-label="Bucket"
+            value={chart.bucket ?? 'month'}
+            onChange={e => setChart({ bucket: e.target.value as FullstackBucket })}
+            className={`${inputClass()} max-w-[7rem] py-1 text-xs`}
+          >
+            <option value="day">Per day</option>
+            <option value="month">Per month</option>
+            <option value="year">Per year</option>
+          </select>
+        )}
+        <AggFields
+          agg={chart.agg}
+          field={chart.field}
+          entity={entity}
+          error={errors['chart.field']}
+          onChange={patch => setChart(patch)}
+        />
+      </div>
+      {errors['chart.groupBy'] && <p className="text-[11px] text-error">{errors['chart.groupBy']}</p>}
+      {errors['chart.field'] && <p className="text-[11px] text-error">{errors['chart.field']}</p>}
+      {errors['chart.bucket'] && <p className="text-[11px] text-error">{errors['chart.bucket']}</p>}
+      <PresetFilters page={page} index={index} entity={entity} errors={errors} update={update} />
     </div>
   )
 }
@@ -730,5 +918,10 @@ function blankPage(type: FullstackPageType, entities: FullstackEntityDef[], take
     }
     case 'record':
       return { id: id(first), type, entity: first, hidden: true }
+    case 'report': {
+      // Prefer an entity that actually has something to chart, so the page is valid on sight.
+      const e = entities.find(x => chartableFields(x).length > 0) ?? entities[0]
+      return { id: id(`${e?.name ?? 'report'}-report`), type, entity: e?.name ?? first, chart: {} }
+    }
   }
 }

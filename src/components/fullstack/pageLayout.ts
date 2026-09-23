@@ -1,4 +1,11 @@
-import type { FullstackEntityDef, FullstackFieldDef, FullstackPageDef, FullstackPageType } from '../../types'
+import type {
+  FullstackAgg,
+  FullstackEntityDef,
+  FullstackFieldDef,
+  FullstackPageDef,
+  FullstackPageType,
+  FullstackWidgetDef,
+} from '../../types'
 
 /**
  * The frontend page layout (`pages`) model: validation, the summary lines the editor shows, and
@@ -19,6 +26,22 @@ export const MAX_RECENT_LIMIT = 20
 /** What the generated app can group or preset-filter by: a filterable, non-key enum/boolean field. */
 export function groupableFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
   return (entity?.fields ?? []).filter(f => !f.primaryKey && f.filterable !== false && (f.type === 'ENUM' || f.type === 'BOOLEAN'))
+}
+
+/** What a time series can be bucketed over: a non-key date column. */
+export function dateFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
+  return (entity?.fields ?? []).filter(f => !f.primaryKey && (f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'))
+}
+
+/** What sum/avg/min/max can reduce: a non-key numeric column. */
+export function numericFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
+  return (entity?.fields ?? [])
+    .filter(f => !f.primaryKey && (f.type === 'LONG' || f.type === 'INTEGER' || f.type === 'BIG_DECIMAL'))
+}
+
+/** What a report can group by: an enum/boolean draws bars, a date draws a line. */
+export function chartableFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
+  return [...groupableFields(entity), ...dateFields(entity)]
 }
 
 /** The child's MANY_TO_ONE fields pointing at `parent`, in declaration order. */
@@ -70,6 +93,47 @@ export function pageLayoutProblems(pages: FullstackPageDef[], entities: Fullstac
   return validatePages(pages, entities).problems
 }
 
+type AddIssue = (field: string, message: string, summary?: string) => void
+
+/** The opening filters of a list or report page: equality on a filterable enum/boolean column. */
+function checkPresetFilter(page: FullstackPageDef, e: FullstackEntityDef, add: AddIssue, where: string): void {
+  const groupable = groupableFields(e)
+  for (const [field, value] of Object.entries(page.presetFilter ?? {})) {
+    const f = e.fields.find(x => x.name === field)
+    if (!f) {
+      add(`presetFilter.${field}`, `${e.name} no longer has “${field}”`,
+        `${where} filters on “${field}”, which ${e.name} no longer has`)
+    } else if (!groupable.includes(f)) {
+      add(`presetFilter.${field}`, 'only a filterable enum or boolean field can be preset',
+        `${where} filters on “${field}”, which is not a filterable enum or boolean field`)
+    } else if (f.type === 'ENUM' && !(f.enumValues ?? []).includes(value)) {
+      add(`presetFilter.${field}`, `“${value}” is not one of the values of ${f.name}`,
+        `${where} filters ${field} on “${value}”, which is not one of its values`)
+    }
+  }
+}
+
+/** `count` takes no field; every other aggregate needs a non-key numeric one. Shared by the
+ *  dashboard widgets and a report's chart, which the backend validates with the same rule. */
+function aggIssues(agg: FullstackAgg | undefined, field: string | undefined, e: FullstackEntityDef,
+                   skip: boolean): { field: string; message: string; summary: string }[] {
+  if (skip) return []
+  if (!agg || agg === 'count') {
+    return field
+      ? [{ field: 'chart.field', message: 'a count takes no field', summary: `counts rows, so it takes no field` }]
+      : []
+  }
+  if (!field) {
+    return [{ field: 'chart.field', message: `${agg} needs a numeric field of ${e.name}`,
+      summary: `reduces ${e.name} with ${agg} but names no numeric field` }]
+  }
+  if (!numericFields(e).some(f => f.name === field)) {
+    return [{ field: 'chart.field', message: `${e.name} has no numeric field “${field}”`,
+      summary: `reduces “${field}”, which is not a numeric field of ${e.name}` }]
+  }
+  return []
+}
+
 function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Issue[] {
   if (pages.length === 0) return []
   const issues: Issue[] = []
@@ -104,20 +168,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
             page.entity ? `${where} lists “${page.entity}”, which is no longer an entity` : `${where} lists no entity`)
           break
         }
-        const groupable = groupableFields(e)
-        for (const [field, value] of Object.entries(page.presetFilter ?? {})) {
-          const f = e.fields.find(x => x.name === field)
-          if (!f) {
-            add(`presetFilter.${field}`, `${e.name} no longer has “${field}”`,
-              `${where} filters on “${field}”, which ${e.name} no longer has`)
-          } else if (!groupable.includes(f)) {
-            add(`presetFilter.${field}`, 'only a filterable enum or boolean field can be preset',
-              `${where} filters on “${field}”, which is not a filterable enum or boolean field`)
-          } else if (f.type === 'ENUM' && !(f.enumValues ?? []).includes(value)) {
-            add(`presetFilter.${field}`, `“${value}” is not one of the values of ${f.name}`,
-              `${where} filters ${field} on “${value}”, which is not one of its values`)
-          }
-        }
+        checkPresetFilter(page, e, add, where)
         break
       }
       case 'dashboard': {
@@ -140,6 +191,26 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
               add(`widget.${wi}`, `${e.name} has no enum or boolean field to group by`,
                 `${where} charts ${e.name}, which has no enum or boolean field to group by`)
             }
+          }
+          if (w.kind === 'line') {
+            const dates = dateFields(e)
+            if (w.groupBy && !dates.some(f => f.name === w.groupBy)) {
+              add(`widget.${wi}`, `${e.name} has no date field “${w.groupBy}”`,
+                `${where} plots ${e.name} over “${w.groupBy}”, which is not one of its date fields`)
+            } else if (!w.groupBy && dates.length === 0) {
+              add(`widget.${wi}`, `${e.name} has no date field to plot over time`,
+                `${where} plots ${e.name} over time, but it has no date field`)
+            }
+          }
+          if (w.bucket && w.kind !== 'line') {
+            add(`widget.${wi}`, 'only a trend takes a bucket', `${where} buckets a ${w.kind} widget`)
+          }
+          for (const issue of aggIssues(w.kind === 'recent' ? undefined : w.agg, w.field, e, w.kind === 'recent')) {
+            add(`widget.${wi}`, issue.message, `${where} ${issue.summary}`)
+          }
+          if (w.kind === 'recent' && (w.agg || w.field)) {
+            add(`widget.${wi}`, 'a recent list shows rows, not an aggregate',
+              `${where} asks a recent list for an aggregate`)
           }
           if (w.kind === 'recent' && w.limit != null && (w.limit < 1 || w.limit > MAX_RECENT_LIMIT)) {
             add(`widget.${wi}`, `between 1 and ${MAX_RECENT_LIMIT} rows`,
@@ -198,6 +269,35 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
         }
         break
       }
+      case 'report': {
+        const e = entityOf(page.entity)
+        if (!e) {
+          add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
+            page.entity ? `${where} reports on “${page.entity}”, which is no longer an entity`
+              : `${where} reports on no entity`)
+          break
+        }
+        const chart = page.chart ?? {}
+        const chartable = chartableFields(e)
+        const grouped = chart.groupBy ? e.fields.find(f => f.name === chart.groupBy) : undefined
+        if (chart.groupBy && !chartable.some(f => f.name === chart.groupBy)) {
+          add('chart.groupBy', `${e.name} has no enum, boolean or date field “${chart.groupBy}”`,
+            `${where} groups by “${chart.groupBy}”, which is not an enum, boolean or date field of ${e.name}`)
+        } else if (!chart.groupBy && chartable.length === 0) {
+          add('chart.groupBy', `${e.name} has no enum, boolean or date field to group by`,
+            `${where} reports on ${e.name}, which has no enum, boolean or date field to group by`)
+        }
+        const overTime = grouped ? dateFields(e).some(f => f.name === grouped.name) : false
+        if (chart.bucket && !overTime) {
+          add('chart.bucket', 'a bucket applies to a date grouping',
+            `${where} buckets by ${chart.bucket}, but it does not group over a date`)
+        }
+        for (const issue of aggIssues(chart.agg, chart.field, e, false)) {
+          add(issue.field, issue.message, `${where} ${issue.summary}`)
+        }
+        checkPresetFilter(page, e, add, where)
+        break
+      }
       case 'record': {
         const e = entityOf(page.entity)
         if (!e) {
@@ -250,11 +350,12 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       return filter ? `${page.entity} list · filtered on ${filter}` : `${page.entity} list`
     }
     case 'dashboard': {
-      const counts = { kpi: 0, bar: 0, recent: 0 }
+      const counts = { kpi: 0, bar: 0, line: 0, recent: 0 }
       for (const w of page.widgets ?? []) counts[w.kind]++
       const parts = [
-        counts.kpi && `${counts.kpi} count tile${counts.kpi === 1 ? '' : 's'}`,
+        counts.kpi && `${counts.kpi} tile${counts.kpi === 1 ? '' : 's'}`,
         counts.bar && `${counts.bar} breakdown chart${counts.bar === 1 ? '' : 's'}`,
+        counts.line && `${counts.line} trend${counts.line === 1 ? '' : 's'}`,
         counts.recent && `${counts.recent} recent list${counts.recent === 1 ? '' : 's'}`,
       ].filter(Boolean)
       return parts.join(' · ') || 'No widgets'
@@ -265,6 +366,12 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
         .join(' | ')
     case 'master-detail':
       return `${page.parent ?? '?'} → ${page.child ?? '?'}${page.via ? ` via ${page.via}` : ''}`
+    case 'report': {
+      const chart = page.chart ?? {}
+      const by = chart.groupBy ?? 'its first enum, boolean or date field'
+      const how = !chart.agg || chart.agg === 'count' ? 'row count' : `${chart.agg} of ${chart.field}`
+      return `${page.entity ?? '?'} · ${how} by ${by}${chart.bucket ? ` per ${chart.bucket}` : ''}`
+    }
     case 'record': {
       const tabs = page.childTabs
       const related = tabs == null ? 'its related lists' : tabs.length === 0 ? 'no related lists' : tabs.join(', ')
@@ -351,7 +458,19 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
       next.presetFilter = filter
     }
     if (next.widgets) {
-      next.widgets = next.widgets.map(w => (isEntity(w.entity) && w.groupBy === from ? { ...w, groupBy: to } : w))
+      next.widgets = next.widgets.map(w => {
+        if (!isEntity(w.entity)) return w
+        const patched: FullstackWidgetDef = { ...w }
+        if (patched.groupBy === from) patched.groupBy = to
+        if (patched.field === from) patched.field = to
+        return patched
+      })
+    }
+    if (isEntity(next.entity) && next.chart) {
+      const chart = { ...next.chart }
+      if (chart.groupBy === from) chart.groupBy = to
+      if (chart.field === from) chart.field = to
+      next.chart = chart
     }
     return next
   })
@@ -364,4 +483,5 @@ export const PAGE_TYPE_META: Record<FullstackPageType, { icon: string; label: st
   tabs: { icon: 'tab', label: 'Tabs', blurb: 'Two to six other pages side by side as tabs.' },
   'master-detail': { icon: 'vertical_split', label: 'Master–detail', blurb: 'A parent list beside the selected parent’s rows.' },
   record: { icon: 'article', label: 'Record', blurb: 'One row opened from a list, with its related lists as tabs.' },
+  report: { icon: 'monitoring', label: 'Report', blurb: 'Filters, one chart and grouped totals, with a CSV export.' },
 }
