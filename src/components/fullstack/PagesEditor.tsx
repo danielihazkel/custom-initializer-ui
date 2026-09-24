@@ -132,6 +132,9 @@ const CHIP = 'rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking
 const ICON_BUTTON = 'shrink-0 rounded-lg p-1.5 text-secondary hover:text-primary hover:bg-primary/5 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
 const SMALL_BUTTON = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-colors disabled:opacity-40 disabled:hover:text-secondary disabled:hover:border-outline-variant disabled:hover:bg-transparent'
 const PREVIEW_KEY = 'fullstack:layoutPreview'
+const SECTION_KEY = 'fullstack:pagesSection'
+/** Nav page names the collapsed summary lists before it says "and N more". */
+const SUMMARY_NAMES = 5
 
 const WIDGET_KINDS: { kind: FullstackWidgetDef['kind']; icon: string; label: string; short: string; hint: string }[] = [
   { kind: 'kpi', icon: 'counter_1', label: 'Number tile', short: 'Number', hint: 'One number: a count or an aggregate' },
@@ -149,6 +152,23 @@ function readPreviewOpen(): boolean {
   try { return localStorage.getItem(PREVIEW_KEY) !== 'closed' } catch { return true }
 }
 
+function readSectionOpen(): boolean {
+  try { return localStorage.getItem(SECTION_KEY) !== 'closed' } catch { return true }
+}
+
+/** One line for the collapsed section: what the generated app's navigation will hold. */
+function summarizeLayout(pages: FullstackPageDef[]): string {
+  if (pages.length === 0) return 'Classic layout — a dashboard plus one list page per entity.'
+  const labels = pages.filter(inNav).map(pageLabel)
+  const more = labels.length - SUMMARY_NAMES
+  const offNav = pages.length - labels.length
+  const parts = [
+    labels.length > 0 ? `${labels.slice(0, SUMMARY_NAMES).join(', ')}${more > 0 ? ` and ${more} more` : ''}` : 'Nothing in the navigation',
+    offNav > 0 ? `${offNav} off the navigation` : '',
+  ]
+  return parts.filter(Boolean).join(' · ')
+}
+
 /**
  * The generated frontend's page layout: what screens the app has, in nav order, beside a live
  * wireframe of the result. Without a layout the generator falls back to the classic shell (a
@@ -164,6 +184,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const [confirmRemove, setConfirmRemove] = useState<number | null>(null)
   const [confirmClassic, setConfirmClassic] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(readPreviewOpen)
+  // The whole section folds to its header and a one-line summary; a problem reveal reopens it.
+  const [sectionOpen, setSectionOpen] = useState(readSectionOpen)
   const [previewKey, setPreviewKey] = useState<string | null>(null)
   // Below the wide split the preview opens as a slide-over instead of dropping under the list.
   const [previewDrawer, setPreviewDrawer] = useState(false)
@@ -207,6 +229,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   useEffect(() => {
     try { localStorage.setItem(PREVIEW_KEY, previewOpen ? 'open' : 'closed') } catch { /* preference only */ }
   }, [previewOpen])
+  useEffect(() => {
+    try { localStorage.setItem(SECTION_KEY, sectionOpen ? 'open' : 'closed') } catch { /* preference only */ }
+  }, [sectionOpen])
 
   function update(index: number, patch: Partial<FullstackPageDef>) {
     const before = pages[index]
@@ -293,6 +318,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   function reveal(target: EditTarget) {
     const key = keys[target.page]
     if (!key) return
+    setSectionOpen(true)
     setOpenKey(key)
     setPreviewKey(key)
     const widget = target.control ? /^widget\.(\d+)/.exec(target.control) : null
@@ -320,7 +346,10 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     if (!revealRequest) return
     const first = validation.issues.find(i => i.page != null)
     if (first) reveal({ page: first.page!, control: first.field })
-    else scrollToElement(sectionRef.current, 'center')
+    else {
+      setSectionOpen(true)
+      scrollToElement(sectionRef.current, 'center')
+    }
   }, [revealRequest])
 
   // A server 400 about a page opens that page, like a local problem does.
@@ -365,13 +394,23 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               Frontend pages
               {pages.length > 0 && <span className="ms-1.5 text-[11px] font-normal text-secondary">{pages.length}</span>}
             </h2>
-            <p className="text-[11px] text-secondary">
-              The generated app opens on the first page in the navigation. A hidden page shows up only as a tab of a tabs page, and a record page opens from a row of its entity.
-            </p>
+            {sectionOpen ? (
+              <p className="text-[11px] text-secondary">
+                The generated app opens on the first page in the navigation. A hidden page shows up only as a tab of a tabs page, and a record page opens from a row of its entity.
+              </p>
+            ) : (
+              <p className="text-[11px] text-secondary" data-pages-summary>{summarizeLayout(pages)}</p>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {history && (
+          {!sectionOpen && issues.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-error" role="status">
+              <span className="h-1.5 w-1.5 rounded-full bg-error" aria-hidden="true" />
+              {issues.length} problem{issues.length === 1 ? '' : 's'} here
+            </span>
+          )}
+          {sectionOpen && history && (
             <span className="inline-flex items-center">
               <button
                 type="button"
@@ -397,7 +436,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               </button>
             </span>
           )}
-          {pages.length > 0 && layout === 'split' && (
+          {sectionOpen && pages.length > 0 && layout === 'split' && (
             <button
               type="button"
               onClick={() => setPreviewDrawer(true)}
@@ -409,7 +448,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               Open preview
             </button>
           )}
-          {pages.length > 0 && (
+          {sectionOpen && pages.length > 0 && (
             <button
               type="button"
               onClick={() => setPreviewOpen(o => !o)}
@@ -422,7 +461,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               {previewOpen ? 'Hide preview' : 'Preview'}
             </button>
           )}
-          {pages.length > 0 && (
+          {sectionOpen && pages.length > 0 && (
             <button
               type="button"
               onClick={() => setConfirmClassic(true)}
@@ -433,20 +472,37 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               Use classic layout
             </button>
           )}
+          {sectionOpen && (
+            <button
+              type="button"
+              onClick={() => setAddOpen(o => !o)}
+              aria-expanded={addOpen}
+              disabled={named.length === 0 || atPageCap}
+              className={SMALL_BUTTON}
+              title={named.length === 0 ? 'Name an entity first' : atPageCap ? `A layout can have at most ${MAX_PAGES} pages` : 'Add a page to the layout'}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
+              Add page
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setAddOpen(o => !o)}
-            aria-expanded={addOpen}
-            disabled={named.length === 0 || atPageCap}
-            className={SMALL_BUTTON}
-            title={named.length === 0 ? 'Name an entity first' : atPageCap ? `A layout can have at most ${MAX_PAGES} pages` : 'Add a page to the layout'}
+            onClick={() => setSectionOpen(o => !o)}
+            aria-label={sectionOpen ? 'Collapse frontend pages' : 'Expand frontend pages'}
+            aria-expanded={sectionOpen}
+            aria-controls="fs-pages-body"
+            title={sectionOpen ? 'Collapse to one line' : 'Expand the page layout'}
+            className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-medium text-secondary hover:text-primary hover:bg-primary/5 transition-colors"
+            data-toggle-pages-section
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
-            Add page
+            {sectionOpen ? 'Hide' : 'Show'}
+            <span className={`material-symbols-outlined transition-transform ${sectionOpen ? 'rotate-180' : ''}`} style={{ fontSize: '16px' }}>expand_more</span>
           </button>
         </div>
       </div>
 
+      {sectionOpen && (
+      <div id="fs-pages-body" className="space-y-3">
       {named.length === 0 && (
         <p className="text-[11px] text-secondary" data-pages-need-entity>
           Pages are built from your entities — name at least one entity in the Entities section below, then add pages here.
@@ -783,6 +839,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             </aside>
           )}
         </div>
+      )}
+      </div>
       )}
 
       {previewDrawer && pages.length > 0 && (

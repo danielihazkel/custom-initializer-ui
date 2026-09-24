@@ -660,4 +660,78 @@ describe('PagesEditor', () => {
     expect(onUndo).toHaveBeenCalled()
     expect((screen.getByRole('button', { name: 'Redo (nothing to redo)' }) as HTMLButtonElement).disabled).toBe(true)
   })
+
+  describe('collapsible section', () => {
+    /** Like the Harness, plus the caller's "jump to the first error" bump. */
+    function RevealHarness({ initial }: { initial: FullstackPageDef[] }) {
+      const [pages, setPages] = useState(initial)
+      const [reveal, setReveal] = useState(0)
+      return (
+        <>
+          <button type="button" onClick={() => setReveal(n => n + 1)}>Jump to error</button>
+          <PagesEditor
+            pages={pages}
+            entities={entities}
+            validation={validatePages(pages, entities)}
+            onChange={setPages}
+            pushUndo={pushUndo}
+            onClear={() => {}}
+            revealRequest={reveal}
+          />
+        </>
+      )
+    }
+
+    it('folds to its header and a summary, remembers the choice, and shows the problem count while folded', () => {
+      const { unmount } = render(
+        <RevealHarness
+          initial={[
+            { id: 'orders', type: 'entity-list', entity: 'Order' },
+            { id: 'order', type: 'record', entity: 'Order', hidden: true },
+            { id: 'customer', type: 'master-detail', parent: 'Customer', child: 'Order' }, // ambiguous relation → a problem
+          ]}
+        />,
+      )
+      expect(document.getElementById('fs-pages-body')).toBeTruthy()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse frontend pages' }))
+      expect(document.getElementById('fs-pages-body')).toBeNull()
+      expect(screen.queryByRole('button', { name: /Add page/ })).toBeNull()
+      expect(document.querySelector('[data-pages-summary]')?.textContent).toContain('1 off the navigation')
+      expect(screen.getByRole('status').textContent).toContain('1 problem here')
+      expect(localStorage.getItem('fullstack:pagesSection')).toBe('closed')
+
+      // The choice survives a remount.
+      unmount()
+      render(<RevealHarness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
+      expect(document.getElementById('fs-pages-body')).toBeNull()
+      expect(document.querySelector('[data-pages-summary]')?.textContent).not.toContain('off the navigation')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Expand frontend pages' }))
+      expect(document.getElementById('fs-pages-body')).toBeTruthy()
+      expect(localStorage.getItem('fullstack:pagesSection')).toBe('open')
+    })
+
+    it('summarizes the classic layout when there are no pages', () => {
+      render(<Harness initial={[]} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse frontend pages' }))
+      expect(document.querySelector('[data-pages-summary]')?.textContent).toContain('Classic layout')
+      expect(screen.queryByRole('button', { name: /Start from my entities/ })).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Expand frontend pages' }))
+      expect(screen.getByRole('button', { name: /Start from my entities/ })).toBeTruthy()
+    })
+
+    it('opens itself again when the caller jumps to a page problem', () => {
+      render(
+        <RevealHarness initial={[{ id: 'customer', type: 'master-detail', parent: 'Customer', child: 'Order' }]} />,
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse frontend pages' }))
+      expect(document.getElementById('fs-pages-body')).toBeNull()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Jump to error' }))
+      expect(document.getElementById('fs-pages-body')).toBeTruthy()
+      // The page with the problem is open, not just the section.
+      expect(screen.getByLabelText('Relation to link through')).toBeTruthy()
+    })
+  })
 })
