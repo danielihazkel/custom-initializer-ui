@@ -217,9 +217,21 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                 ))}
               </div>
             </Editable>
-            <Editable {...link} control="child" label="Edit the child entity" className="min-w-0 flex-1">
-              <MiniTable table={screen.child} preview={preview} accent={accent} menora={menora} compact />
-            </Editable>
+            <div className="min-w-0 flex-1 space-y-1">
+              {screen.parentDetails && (
+                <Editable {...link} control="showParent" label="Edit the parent card" className="block w-full">
+                  <div className="rounded border border-outline-variant px-1.5 py-1 text-[8px]" data-preview-parent-card>
+                    <p className="mb-0.5 text-[9px] font-semibold text-on-surface">{screen.parentItems[0]}</p>
+                    {screen.parentDetails.map(item => (
+                      <p key={item.label} className="truncate"><span className="text-secondary">{item.label}:</span> <span className="text-on-surface">{item.value}</span></p>
+                    ))}
+                  </div>
+                </Editable>
+              )}
+              <Editable {...link} control="child" label="Edit the child entity" className="block w-full">
+                <MiniTable table={screen.child} preview={preview} accent={accent} menora={menora} compact />
+              </Editable>
+            </div>
           </div>
         </div>
       )

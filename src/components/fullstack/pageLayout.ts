@@ -1172,7 +1172,7 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
         .map(tab => tab.title || pages.find(p => p.id === tab.page)?.title || tab.page)
         .join(' | ')
     case 'master-detail':
-      return `${page.parent ?? '?'} → ${page.child ?? '?'}${page.via ? ` via ${page.via}` : ''}`
+      return `${page.parent ?? '?'} → ${page.child ?? '?'}${page.via ? ` via ${page.via}` : ''}${page.showParent ? ' · parent card' : ''}`
     case 'report': {
       const charts = reportCharts(page)
       const chart = charts[0]
@@ -1565,7 +1565,7 @@ export function suggestPages(entities: FullstackEntityDef[], pages: FullstackPag
         icon: PAGE_TYPE_META['master-detail'].icon,
         label: `${parent.name} → ${child.name}`,
         blurb: `Pick a ${parent.name} on the left, see its ${child.name} rows on the right.`,
-        page: { idBase: parent.name, type: 'master-detail', parent: parent.name, child: child.name, ...(via ? { via } : {}) },
+        page: { idBase: parent.name, type: 'master-detail', parent: parent.name, child: child.name, ...(via ? { via } : {}), showParent: true },
       })
     }
   }
@@ -1685,7 +1685,7 @@ export function blankPage(type: FullstackPageType, entities: FullstackEntityDef[
     }
     case 'master-detail': {
       const pair = masterDetailPairs(entities)[0]
-      return { id: id(pair?.parent ?? first), type, parent: pair?.parent ?? first, child: pair?.child, ...(pair?.via ? { via: pair.via } : {}) }
+      return { id: id(pair?.parent ?? first), type, parent: pair?.parent ?? first, child: pair?.child, ...(pair?.via ? { via: pair.via } : {}), showParent: true }
     }
     case 'record':
       return { id: id(first), type, entity: first, hidden: true }

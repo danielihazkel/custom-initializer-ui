@@ -2896,6 +2896,18 @@ function MasterDetailForm({ page, index, entities, errors, update, lossy }: Form
           </p>
         )}
       </Field>
+      <Field label="Parent card" control="showParent" hint={page.showParent ? `${parent?.name ?? 'The parent'}’s details above its rows, with Edit when it is writable` : 'The right side shows the child rows only'}>
+        <label className="inline-flex items-center gap-1.5 text-xs text-on-surface">
+          <input
+            type="checkbox"
+            className="accent-primary"
+            checked={Boolean(page.showParent)}
+            aria-label="Show the selected parent's details"
+            onChange={e => update(index, { showParent: e.target.checked ? true : undefined })}
+          />
+          Show the selected {parent?.name ?? 'parent'}
+        </label>
+      </Field>
       {vias.length > 1 && (
         <Field label="Linked through" error={errors.via} control="via">
           <select

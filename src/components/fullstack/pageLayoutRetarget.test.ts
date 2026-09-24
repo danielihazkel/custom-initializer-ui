@@ -259,7 +259,7 @@ describe('retargetPage', () => {
 
   it('turns a list of a parent into a master-detail over its child, and back', () => {
     const md = retargetPage({ id: 'customers', type: 'entity-list', entity: 'Customer', idLocked: true }, 'master-detail', entities, [])
-    expect(md.page).toEqual({ id: 'customers', idLocked: true, type: 'master-detail', parent: 'Customer', child: 'Order' })
+    expect(md.page).toEqual({ id: 'customers', idLocked: true, type: 'master-detail', parent: 'Customer', child: 'Order', showParent: true })
     expect(md.dropped).toEqual([])
     const back = retargetPage(md.page, 'entity-list', entities, [md.page])
     expect(back.page).toEqual({ id: 'customers', idLocked: true, type: 'entity-list', entity: 'Customer' })

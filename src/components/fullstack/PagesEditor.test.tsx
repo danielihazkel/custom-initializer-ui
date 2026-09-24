@@ -56,7 +56,11 @@ describe('PagesEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /Master–detail/ }))
 
     // Two relations point at Customer, so the page says which one it links through from the start.
-    expect(latest).toEqual([{ id: 'customer', type: 'master-detail', parent: 'Customer', child: 'Order', via: 'customer' }])
+    expect(latest).toEqual([{ id: 'customer', type: 'master-detail', parent: 'Customer', child: 'Order', via: 'customer', showParent: true }])
+    expect(document.querySelector('[data-preview-parent-card]')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText("Show the selected parent's details"))
+    expect(latest[0].showParent).toBeUndefined()
+    expect(document.querySelector('[data-preview-parent-card]')).toBeNull()
     expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
 
     fireEvent.change(screen.getByLabelText('Relation to link through'), { target: { value: 'billTo' } })

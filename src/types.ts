@@ -640,6 +640,9 @@ export interface FullstackPageDef {
   /** master-detail: the child's MANY_TO_ONE field pointing at the parent. Optional while the
    *  child has exactly one such relation; required when it has several. */
   via?: string
+  /** master-detail: show the selected parent's own details (and Edit, for a writable parent)
+   *  above its rows. New pages start with it on; absent generates without the card. */
+  showParent?: boolean
   /** record: the related entities shown as tabs under the record. Omitted = every entity with a
    *  MANY_TO_ONE to it; an empty array = none. */
   childTabs?: FullstackChildTabDef[]

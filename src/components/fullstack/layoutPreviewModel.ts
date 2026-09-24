@@ -100,7 +100,11 @@ export type PreviewScreen =
   | { type: 'dashboard'; title: string; description?: string; widgets: PreviewWidget[]; period: string | null }
   | { type: 'entity-list'; title: string; description?: string; table: PreviewTable }
   | { type: 'tabs'; title: string; description?: string; tabs: { label: string; target: number | null }[] }
-  | { type: 'master-detail'; title: string; description?: string; parentTitle: string; parentItems: string[]; child: PreviewTable; childTitle: string }
+  | {
+    type: 'master-detail'; title: string; description?: string; parentTitle: string; parentItems: string[]; child: PreviewTable; childTitle: string
+    /** The selected parent's card above the child rows: its first fields, labelled; null without the card. */
+    parentDetails: { label: string; value: string }[] | null
+  }
   | {
     type: 'record'; title: string; description?: string; heading: string; back: string | null; tabs: string[]
     details: { label: string; value: string }[]
@@ -553,6 +557,9 @@ export function buildLayoutPreview(
           parentItems: Array.from({ length: 5 }, (_, i) => rowLabel(parent, i + 1, parentSingular, t)),
           child: table(child, undefined, via),
           childTitle: labels(child).plural,
+          parentDetails: page.showParent
+            ? parent.fields.filter(f => !f.primaryKey).slice(0, 4).map(f => ({ label: fieldLabel(f), value: sampleCell(f, 1, t) }))
+            : null,
         }
       }
       case 'record': {
