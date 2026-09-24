@@ -54,6 +54,8 @@ import {
   adoptedGroup,
   askableFields,
   blankPage,
+  linkablePages,
+  MAX_LINKS,
   relationKeys,
   reportGroupKeys,
   masterDetailPairs,
@@ -168,6 +170,7 @@ const WIDGET_KINDS: { kind: FullstackWidgetDef['kind']; icon: string; label: str
   { kind: 'top', icon: 'format_list_numbered', label: 'Top list', short: 'Top', hint: 'The largest groups, ranked' },
   { kind: 'progress', icon: 'data_usage', label: 'Progress to target', short: 'Progress', hint: 'An aggregate against a fixed target' },
   { kind: 'text', icon: 'notes', label: 'Text note', short: 'Text', hint: 'A heading and paragraphs of your own — no data' },
+  { kind: 'links', icon: 'apps', label: 'Page links', short: 'Links', hint: 'Tiles that open other pages — a launcher' },
 ]
 
 function readPreviewOpen(): boolean {
@@ -1125,6 +1128,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                         <DashboardForm
                           page={page}
                           index={index}
+                          pages={pages}
                           entities={named}
                           errors={errors}
                           update={update}
@@ -1725,7 +1729,8 @@ function EntityListForm({ page, index, entities, errors, update, lossy, dnd, pro
 /** Widgets a dashboard has before its cards start collapsed; a short list reads fine open. */
 const COLLAPSE_WIDGETS_FROM = 4
 
-function DashboardForm({ page, index, entities, errors, update, dnd, lossy, expandRequest }: FormProps & {
+function DashboardForm({ page, index, pages, entities, errors, update, dnd, lossy, expandRequest }: FormProps & {
+  pages: FullstackPageDef[]
   dnd: ReturnType<typeof useDragReorder>
   /** A problem click about widget `widget` of this page: open that card (a new `n` per click). */
   expandRequest?: { widget: number; n: number } | null
@@ -1747,7 +1752,7 @@ function DashboardForm({ page, index, entities, errors, update, dnd, lossy, expa
   }
   function addWidget(kind: FullstackWidgetDef['kind']) {
     setGalleryOpen(false)
-    update(index, { widgets: [...widgets, newWidget(kind, galleryEntity)] })
+    update(index, { widgets: [...widgets, newWidget(kind, galleryEntity, pages.filter(p => p !== page))] })
   }
   // Cards start collapsed on a busy dashboard so the list scans as one line per widget; a new or
   // re-kinded widget opens, and so does the card a problem points at. Keyed by row key, so a
@@ -1835,6 +1840,7 @@ function DashboardForm({ page, index, entities, errors, update, dnd, lossy, expa
             widget={widget}
             wi={wi}
             count={widgets.length}
+            pages={pages.filter(p => p !== page)}
             entities={entities}
             dateRange={page.dateRange}
             errors={errors}
@@ -1913,6 +1919,10 @@ function DashboardForm({ page, index, entities, errors, update, dnd, lossy, expa
 /** One line for a collapsed widget card: its kind, what it reads and how wide it is. */
 function widgetSummary(w: FullstackWidgetDef, span: number): string {
   const kind = WIDGET_KINDS.find(k => k.kind === w.kind)?.short ?? w.kind
+  if (w.kind === 'links') {
+    const n = w.pages?.length ?? 0
+    return `${kind} · ${w.title ? `“${w.title}” · ` : ''}${n} page${n === 1 ? '' : 's'} · width ${span}`
+  }
   if (w.kind === 'text') {
     const text = (w.text ?? '').split('\n').find(line => line.trim()) ?? ''
     return `${kind} · ${w.title || text.slice(0, 60) || 'empty'} · width ${span}`
@@ -1924,10 +1934,12 @@ function widgetSummary(w: FullstackWidgetDef, span: number): string {
   return parts.join(' · ')
 }
 
-function WidgetCard({ widget, wi, count, entities, dateRange, errors, atCap, dnd, list, expanded, onToggle, onChange, onRetarget, onMove, onDuplicate, onRemove }: {
+function WidgetCard({ widget, wi, count, pages, entities, dateRange, errors, atCap, dnd, list, expanded, onToggle, onChange, onRetarget, onMove, onDuplicate, onRemove }: {
   widget: FullstackWidgetDef
   wi: number
   count: number
+  /** The layout — a links widget picks the pages it opens from it. */
+  pages: FullstackPageDef[]
   entities: FullstackEntityDef[]
   dateRange: FullstackDateRange | undefined
   errors: Record<string, string>
@@ -2030,7 +2042,49 @@ function WidgetCard({ widget, wi, count, entities, dateRange, errors, atCap, dnd
           })}
         </div>
       )}
-      {!expanded ? null : widget.kind === 'text' ? (
+      {!expanded ? null : widget.kind === 'links' ? (
+        <div className="space-y-2" data-widget-options>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+            <MiniField label="Title" grow>
+              <input
+                type="text"
+                aria-label="Widget title"
+                value={widget.title ?? ''}
+                placeholder="Optional heading"
+                onChange={e => onChange({ title: e.target.value || undefined })}
+                className={`${inputClass()} w-full py-1 text-xs`}
+              />
+            </MiniField>
+            <MiniField label="Width" hint={`Columns of 4 · default ${fallbackSpan}`}>
+              <SpanPicker span={span} fallback={fallbackSpan} onChange={s => onChange({ span: s })} />
+            </MiniField>
+          </div>
+          <MiniField label="Pages it opens" hint={`One tile per page, in this order · up to ${MAX_LINKS}`}>
+            <ul className="flex flex-wrap gap-1.5" data-widget-links>
+              {linkablePages(pages).map(p => {
+                const ids = widget.pages ?? []
+                const on = ids.includes(p.id)
+                return (
+                  <li key={p.id}>
+                    <label className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] ${on ? 'border-primary/50 bg-primary/10 text-primary' : 'border-outline-variant text-on-surface'}`}>
+                      <input
+                        type="checkbox"
+                        className="accent-primary"
+                        checked={on}
+                        aria-label={`Link to ${pageLabel(p)}`}
+                        onChange={() => onChange({ pages: on ? ids.filter(id => id !== p.id) : [...ids, p.id] })}
+                      />
+                      {pageLabel(p)}
+                    </label>
+                  </li>
+                )
+              })}
+              {linkablePages(pages).length === 0 && <li className="text-[11px] text-secondary">Add another page first — a links widget opens other pages.</li>}
+            </ul>
+            {error && <p className="text-[11px] text-error">{error}</p>}
+          </MiniField>
+        </div>
+      ) : widget.kind === 'text' ? (
         <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]" data-widget-options>
           <MiniField label="Title" grow>
             <input

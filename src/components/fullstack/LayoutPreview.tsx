@@ -479,6 +479,17 @@ function Widget({ widget, accent, viewAll, ...link }: LinkProps & { widget: Prev
             {widget.paragraphs.length === 0 && <p className="text-[9px] text-secondary">Empty note</p>}
           </div>
         )}
+        {widget.kind === 'links' && (
+          <div className="mt-0.5 grid grid-cols-3 gap-1" data-preview-links>
+            {widget.tiles.slice(0, 6).map((tile, i) => (
+              <span key={i} className="flex min-w-0 flex-col items-center gap-0.5 rounded border border-outline-variant px-1 py-1 text-[8px] text-on-surface">
+                <span className="material-symbols-outlined" style={{ fontSize: '12px', color: accent }}>{tile.icon}</span>
+                <span className="w-full truncate text-center">{tile.label}</span>
+              </span>
+            ))}
+            {widget.tiles.length === 0 && <span className="col-span-3 text-[9px] text-secondary">No pages picked</span>}
+          </div>
+        )}
         {widget.kind === 'line' && <LineChart points={widget.points} accent={accent} />}
         {widget.kind === 'recent' && (
           <ul className="mt-0.5 space-y-0.5">

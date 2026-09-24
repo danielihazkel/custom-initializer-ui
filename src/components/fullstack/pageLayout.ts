@@ -38,6 +38,8 @@ export const MAX_STEPS = 8
 export const DEFAULT_STEP_SIZE = 4
 export const MAX_HEADER_STATS = 4
 export const MAX_TEXT = 2000
+/** The pages one links widget can open. */
+export const MAX_LINKS = 8
 /** The rows-per-page choices the generated pager offers — what a list page may open on. */
 export const LIST_PAGE_SIZES = [10, 20, 50, 100]
 export const DEFAULT_PAGE_SIZE = 20
@@ -157,9 +159,9 @@ export const DATE_RANGES: { value: FullstackDateRange; label: string }[] = [
   { value: '12m', label: 'Last 12 months' },
 ]
 
-/** Grid columns a widget takes when it names none: a tile one, a chart or list two. */
+/** Grid columns a widget takes when it names none: a tile one, a chart or list two, a launcher the row. */
 export function defaultSpan(kind: FullstackWidgetDef['kind']): number {
-  return kind === 'kpi' || kind === 'progress' ? 1 : 2
+  return kind === 'kpi' || kind === 'progress' ? 1 : kind === 'links' ? 4 : 2
 }
 
 /** What a stacked chart splits by when no series is named: the next enum/boolean after `groupBy`. */
@@ -470,7 +472,7 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       const dateless: number[] = []
       ;(page.widgets ?? []).forEach((w, wi) => {
         const e = entityOf(w.entity)
-        if (!e || w.kind === 'text') return
+        if (!e || w.kind === 'text' || w.kind === 'links') return
         const chart = w.kind === 'bar' || w.kind === 'donut' || w.kind === 'stacked' || w.kind === 'top' || w.kind === 'line'
         if (chart && !visibleList(e.name)) {
           warn(`widget.${wi}`, `${where}: clicking a bar of the ${e.name} chart goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e))
@@ -681,6 +683,23 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           if (w.kind === 'text') {
             if (!w.text?.trim()) add(`widget.${wi}`, 'needs some text', `${where} has an empty text widget`)
             else if (w.text.length > MAX_TEXT) add(`widget.${wi}`, `is longer than ${MAX_TEXT} characters`, `${where} has a text widget over ${MAX_TEXT} characters`)
+            return
+          }
+          if (w.kind === 'links') {
+            const ids = w.pages ?? []
+            const dropLink = (id: string) => patchPage(index, `Drop the link to “${id}”`,
+              p => ({ ...p, widgets: (p.widgets ?? []).map((x, j) => (j === wi ? { ...x, pages: (x.pages ?? []).filter(k => k !== id) } : x)) }))
+            if (ids.length === 0) add(`widget.${wi}`, 'needs at least one page to open', `${where} has a links widget that opens no page`)
+            else if (ids.length > MAX_LINKS) add(`widget.${wi}`, `opens more than ${MAX_LINKS} pages`, `${where} has a links widget over ${MAX_LINKS} pages`)
+            ids.forEach((id, li) => {
+              const target = pages.find(p => p.id === id)
+              if (!target) add(`widget.${wi}`, `no page “${id}”`, `${where} links to the missing page “${id}”`, dropLink(id))
+              else if (target.type === 'record') {
+                add(`widget.${wi}`, `“${pageLabel(target)}” opens from a row, not a link`, `${where} links to the record page “${pageLabel(target)}”, which opens from a row`, dropLink(id))
+              } else if (target.hidden && target.type !== 'wizard') {
+                add(`widget.${wi}`, `“${pageLabel(target)}” is hidden, so a link cannot open it`, `${where} links to “${pageLabel(target)}”, which is hidden from the navigation`, dropLink(id))
+              } else if (ids.indexOf(id) !== li) add(`widget.${wi}`, `links to “${pageLabel(target)}” twice`, `${where} links to “${pageLabel(target)}” twice`)
+            })
             return
           }
           const e = entityOf(w.entity)
@@ -1019,7 +1038,7 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       return parts.join(' · ')
     }
     case 'dashboard': {
-      const counts = { kpi: 0, bar: 0, donut: 0, stacked: 0, line: 0, recent: 0, top: 0, progress: 0, text: 0 }
+      const counts = { kpi: 0, bar: 0, donut: 0, stacked: 0, line: 0, recent: 0, top: 0, progress: 0, text: 0, links: 0 }
       for (const w of page.widgets ?? []) if (w.kind in counts) counts[w.kind]++
       const parts = [
         counts.kpi && `${counts.kpi} tile${counts.kpi === 1 ? '' : 's'}`,
@@ -1031,6 +1050,7 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
         counts.top && `${counts.top} top list${counts.top === 1 ? '' : 's'}`,
         counts.recent && `${counts.recent} recent list${counts.recent === 1 ? '' : 's'}`,
         counts.text && `${counts.text} note${counts.text === 1 ? '' : 's'}`,
+        counts.links && `${counts.links} link panel${counts.links === 1 ? '' : 's'}`,
       ].filter(Boolean)
       return parts.join(' · ') || 'No widgets'
     }
@@ -1206,7 +1226,7 @@ export function defaultLineGroupBy(entity: FullstackEntityDef | undefined): stri
 /** Why a widget of `kind` cannot read `entity`, or undefined when it can — the validator's own
  *  rules, told before the widget exists (the Add-widget gallery, the kind switcher). */
 export function widgetKindDisabledReason(kind: FullstackWidgetDef['kind'], entity: FullstackEntityDef | undefined): string | undefined {
-  if (kind === 'text') return undefined
+  if (kind === 'text' || kind === 'links') return undefined
   if (!entity) return 'Pick an entity first'
   const name = entity.name.trim() || 'This entity'
   switch (kind) {
@@ -1226,9 +1246,10 @@ export function widgetKindDisabledReason(kind: FullstackWidgetDef['kind'], entit
 
 /** A new widget of `kind` on `entity`, pre-filled with what the validator insists on so it is
  *  valid on sight; what the generator defaults (group by, date, series) stays implicit. */
-export function newWidget(kind: FullstackWidgetDef['kind'], entity: string): FullstackWidgetDef {
+export function newWidget(kind: FullstackWidgetDef['kind'], entity: string, pages: FullstackPageDef[] = []): FullstackWidgetDef {
   switch (kind) {
     case 'text': return { kind, entity: '', text: 'Note' }
+    case 'links': return { kind, entity: '', pages: linkablePages(pages).slice(0, 4).map(p => p.id) }
     case 'progress': return { kind, entity, target: '100' }
     default: return { kind, entity }
   }
@@ -1253,6 +1274,10 @@ export function renamePageIdInPages(pages: FullstackPageDef[], from: string, to:
   if (!from || from === to) return pages
   let changed = false
   const next = pages.map(page => {
+    if (page.widgets?.some(w => w.pages?.includes(from))) {
+      changed = true
+      page = { ...page, widgets: page.widgets.map(w => (w.pages?.includes(from) ? { ...w, pages: w.pages.map(id => (id === from ? to : id)) } : w)) }
+    }
     if (!page.tabs?.some(t => t.page === from)) return page
     changed = true
     return { ...page, tabs: page.tabs.map(t => (t.page === from ? { ...t, page: to } : t)) }
@@ -1265,11 +1290,14 @@ export function pagesEmbedding(pages: FullstackPageDef[], id: string): Fullstack
   return pages.filter(p => p.type === 'tabs' && (p.tabs ?? []).some(t => t.page === id))
 }
 
-/** Drops the tabs pointing at `id` (the page is being removed). */
+/** Drops the tabs and links pointing at `id` (the page is being removed). */
 export function dropTabsTo(pages: FullstackPageDef[], id: string): FullstackPageDef[] {
-  return pages.map(page => (page.tabs?.some(t => t.page === id)
-    ? { ...page, tabs: page.tabs.filter(t => t.page !== id) }
-    : page))
+  return pages.map(page => {
+    if (page.widgets?.some(w => w.pages?.includes(id))) {
+      page = { ...page, widgets: page.widgets.map(w => (w.pages?.includes(id) ? { ...w, pages: w.pages.filter(k => k !== id) } : w)) }
+    }
+    return page.tabs?.some(t => t.page === id) ? { ...page, tabs: page.tabs.filter(t => t.page !== id) } : page
+  })
 }
 
 /** Follows a relation rename on `child` into the master-detail pages that link through it. */
@@ -1559,6 +1587,12 @@ export function blankPage(type: FullstackPageType, entities: FullstackEntityDef[
   }
 }
 
+/** The pages a links widget can open: any but a record page (it needs a row) or a hidden page
+ *  that is not a wizard (a hidden wizard is a route of its own). */
+export function linkablePages(pages: FullstackPageDef[]): FullstackPageDef[] {
+  return pages.filter(p => p.type !== 'record' && (!p.hidden || p.type === 'wizard'))
+}
+
 /** The pages a new tabs page can embed, lists first: not a tabs or record page, not already a tab. */
 export function tabCandidates(pages: FullstackPageDef[]): FullstackPageDef[] {
   const free = pages.filter(p => p.type !== 'tabs' && p.type !== 'record' && pagesEmbedding(pages, p.id).length === 0)
@@ -1727,14 +1761,20 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     if (keys.some(k => next[k] != null)) dropped.push(label)
     for (const k of keys) delete next[k]
   }
-  if (kind === 'text') {
-    const kept: FullstackWidgetDef = { kind, entity: '', ...(next.title ? { title: next.title } : {}), ...(next.text ? { text: next.text } : {}) }
+  if (kind === 'text' || kind === 'links') {
+    const kept: FullstackWidgetDef = { kind, entity: '', ...(next.title ? { title: next.title } : {}) }
+    if (kind === 'text' && next.text) kept.text = next.text
+    if (kind === 'links') kept.pages = next.pages ?? []
     if (next.span != null && next.span !== defaultSpan(kind)) kept.span = next.span
     const lost = (['groupBy', 'agg', 'limit', 'sortBy', 'compare', 'target', 'presetFilter', 'dateField', 'series'] as const)
       .filter(k => next[k] != null)
-    return { widget: kept, dropped: lost.length ? ['data settings'] : [] }
+    const dropped = lost.length ? ['data settings'] : []
+    if (kind === 'links' && next.text != null) dropped.push('text')
+    if (kind === 'text' && next.pages != null) dropped.push('pages')
+    return { widget: kept, dropped }
   }
   if (next.text != null) drop(['text'], 'text')
+  if (next.pages != null) drop(['pages'], 'pages')
   if (next.groupBy != null) {
     const fits = kind === 'bar' || kind === 'donut' || kind === 'stacked' ? groupableFields(entity).some(f => f.name === next.groupBy)
       : kind === 'line' ? dateFields(entity).some(f => f.name === next.groupBy)

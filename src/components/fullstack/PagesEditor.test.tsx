@@ -100,6 +100,22 @@ describe('PagesEditor', () => {
     expect(screen.queryByRole('button', { name: 'Open the guide on frontend pages' })).toBeNull()
   })
 
+  it('edits a links widget as a pick of the pages it opens', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'links', entity: '', title: 'Go to', pages: ['orders'] }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order', title: 'Orders' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', title: 'Customers' },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true },
+    ]} />)
+    openRow('home')
+    const links = document.querySelector('[data-widget-links]') as HTMLElement
+    expect(within(links).getAllByRole('checkbox').map(el => el.getAttribute('aria-label'))).toEqual(['Link to Orders', 'Link to Customers'])
+    fireEvent.click(within(links).getByLabelText('Link to Customers'))
+    expect(latest[0].widgets?.[0].pages).toEqual(['orders', 'customers'])
+    expect(document.querySelector('[data-preview-links]')?.textContent).toContain('Customers')
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+  })
+
   it('will not offer a master-detail page without a relation to build it from', () => {
     render(<Harness initial={[]} entities={[entities[0]]} />)
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))

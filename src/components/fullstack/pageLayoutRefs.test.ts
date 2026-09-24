@@ -3,7 +3,7 @@ import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import {
   defaultWizardSteps, renameEntityInPages,
   defaultBarGroupBy, defaultLineGroupBy, defaultOptionLabel, defaultReportGroupBy, describePagesChange,
-  adoptedGroup, dropTabsTo, duplicatePage, moveNavGroup, navSections, pageFromSuggestion, pagesEmbedding, renameFieldInPages,
+  adoptedGroup, describePage, dropTabsTo, duplicatePage, moveNavGroup, navSections, pageFromSuggestion, pagesEmbedding, renameFieldInPages,
   renameGroupInPages, renamePageIdInPages,
   renameRelationInPages, reportCharts, suggestPages, validatePages,
 } from './pageLayout'
@@ -274,6 +274,36 @@ describe('a report grouped by a relation', () => {
     expect(renamed[1].chart?.groupBy).toBe('buyer')
     expect(renamed[2].charts?.map(c => c.groupBy)).toEqual(['status', 'buyer'])
     expect(renameRelationInPages(pages, 'Customer', 'customer', 'buyer')).toBe(pages)
+  })
+})
+
+describe('links widgets', () => {
+  const pages: FullstackPageDef[] = [
+    { id: 'home', type: 'dashboard', widgets: [{ kind: 'links', entity: '', pages: ['orders', 'new-order'] }] },
+    { id: 'orders', type: 'entity-list', entity: 'Order' },
+    { id: 'new-order', type: 'wizard', entity: 'Order', hidden: true },
+    { id: 'order', type: 'record', entity: 'Order', hidden: true },
+    { id: 'paid', type: 'entity-list', entity: 'Order', hidden: true },
+    { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ page: 'paid' }, { page: 'orders' }] },
+  ]
+
+  it('opens visible pages and hidden wizards, never a record or a tab-only page', () => {
+    expect(validatePages(pages, entities).count).toBe(0)
+    const bad = (ids: string[]) => validatePages([{ ...pages[0], widgets: [{ kind: 'links', entity: '', pages: ids }] }, ...pages.slice(1)], entities)
+    expect(bad([]).problems).toEqual(['Page “home” has a links widget that opens no page'])
+    expect(bad(['order']).problems).toEqual(['Page “home” links to the record page “Order”, which opens from a row'])
+    expect(bad(['paid']).problems).toEqual(['Page “home” links to “Order”, which is hidden from the navigation'])
+    expect(bad(['nope']).problems).toEqual(['Page “home” links to the missing page “nope”'])
+    expect(bad(['orders', 'orders']).problems).toEqual(['Page “home” links to “Order” twice'])
+    // The fix drops the one bad link.
+    const v = bad(['orders', 'nope'])
+    expect(v.issues[0].fix!.apply(v.issues[0].fix!.apply(pages))[0].widgets?.[0].pages).toEqual(['orders', 'new-order'])
+  })
+
+  it('follows a page id change and a removal into the links', () => {
+    expect(renamePageIdInPages(pages, 'orders', 'all-orders')[0].widgets?.[0].pages).toEqual(['all-orders', 'new-order'])
+    expect(dropTabsTo(pages, 'new-order')[0].widgets?.[0].pages).toEqual(['orders'])
+    expect(describePage(pages[0], pages)).toBe('1 link panel')
   })
 })
 

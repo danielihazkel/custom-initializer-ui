@@ -533,8 +533,8 @@ export interface FullstackListSort {
 /** A dashboard widget: one number, a breakdown by an enum/boolean field, a time series over a
  *  date field, the latest rows, the largest groups ranked, or one number against a target. */
 export interface FullstackWidgetDef {
-  kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'line' | 'recent' | 'top' | 'progress' | 'text'
-  /** The entity the widget reads — empty for a text widget. */
+  kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'line' | 'recent' | 'top' | 'progress' | 'text' | 'links'
+  /** The entity the widget reads — empty for a text or links widget. */
   entity: string
   title?: string
   /** bar: the enum/boolean field; line: the date field. Defaults to the entity's first of that kind. */
@@ -563,6 +563,9 @@ export interface FullstackWidgetDef {
   series?: string
   /** text: the note itself; a blank line starts a new paragraph. */
   text?: string
+  /** links: the ids of the pages its tiles open (1–8; never a record page, nor a hidden page
+   *  that is not a wizard). */
+  pages?: string[]
 }
 
 /** A report page's single chart: bars when `groupBy` is an enum/boolean, a line when it is a date. */

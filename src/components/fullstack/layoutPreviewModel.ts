@@ -1,6 +1,7 @@
 import type { FullstackAgg, FullstackBucket, FullstackEntityDef, FullstackFieldDef, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
 import { enumLabel } from './enumLabels'
 import { humanize } from './naming'
+import { pageLabel as linkLabel } from './pageLayout'
 import {
   DEFAULT_NAV_ICON,
   auditOn,
@@ -67,6 +68,7 @@ export type PreviewWidget = WidgetBase & (
   | { kind: 'donut'; bars: PreviewBar[] }
   | { kind: 'stacked'; rows: { label: string; parts: number[] }[]; series: string[] }
   | { kind: 'text'; paragraphs: string[] }
+  | { kind: 'links'; tiles: { label: string; icon: string }[] }
   | { kind: 'line'; points: PreviewBar[] }
   | { kind: 'recent'; rows: string[] }
   | { kind: 'broken'; message: string }
@@ -376,6 +378,19 @@ export function buildLayoutPreview(
     switch (page.type) {
       case 'dashboard': {
         const widgets: PreviewWidget[] = (page.widgets ?? []).map((w, wi): PreviewWidget => {
+          if (w.kind === 'links') {
+            return {
+              index: wi,
+              span: Math.min(Math.max(w.span ?? defaultSpan(w.kind), 1), 4),
+              filters: [],
+              kind: 'links',
+              title: w.title ?? '',
+              tiles: (w.pages ?? []).map(id => {
+                const target = pages.find(p => p.id === id)
+                return target ? { label: linkLabel(target), icon: navSymbol(target) } : { label: id, icon: 'link_off' }
+              }),
+            }
+          }
           if (w.kind === 'text') {
             return {
               index: wi,
