@@ -291,7 +291,29 @@ describe('PagesEditor', () => {
     render(<Harness initial={[{ id: 'home', type: 'dashboard', widgets: [{ kind: 'bar', entity: 'Order' }] }]} />)
     openRow('home')
     const groupBy = screen.getByLabelText('Group by') as HTMLSelectElement
-    expect(groupBy.options[0].textContent).toBe('Default (status)')
+    expect(groupBy.options[0].textContent).toBe('Default (Status)')
+  })
+
+  it('names fields and values as the generated UI labels them, keeping the raw name when it differs', () => {
+    const model: FullstackEntityDef[] = [{
+      name: 'Order',
+      fields: [
+        { name: 'id', type: 'LONG', primaryKey: true },
+        { name: 'status', type: 'ENUM', enumValues: ['OPEN', 'PAID'], label: 'Order state', enumLabels: { OPEN: 'Waiting' } },
+        { name: 'placedOn', type: 'LOCAL_DATE' },
+      ],
+    }]
+    render(<Harness entities={model} initial={[{ id: 'open', type: 'entity-list', entity: 'Order', presetFilter: { status: 'OPEN' } }]} />)
+    openRow('open')
+    const field = screen.getByLabelText('Filter field') as HTMLSelectElement
+    expect(field.options[0].textContent).toBe('Order state (status)')
+    expect(field.value).toBe('status')
+    const value = screen.getByLabelText('Filter value for status') as HTMLSelectElement
+    expect(Array.from(value.options).map(o => o.textContent)).toEqual(['Waiting (OPEN)', 'Paid'])
+    expect(value.value).toBe('OPEN')
+    // The id sits behind a disclosure that shows the route.
+    expect(screen.getByText('#/open')).toBeTruthy()
+    expect(screen.getByLabelText('Page id')).toBeTruthy()
   })
 
   it('starts a tabs page from two existing pages, so it is valid on sight', () => {

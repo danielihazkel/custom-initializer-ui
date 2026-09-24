@@ -1190,8 +1190,8 @@ export function defaultReportGroupBy(entity: FullstackEntityDef | undefined): st
 }
 
 /** The label of a "use the default" option: `Default (status)`, or what it would look for. */
-export function defaultOptionLabel(resolved: string | undefined, looksFor: string): string {
-  return resolved ? `Default (${resolved})` : `Default (first ${looksFor})`
+export function defaultOptionLabel(resolved: string | undefined, looksFor: string, labelOf: (key: string) => string = k => k): string {
+  return resolved ? `Default (${labelOf(resolved)})` : `Default (first ${looksFor})`
 }
 
 // ── Page references (tabs point at pages by id) ─────────────────────────────
