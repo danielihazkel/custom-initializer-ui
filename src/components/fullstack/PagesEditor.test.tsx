@@ -75,7 +75,21 @@ describe('PagesEditor', () => {
 
     fireEvent.change(screen.getByLabelText('Page id'), { target: { value: 'queue' } })
     fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Order queue' } })
-    expect(latest[0]).toMatchObject({ id: 'queue', title: 'Order queue' })
+    expect(latest[0]).toMatchObject({ id: 'queue', title: 'Order queue', idLocked: true })
+  })
+
+  it('keeps a hand-edited id that came stored with the page, and can follow the title again', () => {
+    // The lock lives on the page (it is what a reload or an example load restores), not in the editor.
+    render(<Harness initial={[{ id: 'queue', idLocked: true, type: 'entity-list', entity: 'Order', title: 'Order queue' }]} />)
+    openRow('queue')
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Open orders' } })
+    expect(latest[0]).toMatchObject({ id: 'queue', title: 'Open orders' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Follow the title again' }))
+    expect(latest[0]).toMatchObject({ id: 'open-orders', title: 'Open orders' })
+    expect(latest[0].idLocked).toBeUndefined()
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Orders' } })
+    expect(latest[0].id).toBe('orders')
   })
 
   it('edits a list page: entity and preset filter, with the filter values of that field', () => {
@@ -100,6 +114,7 @@ describe('PagesEditor', () => {
     openRow('home')
 
     fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add number tile' }))
     expect(latest[0].widgets).toHaveLength(2)
 
     const kinds = screen.getAllByRole('radiogroup', { name: 'Widget kind' })
@@ -516,6 +531,86 @@ describe('PagesEditor', () => {
     expect(pushUndo).toHaveBeenCalledTimes(2)
   })
 
+  it('adds a widget of a chosen kind for a chosen entity from the gallery, and says why a kind does not fit', () => {
+    render(<Harness initial={[{ id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] }]} />)
+    openRow('home')
+    fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
+    const gallery = document.querySelector('[data-widget-gallery]') as HTMLElement
+    expect(gallery).toBeTruthy()
+    // Starts from the last widget's entity (Order), where every kind fits.
+    expect((within(gallery).getByLabelText('New widget entity') as HTMLSelectElement).value).toBe('Order')
+    expect((within(gallery).getByRole('button', { name: 'Add trend over time' }) as HTMLButtonElement).disabled).toBe(false)
+
+    // Customer has no enum, boolean or date: the chart kinds say so and cannot be picked.
+    fireEvent.change(within(gallery).getByLabelText('New widget entity'), { target: { value: 'Customer' } })
+    const trend = within(gallery).getByRole('button', { name: 'Add trend over time' }) as HTMLButtonElement
+    expect(trend.disabled).toBe(true)
+    expect(trend.title).toBe('Customer has no date field to plot over')
+    expect((within(gallery).getByRole('button', { name: 'Add breakdown chart' }) as HTMLButtonElement).title).toBe('Customer has no enum or boolean field to break down by')
+    expect((within(gallery).getByRole('button', { name: 'Add number tile' }) as HTMLButtonElement).disabled).toBe(false)
+
+    fireEvent.change(within(gallery).getByLabelText('New widget entity'), { target: { value: 'Order' } })
+    fireEvent.click(within(gallery).getByRole('button', { name: 'Add progress to target' }))
+    expect(latest[0].widgets).toEqual([{ kind: 'kpi', entity: 'Order' }, { kind: 'progress', entity: 'Order', target: '100' }])
+    expect(document.querySelector('[data-widget-gallery]')).toBeNull()
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    // The kind switcher on a card says the same thing for a Customer widget.
+    fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
+    fireEvent.change(screen.getByLabelText('New widget entity'), { target: { value: 'Customer' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add number tile' }))
+    const kinds = screen.getAllByRole('radiogroup', { name: 'Widget kind' })
+    const radio = within(kinds[2]).getByRole('radio', { name: 'Trend over time' }) as HTMLButtonElement
+    expect(radio.disabled).toBe(true)
+    expect(radio.title).toBe('Customer has no date field to plot over')
+  })
+
+  it('splits a list page by an enum into hidden preset lists under a tabs page, as one undo step', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order', columns: ['status', 'total'] }]} />)
+    openRow('orders')
+    fireEvent.click(screen.getByRole('button', { name: /Split into tabs/ }))
+
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(pushUndo).toHaveBeenCalledWith('Split “Order” by status')
+    expect(latest.map(p => p.id)).toEqual(['orders', 'orders-by-status', 'order-open', 'order-paid'])
+    expect(latest[1]).toEqual({ id: 'orders-by-status', type: 'tabs', title: 'Orders by status', tabs: [{ page: 'order-open', title: 'Open' }, { page: 'order-paid', title: 'Paid' }] })
+    expect(latest[2]).toEqual({ id: 'order-open', type: 'entity-list', entity: 'Order', hidden: true, presetFilter: { status: 'OPEN' }, columns: ['status', 'total'] })
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    // The split lists are already filtered on status, so they cannot be split by it again.
+    openRow('order-open')
+    const row = document.querySelector('[data-page-id="order-open"]') as HTMLElement
+    const again = within(row).getByRole('button', { name: /Split into tabs/ }) as HTMLButtonElement
+    expect(again.disabled).toBe(true)
+    expect(again.title).toBe('This list is already filtered on status')
+  })
+
+  it('opens the gallery and the preview on request (the command palette)', () => {
+    const initial: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }]
+    const props = { entities, validation: validatePages(initial, entities), onChange: () => {}, pushUndo, onClear: () => {} }
+    const { rerender } = render(<PagesEditor pages={initial} {...props} />)
+    expect(document.querySelector('[data-page-gallery]')).toBeNull()
+
+    rerender(<PagesEditor pages={initial} {...props} addRequest={1} />)
+    expect(document.querySelector('[data-page-gallery]')).toBeTruthy()
+
+    // No matchMedia here (jsdom), so the preview opens as the slide-over.
+    rerender(<PagesEditor pages={initial} {...props} addRequest={1} previewRequest={1} />)
+    expect(document.querySelector('[data-preview-drawer]')).toBeTruthy()
+  })
+
+  it('says when a wizard entity switch starts the steps over, with an undo', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[{ id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ title: 'Basics', fields: ['status', 'total', 'placedOn', 'customer'] }] }]} />)
+    const row = openRow('new-order') as HTMLElement
+    fireEvent.change(within(row).getByLabelText('Wizard entity'), { target: { value: 'Customer' } })
+    expect(latest[0].entity).toBe('Customer')
+    expect(latest[0].steps).toEqual([{ fields: ['id', 'name'] }])
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the step layout setting')
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+  })
+
   it('always offers page roles — disabled, with a shortcut, when no LDAP auth dependency is selected', () => {
     const onAddDep = vi.fn()
     const pages: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }, { id: 'customers', type: 'entity-list', entity: 'Customer' }]
@@ -602,6 +697,7 @@ describe('PagesEditor', () => {
     expect(row.querySelectorAll('[data-widget-options]')).toHaveLength(1)
     // A new widget opens expanded; a short dashboard opens every card.
     fireEvent.click(within(row).getByRole('button', { name: /Add widget/ }))
+    fireEvent.click(within(row).getByRole('button', { name: 'Add number tile' }))
     expect(row.querySelector('[data-widget="4"] [data-widget-options]')).toBeTruthy()
   })
 

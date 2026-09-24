@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import {
-  pageOfServerError, retargetEntityList, retargetMasterDetail, retargetMasterDetailChild, retargetRecord, retargetReport,
+  duplicatePage, pageOfServerError, requestPages, retargetEntityList, retargetMasterDetail, retargetMasterDetailChild, retargetRecord, retargetReport,
   retargetWidget, retargetWizardSteps, stripDateRange,
 } from './pageLayout'
 
@@ -137,15 +137,33 @@ describe('retargetReport', () => {
 })
 
 describe('retargetWizardSteps', () => {
-  it('keeps the step shape when the new form mostly overlaps', () => {
+  it('keeps the step shape when the new form mostly overlaps, and drops nothing', () => {
     const renamed: FullstackEntityDef = { ...order, name: 'Purchase' }
     expect(retargetWizardSteps([{ title: 'Basics', fields: ['status', 'total'] }, { fields: ['customer'] }], renamed))
-      .toEqual([{ title: 'Basics', fields: ['status', 'total'] }, { fields: ['customer'] }, { fields: ['id', 'placedOn'] }])
+      .toEqual({ steps: [{ title: 'Basics', fields: ['status', 'total'] }, { fields: ['customer'] }, { fields: ['id', 'placedOn'] }], dropped: [] })
+  })
+
+  it('names the fields that did not carry over', () => {
+    expect(retargetWizardSteps([{ fields: ['status', 'total', 'placedOn', 'customer', 'note'] }], order))
+      .toEqual({ steps: [{ fields: ['status', 'total', 'placedOn', 'customer'] }, { fields: ['id'] }], dropped: ['fields'] })
   })
 
   it('starts over when little of the old form carries over', () => {
     expect(retargetWizardSteps([{ fields: ['id', 'name', 'vip'] }], order))
-      .toEqual([{ fields: ['id', 'status', 'total', 'placedOn'] }, { fields: ['customer'] }])
+      .toEqual({ steps: [{ fields: ['id', 'status', 'total', 'placedOn'] }, { fields: ['customer'] }], dropped: ['step layout'] })
+  })
+
+  it('drops nothing when there were no steps to keep', () => {
+    expect(retargetWizardSteps(undefined, order).dropped).toEqual([])
+  })
+})
+
+describe('requestPages', () => {
+  it('strips the editor-only id lock and nothing else; duplicatePage does not carry it', () => {
+    const page: FullstackPageDef = { id: 'queue', idLocked: true, type: 'entity-list', entity: 'Order', title: 'Queue' }
+    expect(requestPages([page])).toEqual([{ id: 'queue', type: 'entity-list', entity: 'Order', title: 'Queue' }])
+    expect(page.idLocked).toBe(true)
+    expect('idLocked' in duplicatePage(page, ['queue'])).toBe(false)
   })
 })
 

@@ -38,7 +38,7 @@ import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writ
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesEditor } from './PagesEditor'
-import { pageOfServerError, renameEntityInPages, renameFieldInPages, renameRelationInPages, validatePages } from './pageLayout'
+import { pageOfServerError, renameEntityInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
@@ -171,6 +171,9 @@ export function FullstackView() {
   useEffect(() => { setPageServerIssue(null) }, [pages])
   // Bumped to make the page editor open its first problem (the sticky bar's "jump to error").
   const [pagesReveal, setPagesReveal] = useState(0)
+  // Bumped by the command palette: open the "Add page" gallery / the layout preview.
+  const [pagesAdd, setPagesAdd] = useState(0)
+  const [pagesPreview, setPagesPreview] = useState(0)
   // Collapsed cards survive a refresh: entities persist with their uids, so the uid set stays valid.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(shared ? [] : loadJson<string[]>(LS.collapsed, [])))
   const [history, setHistory] = useState<History<FullstackSnapshot>>(() => emptyHistory())
@@ -218,6 +221,12 @@ export function FullstackView() {
     preview, previousPreview, loading: previewLoading, error: previewError,
     fetchPreview, clearPreview, clearError, cancel: cancelPreview,
   } = useFullstackPreview()
+  // A preview (Explore) 400 that names a page is shown on that page, like a Generate one is.
+  useEffect(() => {
+    if (!previewError) return
+    const page = pageOfServerError(previewError.message, pages)
+    if (page != null) setPageServerIssue({ page, message: previewError.message })
+  }, [previewError, pages])
   const { presets, recents, persistFailed: presetsPersistFailed, savePreset, deletePreset, restorePreset, deleteRecent, restoreRecent, pushRecent } = useFullstackPresets()
   const team = useTeamModels()
   const exampleModels = useFullstackExamples()
@@ -788,7 +797,7 @@ export function FullstackView() {
       opts: scaffoldOpts.length ? { scaffold: scaffoldOpts } : undefined,
       colorPalette: colorPalette || undefined,
       entities: stripUids(entities),
-      pages: pages.length ? pages : undefined,
+      pages: pages.length ? requestPages(pages) : undefined,
     }
   }
 
@@ -1051,6 +1060,8 @@ export function FullstackView() {
     { id: 'fs-frontend', label: 'Frontend' },
     { id: 'fs-options', label: 'Options' },
     { id: 'fs-deps', label: 'Dependencies' },
+    { id: 'fs-entities', label: 'Entities', errors: entityErrors.count },
+    { id: 'fs-pages', label: 'Pages', errors: pageValidation.count },
   ]
   // A metadata error must never hide inside a collapsed panel — same rule the entity cards use
   // for a blocked Settings panel, and it keeps `jumpToFirstError`'s `#fs-meta` query answerable.
@@ -1103,6 +1114,42 @@ export function FullstackView() {
     toggleDensity: () => setDensity(d => (d === 'compact' ? 'comfortable' : 'compact')),
     savePreset: (target: SaveTarget = 'browser') => requestSave(target),
     toggleShortcuts: () => setShortcutsOpen(v => !v),
+    // The page layout — the same actions as the section's own buttons, reachable from ⌘K.
+    addPage: () => {
+      if (!entities.some(e => e.name.trim())) {
+        setToast({ message: 'Name an entity first — pages are built from your entities', type: 'error' })
+        return
+      }
+      setPagesAdd(n => n + 1)
+    },
+    seedPages: () => {
+      if (!entities.some(e => e.name.trim())) {
+        setToast({ message: 'Name an entity first — pages are built from your entities', type: 'error' })
+        return
+      }
+      if (pages.length > 0) {
+        setToast({ message: 'There is already a page layout — switch to the classic layout first to start over', type: 'error' })
+        return
+      }
+      pushUndoEntry('Started a page layout from the entities')
+      setPages(seedLayout(entities))
+      requestAnimationFrame(() => scrollToElement(document.getElementById('fs-pages'), 'start'))
+    },
+    classicLayout: () => {
+      if (pages.length === 0) {
+        setToast({ message: 'The layout is already the classic one', type: 'success' })
+        return
+      }
+      clearPageLayout()
+      setToast({ message: 'Switched to the classic layout — undo with Ctrl+Z', type: 'success' })
+    },
+    layoutPreview: () => {
+      if (pages.length === 0) {
+        setToast({ message: 'Nothing to preview yet — add a page, or start a layout from your entities', type: 'error' })
+        return
+      }
+      setPagesPreview(n => n + 1)
+    },
   }
   const commandRef = useRef(commandHandlers)
   commandRef.current = commandHandlers
@@ -1143,6 +1190,10 @@ export function FullstackView() {
     { id: 'fs-redo', title: 'Redo', icon: 'redo', group: 'Fullstack', shortcut: 'Ctrl+Shift+Z', run: () => commandRef.current.redo() },
     { id: 'fs-collapse', title: 'Collapse / expand all entities', icon: 'unfold_less', group: 'Fullstack', run: () => commandRef.current.toggleCollapse() },
     { id: 'fs-find', title: 'Find entity…', description: 'Filter the entity list by name, label, table or field', icon: 'search', group: 'Fullstack', run: () => commandRef.current.findEntity() },
+    { id: 'fs-add-page', title: 'Add a page to the layout', description: 'Opens the page gallery of the frontend page layout', icon: 'web', group: 'Fullstack', run: () => commandRef.current.addPage() },
+    { id: 'fs-seed-pages', title: 'Start a page layout from my entities', description: 'A dashboard plus one list page per entity, ready to edit', icon: 'auto_awesome', group: 'Fullstack', run: () => commandRef.current.seedPages() },
+    { id: 'fs-classic-layout', title: 'Use the classic page layout', description: 'Drops the page layout (undoable)', icon: 'restart_alt', group: 'Fullstack', run: () => commandRef.current.classicLayout() },
+    { id: 'fs-layout-preview', title: 'Open the layout preview', description: 'A mock of the generated app with sample data', icon: 'preview', group: 'Fullstack', run: () => commandRef.current.layoutPreview() },
     { id: 'fs-density', title: 'Toggle compact field tables', icon: 'density_small', group: 'Fullstack', run: () => commandRef.current.toggleDensity() },
     { id: 'fs-reset', title: 'Reset the fullstack generator', icon: 'restart_alt', group: 'Fullstack', run: () => commandRef.current.reset() },
     { id: 'fs-shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', group: 'Fullstack', shortcut: '?', run: () => commandRef.current.toggleShortcuts() },
@@ -1262,26 +1313,6 @@ export function FullstackView() {
         )}
       </section>
 
-      <PagesEditor
-        pages={pages}
-        entities={entities}
-        validation={pageValidation}
-        onChange={setPages}
-        pushUndo={pushUndoEntry}
-        onClear={clearPageLayout}
-        previewSettings={pagesPreviewSettings}
-        revealRequest={pagesReveal}
-        serverIssue={pageServerIssue}
-        ldapAuth={ldapAuth}
-        onAddDep={dep => setSelectedDeps(prev => (prev.includes(dep) ? prev : [...prev, dep]))}
-        history={{
-          undoLabel: lastUndo ? `Undo: ${lastUndo.label}` : null,
-          redoLabel: nextRedo ? `Redo: ${nextRedo.label}` : null,
-          onUndo: undo,
-          onRedo: redo,
-        }}
-      />
-
       <section id="fs-entities" className="space-y-4">
         <EntitiesToolbar
           entityCount={entities.length}
@@ -1360,6 +1391,29 @@ export function FullstackView() {
           </div>
         </div>
       </section>
+
+      {/* Pages are built from the entities, so the layout editor follows them. */}
+      <PagesEditor
+        pages={pages}
+        entities={entities}
+        validation={pageValidation}
+        onChange={setPages}
+        pushUndo={pushUndoEntry}
+        onClear={clearPageLayout}
+        previewSettings={pagesPreviewSettings}
+        revealRequest={pagesReveal}
+        addRequest={pagesAdd}
+        previewRequest={pagesPreview}
+        serverIssue={pageServerIssue}
+        ldapAuth={ldapAuth}
+        onAddDep={dep => setSelectedDeps(prev => (prev.includes(dep) ? prev : [...prev, dep]))}
+        history={{
+          undoLabel: lastUndo ? `Undo: ${lastUndo.label}` : null,
+          redoLabel: nextRedo ? `Redo: ${nextRedo.label}` : null,
+          onUndo: undo,
+          onRedo: redo,
+        }}
+      />
 
       {lastGenerated && (
         <NextStepsPanel

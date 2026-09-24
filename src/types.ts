@@ -584,6 +584,9 @@ export type FullstackChildTabDef = string | { entity: string; via?: string }
 export interface FullstackPageDef {
   /** Lower-case slug: the nav id and the screen's file name (`tickets-open` → TicketsOpenScreen). */
   id: string
+  /** Editor only: the id was typed by hand and no longer follows the title. Stripped from every
+   *  request by `requestPages` (the server would ignore it, but a request carries only its API). */
+  idLocked?: boolean
   type: FullstackPageType
   /** Nav label; required for tabs, else defaults to the entity's plural label / "Dashboard". */
   title?: string

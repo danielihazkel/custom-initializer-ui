@@ -62,6 +62,7 @@ import {
   groupableFields,
   inNav,
   listColumns,
+  newWidget,
   numericFields,
   pageFromSuggestion,
   pageLabel,
@@ -80,10 +81,14 @@ import {
   seedLayout,
   slugify,
   sortableKeys,
+  splitDisabledReason,
+  splitListByField,
   stripDateRange,
   suggestPages,
   uniquePageId,
+  valuesOf,
   viewDisabledReason,
+  widgetKindDisabledReason,
   type PageLayoutValidation,
 } from './pageLayout'
 
@@ -108,6 +113,10 @@ interface Props {
   previewSettings?: PagesPreviewSettings
   /** Bumped by the caller to open the first page with a problem and focus the control. */
   revealRequest?: number
+  /** Bumped by the caller (the command palette) to open the "Add page" gallery. */
+  addRequest?: number
+  /** Bumped by the caller (the command palette) to show the layout preview. */
+  previewRequest?: number
   /** `stacked` puts the preview under the page list at every width — for narrow hosts (the
    *  admin drawer), where the viewport-wide split would squeeze both. */
   layout?: 'split' | 'stacked'
@@ -175,12 +184,10 @@ function summarizeLayout(pages: FullstackPageDef[]): string {
  * dashboard plus one list page per entity), which "Start from my entities" materializes as an
  * editable starting point.
  */
-export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep }: Props) {
+export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep }: Props) {
   const keys = useStableKeys(pages, p => p.id)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  // Ids follow the title until the user edits one by hand (by row key, so a rename keeps it).
-  const [customIds, setCustomIds] = useState<Set<string>>(new Set())
   const [confirmRemove, setConfirmRemove] = useState<number | null>(null)
   const [confirmClassic, setConfirmClassic] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(readPreviewOpen)
@@ -245,15 +252,26 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     onChange(next)
   }
 
+  // Ids follow the title until the user edits one by hand — `idLocked`, kept on the page itself
+  // so the choice survives a reload, an example load and a saved model.
   function retitle(index: number, title: string) {
     const page = pages[index]
-    const keepsId = customIds.has(keys[index]) || page.type === 'dashboard'
+    const keepsId = page.idLocked || page.type === 'dashboard'
     const patch: Partial<FullstackPageDef> = { title }
     if (!keepsId) {
       const slug = slugify(title)
       if (slug) patch.id = uniquePageId(slug, pages.filter((_, i) => i !== index).map(p => p.id))
     }
     update(index, patch)
+  }
+
+  /** Drops the hand-edited id: it follows the title again, starting now. */
+  function unlockId(index: number) {
+    const slug = slugify(pages[index].title ?? '')
+    update(index, {
+      idLocked: undefined,
+      ...(slug ? { id: uniquePageId(slug, pages.filter((_, i) => i !== index).map(p => p.id)) } : {}),
+    })
   }
 
   function openPage(index: number | null) {
@@ -376,6 +394,24 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   useEffect(() => {
     if (serverIssue) reveal({ page: serverIssue.page })
   }, [serverIssue])
+
+  // The command palette's "Add page": the section and its gallery open, in view.
+  useEffect(() => {
+    if (!addRequest) return
+    setSectionOpen(true)
+    setAddOpen(true)
+    requestAnimationFrame(() => scrollToElement(sectionRef.current, 'start'))
+  }, [addRequest])
+
+  // ...and "Open the layout preview": beside the list where it fits, else the slide-over.
+  useEffect(() => {
+    if (!previewRequest) return
+    setSectionOpen(true)
+    const wide = typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1280px)').matches
+    if (layout === 'stacked' || wide) setPreviewOpen(true)
+    else setPreviewDrawer(true)
+    requestAnimationFrame(() => scrollToElement(sectionRef.current, 'start'))
+  }, [previewRequest, layout])
 
   const settings = previewSettings ?? { locale: 'en' as const, projectOpts: [], skin: 'tailwind' as const }
   const preview = useMemo(
@@ -525,7 +561,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       <div id="fs-pages-body" className="space-y-3">
       {named.length === 0 && (
         <p className="text-[11px] text-secondary" data-pages-need-entity>
-          Pages are built from your entities — name at least one entity in the Entities section below, then add pages here.
+          Pages are built from your entities — name at least one entity in the Entities section above, then add pages here.
         </p>
       )}
       {atPageCap && (
@@ -781,19 +817,26 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                           label="Id"
                           error={errors.id}
                           control="id"
-                          hint={`${customIds.has(key) || page.type === 'dashboard' ? 'The URL and screen file' : 'Follows the title until you edit it'} · lower-case letters, digits and dashes`}
+                          hint={`${page.idLocked || page.type === 'dashboard' ? 'The URL and screen file' : 'Follows the title until you edit it'} · lower-case letters, digits and dashes`}
                         >
                           <input
                             type="text"
                             aria-label="Page id"
                             aria-invalid={Boolean(errors.id)}
                             value={page.id}
-                            onChange={e => {
-                              setCustomIds(prev => new Set(prev).add(key))
-                              update(index, { id: e.target.value })
-                            }}
+                            onChange={e => update(index, { id: e.target.value, idLocked: true })}
                             className={`${inputClass(errors.id)} font-mono`}
                           />
+                          {page.idLocked && page.type !== 'dashboard' && (
+                            <button
+                              type="button"
+                              onClick={() => unlockId(index)}
+                              className="mt-1 text-[11px] font-semibold text-primary hover:underline"
+                              data-unlock-id
+                            >
+                              Follow the title again
+                            </button>
+                          )}
                         </Field>
                         <Field label="Description" error={errors.description} control="description">
                           <input
@@ -813,7 +856,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                       <RolesField page={page} index={index} errors={errors} update={update} ldapAuth={ldapAuth} onAddDep={onAddDep} />
 
                       {page.type === 'entity-list' && (
-                        <EntityListForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} dnd={dnd} projectOpts={projectOpts} />
+                        <EntityListForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} dnd={dnd} projectOpts={projectOpts} pages={pages} pushUndo={pushUndo} onChange={onChange} />
                       )}
                       {page.type === 'dashboard' && (
                         <DashboardForm
@@ -1130,9 +1173,26 @@ function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filt
   )
 }
 
-function EntityListForm({ page, index, entities, errors, update, lossy, dnd, projectOpts }: FormProps & { dnd: ReturnType<typeof useDragReorder>; projectOpts: string[] }) {
+function EntityListForm({ page, index, entities, errors, update, lossy, dnd, projectOpts, pages, pushUndo, onChange }: FormProps & {
+  dnd: ReturnType<typeof useDragReorder>
+  projectOpts: string[]
+  /** The whole layout — "Split into tabs" adds pages beside this one. */
+  pages: FullstackPageDef[]
+  pushUndo: (label: string) => void
+  onChange: (next: FullstackPageDef[]) => void
+}) {
   const entity = entities.find(e => e.name === page.entity)
   const columns = listColumns(entity, projectOpts)
+  // "Split into tabs": one hidden list per value of an enum/boolean field, under a tabs page.
+  const splittable = groupableFields(entity)
+  const [pickedSplit, setPickedSplit] = useState('')
+  const splitField = splittable.find(f => f.name === pickedSplit) ?? splittable[0]
+  const splitReason = splitDisabledReason(page, splitField, pages)
+  function split() {
+    if (!splitField || splitReason) return
+    pushUndo(`Split “${pageLabel(page)}” by ${splitField.name}`)
+    onChange(splitListByField(page, splitField, pages))
+  }
   const allKeys = columns.map(c => c.key)
   // Omitted columns means every column in the generated order — the same default the generator applies.
   const shown = page.columns ?? allKeys
@@ -1175,6 +1235,33 @@ function EntityListForm({ page, index, entities, errors, update, lossy, dnd, pro
         errors={errors}
         onChange={presetFilter => update(index, { presetFilter })}
       />
+      {splittable.length > 0 && (
+        <div className="flex flex-wrap items-end gap-2" data-control="split">
+          <MiniField label="Split into tabs by" hint={splitReason ?? `A hidden list per ${splitField?.name} value, side by side under a new tabs page`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                aria-label="Split by field"
+                value={splitField?.name ?? ''}
+                onChange={e => setPickedSplit(e.target.value)}
+                className={`${inputClass()} max-w-[12rem] py-1 text-xs`}
+              >
+                {splittable.map(f => <option key={f.name} value={f.name}>{f.label?.trim() || f.name}</option>)}
+              </select>
+              <button
+                type="button"
+                onClick={split}
+                disabled={Boolean(splitReason)}
+                className={SMALL_BUTTON}
+                title={splitReason ?? 'One undoable step'}
+                data-split-list
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>tab</span>
+                Split into tabs
+              </button>
+            </div>
+          </MiniField>
+        </div>
+      )}
       <div className="space-y-1" data-control="columns" role="group" aria-label="Columns">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
           Columns <span className="font-normal normal-case tracking-normal">· in table order — click one to hide it, drag to reorder</span>
@@ -1326,6 +1413,21 @@ function DashboardForm({ page, index, entities, errors, update, dnd, lossy, expa
   const list = `widgets:${index}`
   const keys = useStableKeys(widgets, w => `${w.kind}:${w.entity}:${w.groupBy ?? ''}:${w.title ?? ''}`)
   const atCap = widgets.length >= MAX_WIDGETS
+  // "Add widget" opens a gallery: pick the entity, then a kind — each kind says why it would
+  // not fit that entity, so the widget is valid on sight.
+  const [galleryOpen, setGalleryOpen] = useState(false)
+  const [galleryEntity, setGalleryEntity] = useState('')
+  const galleryPick = entities.find(e => e.name === galleryEntity)
+  function openGallery() {
+    // Start from the last widget's entity — the likeliest next one — else the first entity.
+    const last = [...widgets].reverse().find(w => w.entity && entities.some(e => e.name === w.entity))?.entity
+    setGalleryEntity(last ?? entities[0]?.name ?? '')
+    setGalleryOpen(o => !o)
+  }
+  function addWidget(kind: FullstackWidgetDef['kind']) {
+    setGalleryOpen(false)
+    update(index, { widgets: [...widgets, newWidget(kind, galleryEntity)] })
+  }
   // Cards start collapsed on a busy dashboard so the list scans as one line per widget; a new or
   // re-kinded widget opens, and so does the card a problem points at. Keyed by row key, so a
   // reorder keeps each card's state.
@@ -1433,14 +1535,51 @@ function DashboardForm({ page, index, entities, errors, update, dnd, lossy, expa
         ))}
         <button
           type="button"
-          onClick={() => setWidgets([...widgets, { kind: 'kpi', entity: entities[0]?.name ?? '' }])}
+          onClick={openGallery}
+          aria-expanded={galleryOpen}
           disabled={atCap}
           className={SMALL_BUTTON}
-          title={atCap ? `A dashboard can have at most ${MAX_WIDGETS} widgets` : undefined}
+          title={atCap ? `A dashboard can have at most ${MAX_WIDGETS} widgets` : 'Pick a kind of widget and the entity it reads'}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
           Add widget
         </button>
+        {galleryOpen && !atCap && (
+          <div className="space-y-2 rounded-lg border border-outline-variant p-2" data-widget-gallery>
+            <MiniField label="Entity the widget reads">
+              <EntitySelect
+                label="New widget entity"
+                value={galleryEntity}
+                options={entities.map(e => e.name)}
+                className="max-w-[12rem]"
+                onChange={setGalleryEntity}
+              />
+            </MiniField>
+            <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
+              {WIDGET_KINDS.map(k => {
+                const reason = widgetKindDisabledReason(k.kind, galleryPick)
+                return (
+                  <li key={k.kind}>
+                    <button
+                      type="button"
+                      onClick={() => addWidget(k.kind)}
+                      disabled={Boolean(reason)}
+                      aria-label={`Add ${k.label.toLowerCase()}`}
+                      title={reason ?? k.hint}
+                      className="h-full w-full rounded-lg border border-outline-variant px-2.5 py-2 text-start transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-outline-variant disabled:hover:bg-transparent"
+                    >
+                      <span className="flex items-center gap-1.5 text-xs font-semibold text-on-surface">
+                        <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{k.icon}</span>
+                        {k.label}
+                      </span>
+                      <span className="mt-0.5 block text-[10px] text-secondary">{reason ?? k.hint}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1523,6 +1662,9 @@ function WidgetCard({ widget, wi, count, entities, dateRange, errors, atCap, dnd
         <div role="radiogroup" aria-label="Widget kind" className="inline-flex flex-wrap overflow-hidden rounded border border-outline-variant">
           {WIDGET_KINDS.map(k => {
             const on = widget.kind === k.kind
+            // A kind that cannot read this widget's entity (or, for a text widget, the first
+            // entity it would fall back to) says why instead of producing a problem.
+            const reason = on ? undefined : widgetKindDisabledReason(k.kind, entity ?? (widget.entity ? undefined : entities[0]))
             return (
               <button
                 key={k.kind}
@@ -1530,9 +1672,11 @@ function WidgetCard({ widget, wi, count, entities, dateRange, errors, atCap, dnd
                 role="radio"
                 aria-checked={on}
                 aria-label={k.label}
-                title={k.hint}
+                aria-disabled={Boolean(reason)}
+                disabled={Boolean(reason)}
+                title={reason ?? k.hint}
                 onClick={() => onRetarget(k.kind !== 'text' && !widget.entity ? { kind: k.kind, entity: entities[0]?.name ?? '' } : { kind: k.kind })}
-                className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] ${on ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5 hover:text-primary'}`}
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] disabled:opacity-40 ${on ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5 hover:text-primary'}`}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">{k.icon}</span>
                 {k.short}
@@ -2363,7 +2507,7 @@ function HeaderStatsFields({ page, index, entities, errors, update }: FormProps)
 }
 
 /** A wizard: its entity, and the form's fields dealt into steps (each field in exactly one). */
-function WizardForm({ page, index, entities, errors, update, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
+function WizardForm({ page, index, entities, errors, update, lossy, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
   const entity = entities.find(e => e.name === page.entity)
   const askable = askableFields(entity)
   const steps = page.steps ?? defaultWizardSteps(entity)
@@ -2396,7 +2540,11 @@ function WizardForm({ page, index, entities, errors, update, dnd }: FormProps & 
           options={entities.filter(e => !e.readOnly).map(e => e.name)}
           error={errors.entity}
           // Steps keep the fields the new entity also has; the rest are dealt in after them.
-          onChange={name => update(index, { entity: name, steps: retargetWizardSteps(page.steps, entities.find(e => e.name === name)) })}
+          onChange={name => {
+            const { steps: next, dropped } = retargetWizardSteps(page.steps, entities.find(e => e.name === name))
+            lossy(`Asked for ${name} in “${pageLabel(page)}”`, dropped)
+            update(index, { entity: name, steps: next })
+          }}
         />
       </Field>
       <div className="space-y-1" data-control="steps">
@@ -2642,9 +2790,6 @@ function EntitySelect({ label, value, options, error, empty, className, onChange
     </select>
   )
 }
-
-const valuesOf = (field: { type: string; enumValues?: string[] } | undefined): string[] =>
-  field?.type === 'BOOLEAN' ? ['true', 'false'] : (field?.enumValues ?? [])
 
 /** A new page of `type`, filled in with the first entities (and pages) that fit so it is valid on sight. */
 function blankPage(type: FullstackPageType, entities: FullstackEntityDef[], pages: FullstackPageDef[]): FullstackPageDef {

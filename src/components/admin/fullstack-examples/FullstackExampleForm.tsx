@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { FullstackEntityDef, FullstackPageDef, TeamModelSummary } from '../../../types'
 import { PagesEditor } from '../../fullstack/PagesEditor'
-import { validatePages } from '../../fullstack/pageLayout'
+import { requestPages, validatePages } from '../../fullstack/pageLayout'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 import type { ExampleDraft } from './FullstackExamplesTab'
 
@@ -125,7 +125,8 @@ export function FullstackExampleForm({ data, errors, onChange, teamModels, onImp
               pages={visual.pages}
               entities={visual.entities}
               validation={validatePages(visual.pages, visual.entities, { scaffoldOpts: visual.scaffold })}
-              onChange={next => onChange({ pagesText: next.length ? JSON.stringify(next, null, 2) : '' })}
+              // The stored JSON is a request body, so the editor-only id lock stays out of it.
+              onChange={next => onChange({ pagesText: next.length ? JSON.stringify(requestPages(next), null, 2) : '' })}
               pushUndo={() => {}}
               onClear={() => onChange({ pagesText: '' })}
               previewSettings={{ locale: visual.locale, projectOpts: visual.scaffold, skin: visual.menora ? 'menora' : 'tailwind' }}

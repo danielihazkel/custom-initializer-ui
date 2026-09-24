@@ -12,7 +12,8 @@ import type {
   FullstackPageType,
   FullstackWidgetDef,
 } from '../../types'
-import { humanize } from './naming'
+import { humanize, pluralize } from './naming'
+import { enumLabel } from './enumLabels'
 import { summarizeEntity } from './summary'
 
 /**
@@ -1052,6 +1053,37 @@ export function defaultLineGroupBy(entity: FullstackEntityDef | undefined): stri
   return dateFields(entity)[0]?.name
 }
 
+/** Why a widget of `kind` cannot read `entity`, or undefined when it can — the validator's own
+ *  rules, told before the widget exists (the Add-widget gallery, the kind switcher). */
+export function widgetKindDisabledReason(kind: FullstackWidgetDef['kind'], entity: FullstackEntityDef | undefined): string | undefined {
+  if (kind === 'text') return undefined
+  if (!entity) return 'Pick an entity first'
+  const name = entity.name.trim() || 'This entity'
+  switch (kind) {
+    case 'bar':
+    case 'donut':
+      return groupableFields(entity).length > 0 ? undefined : `${name} has no enum or boolean field to break down by`
+    case 'stacked':
+      return groupableFields(entity).length > 1 ? undefined : `${name} needs two enum or boolean fields to stack`
+    case 'line':
+      return dateFields(entity).length > 0 ? undefined : `${name} has no date field to plot over`
+    case 'top':
+      return rankableKeys(entity).length > 0 ? undefined : `${name} has no enum, boolean or relation to rank by`
+    default:
+      return undefined
+  }
+}
+
+/** A new widget of `kind` on `entity`, pre-filled with what the validator insists on so it is
+ *  valid on sight; what the generator defaults (group by, date, series) stays implicit. */
+export function newWidget(kind: FullstackWidgetDef['kind'], entity: string): FullstackWidgetDef {
+  switch (kind) {
+    case 'text': return { kind, entity: '', text: 'Note' }
+    case 'progress': return { kind, entity, target: '100' }
+    default: return { kind, entity }
+  }
+}
+
 /** A report's grouping when none is picked: the first enum/boolean, else the first date field
  *  (FullstackPageValidator.chart). */
 export function defaultReportGroupBy(entity: FullstackEntityDef | undefined): string | undefined {
@@ -1125,12 +1157,78 @@ export function renameRelationInPages(pages: FullstackPageDef[], child: string, 
   return changed ? next : pages
 }
 
-/** A copy of `page` under a fresh id and a "(copy)" title; the caller places it. */
+/** A copy of `page` under a fresh id and a "(copy)" title; the caller places it. The copy's id
+ *  is minted, so it follows the copy's title again. */
 export function duplicatePage(page: FullstackPageDef, taken: Iterable<string>): FullstackPageDef {
   const copy = JSON.parse(JSON.stringify(page)) as FullstackPageDef
   copy.id = uniquePageId(`${page.id || 'page'}-copy`.slice(0, 40).replace(/-+$/, ''), taken)
   copy.title = `${pageLabel(page)} (copy)`
+  delete copy.idLocked
   return copy
+}
+
+/** The layout as a request carries it: without the editor-only `idLocked` marks. */
+export function requestPages(pages: FullstackPageDef[]): FullstackPageDef[] {
+  return pages.map(p => Object.fromEntries(Object.entries(p).filter(([k]) => k !== 'idLocked')) as FullstackPageDef)
+}
+
+// ── Splitting a list into tabs ──────────────────────────────────────────────
+
+/** The values a preset filter on `field` can take: an enum's constants, a boolean's true/false. */
+export const valuesOf = (field: { type: string; enumValues?: string[] } | undefined): string[] =>
+  field?.type === 'BOOLEAN' ? ['true', 'false'] : (field?.enumValues ?? [])
+
+/** Why a list page cannot be split into tabs by `field`, or undefined when it can. */
+export function splitDisabledReason(page: FullstackPageDef, field: FullstackFieldDef | undefined, pages: FullstackPageDef[]): string | undefined {
+  if (!field) return 'Pick a field to split by'
+  const values = valuesOf(field)
+  if (page.presetFilter?.[field.name] != null) return `This list is already filtered on ${field.name}`
+  if (values.length < MIN_TABS) return `${field.name} needs at least ${MIN_TABS} values to split by`
+  if (values.length > MAX_TABS) return `${field.name} has ${values.length} values; a tabs page takes at most ${MAX_TABS}`
+  if (pages.length + values.length + 1 > MAX_PAGES) return `Splitting would take the layout past ${MAX_PAGES} pages`
+  return undefined
+}
+
+/**
+ * The "queue" pattern in one step: one hidden, preset-filtered copy of `page` per value of
+ * `field` (its columns, sort, view and page size carried over), under a new tabs page that shows
+ * them side by side — inserted right after `page`, which stays as it is.
+ */
+export function splitListByField(page: FullstackPageDef, field: FullstackFieldDef, pages: FullstackPageDef[]): FullstackPageDef[] {
+  const index = pages.findIndex(p => p.id === page.id)
+  const taken = new Set(pages.map(p => p.id))
+  const mint = (base: string) => {
+    const id = uniquePageId(slugify(base) || 'page', taken)
+    taken.add(id)
+    return id
+  }
+  const entity = page.entity ?? ''
+  const values = valuesOf(field)
+  const tabLabel = (value: string) => (field.type === 'BOOLEAN' ? (value === 'true' ? 'Yes' : 'No') : enumLabel(field, value))
+  const lists: FullstackPageDef[] = values.map(value => ({
+    id: mint(field.type === 'BOOLEAN' ? `${entity}-${field.name}-${value}` : `${entity}-${value}`),
+    type: 'entity-list',
+    entity,
+    hidden: true,
+    presetFilter: { ...page.presetFilter, [field.name]: value },
+    ...(page.columns ? { columns: [...page.columns] } : {}),
+    ...(page.sort ? { sort: { ...page.sort } } : {}),
+    ...(page.view ? { view: page.view } : {}),
+    ...(page.pageSize ? { pageSize: page.pageSize } : {}),
+  }))
+  const fieldLabel = (field.label?.trim() || humanize(field.name)).toLowerCase()
+  const tabs: FullstackPageDef = {
+    id: mint(`${page.id}-by-${field.name}`),
+    type: 'tabs',
+    // The source list's own title, else its nav label (the entity's plural, as the generator names it).
+    title: `${page.title?.trim() || pluralize(entity)} by ${fieldLabel}`,
+    ...(page.group ? { group: page.group } : {}),
+    ...(page.icon ? { icon: page.icon } : {}),
+    tabs: lists.map((list, i) => ({ page: list.id, title: tabLabel(values[i]) })),
+  }
+  const next = [...pages]
+  next.splice(index + 1, 0, tabs, ...lists)
+  return next
 }
 
 // ── Suggestions for the "Add page" gallery ──────────────────────────────────
@@ -1276,8 +1374,9 @@ export function describePagesChange(prev: FullstackPageDef[], next: FullstackPag
   if (prev.length === 0 && next.length > 0) return 'Started a page layout'
   if (next.length === 0 && prev.length > 0) return 'Switched to the classic page layout'
   if (next.length > prev.length) {
-    const added = next.find(n => !prev.some(p => p.id === n.id)) ?? next[next.length - 1]
-    return `Added the “${pageLabel(added)}” page`
+    const added = next.filter(n => !prev.some(p => p.id === n.id))
+    if (added.length > 1) return `Added ${added.length} pages (“${pageLabel(added[0])}”…)`
+    return `Added the “${pageLabel(added[0] ?? next[next.length - 1])}” page`
   }
   if (next.length < prev.length) {
     const gone = prev.find(p => !next.some(n => n.id === p.id))
@@ -1481,12 +1580,16 @@ export function retargetReport(page: FullstackPageDef, entity: FullstackEntityDe
 }
 
 /** A wizard moved to another entity: steps keep the fields the new entity also has (by name), and
- *  whatever else it asks for is dealt into steps after them. Falls back to the default steps. */
-export function retargetWizardSteps(steps: { title?: string; fields: string[] }[] | undefined, entity: FullstackEntityDef | undefined): { title?: string; fields: string[] }[] {
+ *  whatever else it asks for is dealt into steps after them. Falls back to the default steps.
+ *  `dropped` names what did not carry over — the step layout, or just some fields — like the
+ *  other retarget helpers, so the editor can say so with an undo. */
+export function retargetWizardSteps(steps: { title?: string; fields: string[] }[] | undefined, entity: FullstackEntityDef | undefined): { steps: { title?: string; fields: string[] }[]; dropped: string[] } {
   const askable = askableFields(entity).map(a => a.name)
+  const asked = (steps ?? []).flatMap(s => s.fields)
   const kept = (steps ?? []).map(s => ({ ...s, fields: s.fields.filter(f => askable.includes(f)) })).filter(s => s.fields.length > 0)
+  const keptCount = kept.flatMap(s => s.fields).length
   // Keep the old shape only when it still covers most of the new form; otherwise start over.
-  if (kept.flatMap(s => s.fields).length * 2 < askable.length) return defaultWizardSteps(entity)
+  if (keptCount * 2 < askable.length) return { steps: defaultWizardSteps(entity), dropped: asked.length > 0 ? ['step layout'] : [] }
   const placed = new Set(kept.flatMap(s => s.fields))
   const rest = askable.filter(a => !placed.has(a))
   for (let i = 0; i < rest.length; i += DEFAULT_STEP_SIZE) {
@@ -1496,7 +1599,7 @@ export function retargetWizardSteps(steps: { title?: string; fields: string[] }[
     }
     kept.push({ fields: rest.slice(i, i + DEFAULT_STEP_SIZE) })
   }
-  return kept
+  return { steps: kept, dropped: keptCount < asked.length ? ['fields'] : [] }
 }
 
 // ── Server errors ────────────────────────────────────────────────────────────

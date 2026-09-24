@@ -385,4 +385,53 @@ describe('FullstackView — page layouts', () => {
     const body = JSON.parse((post[1] as RequestInit).body as string)
     expect(body.pages.map((p: { id: string }) => p.id)).toEqual(['dashboard', 'invoice'])
   })
+
+  it('lists the pages after the entities they are built from, and both in the section nav', () => {
+    storeDraft(draftEntities)
+    localStorage.setItem('fullstack:setup', 'open')
+    render(<FullstackView />)
+    const entitiesSection = document.getElementById('fs-entities')!
+    const pagesSection = document.getElementById('fs-pages')!
+    expect(Boolean(entitiesSection.compareDocumentPosition(pagesSection) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+    const nav = document.querySelector('[data-section-nav]')!
+    expect([...nav.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Project', 'Backend', 'Frontend', 'Options', 'Dependencies', 'Entities', 'Pages'])
+  })
+
+  it('sends the pages without the editor-only id lock, and shows a preview 400 on the page it names', async () => {
+    mockServer()
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/metadata/fullstack/examples') return Promise.resolve(response(200, [example]))
+      if (url === '/starter-fullstack.preview' && init?.method === 'POST') return Promise.resolve(response(400, { error: 'Bad Request', detail: "Page 'open': something the server does not like" }))
+      return Promise.resolve(response(404, {}))
+    })
+    render(<FullstackView />)
+    const panel = await loadDesk()
+    // Give the hidden "open" list an id by hand: the lock rides on the page itself.
+    const row = panel.querySelector('[data-page-id="open"]') as HTMLElement
+    fireEvent.click(row.querySelector('button[aria-expanded]')!)
+    fireEvent.change(within(row).getByLabelText('Page id'), { target: { value: 'open-tickets' } })
+    fireEvent.change(within(row).getByLabelText('Page title'), { target: { value: 'Open ones' } })
+
+    fireEvent.click(screen.getByTitle('Preview the generated file tree before downloading'))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/starter-fullstack.preview', expect.objectContaining({ method: 'POST' })))
+    const post = fetchMock.mock.calls.find(([url, init]) => url === '/starter-fullstack.preview' && (init as RequestInit | undefined)?.method === 'POST')!
+    const body = JSON.parse((post[1] as RequestInit).body as string)
+    const sent = body.pages.find((p: { id: string }) => p.id === 'open-tickets')
+    expect(sent).toMatchObject({ title: 'Open ones' })
+    expect('idLocked' in sent).toBe(false)
+  })
+
+  it('maps a preview 400 that names a page onto that page', async () => {
+    mockServer()
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/metadata/fullstack/examples') return Promise.resolve(response(200, [example]))
+      if (url === '/starter-fullstack.preview' && init?.method === 'POST') return Promise.resolve(response(400, { error: 'Bad Request', detail: "Page 'open': something the server does not like" }))
+      return Promise.resolve(response(404, {}))
+    })
+    render(<FullstackView />)
+    await loadDesk()
+    fireEvent.click(screen.getByTitle('Preview the generated file tree before downloading'))
+    await waitFor(() => expect(document.querySelector('[data-page-layout-problems]')?.textContent)
+      .toContain("The server rejected “Ticket”: Page 'open': something the server does not like"))
+  })
 })
