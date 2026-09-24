@@ -311,6 +311,12 @@ export interface PageLayoutValidation {
    *  a fix when the problem has one obvious repair. */
   issues: { page?: number; field?: string; summary: string; fix?: PageFix }[]
   count: number
+  /** Advice, not errors: the layout generates, but with a dead end the user probably did not mean
+   *  (a hidden page nothing opens, a chart nothing drills from, a default that was capped). Never
+   *  counted, never blocks Generate. */
+  warnings: { page?: number; field?: string; summary: string; fix?: PageFix }[]
+  /** Page index → how many of the warnings are about it. */
+  warningsByPage: Record<number, number>
 }
 
 interface Issue {
@@ -349,13 +355,105 @@ export function validatePages(pages: FullstackPageDef[], entities: FullstackEnti
       fields[issue.field ?? 'page'] ??= issue.message
     }
   }
+  const warnings = collectWarnings(pages, entities)
+  const warningsByPage: Record<number, number> = {}
+  for (const w of warnings) if (w.page != null) warningsByPage[w.page] = (warningsByPage[w.page] ?? 0) + 1
   return {
     byPage,
     general,
     problems: issues.map(i => i.summary),
     issues: issues.map(({ page, field, summary, fix }) => ({ page, field, summary, ...(fix ? { fix } : {}) })),
     count: issues.length,
+    warnings: warnings.map(({ page, field, summary, fix }) => ({ page, field, summary, ...(fix ? { fix } : {}) })),
+    warningsByPage,
   }
+}
+
+/** The dead ends a valid layout can still have — what the generated app silently does nothing
+ *  about. Each names the page and, where one repair is obvious, offers it. */
+function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Issue[] {
+  if (pages.length === 0) return []
+  const out: Issue[] = []
+  const byLower = new Map(entities.map(e => [e.name.trim().toLowerCase(), e]))
+  const entityOf = (name: string | undefined) => (name ? byLower.get(name.trim().toLowerCase()) : undefined)
+  const same = (a: string | undefined, b: string) => a != null && a.trim().toLowerCase() === b.trim().toLowerCase()
+  // Where a chart drills to (EntityScaffoldContext.PageLinks.listPageOf): the entity's first list
+  // page in the navigation. Where a row opens: its record page.
+  const visibleList = (entity: string) => pages.some(p => p.type === 'entity-list' && !p.hidden && same(p.entity, entity))
+  const recordPage = (entity: string) => pages.some(p => p.type === 'record' && same(p.entity, entity))
+  const room = pages.length < MAX_PAGES
+  const patchPage = (index: number, label: string, patch: (page: FullstackPageDef) => FullstackPageDef): PageFix => ({
+    label,
+    apply: all => all.map((p, i) => (i === index ? patch(p) : p)),
+  })
+  const addListPage = (e: FullstackEntityDef): PageFix | undefined => (room ? {
+    label: `Add a ${pluralize(e.name)} list page`,
+    apply: all => [...all, { id: uniquePageId(slugify(pluralize(e.name)), all.map(p => p.id)), type: 'entity-list', entity: e.name }],
+  } : undefined)
+  const addRecordPage = (e: FullstackEntityDef): PageFix | undefined => (room ? {
+    label: `Add a ${e.name} record page`,
+    apply: all => [...all, { id: uniquePageId(slugify(e.name), all.map(p => p.id)), type: 'record', entity: e.name, hidden: true }],
+  } : undefined)
+  const seen = new Set<string>()
+
+  pages.forEach((page, index) => {
+    const label = pageLabel(page)
+    const where = `Page “${label}”`
+    const warn = (field: string, summary: string, fix?: PageFix) => {
+      // One chart dead end per page and entity, not one per widget.
+      if (seen.has(summary)) return
+      seen.add(summary)
+      out.push({ page: index, field, message: '', summary, ...(fix ? { fix } : {}) })
+    }
+
+    if (page.hidden && page.type !== 'record' && page.type !== 'wizard' && pagesEmbedding(pages, page.id).length === 0) {
+      warn('page', `${where} is hidden but no tabs page embeds it, so nothing opens it`,
+        patchPage(index, `Show “${label}” in the navigation`, p => ({ ...p, hidden: false })))
+    }
+    if ((page.roles?.length ?? 0) > 0 && page.hidden && page.type !== 'wizard') {
+      warn('roles', `${where} is restricted to roles, but it is out of the navigation, so the roles never apply`,
+        patchPage(index, `Drop the roles of “${label}”`, p => ({ ...p, roles: undefined })))
+    }
+    if (page.type === 'dashboard') {
+      const dateless: number[] = []
+      ;(page.widgets ?? []).forEach((w, wi) => {
+        const e = entityOf(w.entity)
+        if (!e || w.kind === 'text') return
+        const chart = w.kind === 'bar' || w.kind === 'donut' || w.kind === 'stacked' || w.kind === 'top' || w.kind === 'line'
+        if (chart && !visibleList(e.name)) {
+          warn(`widget.${wi}`, `${where}: clicking a bar of the ${e.name} chart goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e))
+        }
+        if (w.kind === 'recent' && singlePk(e) && !recordPage(e.name)) {
+          warn(`widget.${wi}`, `${where}: the recent ${e.name} rows open nothing — ${e.name} has no record page`, addRecordPage(e))
+        }
+        if (page.dateRange && !widgetDateField(w, e)) dateless.push(wi)
+      })
+      if (page.dateRange && dateless.length > 0) {
+        warn(`widget.${dateless[0]}`, `${where}: ${dateless.length === 1 ? 'one widget has' : `${dateless.length} widgets have`} no date, so the period picker does not limit ${dateless.length === 1 ? 'it' : 'them'}`)
+      }
+    }
+    if (page.type === 'report') {
+      const e = entityOf(page.entity)
+      if (e && !visibleList(e.name)) {
+        warn('entity', `${where}: clicking a bar of the chart goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e))
+      }
+    }
+    if (page.type === 'record') {
+      const e = entityOf(page.entity)
+      if (!e) return
+      const related = entities.filter(o => o.name.trim() && relationsTo(o, e.name).length > 0)
+      if (page.childTabs == null && related.length > MAX_CHILD_TABS) {
+        warn('childTabs', `${where} shows only the first ${MAX_CHILD_TABS} of its ${related.length} related lists`,
+          patchPage(index, `Choose the first ${MAX_CHILD_TABS} related lists`, p => ({ ...p, childTabs: related.slice(0, MAX_CHILD_TABS).map(o => o.name) })))
+      }
+      const tabs = page.childTabs ? page.childTabs.map(childTabEntity) : related.map(o => o.name)
+      if (page.headerStats == null && tabs.length > MAX_HEADER_STATS) {
+        warn('headerStats', `${where} shows only the first ${MAX_HEADER_STATS} of its ${tabs.length} header numbers`,
+          patchPage(index, `Choose the first ${MAX_HEADER_STATS} header numbers`, p => ({ ...p, headerStats: tabs.slice(0, MAX_HEADER_STATS).map(child => ({ child })) })))
+      }
+    }
+  })
+  return out
 }
 
 /** Page roles: known values, not on the start page or on a tab, and only with ldap-auth. */

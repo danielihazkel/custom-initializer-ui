@@ -52,6 +52,9 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         {item.start && (
           <span className="material-symbols-outlined ms-auto text-amber-300" style={{ fontSize: '10px' }} aria-label={preview.strings.startPage}>home</span>
         )}
+        {item.warning && (
+          <span className={`${item.start ? '' : 'ms-auto '}h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400`} aria-label="Has a warning" data-preview-warning />
+        )}
       </button>
     )
   }

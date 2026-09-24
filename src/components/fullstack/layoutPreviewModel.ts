@@ -34,6 +34,8 @@ export interface LayoutPreviewContext {
   locale: 'en' | 'he'
   /** Project-wide scaffold opts (csvExport, audit, bulk…) — the list pages' toolbars follow them. */
   projectOpts: string[]
+  /** The pages the layout validation warns about — their nav entries carry a marker. */
+  warnPages?: ReadonlySet<number>
 }
 
 export interface PreviewNavItem {
@@ -42,6 +44,8 @@ export interface PreviewNavItem {
   label: string
   icon: string
   start: boolean
+  /** The layout validation has advice about this page. */
+  warning: boolean
 }
 
 export interface PreviewBar { label: string; value: number }
@@ -635,6 +639,7 @@ export function buildLayoutPreview(
       label: screens[index]?.title ?? defaultTitle(pages[index]),
       icon: navSymbol(pages[index]),
       start: index === startIndex,
+      warning: ctx.warnPages?.has(index) ?? false,
     })),
   }))
 

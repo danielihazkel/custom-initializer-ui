@@ -203,4 +203,11 @@ describe('previewPartOf', () => {
     expect(highlights({ page: 0, control: 'widget.0' }, { page: 0, control: 'widget.1' })).toBe(false)
     expect(highlights(null, { page: 0, control: 'title' })).toBe(false)
   })
+
+  it('marks the nav entries of the pages the validation warns about', () => {
+    const plain = buildLayoutPreview(pages, entities, { locale: 'en', projectOpts: [] })
+    expect(plain.nav.map(item => item.warning)).toEqual(plain.nav.map(() => false))
+    const warned = buildLayoutPreview(pages, entities, { locale: 'en', projectOpts: [], warnPages: new Set([0]) })
+    expect(warned.nav.map(item => [item.index, item.warning])).toEqual(plain.nav.map(item => [item.index, item.index === 0]))
+  })
 })

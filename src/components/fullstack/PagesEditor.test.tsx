@@ -873,4 +873,41 @@ describe('PagesEditor', () => {
     expect(lit()).toHaveLength(1)
     expect(lit()[0].querySelector('[data-preview-stats]')).toBeTruthy()
   })
+
+  it('lists warnings apart from problems, marks the page and the preview, and applies their fix', () => {
+    render(<Harness initial={[{ id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'bar', entity: 'Order' }] }]} />)
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+    const warnings = document.querySelector('[data-page-layout-warnings]')!
+    expect(warnings.textContent).toContain('clicking a bar of the Order chart goes nowhere')
+    expect(document.querySelector('[data-page-warnings]')?.textContent).toBe('1 warning')
+    expect(document.querySelector('[data-preview-nav="0"] [data-preview-warning]')).toBeTruthy()
+
+    fireEvent.click(within(warnings as HTMLElement).getByRole('button', { name: /Fix: Add a Orders list page/ }))
+    expect(pushUndo).toHaveBeenCalledWith('Add a Orders list page')
+    expect(latest.map(p => p.id)).toEqual(['home', 'orders'])
+    expect(document.querySelector('[data-page-layout-warnings]')).toBeNull()
+    expect(document.querySelector('[data-preview-warning]')).toBeNull()
+  })
+
+  it('makes a page the start page by moving it first, and keeps the start page open to everyone', () => {
+    render(<Harness initial={[
+      { id: 'orders', type: 'entity-list', entity: 'Order', title: 'Orders' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', title: 'Customers' },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true },
+    ]} />)
+    // The start page has no such button; a record page never does.
+    expect(screen.queryByRole('button', { name: 'Make Orders the start page' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: /the start page$/ })).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Make Customers the start page' }))
+    expect(pushUndo).toHaveBeenCalledWith('Made “Customers” the start page')
+    expect(latest.map(p => p.id)).toEqual(['customers', 'orders', 'customer'])
+    expect(screen.getByRole('button', { name: 'Make Orders the start page' })).toBeTruthy()
+
+    openRow('customers')
+    expect((screen.getByLabelText('Only ADMIN') as HTMLInputElement).disabled).toBe(true)
+    expect(screen.getByText('The start page is open to everyone — make another page the start page to restrict this one')).toBeTruthy()
+    openRow('orders')
+    expect((screen.getByLabelText('Only ADMIN') as HTMLInputElement).disabled).toBe(false)
+  })
 })

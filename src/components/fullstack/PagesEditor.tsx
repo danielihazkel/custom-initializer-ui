@@ -414,9 +414,10 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   }, [previewRequest, layout])
 
   const settings = previewSettings ?? { locale: 'en' as const, projectOpts: [], skin: 'tailwind' as const }
+  const warnPages = useMemo(() => new Set(validation.warnings.map(w => w.page).filter((p): p is number => p != null)), [validation.warnings])
   const preview = useMemo(
-    () => buildLayoutPreview(pages, entities, { locale: settings.locale, projectOpts: settings.projectOpts }),
-    [pages, entities, settings.locale, settings.projectOpts],
+    () => buildLayoutPreview(pages, entities, { locale: settings.locale, projectOpts: settings.projectOpts, warnPages }),
+    [pages, entities, settings.locale, settings.projectOpts, warnPages],
   )
   const previewIndex = (() => {
     const i = previewKey ? keys.indexOf(previewKey) : -1
@@ -464,6 +465,12 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-error" role="status">
               <span className="h-1.5 w-1.5 rounded-full bg-error" aria-hidden="true" />
               {issues.length} problem{issues.length === 1 ? '' : 's'} here
+            </span>
+          )}
+          {!sectionOpen && issues.length === 0 && validation.warnings.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300" role="status">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />
+              {validation.warnings.length} warning{validation.warnings.length === 1 ? '' : 's'} here
             </span>
           )}
           {sectionOpen && history && (
@@ -669,6 +676,50 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           ))}
         </ul>
       )}
+      {sectionOpen && validation.warnings.length > 0 && (
+        <ul
+          className="rounded-lg border border-amber-400/50 bg-amber-400/10 px-3 py-2 space-y-1"
+          role="status"
+          aria-label="Layout warnings"
+          data-page-layout-warnings
+        >
+          {validation.warnings.map((warning, i) => (
+            <li key={`${i}:${warning.summary}`} className="flex flex-wrap items-start gap-x-3 gap-y-1 text-[11px] text-amber-800 dark:text-amber-200">
+              {warning.page != null ? (
+                <button
+                  type="button"
+                  onClick={() => reveal({ page: warning.page!, control: warning.field })}
+                  className="flex items-start gap-1.5 text-start hover:underline"
+                  title="Open this page at the warning"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '13px' }} aria-hidden="true">warning</span>
+                  {warning.summary}
+                </button>
+              ) : (
+                <span className="flex items-start gap-1.5">
+                  <span className="material-symbols-outlined" style={{ fontSize: '13px' }} aria-hidden="true">warning</span>
+                  {warning.summary}
+                </span>
+              )}
+              {warning.fix && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    pushUndo(warning.fix!.label)
+                    onChange(warning.fix!.apply(pages))
+                  }}
+                  className="inline-flex items-center gap-1 rounded border border-amber-500/50 px-1.5 py-0.5 text-[10px] font-semibold hover:bg-amber-400/20"
+                  title="Apply this fix (undoable)"
+                  data-page-fix
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">auto_fix_high</span>
+                  Fix: {warning.fix.label}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {pages.length === 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-outline-variant px-3 py-3">
@@ -700,6 +751,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               const meta = PAGE_TYPE_META[page.type] ?? { icon: 'web_asset', label: page.type, blurb: '' }
               const errors = validation.byPage[index] ?? {}
               const errorCount = Object.keys(errors).length
+              const warningCount = validation.warningsByPage[index] ?? 0
               const open = openKey === key
               const indicator = dnd.indicatorFor('pages', index)
               const isStart = preview.nav[0]?.index === index
@@ -760,8 +812,28 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                           {errorCount} problem{errorCount === 1 ? '' : 's'}
                         </span>
                       )}
+                      {warningCount > 0 && (
+                        <span className={`${CHIP} bg-amber-400/15 text-amber-700 dark:text-amber-300`} title="The layout warnings above say what to check" data-page-warnings>
+                          {warningCount} warning{warningCount === 1 ? '' : 's'}
+                        </span>
+                      )}
                       <span className="truncate text-[11px] text-secondary">{describePage(page, pages)}</span>
                     </button>
+                    {inNav(page) && !isStart && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushUndo(`Made “${pageLabel(page)}” the start page`)
+                          onChange(moveItem(pages, index, preview.nav[0]?.index ?? 0))
+                        }}
+                        className={ICON_BUTTON}
+                        title="Make this the start page (the app opens here)"
+                        aria-label={`Make ${pageLabel(page)} the start page`}
+                        data-make-start
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>home</span>
+                      </button>
+                    )}
                     {page.type !== 'record' && (
                       <button
                         type="button"
@@ -802,7 +874,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                   {open && (
                     <div className="mt-2 space-y-3 border-t border-outline-variant pt-2">
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <Field label="Title" error={errors.title} control="title">
+                        <Field label="Title" error={errors.title} control="title" hint={isStart ? 'The start page — the app opens here, for everyone' : undefined}>
                           <input
                             type="text"
                             aria-label="Page title"
@@ -853,7 +925,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                       {inNav(page) && (
                         <NavFields page={page} index={index} pages={pages} errors={errors} update={update} />
                       )}
-                      <RolesField page={page} index={index} errors={errors} update={update} ldapAuth={ldapAuth} onAddDep={onAddDep} />
+                      <RolesField page={page} index={index} errors={errors} update={update} ldapAuth={ldapAuth} onAddDep={onAddDep} isStart={isStart} />
 
                       {page.type === 'entity-list' && (
                         <EntityListForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} dnd={dnd} projectOpts={projectOpts} pages={pages} pushUndo={pushUndo} onChange={onChange} />
@@ -1017,9 +1089,12 @@ function NavFields({ page, index, pages, errors, update }: Omit<FormProps, 'enti
 /** Who may open a page: everyone, or users holding one of the generated security's roles. */
 /** Who may open the page. Always shown, so the option is discoverable: without an LDAP auth
  *  dependency the boxes are disabled and a shortcut adds ldap-auth-rest. */
-function RolesField({ page, index, errors, update, ldapAuth, onAddDep }: Omit<FormProps, 'entities' | 'lossy'> & { ldapAuth?: boolean; onAddDep?: (dep: string) => void }) {
+function RolesField({ page, index, errors, update, ldapAuth, onAddDep, isStart }: Omit<FormProps, 'entities' | 'lossy'> & { ldapAuth?: boolean; onAddDep?: (dep: string) => void; isStart?: boolean }) {
   const roles = page.roles ?? []
   const noLdap = ldapAuth === false
+  // The start page is open to everyone; the boxes stay live on a start page that already has
+  // roles (from a load), so the user can clear them.
+  const locked = Boolean(isStart) && roles.length === 0
   const toggle = (role: FullstackPageRole) => {
     const next = roles.includes(role) ? roles.filter(r => r !== role) : [...roles, role]
     update(index, { roles: next.length ? next : undefined })
@@ -1031,16 +1106,17 @@ function RolesField({ page, index, errors, update, ldapAuth, onAddDep }: Omit<Fo
       control="roles"
       hint={roles.length
         ? 'Hidden from the nav, and blocked, for users without one of these roles (checked against their LDAP groups)'
-        : noLdap ? 'Restricting pages needs ldap-auth-rest (or ldap-auth) among the backend dependencies'
-          : 'Everyone — tick a role to restrict the page'}
+        : locked ? 'The start page is open to everyone — make another page the start page to restrict this one'
+          : noLdap ? 'Restricting pages needs ldap-auth-rest (or ldap-auth) among the backend dependencies'
+            : 'Everyone — tick a role to restrict the page'}
     >
       <div className="flex flex-wrap items-center gap-3">
         {PAGE_ROLES.map(role => (
-          <label key={role} className={`inline-flex items-center gap-1.5 text-xs ${noLdap && !roles.includes(role) ? 'text-secondary/70' : 'text-on-surface'}`}>
+          <label key={role} className={`inline-flex items-center gap-1.5 text-xs ${(noLdap || locked) && !roles.includes(role) ? 'text-secondary/70' : 'text-on-surface'}`}>
             <input
               type="checkbox"
               checked={roles.includes(role)}
-              disabled={noLdap && !roles.includes(role)}
+              disabled={(noLdap || locked) && !roles.includes(role)}
               onChange={() => toggle(role)}
               className="accent-primary"
               aria-label={`Only ${role}`}
@@ -1048,7 +1124,7 @@ function RolesField({ page, index, errors, update, ldapAuth, onAddDep }: Omit<Fo
             {role === 'ADMIN' ? 'Admins' : 'Users'} <span className="font-mono text-[10px] text-secondary">{role}</span>
           </label>
         ))}
-        {noLdap && onAddDep && (
+        {noLdap && !locked && onAddDep && (
           <button type="button" onClick={() => onAddDep('ldap-auth-rest')} className={SMALL_BUTTON} data-add-ldap-auth>
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">add</span>
             Add ldap-auth-rest
