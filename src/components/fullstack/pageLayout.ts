@@ -311,6 +311,17 @@ export function chartableFields(entity: FullstackEntityDef | undefined): Fullsta
   return [...groupableFields(entity), ...dateFields(entity)]
 }
 
+/** The MANY_TO_ONE relations of an entity, by field name — a report chart (like a top list) can
+ *  group by one, its bars named from the target's list. */
+export function relationKeys(entity: FullstackEntityDef | undefined): string[] {
+  return (entity?.relations ?? []).filter(r => r.type === 'MANY_TO_ONE' && r.fieldName.trim()).map(r => r.fieldName)
+}
+
+/** Everything a report chart can group by: the chartable fields, then the relations. */
+export function reportGroupKeys(entity: FullstackEntityDef | undefined): string[] {
+  return [...chartableFields(entity).map(f => f.name), ...relationKeys(entity)]
+}
+
 /** The entity a record page's tab lists. */
 export function childTabEntity(tab: FullstackChildTabDef): string {
   return typeof tab === 'string' ? tab : tab.entity
@@ -860,9 +871,9 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           // The grouping the chart resolves to: the named field, else the generator's default.
           const groupName = chart.groupBy ?? defaultReportGroupBy(e)
           const grouped = groupName ? e.fields.find(f => f.name === groupName) : undefined
-          if (chart.groupBy && !chartable.some(f => f.name === chart.groupBy)) {
-            add(chartControl(ci, 'groupBy'), `${e.name} has no enum, boolean or date field “${chart.groupBy}”`,
-              `${which} groups by “${chart.groupBy}”, which is not an enum, boolean or date field of ${e.name}`)
+          if (chart.groupBy && !chartable.some(f => f.name === chart.groupBy) && !relationKeys(e).includes(chart.groupBy)) {
+            add(chartControl(ci, 'groupBy'), `${e.name} has no enum, boolean or date field, or relation, “${chart.groupBy}”`,
+              `${which} groups by “${chart.groupBy}”, which is not an enum, boolean or date field, or a relation, of ${e.name}`)
           } else if (!chart.groupBy && chartable.length === 0) {
             add(chartControl(ci, 'groupBy'), `${e.name} has no enum, boolean or date field to group by`,
               `${which} reports on ${e.name}, which has no enum, boolean or date field to group by`)
@@ -1275,6 +1286,11 @@ export function renameRelationInPages(pages: FullstackPageDef[], child: string, 
     if (page.type === 'wizard' && isChild(page.entity) && page.steps?.some(step => step.fields.includes(from))) {
       changed = true
       return { ...page, steps: page.steps.map(step => ({ ...step, fields: step.fields.map(name => (name === from ? to : name)) })) }
+    }
+    if (page.type === 'report' && isChild(page.entity) && reportCharts(page).some(c => c.groupBy === from)) {
+      changed = true
+      const follow = (c: FullstackChartDef) => (c.groupBy === from ? { ...c, groupBy: to } : c)
+      return { ...page, ...(page.charts?.length ? { charts: page.charts.map(follow) } : { chart: follow(page.chart ?? {}) }) }
     }
     if (page.type === 'dashboard' && page.widgets?.some(w => w.kind === 'top' && isChild(w.entity) && w.groupBy === from)) {
       changed = true
@@ -1835,7 +1851,7 @@ export function retargetReport(page: FullstackPageDef, entity: FullstackEntityDe
   const numeric = numericFields(entity)
   const charts = reportCharts(page).map(c => {
     const n: FullstackChartDef = { ...c }
-    if (n.groupBy != null && !chartable.some(f => f.name === n.groupBy)) {
+    if (n.groupBy != null && !chartable.some(f => f.name === n.groupBy) && !relationKeys(entity).includes(n.groupBy)) {
       dropped.push('group by')
       delete n.groupBy
       delete n.bucket

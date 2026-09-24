@@ -196,6 +196,14 @@ describe('the donut, stacked and text widgets', () => {
   })
 })
 
+describe('retargetReport with a relation grouping', () => {
+  it('keeps a relation the new entity also has, and drops one it lacks', () => {
+    const page: FullstackPageDef = { id: 'r', type: 'report', entity: 'Order', chart: { groupBy: 'customer' } }
+    expect(retargetReport(page, { ...order, name: 'Purchase' }).dropped).toEqual([])
+    expect(retargetReport(page, customer).dropped).toEqual(['group by'])
+  })
+})
+
 describe('masterDetailPairs', () => {
   it('lists every child → single-key parent relation, naming the relation only when there are several', () => {
     expect(masterDetailPairs([customer, order])).toEqual([{ parent: 'Customer', child: 'Order' }])

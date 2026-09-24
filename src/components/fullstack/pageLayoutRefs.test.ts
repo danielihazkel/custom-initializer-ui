@@ -198,7 +198,7 @@ describe('top lists, targets, comparisons and report charts', () => {
       id: 'r', type: 'report', entity: 'Order', charts: [{ groupBy: 'status' }, { groupBy: 'nope' }, { agg: 'sum' }],
     }], entities)
     expect(v.byPage[0]).toMatchObject({
-      'chart2.groupBy': 'Order has no enum, boolean or date field “nope”',
+      'chart2.groupBy': 'Order has no enum, boolean or date field, or relation, “nope”',
       'chart3.field': 'sum needs a numeric field of Order',
     })
     expect(v.byPage[0]?.['chart.groupBy']).toBeUndefined()
@@ -251,6 +251,29 @@ describe('wizard pages and record header stats', () => {
     expect(renameRelationInPages(pages, 'Order', 'customer', 'buyer')[0].steps?.[0].fields).toEqual(['status', 'buyer'])
     expect(renameFieldInPages(pages, 'Order', 'total', 'amount')[1].headerStats?.[0].field).toBe('amount')
     expect(renameEntityInPages(pages, 'Order', 'Purchase')[1].headerStats?.[0].child).toBe('Purchase')
+  })
+})
+
+describe('a report grouped by a relation', () => {
+  const pages: FullstackPageDef[] = [
+    { id: 'orders', type: 'entity-list', entity: 'Order' },
+    { id: 'by-customer', type: 'report', entity: 'Order', chart: { groupBy: 'customer', agg: 'sum', field: 'total' } },
+    { id: 'more', type: 'report', entity: 'Order', charts: [{ groupBy: 'status' }, { groupBy: 'customer' }] },
+  ]
+
+  it('is valid, as the generator accepts it; a bucket on it is not', () => {
+    expect(validatePages(pages, entities).count).toBe(0)
+    const v = validatePages([{ ...pages[1], chart: { groupBy: 'customer', bucket: 'month' } }], entities)
+    expect(v.byPage[0]?.['chart.bucket']).toBe('a bucket applies to a date grouping')
+    expect(validatePages([{ ...pages[1], chart: { groupBy: 'nope' } }], entities).problems[0])
+      .toContain('which is not an enum, boolean or date field, or a relation, of Order')
+  })
+
+  it('follows a relation rename into the chart, whichever spelling the page uses', () => {
+    const renamed = renameRelationInPages(pages, 'Order', 'customer', 'buyer')
+    expect(renamed[1].chart?.groupBy).toBe('buyer')
+    expect(renamed[2].charts?.map(c => c.groupBy)).toEqual(['status', 'buyer'])
+    expect(renameRelationInPages(pages, 'Customer', 'customer', 'buyer')).toBe(pages)
   })
 })
 

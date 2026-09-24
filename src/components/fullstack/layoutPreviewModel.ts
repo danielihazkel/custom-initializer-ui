@@ -586,17 +586,32 @@ export function buildLayoutPreview(
         const { plural, ui } = labels(e)
         // Each chart: its bars (or points), title and headings, from the same seeded sample data.
         const drawn = reportCharts(page).map((chart, ci) => {
-          const group = fieldOf(e, chart.groupBy ?? defaultReportGroupBy(e))
+          const by = chart.groupBy ?? defaultReportGroupBy(e)
+          // Grouped by a relation: one bar per related record, named like a top list's rows.
+          const relation = (e.relations ?? []).find(r => r.fieldName === by && r.type === 'MANY_TO_ONE')
+          const group = relation ? undefined : fieldOf(e, by)
           const reduces = !!chart.agg && chart.agg !== 'count'
           const valueField = reduces ? fieldOf(e, chart.field) : undefined
           const measured = reduces ? aggTitle(chart.agg!, valueField) : plural
           const line = !!group && dateFields(e).some(f => f.name === group.name)
           const seed = `${seedBase}:${ci}:${chart.groupBy ?? ''}:${chart.agg ?? ''}:${chart.field ?? ''}:${chart.bucket ?? ''}`
-          const bars = !group ? [] : line ? series(chart.bucket, chart.agg, valueField, seed) : breakdown(group, chart.agg, valueField, seed)
-          const title = group ? (line ? t('xOverTime', { x: measured }) : t('xByY', { x: measured, y: fieldLabel(group) })) : measured
-          return { group, reduces, measured, line, bars, title }
+          let bars: PreviewBar[]
+          if (relation) {
+            const target = entityOf(relation.targetEntity)
+            const rand = seeded(seed)
+            const [lo, hi] = magnitude(chart.agg, valueField)
+            bars = Array.from({ length: 5 }, (_, i) => ({
+              label: target ? rowLabel(target, i + 1, labels(target).singular, t) : `#${i + 1}`,
+              value: between(rand, lo, hi),
+            }))
+          } else {
+            bars = !group ? [] : line ? series(chart.bucket, chart.agg, valueField, seed) : breakdown(group, chart.agg, valueField, seed)
+          }
+          const groupLabel = relation ? humanize(relation.fieldName) : group ? fieldLabel(group) : undefined
+          const title = groupLabel ? (line ? t('xOverTime', { x: measured }) : t('xByY', { x: measured, y: groupLabel })) : measured
+          return { groupLabel, reduces, measured, line, bars, title }
         })
-        const { group, reduces, measured, line, bars } = drawn[0]
+        const { groupLabel, reduces, measured, line, bars } = drawn[0]
         const csv = (e.opts?.csvExport ?? ctx.projectOpts.includes('csvExport'))
         return {
           type: 'report',
@@ -607,7 +622,7 @@ export function buildLayoutPreview(
           chartTitle: drawn[0].title,
           chart: { line, bars },
           moreCharts: drawn.slice(1).map(c => ({ title: c.title, line: c.line, bars: c.bars })),
-          groupLabel: group ? fieldLabel(group) : '—',
+          groupLabel: groupLabel ?? '—',
           valueLabel: reduces ? measured : t('count'),
           totalLabel: t('total'),
           exportLabel: csv ? t('exportCsv') : null,

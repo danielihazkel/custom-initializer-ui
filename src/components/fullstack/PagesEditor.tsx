@@ -41,7 +41,6 @@ import {
   MAX_TEXT,
   MAX_WIDGETS,
   PAGE_TYPE_META,
-  chartableFields,
   dateFields,
   defaultBarGroupBy,
   defaultSeries,
@@ -55,6 +54,8 @@ import {
   adoptedGroup,
   askableFields,
   blankPage,
+  relationKeys,
+  reportGroupKeys,
   masterDetailPairs,
   moveNavGroup,
   navSections,
@@ -2478,7 +2479,12 @@ function ChartFields({ chart, chartIndex, entity, errors, onChange }: {
                 {dateFields(entity).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
               </optgroup>
             )}
-            {chart.groupBy && !chartableFields(entity).some(f => f.name === chart.groupBy) && (
+            {relationKeys(entity).length > 0 && (
+              <optgroup label="By related record">
+                {relationKeys(entity).map(k => <option key={k} value={k}>{relationOption(k)}</option>)}
+              </optgroup>
+            )}
+            {chart.groupBy && !reportGroupKeys(entity).includes(chart.groupBy) && (
               <option value={chart.groupBy}>{chart.groupBy}</option>
             )}
           </select>

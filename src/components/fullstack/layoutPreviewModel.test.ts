@@ -204,6 +204,19 @@ describe('previewPartOf', () => {
     expect(highlights(null, { page: 0, control: 'title' })).toBe(false)
   })
 
+  it('draws a report grouped by a relation with one bar per related record', () => {
+    const preview = buildLayoutPreview([
+      { id: 'by-customer', type: 'report', entity: 'Order', chart: { groupBy: 'customer', agg: 'sum', field: 'total' } },
+    ], entities, { locale: 'en', projectOpts: [] })
+    const screen = preview.screens[0]
+    expect(screen.type).toBe('report')
+    if (screen.type !== 'report') return
+    expect(screen.groupLabel).toBe('Customer')
+    expect(screen.chartTitle).toContain('by Customer')
+    expect(screen.chart.bars).toHaveLength(5)
+    expect(screen.chart.bars[0].label).toBe('Name 1')
+  })
+
   it('marks the nav entries of the pages the validation warns about', () => {
     const plain = buildLayoutPreview(pages, entities, { locale: 'en', projectOpts: [] })
     expect(plain.nav.map(item => item.warning)).toEqual(plain.nav.map(() => false))

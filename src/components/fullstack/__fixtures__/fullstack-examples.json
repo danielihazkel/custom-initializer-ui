@@ -996,6 +996,11 @@
             "bucket": "month",
             "agg": "sum",
             "field": "quantity"
+          },
+          {
+            "groupBy": "warehouse",
+            "agg": "sum",
+            "field": "quantity"
           }
         ]
       },

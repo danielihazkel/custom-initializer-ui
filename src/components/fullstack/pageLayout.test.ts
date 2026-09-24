@@ -332,7 +332,7 @@ describe('aggregate widgets and report pages', () => {
     expect(ok([{ id: 'r', type: 'report', title: 'R', entity: 'Nope', chart: {} }]))
       .toEqual(['Page “R” reports on “Nope”, which is no longer an entity'])
     expect(ok([{ id: 'r', type: 'report', title: 'R', entity: 'Sale', chart: { groupBy: 'reference' } }]))
-      .toEqual(['Page “R” groups by “reference”, which is not an enum, boolean or date field of Sale'])
+      .toEqual(['Page “R” groups by “reference”, which is not an enum, boolean or date field, or a relation, of Sale'])
     expect(ok([{ id: 'r', type: 'report', title: 'R', entity: 'Sale', chart: { groupBy: 'region', bucket: 'month' } }]))
       .toEqual(['Page “R” buckets by month, but it does not group over a date'])
     // A report is an ordinary visible page, so it satisfies the "something in the nav" rule.
