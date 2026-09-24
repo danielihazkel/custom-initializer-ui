@@ -1,4 +1,4 @@
-import type { FullstackAgg, FullstackBucket, FullstackEntityDef, FullstackFieldDef, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
+import type { FullstackAgg, FullstackBucket, FullstackEntityDef, FullstackFieldDef, FullstackListDetail, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
 import { enumLabel } from './enumLabels'
 import { humanize } from './naming'
 import { describePresetValue, pageLabel as linkLabel } from './pageLayout'
@@ -90,6 +90,8 @@ export interface PreviewTable {
   filters: string[]
   /** "Status: Open" chips for the filters the page opens with. */
   presetChips: string[]
+  /** The page opens rows in a pane beside the table: the first row's cells, labelled. */
+  sidePane: { label: string; value: string }[] | null
   newLabel: string | null
   hasExport: boolean
 }
@@ -275,7 +277,7 @@ export function buildLayoutPreview(
   }
 
   /** How a list page opens (its presentation), when it sets any of it. */
-  interface ListOpening { columns?: string[]; view?: FullstackListView; sort?: FullstackListSort }
+  interface ListOpening { columns?: string[]; view?: FullstackListView; sort?: FullstackListSort; detail?: FullstackListDetail }
 
   function table(e: FullstackEntityDef, presetFilter?: Record<string, string>, hideRelation?: string, opening: ListOpening = {}): PreviewTable {
     const { plural, singular, ui } = labels(e)
@@ -323,6 +325,7 @@ export function buildLayoutPreview(
       showSearch: ui.showSearch,
       filters: ui.filters.filter(label => !hideRelation || label !== humanize(hideRelation)),
       presetChips: presetChips(e, presetFilter),
+      sidePane: opening.detail === 'side' ? cells.slice(0, 5).map(c => ({ label: c.label, value: c.value(1) })) : null,
       newLabel: ui.canCreate ? t('newX', { x: singular }) : null,
       hasExport: ui.hasExport,
     }
@@ -523,7 +526,7 @@ export function buildLayoutPreview(
       case 'entity-list': {
         const e = entityOf(page.entity)
         if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
-        const tbl = table(e, page.presetFilter, undefined, { columns: page.columns, view: page.view, sort: page.sort })
+        const tbl = table(e, page.presetFilter, undefined, { columns: page.columns, view: page.view, sort: page.sort, detail: page.detail })
         return { type: 'entity-list', title: page.title || tbl.title, description, table: tbl }
       }
       case 'tabs': {

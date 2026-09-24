@@ -587,6 +587,9 @@ export type FullstackPageRole = 'ADMIN' | 'USER'
  *  relations to the record entity links them (default: the first). */
 export type FullstackChildTabDef = string | { entity: string; via?: string }
 
+/** Where an entity-list page opens a row. */
+export type FullstackListDetail = 'drawer' | 'side' | 'record'
+
 /** One page of the generated frontend (the `pages` of a fullstack request). */
 export interface FullstackPageDef {
   /** Lower-case slug: the nav id and the screen's file name (`tickets-open` → TicketsOpenScreen). */
@@ -621,6 +624,9 @@ export interface FullstackPageDef {
   view?: FullstackListView
   /** entity-list: rows per page it opens with — 10, 20, 50 or 100 (default 20). */
   pageSize?: number
+  /** entity-list: where a row opens — the quick-look drawer, a pane beside the rows (the open row
+   *  in the route) or the entity's record page. Default: the record page when there is one, else the drawer. */
+  detail?: FullstackListDetail
   /** dashboard */
   widgets?: FullstackWidgetDef[]
   /** dashboard: a period picker over the widgets' dates, opening on this period. */

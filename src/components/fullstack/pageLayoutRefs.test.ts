@@ -278,6 +278,22 @@ describe('a report grouped by a relation', () => {
   })
 })
 
+describe('a list page’s row detail', () => {
+  it('opens in a side pane on a single-key entity, or on a record page the layout has', () => {
+    const orders: FullstackPageDef = { id: 'orders', type: 'entity-list', entity: 'Order', detail: 'side' }
+    expect(validatePages([orders], entities).count).toBe(0)
+    expect(describePage(orders, [orders])).toBe('Order list · side pane')
+    const record = validatePages([{ ...orders, detail: 'record' }], entities)
+    expect(record.problems).toEqual(['Page “orders” opens rows on a record page, but Order has none'])
+    const fixed = record.issues[0].fix!.apply([{ ...orders, detail: 'record' }])
+    expect(fixed[1]).toEqual({ id: 'order', type: 'record', entity: 'Order', hidden: true })
+    expect(validatePages(fixed, entities).count).toBe(0)
+    const composite: FullstackEntityDef = { name: 'Link', fields: [{ name: 'a', type: 'LONG', primaryKey: true }, { name: 'b', type: 'LONG', primaryKey: true }] }
+    expect(validatePages([{ id: 'links', type: 'entity-list', entity: 'Link', detail: 'side' }], [composite]).byPage[0]?.detail)
+      .toBe('a side pane needs a single-key entity')
+  })
+})
+
 describe('date and number preset filters', () => {
   const list = (presetFilter: Record<string, string>): FullstackPageDef => ({ id: 'orders', type: 'entity-list', entity: 'Order', presetFilter })
   const problem = (presetFilter: Record<string, string>) => validatePages([list(presetFilter)], entities).byPage[0]?.['presetFilter.' + Object.keys(presetFilter)[0]]

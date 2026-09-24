@@ -100,6 +100,19 @@ describe('PagesEditor', () => {
     expect(screen.queryByRole('button', { name: 'Open the guide on frontend pages' })).toBeNull()
   })
 
+  it('picks where a list opens its rows, offering the record page only when the layout has one', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
+    openRow('orders')
+    const group = screen.getByRole('radiogroup', { name: 'Row detail opens in' })
+    expect((within(group).getByRole('radio', { name: 'Drawer' }) as HTMLButtonElement).getAttribute('aria-checked')).toBe('true')
+    expect((within(group).getByRole('radio', { name: 'Record page' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(within(group).getByRole('radio', { name: 'Side pane' }))
+    expect(latest[0].detail).toBe('side')
+    expect(document.querySelector('[data-preview-side-pane]')).toBeTruthy()
+    fireEvent.click(within(group).getByRole('radio', { name: 'Drawer' }))
+    expect(latest[0].detail).toBeUndefined()
+  })
+
   it('presets a date field to a period or two dates, and a number field to a range', () => {
     render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order', presetFilter: { placedOn: 'last:30d', total: '100..' } }]} />)
     openRow('orders')

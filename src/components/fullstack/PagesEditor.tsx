@@ -6,6 +6,7 @@ import type {
   FullstackDateRange,
   FullstackEntityDef,
   FullstackFieldDef,
+  FullstackListDetail,
   FullstackNavIcon,
   FullstackPageDef,
   FullstackPageRole,
@@ -1573,6 +1574,8 @@ function EntityListForm({ page, index, entities, errors, update, lossy, dnd, pro
 }) {
   const entity = entities.find(e => e.name === page.entity)
   const columns = listColumns(entity, projectOpts)
+  const hasRecord = pages.some(p => p.type === 'record' && p.entity?.trim().toLowerCase() === entity?.name.trim().toLowerCase())
+  const singlePkEntity = (e: FullstackEntityDef) => e.fields.filter(f => f.primaryKey).length === 1
   // "Split into tabs": one hidden list per value of an enum/boolean field, under a tabs page.
   const splittable = groupableFields(entity)
   const [pickedSplit, setPickedSplit] = useState('')
@@ -1742,6 +1745,37 @@ function EntityListForm({ page, index, entities, errors, update, lossy, dnd, pro
               </span>
             )}
           </div>
+        </Field>
+        <Field
+          label="Row detail opens in"
+          error={errors.detail}
+          control="detail"
+          hint={hasRecord ? 'Default: the record page' : 'Default: the quick-look drawer — add a record page to open rows there'}
+        >
+          <span role="radiogroup" aria-label="Row detail opens in" className="inline-flex flex-wrap overflow-hidden rounded-lg border border-outline-variant">
+            {([
+              { value: 'drawer', label: 'Drawer', reason: undefined },
+              { value: 'side', label: 'Side pane', reason: entity && !singlePkEntity(entity) ? 'A side pane needs a single-key entity' : undefined },
+              { value: 'record', label: 'Record page', reason: hasRecord ? undefined : `Add a record page for ${entity?.name ?? 'the entity'} first` },
+            ] as { value: FullstackListDetail; label: string; reason?: string }[]).map(d => {
+              const on = (page.detail ?? (hasRecord ? 'record' : 'drawer')) === d.value
+              return (
+                <button
+                  key={d.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  aria-label={d.label}
+                  disabled={Boolean(d.reason)}
+                  title={d.reason ?? d.label}
+                  onClick={() => update(index, { detail: d.value === (hasRecord ? 'record' : 'drawer') ? undefined : d.value })}
+                  className={`px-2 py-1 text-[11px] ${on ? 'bg-primary/10 font-semibold text-primary' : 'text-secondary hover:text-primary'} disabled:opacity-40 disabled:hover:text-secondary`}
+                >
+                  {d.label}
+                </button>
+              )
+            })}
+          </span>
         </Field>
         <Field
           label="Opens as"

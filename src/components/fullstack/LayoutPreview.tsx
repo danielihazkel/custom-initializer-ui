@@ -636,6 +636,8 @@ function MiniTable({ table, preview, accent, menora, compact }: {
         {table.newLabel && <FakeButton style={primary}>{table.newLabel}</FakeButton>}
       </div>
       <FilterRow filters={table.filters} chips={[...table.presetChips, ...(table.sort ? [table.sort] : [])]} label={preview.strings.filters} />
+      <div className={table.sidePane ? 'grid grid-cols-[minmax(0,1fr)_6rem] gap-1' : ''}>
+      <div className="min-w-0">
       {table.view === 'cards' ? (
         <div className="grid grid-cols-3 gap-1" data-preview-view="cards">
           {table.rows.map((row, i) => (
@@ -676,13 +678,22 @@ function MiniTable({ table, preview, accent, menora, compact }: {
           </thead>
           <tbody>
             {table.rows.map((row, i) => (
-              <tr key={i} className="border-t border-outline-variant/60">
+              <tr key={i} className={`border-t border-outline-variant/60 ${table.sidePane && i === 0 ? 'bg-primary/5' : ''}`}>
                 {row.map((cell, j) => <td key={j} className="truncate py-0.5 text-on-surface">{cell}</td>)}
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      </div>
+      {table.sidePane && (
+        <aside className="rounded border border-outline-variant px-1.5 py-1 text-[8px]" data-preview-side-pane>
+          {table.sidePane.map(item => (
+            <p key={item.label} className="truncate"><span className="text-secondary">{item.label}:</span> <span className="text-on-surface">{item.value}</span></p>
+          ))}
+        </aside>
+      )}
+      </div>
     </div>
   )
 }

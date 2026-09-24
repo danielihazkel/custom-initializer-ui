@@ -680,6 +680,10 @@ function checkListPresentation(page: FullstackPageDef, e: FullstackEntityDef, ad
       seen.add(key)
     }
   }
+  if (page.detail != null) {
+    if (!['drawer', 'side', 'record'].includes(page.detail)) add('detail', 'must be drawer, side or record', `${where} opens rows in “${page.detail}”, which is not drawer, side or record`)
+    else if (page.detail === 'side' && !singlePk(e)) add('detail', 'a side pane needs a single-key entity', `${where} opens rows in a side pane, but ${e.name} has a composite key`)
+  }
   if (page.sort) {
     const key = page.sort.field
     if (!key?.trim()) add('sort', 'needs a column', `${where} sorts by no column`)
@@ -762,6 +766,13 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         }
         checkPresetFilter(page.presetFilter, e, add, where)
         checkListPresentation(page, e, add, where, scaffoldOpts)
+        if (page.detail === 'record' && !pages.some(p => p.type === 'record' && p.entity?.trim().toLowerCase() === e.name.trim().toLowerCase())) {
+          add('detail', `needs a record page for ${e.name}`, `${where} opens rows on a record page, but ${e.name} has none`,
+            singlePk(e) && pages.length < MAX_PAGES ? {
+              label: `Add a ${e.name} record page`,
+              apply: all => [...all, { id: uniquePageId(slugify(e.name), all.map(p => p.id)), type: 'record', entity: e.name, hidden: true }],
+            } : undefined)
+        }
         break
       }
       case 'dashboard': {
@@ -1132,6 +1143,8 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       if (page.view) parts.push(LIST_VIEWS.find(v => v.value === page.view)?.label.toLowerCase() ?? page.view)
       if (page.columns?.length) parts.push(`${page.columns.length} column${page.columns.length === 1 ? '' : 's'}`)
       if (page.sort?.field) parts.push(`by ${page.sort.field} ${page.sort.dir === 'desc' ? '↓' : '↑'}`)
+      if (page.detail === 'side') parts.push('side pane')
+      else if (page.detail) parts.push(`rows open in the ${page.detail}`)
       const filter = Object.entries(page.presetFilter ?? {}).map(([k, v]) => `${k} = ${v}`).join(', ')
       if (filter) parts.push(`filtered on ${filter}`)
       return parts.join(' · ')
@@ -1943,7 +1956,12 @@ export function retargetEntityList(page: FullstackPageDef, entity: FullstackEnti
     dropped.push('view')
     view = undefined
   }
-  return { patch: { entity: entity?.name ?? page.entity, presetFilter, columns, sort, view }, dropped }
+  let detail = page.detail
+  if (detail === 'side' && entity && !singlePk(entity)) {
+    dropped.push('side pane')
+    detail = undefined
+  }
+  return { patch: { entity: entity?.name ?? page.entity, presetFilter, columns, sort, view, detail }, dropped }
 }
 
 /** A master-detail page moved to another parent: the child stays when it still relates to the new
