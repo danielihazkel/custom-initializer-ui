@@ -88,6 +88,18 @@ describe('PagesEditor', () => {
     expect(latest[0].group).toBe('People')
   })
 
+  it('opens the guide on the page-layout topic from the header, when a guide is reachable', () => {
+    const onOpenGuide = vi.fn()
+    const { unmount } = render(
+      <PagesEditor pages={[]} entities={entities} validation={validatePages([], entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onOpenGuide={onOpenGuide} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open the guide on frontend pages' }))
+    expect(onOpenGuide).toHaveBeenCalledWith('fs-pages')
+    unmount()
+    render(<Harness initial={[]} />)
+    expect(screen.queryByRole('button', { name: 'Open the guide on frontend pages' })).toBeNull()
+  })
+
   it('will not offer a master-detail page without a relation to build it from', () => {
     render(<Harness initial={[]} entities={[entities[0]]} />)
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))

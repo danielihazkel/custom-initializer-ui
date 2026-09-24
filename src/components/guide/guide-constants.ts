@@ -321,6 +321,42 @@ The Generate button POSTs to \`/starter-fullstack.zip\` and streams the result. 
         ]
       },
       {
+        id: 'fs-pages',
+        title: 'Frontend Pages',
+        description: 'Shape the generated frontend as pages — dashboards, lists, tabs, master–detail, records, reports and wizards — instead of the fixed classic shell.',
+        content: `### Classic shell or a layout
+Without a layout the generated app has a dashboard plus one list page per entity. The **Frontend pages** section (below Entities) replaces that with pages of your own. **Start from my entities** seeds a dashboard and a list per entity, the Examples ship layouts to learn from, and **Use classic layout** drops the layout again (undoable).
+
+### The page types
+- **Dashboard** — widgets on a four-column grid: number tiles, breakdown, donut and stacked charts, a trend line, recent rows, top lists, progress to a target and text notes. A period picker limits every widget that has a date.
+- **List** — one entity's table (or cards, board, calendar). It can open filtered, with chosen columns, a sort, a view and a page size.
+- **Tabs** — two to six other pages side by side. The embedded pages are usually hidden from the navigation so they appear only as tabs; the Tabs card asks which pages to embed.
+- **Master–detail** — a parent list on the left, the selected parent's child rows on the right, linked through the child's many-to-one relation.
+- **Record** — one row opened from a list, with its related lists as tabs and number tiles above them. Never in the navigation: it needs a row.
+- **Report** — an entity's filter bar, one to four charts and grouped totals, with a CSV export when that option is on.
+- **Wizard** — a create (and edit) form split into steps, with a review before saving.
+
+### How the navigation is built
+- The first page in the navigation is the **start page** — the app opens there, for everyone. The home button on a row makes another page the start page.
+- Pages sharing a **group** are listed together as one section; the **Navigation** strip above the list renames and reorders groups. An **icon** is one of the shipped set.
+- A **hidden** page is out of the navigation: a list hidden this way shows up only as a tab; a hidden wizard is still a route.
+- **Roles** (ADMIN, USER) restrict a page to users holding one. They need the \`ldap-auth-rest\` (or \`ldap-auth\`) dependency and cannot sit on the start page or on a tab — restrict the tabs page instead.
+
+### Problems and warnings
+Red problems block Generate: a stale entity or field, a missing tab target, an id used twice. Amber **warnings** do not block — they name dead ends the app would silently swallow: a hidden page nothing embeds, a chart whose entity has no list page to drill into, recent rows with no record page to open, defaults that were capped. Most carry a **Fix** button, and every change is undoable.
+
+### Working faster
+- Change a page's **type** in place — what the new type cannot use is dropped and named.
+- The preview draws every page with sample data; click a part to jump to its control.
+- Fields and values are shown by their labels, with the raw name after them when the two differ.`,
+        callouts: [
+          {
+            type: 'tip',
+            text: 'The editor validates a layout exactly as the server does on Generate, so a green section means the request will pass. If the server still rejects a page, the editor opens it and highlights the problem.'
+          }
+        ]
+      },
+      {
         id: 'fs-import-ddl',
         title: 'Import From DDL',
         description: 'Pre-fill the entity editor by pasting CREATE TABLE statements — reuses the SQL wizard\'s parser.',

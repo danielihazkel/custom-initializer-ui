@@ -144,7 +144,7 @@ function resolveInitialModel(): { shared: FullstackSnapshot | null; pendingShare
   return { shared: null, pendingShared: linked }
 }
 
-export function FullstackView() {
+export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string) => void } = {}) {
   const initRef = useRef<ReturnType<typeof resolveInitialModel> | undefined>(undefined)
   if (initRef.current === undefined) initRef.current = resolveInitialModel()
   const { shared, pendingShared } = initRef.current
@@ -1407,6 +1407,7 @@ export function FullstackView() {
         serverIssue={pageServerIssue}
         ldapAuth={ldapAuth}
         onAddDep={dep => setSelectedDeps(prev => (prev.includes(dep) ? prev : [...prev, dep]))}
+        onOpenGuide={onOpenGuide}
         history={{
           undoLabel: lastUndo ? `Undo: ${lastUndo.label}` : null,
           redoLabel: nextRedo ? `Redo: ${nextRedo.label}` : null,

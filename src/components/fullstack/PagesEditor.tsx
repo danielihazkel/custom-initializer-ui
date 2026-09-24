@@ -113,6 +113,8 @@ export interface PagesPreviewSettings {
 interface Props {
   pages: FullstackPageDef[]
   entities: FullstackEntityDef[]
+  /** Opens the guide on a topic — the header's help button. Absent (the admin form): no button. */
+  onOpenGuide?: (topicId: string) => void
   /** From validatePages — inline messages per control plus the problem list. */
   validation: PageLayoutValidation
   onChange: (next: FullstackPageDef[]) => void
@@ -194,7 +196,7 @@ function summarizeLayout(pages: FullstackPageDef[]): string {
  * dashboard plus one list page per entity), which "Start from my entities" materializes as an
  * editable starting point.
  */
-export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep }: Props) {
+export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide }: Props) {
   const keys = useStableKeys(pages, p => p.id)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -513,6 +515,18 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             <h2 className="text-sm font-bold text-on-surface">
               Frontend pages
               {pages.length > 0 && <span className="ms-1.5 text-[11px] font-normal text-secondary">{pages.length}</span>}
+              {onOpenGuide && (
+                <button
+                  type="button"
+                  onClick={() => onOpenGuide('fs-pages')}
+                  className={`${ICON_BUTTON} ms-1 align-middle`}
+                  aria-label="Open the guide on frontend pages"
+                  title="How page layouts work — opens the guide"
+                  data-pages-help
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>help</span>
+                </button>
+              )}
             </h2>
             {sectionOpen ? (
               <p className="text-[11px] text-secondary">
