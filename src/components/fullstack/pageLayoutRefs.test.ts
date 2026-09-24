@@ -3,7 +3,8 @@ import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import {
   defaultWizardSteps, renameEntityInPages,
   defaultBarGroupBy, defaultLineGroupBy, defaultOptionLabel, defaultReportGroupBy, describePagesChange,
-  dropTabsTo, duplicatePage, navSections, pageFromSuggestion, pagesEmbedding, renameFieldInPages, renamePageIdInPages,
+  adoptedGroup, dropTabsTo, duplicatePage, moveNavGroup, navSections, pageFromSuggestion, pagesEmbedding, renameFieldInPages,
+  renameGroupInPages, renamePageIdInPages,
   renameRelationInPages, reportCharts, suggestPages, validatePages,
 } from './pageLayout'
 
@@ -250,5 +251,44 @@ describe('wizard pages and record header stats', () => {
     expect(renameRelationInPages(pages, 'Order', 'customer', 'buyer')[0].steps?.[0].fields).toEqual(['status', 'buyer'])
     expect(renameFieldInPages(pages, 'Order', 'total', 'amount')[1].headerStats?.[0].field).toBe('amount')
     expect(renameEntityInPages(pages, 'Order', 'Purchase')[1].headerStats?.[0].child).toBe('Purchase')
+  })
+})
+
+describe('nav group tools', () => {
+  const nav: FullstackPageDef[] = [
+    { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] },
+    { id: 'orders', type: 'entity-list', entity: 'Order', group: 'Sales' },
+    { id: 'people', type: 'entity-list', entity: 'Customer', group: 'People' },
+    { id: 'tab-only', type: 'entity-list', entity: 'Order', hidden: true },
+    { id: 'more-orders', type: 'entity-list', entity: 'Order', group: 'Sales' },
+    { id: 'loose', type: 'entity-list', entity: 'Customer' },
+  ]
+
+  it('renames a group on every page that carries it, and ungroups on a blank name', () => {
+    const renamed = renameGroupInPages(nav, 'Sales', 'Orders')
+    expect(renamed.map(p => p.group)).toEqual([undefined, 'Orders', 'People', undefined, 'Orders', undefined])
+    expect(renameGroupInPages(nav, 'Sales', 'Sales')).toBe(nav)
+    expect(renameGroupInPages(nav, 'Nope', 'X')).toBe(nav)
+    expect(renameGroupInPages(nav, 'Sales', ' ').map(p => 'group' in p)).toEqual([false, false, true, false, false, false])
+    expect(describePagesChange(nav, renamed)).toBe('Renamed the “Sales” group to “Orders”')
+    expect(describePagesChange(nav, renameGroupInPages(nav, 'Sales', ''))).toBe('Ungrouped the “Sales” pages')
+  })
+
+  it('moves a section past its neighbour as a block, leaving hidden pages where they are', () => {
+    // Sections: [home] [Sales: orders, more-orders] [People: people] [loose]
+    const moved = moveNavGroup(nav, 1, 1)
+    expect(moved.map(p => p.id)).toEqual(['home', 'people', 'orders', 'tab-only', 'more-orders', 'loose'])
+    expect(navSections(moved).map(s => s.group)).toEqual([undefined, 'People', 'Sales', undefined])
+    expect(moveNavGroup(nav, 0, -1)).toBe(nav)
+    expect(moveNavGroup(nav, 3, 1)).toBe(nav)
+    expect(describePagesChange(nav, moved)).toBe('Reordered pages')
+  })
+
+  it('has a dropped page join the section it lands inside', () => {
+    const inside: FullstackPageDef[] = [nav[1], nav[5], nav[4]]
+    expect(adoptedGroup(inside, 1)).toBe('Sales')
+    expect(adoptedGroup([nav[1], nav[4], nav[5]], 2)).toBeUndefined()
+    expect(adoptedGroup([nav[1], nav[3], nav[4]], 1)).toBeUndefined()
+    expect(adoptedGroup([nav[1], { ...nav[5], group: 'Sales' }, nav[4]], 1)).toBeUndefined()
   })
 })

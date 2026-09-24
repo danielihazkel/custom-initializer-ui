@@ -239,6 +239,47 @@ export function navSections(pages: FullstackPageDef[]): { group?: string; items:
   return sections
 }
 
+/** Renames a nav group on every page that carries it (a blank `to` ungroups them). */
+export function renameGroupInPages(pages: FullstackPageDef[], from: string, to: string): FullstackPageDef[] {
+  const f = from.trim()
+  const t = to.trim()
+  if (!f || f === t) return pages
+  let changed = false
+  const next = pages.map(page => {
+    if (page.group?.trim() !== f) return page
+    changed = true
+    const { group: _group, ...rest } = page
+    return t ? { ...rest, group: t } : rest
+  })
+  return changed ? next : pages
+}
+
+/** Moves one nav section past its neighbour (`delta` ±1) by reordering its pages as a block;
+ *  hidden and record pages keep their slots. */
+export function moveNavGroup(pages: FullstackPageDef[], sectionIndex: number, delta: number): FullstackPageDef[] {
+  const sections = navSections(pages)
+  const target = sectionIndex + delta
+  if (sectionIndex < 0 || sectionIndex >= sections.length || target < 0 || target >= sections.length) return pages
+  const order = sections.map(s => s.items)
+  ;[order[sectionIndex], order[target]] = [order[target], order[sectionIndex]]
+  const flat = order.flat()
+  let k = 0
+  return pages.map(page => (inNav(page) ? pages[flat[k++]] : page))
+}
+
+/** The group a page dropped at `index` should take: the one its nav neighbours above and below
+ *  share, when that differs from its own — so a drag into the middle of a section joins it.
+ *  Undefined when the page keeps its group. */
+export function adoptedGroup(pages: FullstackPageDef[], index: number): string | undefined {
+  const page = pages[index]
+  if (!page || !inNav(page)) return undefined
+  const above = pages.slice(0, index).reverse().find(inNav)
+  const below = pages.slice(index + 1).find(inNav)
+  const group = above?.group?.trim()
+  if (!group || group !== below?.group?.trim()) return undefined
+  return page.group?.trim() === group ? undefined : group
+}
+
 /** What the generated app can group or preset-filter by: a filterable, non-key enum/boolean field. */
 export function groupableFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
   return (entity?.fields ?? []).filter(f => !f.primaryKey && f.filterable !== false && (f.type === 'ENUM' || f.type === 'BOOLEAN'))
@@ -1614,6 +1655,15 @@ export function describePagesChange(prev: FullstackPageDef[], next: FullstackPag
   }
   const key = (p: FullstackPageDef) => JSON.stringify(p)
   if (prev.map(key).sort().join('\n') === next.map(key).sort().join('\n')) return 'Reordered pages'
+  // Every change is the same group name becoming another: the nav strip's rename.
+  const changed = next.map((b, i) => [prev[i], b] as const).filter(([a, b]) => key(a) !== key(b))
+  if (changed.length > 0 && changed.every(([a, b]) => a.id === b.id && key({ ...a, group: b.group }) === key(b))) {
+    const from = changed[0][0].group
+    const to = changed[0][1].group
+    if (from && changed.every(([a, b]) => a.group === from && b.group === to) && (changed.length > 1 || !to)) {
+      return to ? `Renamed the “${from}” group to “${to}”` : `Ungrouped the “${from}” pages`
+    }
+  }
   for (let i = 0; i < next.length; i++) {
     const a = prev[i]; const b = next[i]
     if (key(a) === key(b)) continue

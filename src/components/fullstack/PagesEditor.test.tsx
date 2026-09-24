@@ -64,6 +64,30 @@ describe('PagesEditor', () => {
     expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
   })
 
+  it('renames and reorders navigation groups from the strip, and moves a page between groups', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order', group: 'Sales' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', group: 'People' },
+    ]} />)
+    const strip = document.querySelector('[data-nav-groups]') as HTMLElement
+    expect(strip).toBeTruthy()
+    const rename = within(strip).getByLabelText('Rename the Sales group') as HTMLInputElement
+    fireEvent.change(rename, { target: { value: 'Orders' } })
+    expect(latest[1].group).toBe('Sales')
+    fireEvent.blur(rename)
+    expect(latest[1].group).toBe('Orders')
+    expect(pushUndo).toHaveBeenCalledWith('Renamed the “Sales” group to “Orders”')
+
+    fireEvent.click(within(strip).getByRole('button', { name: 'Move the People group up' }))
+    expect(latest.map(p => p.id)).toEqual(['home', 'customers', 'orders'])
+    expect(pushUndo).toHaveBeenCalledWith('Reordered the navigation sections')
+
+    openRow('home')
+    fireEvent.change(screen.getByLabelText('Move to group'), { target: { value: 'People' } })
+    expect(latest[0].group).toBe('People')
+  })
+
   it('will not offer a master-detail page without a relation to build it from', () => {
     render(<Harness initial={[]} entities={[entities[0]]} />)
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))

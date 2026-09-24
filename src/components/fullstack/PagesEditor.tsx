@@ -52,9 +52,13 @@ import {
   defaultReportGroupBy,
   describePage,
   dropTabsTo,
+  adoptedGroup,
   askableFields,
   blankPage,
   masterDetailPairs,
+  moveNavGroup,
+  navSections,
+  renameGroupInPages,
   retargetPage,
   tabCandidates,
   chartControl,
@@ -217,7 +221,13 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const projectOpts = previewSettings?.projectOpts ?? []
   const atPageCap = pages.length >= MAX_PAGES
   const dnd = useDragReorder((list, from, to) => {
-    if (list === 'pages') return onChange(moveItem(pages, from, to))
+    if (list === 'pages') {
+      const moved = moveItem(pages, from, to)
+      const group = adoptedGroup(moved, to)
+      if (group == null) return onChange(moved)
+      pushUndo(`Moved “${pageLabel(moved[to])}” into the “${group}” group`)
+      return onChange(moved.map((p, i) => (i === to ? { ...p, group } : p)))
+    }
     const [kind, at] = list.split(':')
     const index = Number(at)
     const page = pages[index]
@@ -331,6 +341,17 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       tabsPage,
     ])
     pendingOpen.current = pages.length
+  }
+
+  // The generated nav's sections, in order — the strip above the list renames and reorders them.
+  const navGroupSections = navSections(pages)
+  function renameGroup(from: string, to: string) {
+    pushUndo(`Renamed the “${from}” group to “${to}”`)
+    onChange(renameGroupInPages(pages, from, to))
+  }
+  function moveGroup(sectionIndex: number, delta: number) {
+    pushUndo('Reordered the navigation sections')
+    onChange(moveNavGroup(pages, sectionIndex, delta))
   }
 
   // A page moved to another type: what the new type cannot use is dropped, and said so.
@@ -849,6 +870,32 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         </div>
       ) : (
         <div className={!showPreview ? '' : layout === 'stacked' ? 'space-y-3' : 'grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]'}>
+          {navGroupSections.some(s => s.group) && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant px-2.5 py-1.5" data-nav-groups>
+              <span
+                className="text-[11px] font-semibold uppercase tracking-wider text-secondary"
+                title="The sections of the generated navigation, in order. Rename a group here to rename it on every page; move a section past its neighbour."
+              >
+                Navigation
+              </span>
+              {navGroupSections.map((s, si) => (s.group ? (
+                <GroupChip
+                  key={s.group}
+                  group={s.group}
+                  count={s.items.length}
+                  canUp={si > 0}
+                  canDown={si < navGroupSections.length - 1}
+                  onRename={to => renameGroup(s.group!, to)}
+                  onMove={delta => moveGroup(si, delta)}
+                />
+              ) : (
+                <span key={`loose-${si}`} className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-2 py-0.5 text-[11px] text-secondary" data-nav-group="">
+                  Ungrouped <span>{s.items.length}</span>
+                  <MoveButtons label={`the ungrouped pages${si > 0 ? ` (section ${si + 1})` : ''}`} canUp={si > 0} canDown={si < navGroupSections.length - 1} onMove={delta => moveGroup(si, delta)} />
+                </span>
+              )))}
+            </div>
+          )}
           <ol
             className="min-w-0 space-y-2"
             onMouseOver={e => setHoverTo(targetOf(e.target))}
@@ -1173,17 +1220,31 @@ function NavFields({ page, index, pages, errors, update }: Omit<FormProps, 'enti
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[12rem_minmax(0,1fr)]">
       <Field label="Nav group" error={errors.group} control="group" hint={`Pages with the same group are listed together · up to ${MAX_GROUP} characters`}>
-        <input
-          type="text"
-          list={`nav-groups-${index}`}
-          aria-label="Nav group"
-          aria-invalid={Boolean(errors.group)}
-          maxLength={MAX_GROUP}
-          value={page.group ?? ''}
-          onChange={e => update(index, { group: e.target.value || undefined })}
-          placeholder="None"
-          className={inputClass(errors.group)}
-        />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <input
+            type="text"
+            list={`nav-groups-${index}`}
+            aria-label="Nav group"
+            aria-invalid={Boolean(errors.group)}
+            maxLength={MAX_GROUP}
+            value={page.group ?? ''}
+            onChange={e => update(index, { group: e.target.value || undefined })}
+            placeholder="None"
+            className={`${inputClass(errors.group)} min-w-0 flex-1`}
+          />
+          {groups.some(g => g !== page.group?.trim()) && (
+            <select
+              aria-label="Move to group"
+              value={groups.includes(page.group?.trim() ?? '') ? page.group!.trim() : ''}
+              onChange={e => update(index, { group: e.target.value || undefined })}
+              className={`${inputClass()} max-w-[10rem] py-1 text-xs`}
+              title="Put this page in one of the existing groups"
+            >
+              <option value="">No group</option>
+              {groups.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
+          )}
+        </div>
         <datalist id={`nav-groups-${index}`}>
           {groups.map(g => <option key={g} value={g} />)}
         </datalist>
@@ -1261,6 +1322,46 @@ function RolesField({ page, index, errors, update, ldapAuth, onAddDep, isStart }
         )}
       </div>
     </Field>
+  )
+}
+
+/** One nav section in the strip: its name is edited in place (committed on blur or Enter, Escape
+ *  reverts) and it moves past its neighbours with the arrows. */
+function GroupChip({ group, count, canUp, canDown, onRename, onMove }: {
+  group: string
+  count: number
+  canUp: boolean
+  canDown: boolean
+  onRename: (to: string) => void
+  onMove: (delta: number) => void
+}) {
+  const [draft, setDraft] = useState(group)
+  useEffect(() => setDraft(group), [group])
+  const commit = () => {
+    const to = draft.trim()
+    if (to && to !== group) onRename(to)
+    else setDraft(group)
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-outline-variant bg-surface-container-low px-2 py-0.5 text-[11px]" data-nav-group={group}>
+      <input
+        type="text"
+        aria-label={`Rename the ${group} group`}
+        title="Rename this group on every page in it"
+        value={draft}
+        maxLength={MAX_GROUP}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+          if (e.key === 'Escape') setDraft(group)
+        }}
+        style={{ width: `${Math.max(4, draft.length + 1)}ch` }}
+        className="bg-transparent font-semibold text-on-surface outline-none focus:underline"
+      />
+      <span className="text-secondary">{count}</span>
+      <MoveButtons label={`the ${group} group`} canUp={canUp} canDown={canDown} onMove={onMove} />
+    </span>
   )
 }
 
