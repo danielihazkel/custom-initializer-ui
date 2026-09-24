@@ -651,3 +651,36 @@ function sameName(a: string | undefined, b: string | undefined): boolean {
   return (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase() && Boolean(a?.trim())
 }
 
+
+// ── Editor ↔ preview linking ────────────────────────────────────────────────
+
+/** A page, and optionally one control on it — the same keys validatePages reports errors under.
+ *  A click in the preview asks the editor to open one; an editor part hovered lights one. */
+export interface EditTarget { page: number; control?: string }
+
+/**
+ * The preview part an editor control belongs to, so the two sides agree through one rule: the
+ * editor's `data-control` keys are finer than the preview's parts (a widget card holds
+ * `widget.2.presetFilter.status`, a report chart card `chart2.bucket`, a record's tiles
+ * `headerStat.1`). `undefined` is the page itself — its nav item.
+ */
+export function previewPartOf(control: string | undefined): string | undefined {
+  if (!control) return undefined
+  const [head, second] = control.split('.')
+  if (head === 'widget' && second != null) return `widget.${second}`
+  if (head === 'headerStat' || head === 'headerStats') return 'headerStats'
+  if (head === 'step' || head === 'steps') return 'steps'
+  if (head === 'childTabs') return 'childTabs'
+  if (head === 'tab' && second != null) return `tab.${second}`
+  if (/^chart\d*$/.test(head)) return head
+  if (head === 'description') return 'title'
+  if (head === 'via') return 'child'
+  if (head === 'presetFilter' || head === 'columns' || head === 'sort' || head === 'view' || head === 'pageSize') return 'entity'
+  if (head === 'id' || head === 'group' || head === 'icon' || head === 'roles') return undefined
+  return head
+}
+
+/** Whether a hovered editor part (`hover`) is the preview part drawn for `target`. */
+export function highlights(hover: EditTarget | null | undefined, target: EditTarget): boolean {
+  return hover != null && hover.page === target.page && previewPartOf(hover.control) === previewPartOf(target.control)
+}

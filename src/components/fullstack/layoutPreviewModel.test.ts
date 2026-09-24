@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
-import { buildLayoutPreview } from './layoutPreviewModel'
+import { buildLayoutPreview, highlights, previewPartOf } from './layoutPreviewModel'
 
 const entities: FullstackEntityDef[] = [
   { name: 'Customer', fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'name', type: 'STRING' }] },
@@ -165,5 +165,42 @@ describe('buildLayoutPreview', () => {
     expect(w).toMatchObject({ title: 'New Order', steps: ['Who', 'Review'], fields: ['Customer', 'Status'] })
     // A record page counts each related tab by default.
     expect(record.stats.map(s => s.title)).toEqual(['Orders'])
+  })
+})
+
+describe('previewPartOf', () => {
+  it('folds the finer editor control keys onto the parts the preview draws', () => {
+    const table: [string | undefined, string | undefined][] = [
+      ['widget.2', 'widget.2'],
+      ['widget.2.presetFilter.status', 'widget.2'],
+      ['headerStat.1', 'headerStats'],
+      ['headerStats', 'headerStats'],
+      ['step.3', 'steps'],
+      ['steps', 'steps'],
+      ['childTabs', 'childTabs'],
+      ['tab.0', 'tab.0'],
+      ['tabs', 'tabs'],
+      ['chart', 'chart'],
+      ['chart.bucket', 'chart'],
+      ['chart2.groupBy', 'chart2'],
+      ['title', 'title'],
+      ['description', 'title'],
+      ['via', 'child'],
+      ['sort', 'entity'],
+      ['presetFilter.status', 'entity'],
+      ['dateRange', 'dateRange'],
+      // Nav-only settings and the row itself are the page: its nav item.
+      ['id', undefined],
+      ['roles', undefined],
+      [undefined, undefined],
+    ]
+    for (const [control, part] of table) expect(previewPartOf(control), control ?? '(page)').toBe(part)
+  })
+
+  it('lights a part only for the same page and part', () => {
+    expect(highlights({ page: 0, control: 'widget.1.presetFilter.status' }, { page: 0, control: 'widget.1' })).toBe(true)
+    expect(highlights({ page: 1, control: 'widget.1' }, { page: 0, control: 'widget.1' })).toBe(false)
+    expect(highlights({ page: 0, control: 'widget.0' }, { page: 0, control: 'widget.1' })).toBe(false)
+    expect(highlights(null, { page: 0, control: 'title' })).toBe(false)
   })
 })

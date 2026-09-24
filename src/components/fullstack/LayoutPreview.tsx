@@ -1,9 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import type { LayoutPreview as LayoutPreviewModel, PreviewBar, PreviewScreen, PreviewTable, PreviewWidget } from './layoutPreviewModel'
+import { highlights, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewScreen, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
 
-/** Where a click in the preview should land in the editor: a page, and optionally one control
- *  (the same keys validatePages reports errors under). */
-export interface EditTarget { page: number; control?: string }
+export type { EditTarget }
 
 interface Props {
   preview: LayoutPreviewModel
@@ -11,6 +9,8 @@ interface Props {
   selected: number
   onSelect: (index: number) => void
   onEdit: (target: EditTarget) => void
+  /** The editor part under the pointer (or keyboard focus): its counterpart here is ringed. */
+  highlight?: EditTarget | null
   /** The frontend set's look: the default dark-sidebar shell, or the Menora Digital top bar. */
   skin: 'tailwind' | 'menora'
   /** Why the selected page is not in the nav, when it is not ("Tab only", "Opens from a row"). */
@@ -24,13 +24,15 @@ const MENORA = { purple: '#684eed', yellow: '#ffc700', ink: '#37374e' }
  * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
-export function LayoutPreview({ preview, selected, onSelect, onEdit, skin, offNavNote }: Props) {
+export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote }: Props) {
   const screen = preview.screens[selected]
   const menora = skin === 'menora'
   const accent = menora ? MENORA.purple : 'var(--color-primary)'
 
   const navButton = (item: LayoutPreviewModel['nav'][number]) => {
     const active = item.index === selected
+    // The page row itself hovered in the editor (no control under the pointer): its nav entry.
+    const lit = highlight != null && highlight.page === item.index && highlight.control === undefined
     return (
       <button
         key={item.index}
@@ -38,10 +40,12 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, skin, offNa
         onClick={() => onSelect(item.index)}
         aria-current={active ? 'page' : undefined}
         data-preview-nav={item.index}
+        data-preview-highlight={lit ? '' : undefined}
         title={item.start ? `${item.label} — ${preview.strings.startPage}` : item.label}
-        className={menora
+        className={`${menora
           ? `shrink-0 whitespace-nowrap border-b-2 px-1.5 py-1 text-[10px] font-semibold ${active ? 'border-[#684eed] text-[#684eed]' : 'border-transparent text-[#37374e]/70'}`
-          : `flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-start text-[10px] ${active ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/5'}`}
+          : `flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-start text-[10px] ${active ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/5'}`
+        } ${lit ? 'ring-2 ring-inset ring-primary' : ''}`}
       >
         {!menora && <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>{item.icon}</span>}
         <span className="truncate">{item.label}</span>
@@ -74,7 +78,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, skin, offNa
         <p className="rounded bg-surface-container px-2 py-1 text-[10px] text-secondary">{offNavNote}</p>
       )}
       {screen ? (
-        <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} onSelect={onSelect} accent={accent} menora={menora} />
+        <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} />
       ) : (
         <p className="text-[11px] text-secondary">Nothing to show.</p>
       )}
@@ -127,6 +131,7 @@ interface ScreenProps {
   page: number
   preview: LayoutPreviewModel
   onEdit: (target: EditTarget) => void
+  highlight: EditTarget | null | undefined
   onSelect: (index: number) => void
   accent: string
   menora: boolean
@@ -134,9 +139,11 @@ interface ScreenProps {
   embedded?: boolean
 }
 
-function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embedded }: ScreenProps) {
+function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, embedded }: ScreenProps) {
+  // Every part of this screen jumps to its editor control, and lights when that control is hovered.
+  const link = { page, onEdit, highlight }
   const heading = !embedded && (
-    <Editable onClick={() => onEdit({ page, control: 'title' })} label="Edit the page title" className="block text-start">
+    <Editable {...link} control="title" label="Edit the page title" className="block text-start">
       <h3 className="text-[13px] font-bold text-on-surface">
         {screen.title}
         {menora && <span style={{ color: MENORA.yellow }}>.</span>}
@@ -161,7 +168,7 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
           <div className="flex items-start justify-between gap-2">
             {heading}
             {screen.period && (
-              <Editable onClick={() => onEdit({ page, control: 'dateRange' })} label="Edit the period picker" className="shrink-0">
+              <Editable {...link} control="dateRange" label="Edit the period picker" className="shrink-0">
                 <span className="inline-flex items-center gap-0.5 rounded border border-outline-variant px-1 py-0.5 text-[9px] text-secondary" data-preview-period>
                   <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">date_range</span>
                   {screen.period}
@@ -171,8 +178,7 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
           </div>
           <div className="grid grid-cols-4 gap-1.5">
             {screen.widgets.map(w => (
-              <Widget key={w.index} widget={w} accent={accent} viewAll={preview.strings.viewAll}
-                onEdit={() => onEdit({ page, control: `widget.${w.index}` })} />
+              <Widget key={w.index} widget={w} accent={accent} viewAll={preview.strings.viewAll} {...link} />
             ))}
           </div>
           {screen.widgets.length === 0 && <p className="text-[10px] text-secondary">No widgets yet.</p>}
@@ -182,19 +188,19 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
       return (
         <div className="space-y-2">
           {heading}
-          <Editable onClick={() => onEdit({ page, control: 'entity' })} label="Edit the listed entity" className="block w-full">
+          <Editable {...link} control="entity" label="Edit the listed entity" className="block w-full">
             <MiniTable table={screen.table} preview={preview} accent={accent} menora={menora} />
           </Editable>
         </div>
       )
     case 'tabs':
-      return <TabsScreen screen={screen} page={page} preview={preview} onEdit={onEdit} onSelect={onSelect} accent={accent} menora={menora} heading={heading} />
+      return <TabsScreen screen={screen} page={page} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} heading={heading} />
     case 'master-detail':
       return (
         <div className="space-y-2">
           {heading}
           <div className="flex gap-1.5">
-            <Editable onClick={() => onEdit({ page, control: 'parent' })} label="Edit the parent entity" className="w-[34%] shrink-0">
+            <Editable {...link} control="parent" label="Edit the parent entity" className="w-[34%] shrink-0">
               <div className="rounded border border-outline-variant p-1">
                 <p className="px-1 pb-0.5 text-[9px] font-semibold uppercase tracking-wide text-secondary">{screen.parentTitle}</p>
                 {screen.parentItems.map((item, i) => (
@@ -208,7 +214,7 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
                 ))}
               </div>
             </Editable>
-            <Editable onClick={() => onEdit({ page, control: 'child' })} label="Edit the child entity" className="min-w-0 flex-1">
+            <Editable {...link} control="child" label="Edit the child entity" className="min-w-0 flex-1">
               <MiniTable table={screen.child} preview={preview} accent={accent} menora={menora} compact />
             </Editable>
           </div>
@@ -218,11 +224,11 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
       return (
         <div className="space-y-2">
           {screen.back && <p className="text-[10px] text-secondary">{preview.rtl ? '→' : '←'} {screen.back}</p>}
-          <Editable onClick={() => onEdit({ page, control: 'entity' })} label="Edit the record entity" className="block text-start">
+          <Editable {...link} control="entity" label="Edit the record entity" className="block text-start">
             <h3 className="text-[13px] font-bold text-on-surface">{screen.heading}</h3>
           </Editable>
           {screen.stats.length > 0 && (
-            <Editable onClick={() => onEdit({ page, control: 'headerStats' })} label="Edit the header numbers" className="block w-full">
+            <Editable {...link} control="headerStats" label="Edit the header numbers" className="block w-full">
               <div className="grid grid-cols-4 gap-1.5" data-preview-stats>
                 {screen.stats.map((s, i) => (
                   <div key={i} className="min-w-0 rounded border border-outline-variant p-1">
@@ -233,7 +239,7 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
               </div>
             </Editable>
           )}
-          <Editable onClick={() => onEdit({ page, control: 'childTabs' })} label="Edit the related tabs" className="block w-full">
+          <Editable {...link} control="childTabs" label="Edit the related tabs" className="block w-full">
             <TabStrip labels={screen.tabs} active={0} accent={accent} />
           </Editable>
           <dl className="grid grid-cols-2 gap-x-3 gap-y-1 rounded border border-outline-variant p-2">
@@ -250,7 +256,7 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
       return (
         <div className="space-y-2">
           {heading}
-          <Editable onClick={() => onEdit({ page, control: 'steps' })} label="Edit the steps" className="block w-full">
+          <Editable {...link} control="steps" label="Edit the steps" className="block w-full">
             <ol className="flex flex-wrap gap-1" data-preview-steps>
               {screen.steps.map((s, i) => (
                 <li
@@ -285,7 +291,7 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
             {screen.exportLabel && <FakeButton outline>{screen.exportLabel}</FakeButton>}
           </div>
           <FilterRow filters={screen.filters} chips={screen.presetChips} label={preview.strings.filters} />
-          <Editable onClick={() => onEdit({ page, control: 'chart.groupBy' })} label="Edit the chart" className="block w-full">
+          <Editable {...link} control="chart.groupBy" label="Edit the chart" className="block w-full">
             <div className="rounded border border-outline-variant p-2">
               <p className="mb-1 text-[10px] font-semibold text-on-surface">{screen.chartTitle}</p>
               {screen.chart.line
@@ -316,7 +322,7 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
           {screen.moreCharts.length > 0 && (
             <div className="grid grid-cols-2 gap-1.5">
               {screen.moreCharts.map((c, ci) => (
-                <Editable key={ci} onClick={() => onEdit({ page, control: `chart${ci + 2}.groupBy` })} label={`Edit chart ${ci + 2}`} className="block min-w-0">
+                <Editable key={ci} {...link} control={`chart${ci + 2}.groupBy`} label={`Edit chart ${ci + 2}`} className="block min-w-0">
                   <div className="rounded border border-outline-variant p-1.5" data-preview-chart={ci + 1}>
                     <p className="mb-1 truncate text-[9px] font-semibold text-on-surface">{c.title}</p>
                     {c.line ? <LineChart points={c.bars} accent={accent} /> : <Bars bars={c.bars.slice(0, 4)} accent={accent} />}
@@ -330,7 +336,7 @@ function Screen({ screen, page, preview, onEdit, onSelect, accent, menora, embed
   }
 }
 
-function TabsScreen({ screen, page, preview, onEdit, onSelect, accent, menora, heading }:
+function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, heading }:
   Omit<ScreenProps, 'screen'> & { screen: Extract<PreviewScreen, { type: 'tabs' }>; heading: ReactNode }) {
   const [active, setActive] = useState(0)
   const current = Math.min(active, Math.max(screen.tabs.length - 1, 0))
@@ -340,28 +346,33 @@ function TabsScreen({ screen, page, preview, onEdit, onSelect, accent, menora, h
     <div className="space-y-2">
       {heading}
       {screen.tabs.length === 0 ? (
-        <Editable onClick={() => onEdit({ page, control: 'tabs' })} label="Add tabs" className="block w-full">
+        <Editable page={page} onEdit={onEdit} highlight={highlight} control="tabs" label="Add tabs" className="block w-full">
           <p className="rounded border border-dashed border-outline-variant px-2 py-3 text-center text-[10px] text-secondary">No tabs yet</p>
         </Editable>
       ) : (
         <div role="tablist" className="flex gap-3 border-b border-outline-variant">
-          {screen.tabs.map((tab, i) => (
-            <button
-              key={i}
-              type="button"
-              role="tab"
-              aria-selected={i === current}
-              onClick={() => setActive(i)}
-              className={`-mb-px border-b-2 pb-1 text-[10px] font-semibold ${i === current ? '' : 'border-transparent text-secondary'}`}
-              style={i === current ? { borderColor: accent, color: accent } : undefined}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {screen.tabs.map((tab, i) => {
+            // The tab's card hovered in the editor rings the tab, like an Editable would.
+            const lit = highlights(highlight, { page, control: `tab.${i}` })
+            return (
+              <button
+                key={i}
+                type="button"
+                role="tab"
+                aria-selected={i === current}
+                onClick={() => setActive(i)}
+                data-preview-highlight={lit ? '' : undefined}
+                className={`-mb-px border-b-2 pb-1 text-[10px] font-semibold ${i === current ? '' : 'border-transparent text-secondary'} ${lit ? HIGHLIGHT : ''}`}
+                style={i === current ? { borderColor: accent, color: accent } : undefined}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
         </div>
       )}
       {embedded && target != null && embedded.type !== 'tabs' && (
-        <Screen screen={embedded} page={target} preview={preview} onEdit={onEdit} onSelect={onSelect} accent={accent} menora={menora} embedded />
+        <Screen screen={embedded} page={target} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} embedded />
       )}
       {screen.tabs.length > 0 && target == null && (
         <p className="text-[10px] text-error">This tab points at no page.</p>
@@ -372,15 +383,29 @@ function TabsScreen({ screen, page, preview, onEdit, onSelect, accent, menora, h
 
 // ── Pieces ──────────────────────────────────────────────────────────────────
 
-/** A part of the mock that jumps to its control in the editor. */
-function Editable({ onClick, label, className, children }: { onClick: () => void; label: string; className?: string; children: ReactNode }) {
+/** The ring on the part whose editor control is hovered (a literal, so Tailwind keeps it). */
+const HIGHLIGHT = 'outline outline-2 outline-primary ring-4 ring-primary/15'
+
+interface LinkProps {
+  page: number
+  onEdit: (target: EditTarget) => void
+  /** The editor part under the pointer, if any. */
+  highlight: EditTarget | null | undefined
+}
+
+/** A part of the mock that jumps to its control in the editor, and is ringed while that control
+ *  is hovered or focused there. */
+function Editable({ page, control, onEdit, highlight, label, className, children }: LinkProps & { control: string; label: string; className?: string; children: ReactNode }) {
+  const target = { page, control }
+  const lit = highlights(highlight, target)
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onEdit(target)}
       title={label}
       aria-label={label}
-      className={`rounded outline-offset-2 hover:outline hover:outline-1 hover:outline-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${className ?? ''}`}
+      data-preview-highlight={lit ? '' : undefined}
+      className={`rounded outline-offset-2 hover:outline hover:outline-1 hover:outline-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${lit ? HIGHLIGHT : ''} ${className ?? ''}`}
     >
       {children}
     </button>
@@ -390,9 +415,9 @@ function Editable({ onClick, label, className, children }: { onClick: () => void
 /** Literal classes, so Tailwind's scanner keeps them. */
 const SPAN = ['col-span-1', 'col-span-2', 'col-span-3', 'col-span-4']
 
-function Widget({ widget, accent, viewAll, onEdit }: { widget: PreviewWidget; accent: string; viewAll: string; onEdit: () => void }) {
+function Widget({ widget, accent, viewAll, ...link }: LinkProps & { widget: PreviewWidget; accent: string; viewAll: string }) {
   return (
-    <Editable onClick={onEdit} label={`Edit widget ${widget.index + 1}`} className={`${SPAN[widget.span - 1] ?? 'col-span-1'} block min-w-0 text-start`}>
+    <Editable {...link} control={`widget.${widget.index}`} label={`Edit widget ${widget.index + 1}`} className={`${SPAN[widget.span - 1] ?? 'col-span-1'} block min-w-0 text-start`}>
       <div
         className={`h-full rounded border p-1.5 ${widget.kind === 'broken' ? 'border-error/50 bg-error/5' : 'border-outline-variant bg-surface-container-lowest'}`}
         data-preview-widget={widget.index}

@@ -734,4 +734,47 @@ describe('PagesEditor', () => {
       expect(screen.getByLabelText('Relation to link through')).toBeTruthy()
     })
   })
+  it('rings the previewed part while its editor control is hovered or focused', () => {
+    localStorage.setItem('fullstack:layoutPreview', 'open') // an earlier test hid it
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'bar', entity: 'Order' }] },
+      { id: 'customer', type: 'record', entity: 'Customer', headerStats: [{ child: 'Order' }] },
+    ]} />)
+    const preview = document.querySelector('[data-layout-preview]') as HTMLElement
+    const lit = () => [...preview.querySelectorAll('[data-preview-highlight]')]
+    expect(lit()).toHaveLength(0)
+
+    const home = openRow('home') as HTMLElement
+    const list = home.parentElement!
+    fireEvent.mouseOver(home.querySelector('[data-widget="1"]')!)
+    expect(lit()).toHaveLength(1)
+    expect(lit()[0].querySelector('[data-preview-widget="1"]')).toBeTruthy()
+    // Any control on the page maps onto a drawn part — the title field onto the heading.
+    const title = within(home).getByLabelText('Page title')
+    fireEvent.mouseOver(title)
+    expect(lit().map(el => el.getAttribute('aria-label'))).toEqual(['Edit the page title'])
+    // The row itself, outside any control, is the page: its nav entry.
+    fireEvent.mouseOver(home.querySelector('button[aria-expanded]')!)
+    expect(lit().map(el => el.getAttribute('data-preview-nav'))).toEqual(['0'])
+    fireEvent.mouseLeave(list)
+    expect(lit()).toHaveLength(0)
+
+    // Keyboard focus lights a part too, and the mouse passing over does not lose it.
+    title.focus()
+    fireEvent.focus(title)
+    expect(lit().map(el => el.getAttribute('aria-label'))).toEqual(['Edit the page title'])
+    fireEvent.mouseOver(home.querySelector('[data-widget="0"]')!)
+    expect(lit()[0].querySelector('[data-preview-widget="0"]')).toBeTruthy()
+    fireEvent.mouseLeave(list)
+    expect(lit().map(el => el.getAttribute('aria-label'))).toEqual(['Edit the page title'])
+    title.blur()
+    fireEvent.blur(title)
+    expect(lit()).toHaveLength(0)
+
+    // A record's tile row: the editor keys one tile, the preview draws the tiles as one part.
+    const record = openRow('customer')
+    fireEvent.mouseOver(record.querySelector('[data-header-stat="0"]')!)
+    expect(lit()).toHaveLength(1)
+    expect(lit()[0].querySelector('[data-preview-stats]')).toBeTruthy()
+  })
 })

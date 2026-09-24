@@ -193,6 +193,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const [notice, setNotice] = useState<string | null>(null)
   // A problem click about a widget: the dashboard form opens that card before the control is focused.
   const [expandRequest, setExpandRequest] = useState<{ page: number; widget: number; n: number } | null>(null)
+  // The editor part under the pointer or keyboard focus — the preview rings its counterpart.
+  const [hover, setHover] = useState<EditTarget | null>(null)
   const sectionRef = useRef<HTMLElement>(null)
 
   const named = entities.filter(e => e.name.trim())
@@ -339,6 +341,24 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       else if (row) scrollToElement(row, 'center')
     }
     requestAnimationFrame(() => attempt(2))
+  }
+
+  /** The page (by row) and control (by the nearest `data-control`) a DOM node sits in — the same
+   *  keys the preview's parts are drawn under, so hovering any part of a card lights the card. */
+  function targetOf(node: EventTarget | null): EditTarget | null {
+    if (!(node instanceof Element)) return null
+    const row = node.closest<HTMLElement>('[data-page-key]')
+    const page = row?.dataset.pageKey ? keys.indexOf(row.dataset.pageKey) : -1
+    if (page < 0) return null
+    return { page, control: node.closest<HTMLElement>('[data-control]')?.dataset.control }
+  }
+  function setHoverTo(next: EditTarget | null) {
+    setHover(prev => (prev?.page === next?.page && prev?.control === next?.control ? prev : next))
+  }
+  // Leaving with the mouse (or blurring) falls back to whatever still has keyboard focus.
+  function hoverFocused() {
+    const active = document.activeElement
+    setHoverTo(active && sectionRef.current?.contains(active) ? targetOf(active) : null)
   }
 
   // The caller's "jump to the first error" lands here: the first page with a problem.
@@ -632,7 +652,13 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         </div>
       ) : (
         <div className={!showPreview ? '' : layout === 'stacked' ? 'space-y-3' : 'grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]'}>
-          <ol className="min-w-0 space-y-2">
+          <ol
+            className="min-w-0 space-y-2"
+            onMouseOver={e => setHoverTo(targetOf(e.target))}
+            onMouseLeave={hoverFocused}
+            onFocus={e => setHoverTo(targetOf(e.target))}
+            onBlur={hoverFocused}
+          >
             {pages.map((page, index) => {
               const key = keys[index]
               const meta = PAGE_TYPE_META[page.type] ?? { icon: 'web_asset', label: page.type, blurb: '' }
@@ -833,6 +859,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 selected={previewIndex}
                 onSelect={i => setPreviewKey(keys[i] ?? null)}
                 onEdit={reveal}
+                highlight={hover}
                 skin={settings.skin}
                 offNavNote={offNavNote}
               />
@@ -850,6 +877,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             selected={previewIndex}
             onSelect={i => setPreviewKey(keys[i] ?? null)}
             onEdit={target => { setPreviewDrawer(false); reveal(target) }}
+            highlight={hover}
             skin={settings.skin}
             offNavNote={offNavNote}
           />
@@ -1890,6 +1918,7 @@ function ReportForm({ page, index, entities, errors, update, lossy, dnd }: FormP
           {...(charts.length > 1 ? dnd.rowProps(`charts:${index}`, ci) : {})}
           className={`space-y-1 rounded border border-outline-variant px-2 py-1.5 ${dnd.isDragging(`charts:${index}`, ci) ? 'opacity-40' : ''} ${dropIndicatorClass(dnd.indicatorFor(`charts:${index}`, ci))}`}
           data-report-chart={ci}
+          data-control={ci === 0 ? 'chart' : `chart${ci + 1}`}
         >
           <div className="flex items-center gap-1.5">
             {charts.length > 1 && <DragGrip dnd={dnd} list={`charts:${index}`} index={ci} />}
