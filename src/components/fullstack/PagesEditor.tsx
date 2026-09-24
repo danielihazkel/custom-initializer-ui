@@ -5,6 +5,7 @@ import type {
   FullstackChartDef,
   FullstackDateRange,
   FullstackEntityDef,
+  FullstackFieldDef,
   FullstackNavIcon,
   FullstackPageDef,
   FullstackPageRole,
@@ -55,6 +56,11 @@ import {
   adoptedGroup,
   askableFields,
   blankPage,
+  defaultPresetValue,
+  parsePresetRange,
+  PRESET_PERIODS,
+  presetKind,
+  presettableFields,
   linkablePages,
   LIST_WIDGET_LIMITS,
   MAX_LINKS,
@@ -1428,7 +1434,7 @@ function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filt
   /** The `data-control` prefix a problem reveals — a widget's filters live under its own. */
   controlPrefix?: string
 }) {
-  const filterable = groupableFields(entity)
+  const filterable = presettableFields(entity)
   const filters = Object.entries(filter ?? {})
   const unused = filterable.filter(f => !(f.name in (filter ?? {})))
 
@@ -1448,7 +1454,7 @@ function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filt
       {filters.length === 0 && (
         <p className="text-[11px] text-secondary">
           {filterable.length === 0
-            ? `Every row — ${entity?.name ?? 'this entity'} has no filterable enum or boolean field to preset.`
+            ? `Every row — ${entity?.name ?? 'this entity'} has no filterable enum, boolean, date or number field to preset.`
             : 'Every row (no preset filter).'}
         </p>
       )}
@@ -1467,15 +1473,19 @@ function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filt
               <option value={field}>{f ? fieldOption(f) : field}</option>
               {unused.map(o => <option key={o.name} value={o.name}>{fieldOption(o)}</option>)}
             </select>
-            <select
-              aria-label={`Filter value for ${field}`}
-              value={value}
-              onChange={e => setFilter(field, e.target.value)}
-              className={`${inputClass(error)} max-w-[12rem] py-1 text-xs`}
-            >
-              {!valuesOf(f).includes(value) && <option value={value}>{value}</option>}
-              {valuesOf(f).map(v => <option key={v} value={v}>{enumValueOption(f, v)}</option>)}
-            </select>
+            {f && presetKind(f) !== 'choice' ? (
+              <PresetRangeInput field={f} value={value} error={error} onChange={v => setFilter(field, v)} />
+            ) : (
+              <select
+                aria-label={`Filter value for ${field}`}
+                value={value}
+                onChange={e => setFilter(field, e.target.value)}
+                className={`${inputClass(error)} max-w-[12rem] py-1 text-xs`}
+              >
+                {!valuesOf(f).includes(value) && <option value={value}>{value}</option>}
+                {valuesOf(f).map(v => <option key={v} value={v}>{enumValueOption(f, v)}</option>)}
+              </select>
+            )}
             <button
               type="button"
               onClick={() => setFilter(field, null)}
@@ -1491,7 +1501,7 @@ function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filt
       {unused.length > 0 && (
         <button
           type="button"
-          onClick={() => setFilter(unused[0].name, valuesOf(unused[0])[0] ?? '')}
+          onClick={() => setFilter(unused[0].name, defaultPresetValue(unused[0]))}
           className={SMALL_BUTTON}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>filter_alt</span>
@@ -1499,6 +1509,57 @@ function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filt
         </button>
       )}
     </div>
+  )
+}
+
+/** A date field's preset (a period ending today, or two dates) or a number field's (min and max),
+ *  edited as controls and stored as the wire spelling (`last:30d`, `2026-01-01..2026-03-31`, `100..500`). */
+function PresetRangeInput({ field, value, error, onChange }: {
+  field: FullstackFieldDef
+  value: string
+  error?: string
+  onChange: (value: string) => void
+}) {
+  const kind = presetKind(field)
+  const period = PRESET_PERIODS.find(p => p.value === value.trim().toLowerCase())
+  const range = parsePresetRange(value) ?? { from: '', to: '' }
+  const custom = kind === 'date' && !period
+  const box = `${inputClass(error)} w-[9rem] py-1 text-xs`
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5" data-preset-range={field.name}>
+      {kind === 'date' && (
+        <select
+          aria-label={`Filter period for ${field.name}`}
+          value={period ? period.value : 'custom'}
+          onChange={e => onChange(e.target.value === 'custom' ? `${range.from}..${range.to}` : e.target.value)}
+          className={`${inputClass(error)} max-w-[10rem] py-1 text-xs`}
+        >
+          {PRESET_PERIODS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+          <option value="custom">Between dates…</option>
+        </select>
+      )}
+      {(custom || kind === 'number') && (
+        <>
+          <input
+            type={kind === 'date' ? 'date' : 'number'}
+            aria-label={`${kind === 'date' ? 'From date' : 'Min'} for ${field.name}`}
+            value={range.from}
+            step={kind === 'number' ? 'any' : undefined}
+            onChange={e => onChange(`${e.target.value}..${range.to}`)}
+            className={box}
+          />
+          <span className="text-[11px] text-secondary">to</span>
+          <input
+            type={kind === 'date' ? 'date' : 'number'}
+            aria-label={`${kind === 'date' ? 'To date' : 'Max'} for ${field.name}`}
+            value={range.to}
+            step={kind === 'number' ? 'any' : undefined}
+            onChange={e => onChange(`${range.from}..${e.target.value}`)}
+            className={box}
+          />
+        </>
+      )}
+    </span>
   )
 }
 

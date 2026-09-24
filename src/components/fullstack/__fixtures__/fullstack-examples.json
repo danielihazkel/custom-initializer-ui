@@ -1004,6 +1004,9 @@
         "group": "Reports",
         "title": "Movement analysis",
         "entity": "StockMovement",
+        "presetFilter": {
+          "movedOn": "last:90d"
+        },
         "charts": [
           {
             "groupBy": "kind",

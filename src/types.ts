@@ -549,7 +549,7 @@ export interface FullstackWidgetDef {
   limit?: number
   /** Dashboard grid columns (1–4); default 1 for a tile, 2 for a chart or list. */
   span?: number
-  /** Enum/boolean field → value the widget is limited to. */
+  /** Field → value the widget is limited to (as a page's presetFilter: a constant, a period or a range). */
   presetFilter?: Record<string, string>
   /** recent: the column it orders by, newest first (default: the primary key). */
   sortBy?: string
@@ -608,7 +608,9 @@ export interface FullstackPageDef {
   icon?: FullstackNavIcon
   /** entity-list */
   entity?: string
-  /** entity-list: enum/boolean field → value the page opens filtered on. */
+  /** entity-list / report: field → value the page opens filtered on. An enum constant or
+   *  `true`/`false`; on a date field a period (`last:7d`, `last:30d`, `last:90d`, `ytd`, `12m`) or
+   *  a range `2026-01-01..2026-03-31`; on a number field a range `100..500` (either side optional). */
   presetFilter?: Record<string, string>
   /** entity-list: the columns the list shows, by key, in this order — field names, relation field
    *  names and, with the audit option, `createdAt`/`updatedAt`. Omitted: every column. */

@@ -3,7 +3,8 @@ import type { FullstackEntityDef, FullstackPageDef, FullstackWidgetDef } from '.
 import {
   defaultWizardSteps, renameEntityInPages,
   defaultBarGroupBy, defaultLineGroupBy, defaultOptionLabel, defaultReportGroupBy, describePagesChange,
-  adoptedGroup, describePage, dropTabsTo, duplicatePage, moveNavGroup, navSections, pageFromSuggestion, pagesEmbedding, renameFieldInPages,
+  adoptedGroup, describePage, describePresetValue, dropTabsTo, duplicatePage, keptPresetFilter, moveNavGroup, navSections, pageFromSuggestion,
+  pagesEmbedding, renameFieldInPages,
   renameGroupInPages, renamePageIdInPages,
   renameRelationInPages, reportCharts, suggestPages, validatePages,
 } from './pageLayout'
@@ -274,6 +275,32 @@ describe('a report grouped by a relation', () => {
     expect(renamed[1].chart?.groupBy).toBe('buyer')
     expect(renamed[2].charts?.map(c => c.groupBy)).toEqual(['status', 'buyer'])
     expect(renameRelationInPages(pages, 'Customer', 'customer', 'buyer')).toBe(pages)
+  })
+})
+
+describe('date and number preset filters', () => {
+  const list = (presetFilter: Record<string, string>): FullstackPageDef => ({ id: 'orders', type: 'entity-list', entity: 'Order', presetFilter })
+  const problem = (presetFilter: Record<string, string>) => validatePages([list(presetFilter)], entities).byPage[0]?.['presetFilter.' + Object.keys(presetFilter)[0]]
+
+  it('accepts a period, a date range and a number range, and says what is wrong otherwise', () => {
+    expect(validatePages([list({ placedOn: 'last:30d', total: '100..', status: 'OPEN' })], entities).count).toBe(0)
+    expect(problem({ placedOn: '2026-01-01..2026-03-31' })).toBeUndefined()
+    expect(problem({ placedOn: 'last:5d' })).toBe('needs a period or a date range (from..to)')
+    expect(problem({ placedOn: '2026-03-31..2026-01-01' })).toBe('from is after to')
+    expect(problem({ placedOn: '..' })).toBe('a range needs a from or a to')
+    expect(problem({ total: '5' })).toBe('needs a number range (min..max)')
+    expect(problem({ total: 'abc..5' })).toBe('min and max must be numbers')
+    expect(problem({ total: '50..5' })).toBe('min is above max')
+    expect(validatePages([{ id: 'c', type: 'entity-list', entity: 'Customer', presetFilter: { name: 'x' } }], entities).byPage[0]?.['presetFilter.name'])
+      .toBe('only a filterable enum, boolean, date or number field can be preset')
+  })
+
+  it('keeps a valid range across a retarget and describes it as the app would', () => {
+    expect(keptPresetFilter({ placedOn: 'last:30d', total: '..5', status: 'NOPE' }, entities[1])).toEqual({ placedOn: 'last:30d', total: '..5' })
+    const placedOn = entities[1].fields.find(f => f.name === 'placedOn')!
+    expect(describePresetValue(placedOn, 'last:30d')).toBe('last 30 days')
+    expect(describePresetValue(placedOn, '2026-01-01..2026-03-31')).toBe('2026-01-01 – 2026-03-31')
+    expect(describePresetValue(entities[1].fields.find(f => f.name === 'total')!, '100..')).toBe('≥ 100')
   })
 })
 

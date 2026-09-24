@@ -100,6 +100,22 @@ describe('PagesEditor', () => {
     expect(screen.queryByRole('button', { name: 'Open the guide on frontend pages' })).toBeNull()
   })
 
+  it('presets a date field to a period or two dates, and a number field to a range', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order', presetFilter: { placedOn: 'last:30d', total: '100..' } }]} />)
+    openRow('orders')
+    const period = screen.getByLabelText('Filter period for placedOn') as HTMLSelectElement
+    expect(period.value).toBe('last:30d')
+    fireEvent.change(period, { target: { value: 'custom' } })
+    fireEvent.change(screen.getByLabelText('From date for placedOn'), { target: { value: '2026-01-01' } })
+    fireEvent.change(screen.getByLabelText('To date for placedOn'), { target: { value: '2026-03-31' } })
+    expect(latest[0].presetFilter?.placedOn).toBe('2026-01-01..2026-03-31')
+    fireEvent.change(screen.getByLabelText('Max for total'), { target: { value: '500' } })
+    expect(latest[0].presetFilter?.total).toBe('100..500')
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Min for total'), { target: { value: '900' } })
+    expect(document.querySelector('[data-page-layout-problems]')?.textContent).toContain('min is above max')
+  })
+
   it('edits a list widget: columns as toggles, a sort, the pager’s sizes', () => {
     render(<Harness initial={[
       { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'list', entity: 'Order', title: 'Open orders' }] },

@@ -1,7 +1,7 @@
 import type { FullstackAgg, FullstackBucket, FullstackEntityDef, FullstackFieldDef, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
 import { enumLabel } from './enumLabels'
 import { humanize } from './naming'
-import { pageLabel as linkLabel } from './pageLayout'
+import { describePresetValue, pageLabel as linkLabel } from './pageLayout'
 import {
   DEFAULT_NAV_ICON,
   auditOn,
@@ -332,7 +332,9 @@ export function buildLayoutPreview(
     return Object.entries(presetFilter ?? {}).map(([name, value]) => {
       const f = fieldOf(e, name)
       if (!f) return `${name}: ${value}`
-      const shown = f.type === 'ENUM' ? enumLabel(f, value) : value === 'true' ? t('trueLabel') : t('falseLabel')
+      const shown = f.type === 'ENUM' ? enumLabel(f, value)
+        : f.type === 'BOOLEAN' ? (value === 'true' ? t('trueLabel') : t('falseLabel'))
+          : describePresetValue(f, value)
       return `${fieldLabel(f)}: ${shown}`
     })
   }

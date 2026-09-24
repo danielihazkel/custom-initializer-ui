@@ -299,6 +299,92 @@ export function filterableDateFields(entity: FullstackEntityDef | undefined): Fu
   return dateFields(entity).filter(f => f.filterable !== false)
 }
 
+// ── Preset filters ──────────────────────────────────────────────────────────
+
+/** The periods a date field can be preset to, ending on the day the app is opened. */
+export const PRESET_PERIODS: { value: string; label: string }[] = [
+  { value: 'last:7d', label: 'Last 7 days' },
+  { value: 'last:30d', label: 'Last 30 days' },
+  { value: 'last:90d', label: 'Last 90 days' },
+  { value: 'ytd', label: 'This year' },
+  { value: '12m', label: 'Last 12 months' },
+]
+
+/** How a field is preset: a pick of its values, a date period or range, or a number range. */
+export type PresetKind = 'choice' | 'date' | 'number'
+
+export function presetKind(f: FullstackFieldDef): PresetKind {
+  if (f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME') return 'date'
+  if (f.type === 'LONG' || f.type === 'INTEGER' || f.type === 'BIG_DECIMAL') return 'number'
+  return 'choice'
+}
+
+/** Every field a list, report or widget can be preset on: filterable enum/boolean, date and number fields. */
+export function presettableFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
+  return (entity?.fields ?? []).filter(f => !f.primaryKey && f.filterable !== false
+    && (f.type === 'ENUM' || f.type === 'BOOLEAN' || presetKind(f) !== 'choice'))
+}
+
+/** The two halves of a range value `a..b` (either blank), or null when it is not a range. */
+export function parsePresetRange(value: string): { from: string; to: string } | null {
+  const at = value.indexOf('..')
+  if (at < 0) return null
+  return { from: value.slice(0, at).trim(), to: value.slice(at + 2).trim() }
+}
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
+const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/
+
+/** Why `value` is not a valid preset of `f` (mirrors FullstackPageValidator.presetFilter), or undefined. */
+export function presetValueProblem(f: FullstackFieldDef, value: string): string | undefined {
+  const v = value.trim()
+  if (!v) return 'needs a value'
+  switch (presetKind(f)) {
+    case 'choice':
+      if (f.type === 'BOOLEAN') return v === 'true' || v === 'false' ? undefined : 'expected true or false'
+      return (f.enumValues ?? []).includes(v) ? undefined : `“${v}” is not one of the values of ${f.name}`
+    case 'date': {
+      if (PRESET_PERIODS.some(p => p.value === v.toLowerCase())) return undefined
+      const range = parsePresetRange(v)
+      if (!range) return 'needs a period or a date range (from..to)'
+      if (!range.from && !range.to) return 'a range needs a from or a to'
+      const ok = (d: string) => ISO_DAY.test(d) || (f.type === 'LOCAL_DATE_TIME' && ISO_DATE_TIME.test(d))
+      if ((range.from && !ok(range.from)) || (range.to && !ok(range.to))) return 'dates must be yyyy-mm-dd'
+      if (range.from && range.to && range.from > range.to) return 'from is after to'
+      return undefined
+    }
+    case 'number': {
+      const range = parsePresetRange(v)
+      if (!range) return 'needs a number range (min..max)'
+      if (!range.from && !range.to) return 'a range needs a min or a max'
+      if ((range.from && !Number.isFinite(Number(range.from))) || (range.to && !Number.isFinite(Number(range.to)))) return 'min and max must be numbers'
+      if (range.from && range.to && Number(range.from) > Number(range.to)) return 'min is above max'
+      return undefined
+    }
+  }
+}
+
+/** A field's first sensible preset: its first value, the last 30 days, or "at least 0". */
+export function defaultPresetValue(f: FullstackFieldDef): string {
+  switch (presetKind(f)) {
+    case 'date': return 'last:30d'
+    case 'number': return '0..'
+    default: return valuesOf(f)[0] ?? ''
+  }
+}
+
+/** A preset as the generated UI would say it: "Placed on: last 30 days", "Total: 100 – 500", "Status: Open". */
+export function describePresetValue(f: FullstackFieldDef, value: string): string {
+  const period = PRESET_PERIODS.find(p => p.value === value.trim().toLowerCase())
+  if (period) return period.label.toLowerCase()
+  const range = presetKind(f) === 'choice' ? null : parsePresetRange(value)
+  if (range) {
+    if (range.from && range.to) return `${range.from} – ${range.to}`
+    return range.from ? `≥ ${range.from}` : `≤ ${range.to}`
+  }
+  return value
+}
+
 /** The date a widget's period applies to: its own, else the entity's first filterable one. */
 export function widgetDateField(w: FullstackWidgetDef, entity: FullstackEntityDef | undefined): string | undefined {
   return w.dateField || filterableDateFields(entity)[0]?.name
@@ -537,21 +623,22 @@ export function pageLayoutProblems(pages: FullstackPageDef[], entities: Fullstac
 
 type AddIssue = (field: string, message: string, summary?: string, fix?: PageFix) => void
 
-/** The opening filters of a list or report page: equality on a filterable enum/boolean column. */
+/** The opening filters of a list, report or widget: a value of a filterable enum/boolean column, a
+ *  period or date range on a date column, a number range on a number column. */
 function checkPresetFilter(filter: Record<string, string> | undefined, e: FullstackEntityDef, add: AddIssue, where: string,
                            control: (field: string) => string = field => `presetFilter.${field}`): void {
-  const groupable = groupableFields(e)
+  const presettable = presettableFields(e)
   for (const [field, value] of Object.entries(filter ?? {})) {
     const f = e.fields.find(x => x.name === field)
     if (!f) {
       add(control(field), `${e.name} no longer has “${field}”`,
         `${where} filters on “${field}”, which ${e.name} no longer has`)
-    } else if (!groupable.includes(f)) {
-      add(control(field), 'only a filterable enum or boolean field can be preset',
-        `${where} filters on “${field}”, which is not a filterable enum or boolean field`)
-    } else if (f.type === 'ENUM' && !(f.enumValues ?? []).includes(value)) {
-      add(control(field), `“${value}” is not one of the values of ${f.name}`,
-        `${where} filters ${field} on “${value}”, which is not one of its values`)
+    } else if (!presettable.includes(f)) {
+      add(control(field), 'only a filterable enum, boolean, date or number field can be preset',
+        `${where} filters on “${field}”, which is not a filterable enum, boolean, date or number field`)
+    } else {
+      const problem = presetValueProblem(f, value)
+      if (problem) add(control(field), problem, `${where} filters ${field} on “${value}”, which ${problem.replace(/^needs/, 'is not valid: needs')}`)
     }
   }
 }
@@ -1754,11 +1841,11 @@ export function describePagesChange(prev: FullstackPageDef[], next: FullstackPag
 /** Preset-filter entries that still apply to `entity` (a filterable enum/boolean with that value). */
 export function keptPresetFilter(filter: Record<string, string> | undefined, entity: FullstackEntityDef | undefined): Record<string, string> | undefined {
   if (!filter) return undefined
-  const groupable = groupableFields(entity)
+  const presettable = presettableFields(entity)
   const kept: Record<string, string> = {}
   for (const [k, v] of Object.entries(filter)) {
-    const f = groupable.find(x => x.name === k)
-    if (f && (f.type === 'BOOLEAN' ? v === 'true' || v === 'false' : (f.enumValues ?? []).includes(v))) kept[k] = v
+    const f = presettable.find(x => x.name === k)
+    if (f && !presetValueProblem(f, v)) kept[k] = v
   }
   return Object.keys(kept).length ? kept : undefined
 }
