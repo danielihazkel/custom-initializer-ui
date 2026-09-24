@@ -40,7 +40,7 @@ describe('validatePages warnings', () => {
     ])
     expect(warnings[0].field).toBe('widget.0')
     const fixed = warnings[0].fix!.apply(pages)
-    expect(fixed.at(-1)).toEqual({ id: 'orders-2', type: 'entity-list', entity: 'Order' })
+    expect(fixed[fixed.length - 1]).toEqual({ id: 'orders-2', type: 'entity-list', entity: 'Order' })
     expect(summaries(fixed)).toEqual([])
   })
 
@@ -51,7 +51,8 @@ describe('validatePages warnings', () => {
     ]
     const { warnings } = validatePages(pages, entities)
     expect(warnings.map(w => w.summary)).toEqual(['Page “Dashboard”: the recent Customer rows open nothing — Customer has no record page'])
-    expect(warnings[0].fix!.apply(pages).at(-1)).toEqual({ id: 'customer', type: 'record', entity: 'Customer', hidden: true })
+    const fixed = warnings[0].fix!.apply(pages)
+    expect(fixed[fixed.length - 1]).toEqual({ id: 'customer', type: 'record', entity: 'Customer', hidden: true })
   })
 
   it('flags a hidden page nothing embeds, and roles that never apply', () => {
@@ -72,7 +73,7 @@ describe('validatePages warnings', () => {
 
   it('says which widgets a period picker cannot limit', () => {
     expect(summaries([
-      { id: 'home', type: 'dashboard', dateRange: '30d', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'kpi', entity: 'Customer' }, { kind: 'text', text: 'Hi' }] },
+      { id: 'home', type: 'dashboard', dateRange: '30d', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'kpi', entity: 'Customer' }, { kind: 'text', entity: '', text: 'Hi' }] },
       { id: 'orders', type: 'entity-list', entity: 'Order' },
     ])).toEqual(['Page “Dashboard”: one widget has no date, so the period picker does not limit it'])
   })
