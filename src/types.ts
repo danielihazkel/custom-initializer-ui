@@ -581,7 +581,7 @@ export interface FullstackPageDef {
   description?: string
   /** Out of the navigation — reachable only as a tab. */
   hidden?: boolean
-  /** The roles (any of) that may open the page — needs an ldap-auth dependency. Absent: everyone. */
+  /** The roles (any of) that may open the page — needs ldap-auth-rest or ldap-auth. Absent: everyone. */
   roles?: FullstackPageRole[]
   /** Nav section (visible pages only): pages sharing a group are listed together under its name. */
   group?: string

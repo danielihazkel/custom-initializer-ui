@@ -255,7 +255,7 @@ export function FullstackView() {
     [meta, bootVersions, javaVersions],
   )
   // A layout outlives the entities it names (rename / delete) — flagged here, not as a 400 later.
-  // Page roles are enforced by the generated backend's LDAP groups, so they need ldap-auth.
+  // Page roles are enforced by the generated backend's LDAP groups, so they need an LDAP auth variant (ldap-auth-rest, the sets' default, or ldap-auth).
   const ldapAuth = selectedDeps.some(d => d === 'ldap-auth' || d === 'ldap-auth-rest')
   const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth }), [pages, entities, ldapAuth])
   const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageValidation.count

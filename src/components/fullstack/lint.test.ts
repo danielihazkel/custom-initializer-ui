@@ -73,7 +73,7 @@ describe('lintModel', () => {
 
   it('checks project options against the dependency list', () => {
     const secured = rules([{ name: 'A', fields: [pk, { name: 'n', type: 'STRING' }] }], ['secured', 'openapi'], ['web'])
-    expect(secured.find(i => i.rule === 'secured-needs-ldap')?.fix!.apply({ entities: [], scaffoldOpts: [], selectedDeps: ['web'] }).selectedDeps).toEqual(['web', 'ldap-auth'])
+    expect(secured.find(i => i.rule === 'secured-needs-ldap')?.fix!.apply({ entities: [], scaffoldOpts: [], selectedDeps: ['web'] }).selectedDeps).toEqual(['web', 'ldap-auth-rest'])
     expect(secured.find(i => i.rule === 'openapi-adds-dep')?.severity).toBe('info')
     expect(rules([{ name: 'A', fields: [pk, { name: 'n', type: 'STRING' }] }], ['secured', 'openapi'], ['ldap-auth-rest', 'openapi'])).toEqual([])
   })

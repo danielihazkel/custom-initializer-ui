@@ -219,7 +219,8 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
       rule: 'secured-needs-ldap',
       severity: 'warn',
       message: 'Permission hints are on, but no LDAP auth dependency is selected — the option generates nothing.',
-      fix: { label: 'Add ldap-auth', apply: m => ({ ...m, selectedDeps: [...m.selectedDeps, 'ldap-auth'] }) },
+      // ldap-auth-rest is the template sets' default variant (groups from the LDAP REST service).
+      fix: { label: 'Add ldap-auth-rest', apply: m => ({ ...m, selectedDeps: [...m.selectedDeps, 'ldap-auth-rest'] }) },
     })
   }
   if (scaffoldOpts.includes('openapi') && !selectedDeps.includes('openapi')) {

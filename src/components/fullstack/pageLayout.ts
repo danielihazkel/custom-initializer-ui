@@ -248,7 +248,7 @@ interface Issue {
 
 const singlePk = (e: FullstackEntityDef) => e.fields.filter(f => f.primaryKey).length === 1
 
-/** What the page checks need beyond the layout: whether an ldap-auth dependency is selected
+/** What the page checks need beyond the layout: whether an LDAP auth dependency (ldap-auth-rest or ldap-auth) is selected
  *  (page roles need one). Omitted, that check is skipped. */
 export interface PageLayoutContext {
   ldapAuth?: boolean
@@ -291,7 +291,7 @@ function roleIssues(pages: FullstackPageDef[], context: PageLayoutContext): Issu
     if (roles.some(r => !PAGE_ROLES.includes(r))) add('unknown role', `${where} names an unknown role`)
     else if (page === start) add('the start page is open to everyone', `${where} is the start page, so it cannot be restricted to roles`)
     else if (tabbed.has(page.id)) add('restrict the tabs page instead', `${where} is a tab, so it cannot be restricted to roles`)
-    else if (context.ldapAuth === false) add('needs the ldap-auth dependency', `${where} is restricted to roles, which need the ldap-auth dependency`)
+    else if (context.ldapAuth === false) add('needs ldap-auth-rest or ldap-auth', `${where} is restricted to roles, which need an LDAP auth dependency (ldap-auth-rest or ldap-auth)`)
   })
   return out
 }

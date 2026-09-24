@@ -56,7 +56,7 @@ describe('page roles', () => {
   })
 
   it('flags roles the generator would reject', () => {
-    expect(validatePages(pages, entities, { ldapAuth: false }).byPage[4]).toEqual({ roles: 'needs the ldap-auth dependency' })
+    expect(validatePages(pages, entities, { ldapAuth: false }).byPage[4]).toEqual({ roles: 'needs ldap-auth-rest or ldap-auth' })
     const start = pages.map((p, i) => (i === 0 ? { ...p, roles: ['USER' as const] } : p))
     expect(validatePages(start, entities, { ldapAuth: true }).byPage[0]).toEqual({ roles: 'the start page is open to everyone' })
     const tab = pages.map((p, i) => (i === 1 ? { ...p, roles: ['USER' as const] } : p))

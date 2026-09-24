@@ -109,7 +109,7 @@ interface Props {
   }
   /** A 400 from Generate that names a page of this layout — listed with the problems and revealed. */
   serverIssue?: { page: number; message: string } | null
-  /** An ldap-auth dependency is selected, so pages can be restricted to roles. */
+  /** An LDAP auth dependency (ldap-auth-rest or ldap-auth) is selected, so pages can be restricted to roles. */
   ldapAuth?: boolean
 }
 
@@ -852,7 +852,7 @@ function RolesField({ page, index, errors, update, ldapAuth }: Omit<FormProps, '
       control="roles"
       hint={roles.length
         ? 'Hidden from the nav, and blocked, for users without one of these roles (checked against their LDAP groups)'
-        : ldapAuth ? 'Everyone — tick a role to restrict the page' : 'Page roles need the ldap-auth dependency'}
+        : ldapAuth ? 'Everyone — tick a role to restrict the page' : 'Page roles need an LDAP auth dependency — add ldap-auth-rest (or ldap-auth)'}
     >
       <div className="flex flex-wrap items-center gap-3">
         {PAGE_ROLES.map(role => (
