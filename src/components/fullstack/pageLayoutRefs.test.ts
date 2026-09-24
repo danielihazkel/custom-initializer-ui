@@ -278,6 +278,18 @@ describe('a report grouped by a relation', () => {
   })
 })
 
+describe('undo labels for the preview’s widget handles', () => {
+  it('names a reorder and a resize', () => {
+    const home: FullstackPageDef = { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order', title: 'A' }, { kind: 'kpi', entity: 'Customer', title: 'B' }] }
+    const reordered = { ...home, widgets: [home.widgets![1], home.widgets![0]] }
+    expect(describePagesChange([home], [reordered])).toBe('Reordered the widgets of “Dashboard”')
+    const resized = { ...home, widgets: [{ ...home.widgets![0], span: 3 }, home.widgets![1]] }
+    expect(describePagesChange([home], [resized])).toBe('Resized a widget on “Dashboard”')
+    const retitled = { ...home, widgets: [{ ...home.widgets![0], title: 'C' }, home.widgets![1]] }
+    expect(describePagesChange([home], [retitled])).toBe('Edited the “Dashboard” page')
+  })
+})
+
 describe('a list page’s row detail', () => {
   it('opens in a side pane on a single-key entity, or on a record page the layout has', () => {
     const orders: FullstackPageDef = { id: 'orders', type: 'entity-list', entity: 'Order', detail: 'side' }

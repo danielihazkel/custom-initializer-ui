@@ -370,6 +370,15 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     onChange(moveNavGroup(pages, sectionIndex, delta))
   }
 
+  // The preview's own handles on a dashboard: drag a widget to another slot, drag its edge wider.
+  function reorderWidget(pageIndex: number, from: number, to: number) {
+    update(pageIndex, { widgets: moveItem(pages[pageIndex]?.widgets ?? [], from, to) })
+  }
+  function resizeWidget(pageIndex: number, widgetIndex: number, span: number) {
+    const widgets = pages[pageIndex]?.widgets ?? []
+    update(pageIndex, { widgets: widgets.map((w, j) => (j === widgetIndex ? { ...w, span: span === defaultSpan(w.kind) ? undefined : span } : w)) })
+  }
+
   // A page moved to another type: what the new type cannot use is dropped, and said so.
   function changeType(index: number, type: FullstackPageType) {
     const page = pages[index]
@@ -1183,6 +1192,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 highlight={hover}
                 skin={settings.skin}
                 offNavNote={offNavNote}
+                onReorderWidget={reorderWidget}
+                onResizeWidget={resizeWidget}
               />
             </aside>
           )}
@@ -1201,6 +1212,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             highlight={hover}
             skin={settings.skin}
             offNavNote={offNavNote}
+            onReorderWidget={reorderWidget}
+            onResizeWidget={resizeWidget}
           />
         </PreviewDrawer>
       )}

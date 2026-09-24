@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import { highlights, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewScreen, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
+import { dropIndicatorClass, useDragReorder, type DragReorder } from './useDragReorder'
 
 export type { EditTarget }
 
@@ -15,19 +16,26 @@ interface Props {
   skin: 'tailwind' | 'menora'
   /** Why the selected page is not in the nav, when it is not ("Tab only", "Opens from a row"). */
   offNavNote?: string
+  /** A dashboard widget dragged to another slot of its page. Absent: no grips. */
+  onReorderWidget?: (page: number, from: number, to: number) => void
+  /** A dashboard widget given another width (1–4 columns). Absent: no handles. */
+  onResizeWidget?: (page: number, index: number, span: number) => void
 }
 
 const MENORA = { purple: '#684eed', yellow: '#ffc700', ink: '#37374e' }
+const WIDGET_LIST = 'preview-widgets:'
 
 /**
  * A wireframe of the generated frontend for the page layout being edited — the shell with its
  * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
-export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote }: Props) {
+export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget }: Props) {
   const screen = preview.screens[selected]
   const menora = skin === 'menora'
   const accent = menora ? MENORA.purple : 'var(--color-primary)'
+  // One drag context for every dashboard drawn (a tab may embed another): the list key names the page.
+  const dnd = useDragReorder((list, from, to) => onReorderWidget?.(Number(list.slice(WIDGET_LIST.length)), from, to))
 
   const navButton = (item: LayoutPreviewModel['nav'][number]) => {
     const active = item.index === selected
@@ -81,7 +89,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         <p className="rounded bg-surface-container px-2 py-1 text-[10px] text-secondary">{offNavNote}</p>
       )}
       {screen ? (
-        <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} />
+        <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={onReorderWidget ? dnd : undefined} onResizeWidget={onResizeWidget} />
       ) : (
         <p className="text-[11px] text-secondary">Nothing to show.</p>
       )}
@@ -140,11 +148,15 @@ interface ScreenProps {
   menora: boolean
   /** Inside a tabs page: no second heading. */
   embedded?: boolean
+  dnd?: DragReorder
+  onResizeWidget?: (page: number, index: number, span: number) => void
 }
 
-function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, embedded }: ScreenProps) {
+function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, embedded, dnd, onResizeWidget }: ScreenProps) {
   // Every part of this screen jumps to its editor control, and lights when that control is hovered.
   const link = { page, onEdit, highlight }
+  // The dashboard grid, measured while a widget's edge is dragged to a new width.
+  const gridRef = useRef<HTMLDivElement>(null)
   const heading = !embedded && (
     <Editable {...link} control="title" label="Edit the page title" className="block text-start">
       <h3 className="text-[13px] font-bold text-on-surface">
@@ -179,9 +191,21 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               </Editable>
             )}
           </div>
-          <div className="grid grid-cols-4 gap-1.5">
+          <div ref={gridRef} className="grid grid-cols-4 gap-1.5">
             {screen.widgets.map(w => (
-              <Widget key={w.index} widget={w} accent={accent} viewAll={preview.strings.viewAll} preview={preview} menora={menora} {...link} />
+              <Widget
+                key={w.index}
+                widget={w}
+                accent={accent}
+                viewAll={preview.strings.viewAll}
+                preview={preview}
+                menora={menora}
+                dnd={dnd}
+                list={`${WIDGET_LIST}${page}`}
+                gridRef={gridRef}
+                onResize={onResizeWidget ? span => onResizeWidget(page, w.index, span) : undefined}
+                {...link}
+              />
             ))}
           </div>
           {screen.widgets.length === 0 && <p className="text-[10px] text-secondary">No widgets yet.</p>}
@@ -197,7 +221,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
         </div>
       )
     case 'tabs':
-      return <TabsScreen screen={screen} page={page} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} heading={heading} />
+      return <TabsScreen screen={screen} page={page} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} heading={heading} dnd={dnd} onResizeWidget={onResizeWidget} />
     case 'master-detail':
       return (
         <div className="space-y-2">
@@ -351,7 +375,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
   }
 }
 
-function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, heading }:
+function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, heading, dnd, onResizeWidget }:
   Omit<ScreenProps, 'screen'> & { screen: Extract<PreviewScreen, { type: 'tabs' }>; heading: ReactNode }) {
   const [active, setActive] = useState(0)
   const current = Math.min(active, Math.max(screen.tabs.length - 1, 0))
@@ -387,7 +411,7 @@ function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent
         </div>
       )}
       {embedded && target != null && embedded.type !== 'tabs' && (
-        <Screen screen={embedded} page={target} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} embedded />
+        <Screen screen={embedded} page={target} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={dnd} onResizeWidget={onResizeWidget} embedded />
       )}
       {screen.tabs.length > 0 && target == null && (
         <p className="text-[10px] text-error">This tab points at no page.</p>
@@ -430,9 +454,55 @@ function Editable({ page, control, onEdit, highlight, label, className, children
 /** Literal classes, so Tailwind's scanner keeps them. */
 const SPAN = ['col-span-1', 'col-span-2', 'col-span-3', 'col-span-4']
 
-function Widget({ widget, accent, viewAll, preview, menora, ...link }: LinkProps & { widget: PreviewWidget; accent: string; viewAll: string; preview: LayoutPreviewModel; menora: boolean }) {
+const MAX_SPAN = SPAN.length
+const TOOL = 'rounded px-1 text-[10px] font-semibold leading-4 text-secondary hover:bg-primary/10 hover:text-primary disabled:opacity-30'
+
+function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, onResize, ...link }: LinkProps & {
+  widget: PreviewWidget
+  accent: string
+  viewAll: string
+  preview: LayoutPreviewModel
+  menora: boolean
+  /** Drag-to-reorder over the dashboard's widgets, when the editor takes reorders. */
+  dnd?: DragReorder
+  list: string
+  gridRef: RefObject<HTMLDivElement | null>
+  /** Sets the widget's width (1–4 columns), when the editor takes resizes. */
+  onResize?: (span: number) => void
+}) {
+  // While the end edge is dragged the card follows the pointer; the width is committed on release.
+  const [liveSpan, setLiveSpan] = useState<number | null>(null)
+  const span = liveSpan ?? widget.span
+  const indicator = dnd?.indicatorFor(list, widget.index) ?? null
+  const dragging = dnd?.isDragging(list, widget.index) ?? false
+  const spanAt = (clientX: number): number | null => {
+    const grid = gridRef.current?.getBoundingClientRect()
+    if (!grid || grid.width === 0) return null
+    const x = preview.rtl ? grid.right - clientX : clientX - grid.left
+    return Math.min(MAX_SPAN, Math.max(1, Math.ceil(x / (grid.width / MAX_SPAN))))
+  }
+  const startResize = (e: ReactPointerEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setLiveSpan(widget.span)
+  }
+  const moveResize = (e: ReactPointerEvent<HTMLElement>) => {
+    if (liveSpan == null) return
+    const next = spanAt(e.clientX)
+    if (next != null && next !== liveSpan) setLiveSpan(next)
+  }
+  const endResize = () => {
+    if (liveSpan != null && liveSpan !== widget.span) onResize?.(liveSpan)
+    setLiveSpan(null)
+  }
   return (
-    <Editable {...link} control={`widget.${widget.index}`} label={`Edit widget ${widget.index + 1}`} className={`${SPAN[widget.span - 1] ?? 'col-span-1'} block min-w-0 text-start`}>
+    <div
+      {...(dnd ? dnd.rowProps(list, widget.index) : {})}
+      className={`group relative ${SPAN[span - 1] ?? 'col-span-1'} min-w-0 ${dragging ? 'opacity-40' : ''} ${dropIndicatorClass(indicator)}`}
+      data-preview-widget-slot={widget.index}
+    >
+    <Editable {...link} control={`widget.${widget.index}`} label={`Edit widget ${widget.index + 1}`} className="block h-full w-full min-w-0 text-start">
       <div
         className={`h-full rounded border p-1.5 ${widget.kind === 'broken' ? 'border-error/50 bg-error/5' : 'border-outline-variant bg-surface-container-lowest'}`}
         data-preview-widget={widget.index}
@@ -517,6 +587,44 @@ function Widget({ widget, accent, viewAll, preview, menora, ...link }: LinkProps
         {widget.kind === 'broken' && <p className="text-[10px] text-error">{widget.message}</p>}
       </div>
     </Editable>
+    {(dnd || onResize) && (
+      <span
+        className="absolute end-1 top-1 flex items-center gap-0.5 rounded bg-surface-container-lowest/90 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
+        data-preview-widget-tools
+      >
+        {dnd && (
+          <span
+            {...dnd.handleProps(list, widget.index)}
+            role="button"
+            tabIndex={-1}
+            aria-label={`Drag widget ${widget.index + 1}`}
+            title="Drag to reorder"
+            className="cursor-grab text-secondary"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>drag_indicator</span>
+          </span>
+        )}
+        {onResize && (
+          <>
+            <button type="button" onClick={() => onResize(widget.span - 1)} disabled={widget.span <= 1} aria-label={`Narrower: widget ${widget.index + 1}`} title="Narrower" className={TOOL}>−</button>
+            <button type="button" onClick={() => onResize(widget.span + 1)} disabled={widget.span >= MAX_SPAN} aria-label={`Wider: widget ${widget.index + 1}`} title="Wider" className={TOOL}>+</button>
+          </>
+        )}
+      </span>
+    )}
+    {onResize && (
+      <span
+        onPointerDown={startResize}
+        onPointerMove={moveResize}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+        className="absolute inset-y-1 end-0 w-1.5 cursor-ew-resize rounded opacity-0 hover:bg-primary/40 group-hover:opacity-100"
+        title="Drag to resize"
+        aria-hidden="true"
+        data-preview-widget-resize
+      />
+    )}
+    </div>
   )
 }
 

@@ -1838,6 +1838,12 @@ export function describePagesChange(prev: FullstackPageDef[], next: FullstackPag
     const wa = a.widgets ?? []; const wb = b.widgets ?? []
     if (wb.length > wa.length) return `Added a widget to “${name}”`
     if (wb.length < wa.length) return `Removed a widget from “${name}”`
+    const wkey = (w: FullstackWidgetDef) => JSON.stringify(w)
+    if (wa.length > 0 && wa.map(wkey).join('\n') !== wb.map(wkey).join('\n')) {
+      if (wa.map(wkey).sort().join('\n') === wb.map(wkey).sort().join('\n')) return `Reordered the widgets of “${name}”`
+      const spanless = (w: FullstackWidgetDef) => JSON.stringify({ ...w, span: undefined })
+      if (wa.map(spanless).join('\n') === wb.map(spanless).join('\n')) return `Resized a widget on “${name}”`
+    }
     const ta = a.tabs ?? []; const tb = b.tabs ?? []
     if (tb.length > ta.length) return `Added a tab to “${name}”`
     if (tb.length < ta.length) return `Removed a tab from “${name}”`
