@@ -46,9 +46,11 @@ src/
 `FullstackView.tsx` owns the whole editor state and wires: `FullstackPresets` (example models from
 `hooks/useFullstackExamples` → `GET /metadata/fullstack/examples`, admin-managed under Admin → Fullstack
 Examples (`components/admin/fullstack-examples/`, which runs `validateEntities` before saving and can copy a
-Team model's entities). `__fixtures__/fullstack-examples.json` is a copy of the backend seed
-(`catalog/fullstack-examples.json`) — `examples.test.ts`/`lint.test.ts` pin that every seeded example passes
-`validateEntities` and raises no `lint.ts` warnings; re-copy it when the seed changes. Plus saved presets/recents via `hooks/useFullstackPresets`,
+Team model's entities). `__fixtures__/fullstack-examples.json` is the backend seed
+(`catalog/fullstack-examples.json`) in the public `GET /metadata/fullstack/examples` shape — `exampleId` renamed to `id`,
+no `sortOrder`/`enabled` — and `examples.test.ts`/`lint.test.ts` pin that every seeded example passes
+`validateEntities` and raises no `lint.ts` warnings; regenerate it when the seed changes
+(`node -e` over the seed: `({ exampleId, sortOrder, enabled, ...rest }) => ({ id: exampleId, ...rest })`). Plus saved presets/recents via `hooks/useFullstackPresets`,
 **Team** models via `hooks/useTeamModels` (server-side `/metadata/fullstack/models`, same export shape;
 the save prompt has a This browser / Team destination, a 409 name clash asks to Overwrite, delete is
 confirmed in-app because it affects everyone), and **Export JSON / Import JSON / Copy as curl**
@@ -79,7 +81,26 @@ follows into the tabs that embed it (`renamePageIdInPages`), and removing a page
 first and drops the tab with it. Pages carry no uid (they go to the server verbatim), so rows are
 keyed by `rowKeys.ts` (`useStableKeys`: same object → same id → same position) — never by index.
 `validation.issues` carries page + control for every problem; the problem list and the sticky bar's
-jump (`revealRequest`) open the page and focus the `[data-control="…"]` element named by it.
+jump (`revealRequest`) open the page and focus the `[data-control="…"]` element named by it. An issue
+with one obvious repair also carries a `fix` (`PageFix`: a stale entity reference removes the page /
+widget / tab / tile, an ambiguous master-detail link takes the first relation, a wizard adds the
+required fields it forgot to its last step); the problem list shows it as a "Fix: …" button, applied
+through `onChange` after `pushUndo`. A **list page** says how it opens (`EntityListForm`): `columns`
+(toggle chips in table order, draggable — the `columns:<page>` drag list — with "All columns
+(default)"), `sort` (a sortable column + direction), `view` (radios over the four views, disabled with
+the reason from `viewDisabledReason` when the entity does not offer one — `enabledListViews` reads
+`summarizeEntity`) and `pageSize`. The audit columns exist only with the `audit` opt, so
+`validatePages` takes `{ scaffoldOpts }` (`FullstackView` passes `scaffoldOpts`, the admin form the
+example's `settings.scaffold`) and `listColumns`/`sortableKeys`/`auditOn` derive from it; the preview
+draws the chosen columns and a cards / board / calendar wireframe for the view. Switching a page's
+entity or parent goes through a `retarget*` helper (`retargetEntityList`, `retargetMasterDetail`,
+`retargetMasterDetailChild`, `retargetRecord`, `stripDateRange` for the period picker) that keeps
+what still fits and names what it dropped in the `lossy` notice. The Roles field is always shown;
+without an LDAP dep (`ldapAuth === false`) its boxes are disabled and an "Add ldap-auth-rest"
+shortcut calls `onAddDep`. A dashboard with four or more widgets opens its cards collapsed to one
+summary line each (Expand/Collapse all; a new or re-kinded widget and the card a problem points at
+open — `expandRequest`). Wizard steps and record tabs have "Reset to default" buttons; the setup
+panel disables Dashboard Title/Overview once a layout exists (`hasPages`).
 Beside the list sits a **layout preview** (`LayoutPreview.tsx`, model in `layoutPreviewModel.ts` —
 not `layoutPreview.ts`, which collides with the component on Windows' case-insensitive FS): a
 wireframe of the generated shell (dark sidebar, or the Menora top bar when the frontend set is

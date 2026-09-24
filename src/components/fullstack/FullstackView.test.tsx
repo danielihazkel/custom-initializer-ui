@@ -326,6 +326,18 @@ describe('FullstackView — page layouts', () => {
     expect(body.dashboardTitle).toBe('Support')
   })
 
+  it('disables the classic dashboard title and overview once a page layout is set', async () => {
+    mockServer()
+    render(<FullstackView />)
+    const title = () => document.getElementById('fs-dashboardTitle') as HTMLInputElement
+    expect(title().disabled).toBe(false)
+    expect(document.querySelector('[data-dashboard-meta-note]')).toBeNull()
+    await loadDesk()
+    expect(title().disabled).toBe(true)
+    expect((document.getElementById('fs-dashboardOverview') as HTMLInputElement).disabled).toBe(true)
+    expect(document.querySelector('[data-dashboard-meta-note]')?.textContent).toContain('Your page layout is in charge')
+  })
+
   it('follows an entity rename into the layout, and drops the layout on request (undoably)', async () => {
     mockServer()
     render(<FullstackView />)

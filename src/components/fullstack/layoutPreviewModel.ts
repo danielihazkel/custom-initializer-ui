@@ -1,8 +1,10 @@
-import type { FullstackAgg, FullstackBucket, FullstackEntityDef, FullstackFieldDef, FullstackPageDef, FullstackPageType } from '../../types'
+import type { FullstackAgg, FullstackBucket, FullstackEntityDef, FullstackFieldDef, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
 import { enumLabel } from './enumLabels'
 import { humanize } from './naming'
 import {
   DEFAULT_NAV_ICON,
+  auditOn,
+  enabledListViews,
   defaultSpan,
   defaultWizardSteps,
   defaultTopGroupBy,
@@ -71,6 +73,12 @@ export interface PreviewTable {
   title: string
   columns: string[]
   rows: string[][]
+  /** The view the list opens in (the page's, else the entity's first). */
+  view: FullstackListView
+  /** Lane headings for a board (the breakdown field's first values); empty otherwise. */
+  lanes: string[]
+  /** "Placed on ↓" when the page opens sorted; null for the default order. */
+  sort: string | null
   showSearch: boolean
   filters: string[]
   /** "Status: Open" chips for the filters the page opens with. */
@@ -259,9 +267,13 @@ export function buildLayoutPreview(
     return t(agg === 'sum' ? 'aggSum' : agg === 'avg' ? 'aggAvg' : agg === 'min' ? 'aggMin' : 'aggMax', { x })
   }
 
-  function table(e: FullstackEntityDef, presetFilter?: Record<string, string>, hideRelation?: string): PreviewTable {
+  /** How a list page opens (its presentation), when it sets any of it. */
+  interface ListOpening { columns?: string[]; view?: FullstackListView; sort?: FullstackListSort }
+
+  function table(e: FullstackEntityDef, presetFilter?: Record<string, string>, hideRelation?: string, opening: ListOpening = {}): PreviewTable {
     const { plural, singular, ui } = labels(e)
-    const cells: { label: string; value: (row: number) => string }[] = e.fields.map(f => ({
+    const cells: { key: string; label: string; value: (row: number) => string }[] = e.fields.map(f => ({
+      key: f.name,
       label: fieldLabel(f),
       value: (row: number) => {
         const preset = presetFilter?.[f.name]
@@ -273,15 +285,34 @@ export function buildLayoutPreview(
       if (!r.fieldName.trim() || r.fieldName === hideRelation) continue
       const target = entityOf(r.targetEntity)
       cells.push({
+        key: r.fieldName,
         label: humanize(r.fieldName),
         value: row => (target ? rowLabel(target, row, labels(target).singular, t) : `#${row}`),
       })
     }
-    const shown = cells.slice(0, MAX_COLUMNS)
+    if (auditOn(e, ctx.projectOpts)) {
+      cells.push(
+        { key: 'createdAt', label: 'Created', value: row => `2026-0${Math.min(9, row + 2)}-1${row}` },
+        { key: 'updatedAt', label: 'Updated', value: row => `2026-0${Math.min(9, row + 3)}-0${row}` },
+      )
+    }
+    // A page that names its columns shows exactly those, in that order; otherwise the first few.
+    const shown = opening.columns
+      ? opening.columns.flatMap(k => cells.filter(c => c.key === k)).slice(0, MAX_COLUMNS)
+      : cells.slice(0, MAX_COLUMNS)
+    const view = opening.view ?? enabledListViews(e)[0]
+    const laneField = e.fields.find(f => f.type === 'ENUM') ?? e.fields.find(f => f.type === 'BOOLEAN')
+    const lanes = view !== 'kanban' || !laneField ? []
+      : laneField.type === 'ENUM' ? (laneField.enumValues ?? []).slice(0, 3).map(v => enumLabel(laneField, v))
+        : [t('trueLabel'), t('falseLabel')]
+    const sortCell = opening.sort ? cells.find(c => c.key === opening.sort!.field) : undefined
     return {
       title: plural,
       columns: shown.map(c => c.label),
       rows: Array.from({ length: SAMPLE_ROWS }, (_, i) => shown.map(c => c.value(i + 1))),
+      view,
+      lanes,
+      sort: opening.sort ? `${sortCell?.label ?? opening.sort.field} ${opening.sort.dir === 'desc' ? '↓' : '↑'}` : null,
       showSearch: ui.showSearch,
       filters: ui.filters.filter(label => !hideRelation || label !== humanize(hideRelation)),
       presetChips: presetChips(e, presetFilter),
@@ -466,7 +497,7 @@ export function buildLayoutPreview(
       case 'entity-list': {
         const e = entityOf(page.entity)
         if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
-        const tbl = table(e, page.presetFilter)
+        const tbl = table(e, page.presetFilter, undefined, { columns: page.columns, view: page.view, sort: page.sort })
         return { type: 'entity-list', title: page.title || tbl.title, description, table: tbl }
       }
       case 'tabs': {

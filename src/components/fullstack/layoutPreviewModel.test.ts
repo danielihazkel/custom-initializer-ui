@@ -36,6 +36,29 @@ const pages: FullstackPageDef[] = [
 const ctx = { locale: 'en' as const, projectOpts: ['csvExport'] }
 
 describe('buildLayoutPreview', () => {
+  it('draws a list page the way it opens: its columns, its view and its sort', () => {
+    const orders: FullstackEntityDef[] = [entities[0], { ...entities[1], listViews: ['table', 'kanban'] }]
+    const board: FullstackPageDef = {
+      id: 'board', type: 'entity-list', entity: 'Order', columns: ['status', 'customer'], view: 'kanban', sort: { field: 'placedOn', dir: 'desc' },
+    }
+    const screen = buildLayoutPreview([board], orders, ctx).screens[0]
+    if (screen.type !== 'entity-list') throw new Error(screen.type)
+    expect(screen.table.columns).toEqual(['Status', 'Customer'])
+    expect(screen.table.view).toBe('kanban')
+    expect(screen.table.lanes).toEqual(['Waiting', 'Paid'])
+    expect(screen.table.sort).toBe('Placed on ↓')
+    // Without a presentation the table opens in the entity's first view, first columns, default order.
+    const plain = buildLayoutPreview([{ id: 'o', type: 'entity-list', entity: 'Order' }], orders, ctx).screens[0]
+    if (plain.type !== 'entity-list') throw new Error(plain.type)
+    expect(plain.table.view).toBe('table')
+    expect(plain.table.lanes).toEqual([])
+    expect(plain.table.sort).toBeNull()
+    expect(plain.table.columns).toEqual(['Id', 'Status', 'Total', 'Placed on', 'Customer'])
+    // The audit columns exist for the picker only when the audit opt is on.
+    const audited = buildLayoutPreview([{ id: 'o', type: 'entity-list', entity: 'Order', columns: ['status', 'createdAt'] }], orders, { ...ctx, projectOpts: ['audit'] }).screens[0]
+    expect(audited.type === 'entity-list' && audited.table.columns).toEqual(['Status', 'Created'])
+  })
+
   it('lists the visible pages in order and marks the first as the start page', () => {
     const preview = buildLayoutPreview(pages, entities, ctx)
     expect(preview.nav.map(n => [n.index, n.label, n.start])).toEqual([

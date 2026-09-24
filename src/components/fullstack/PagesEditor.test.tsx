@@ -26,14 +26,14 @@ const pushUndo = vi.fn()
 let latest: FullstackPageDef[] = []
 
 /** The editor is controlled; the harness holds the layout the way FullstackView does. */
-function Harness({ initial, onClear = () => {} }: { initial: FullstackPageDef[]; onClear?: () => void }) {
+function Harness({ initial, onClear = () => {}, entities: model = entities }: { initial: FullstackPageDef[]; onClear?: () => void; entities?: FullstackEntityDef[] }) {
   const [pages, setPages] = useState(initial)
   latest = pages
   return (
     <PagesEditor
       pages={pages}
-      entities={entities}
-      validation={validatePages(pages, entities)}
+      entities={model}
+      validation={validatePages(pages, model)}
       onChange={setPages}
       pushUndo={pushUndo}
       onClear={onClear}
@@ -306,7 +306,8 @@ describe('PagesEditor', () => {
       { id: 'desk', type: 'master-detail', parent: 'Customer', child: 'Order' },
     ]} />)
     expect(screen.queryByLabelText('Relation to link through')).toBeNull()
-    fireEvent.click(within(document.querySelector('[data-page-layout-problems]') as HTMLElement).getByRole('button'))
+    // The problem itself opens the page; the "Fix" beside it is a separate button.
+    fireEvent.click(within(document.querySelector('[data-page-layout-problems]') as HTMLElement).getByRole('button', { name: /must say which/ }))
     expect(screen.getByLabelText('Relation to link through')).toBeTruthy()
   })
 
@@ -389,7 +390,7 @@ describe('PagesEditor', () => {
     expect(latest[0].widgets?.[0].groupBy).toBeUndefined()
     // Comparing needs the period picker first.
     fireEvent.click(within(desk).getByRole('radio', { name: 'Number tile' }))
-    expect((within(desk).getByRole('checkbox') as HTMLInputElement).disabled).toBe(true)
+    expect((within(desk).getByRole('checkbox', { name: 'vs previous period' }) as HTMLInputElement).disabled).toBe(true)
 
     const report = openRow('r') as HTMLElement
     fireEvent.click(within(report).getByRole('button', { name: /Add chart/ }))
@@ -445,6 +446,177 @@ describe('PagesEditor', () => {
     fireEvent.click(within(row).getByRole('radio', { name: 'Breakdown chart' }))
     expect(latest[0].widgets?.[0]).toMatchObject({ kind: 'bar', agg: 'sum', field: 'total' })
     expect(pushUndo).toHaveBeenCalledTimes(1)
+  })
+
+  it('configures how a list page opens: columns, sort, view and rows per page', () => {
+    const board: FullstackEntityDef[] = [entities[0], { ...entities[1], listViews: ['table', 'kanban'] }]
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} entities={board} />)
+    const row = openRow('orders') as HTMLElement
+
+    // Every column is shown by default; hiding one writes the rest, in order; showing it again appends it.
+    fireEvent.click(within(row).getByRole('button', { name: 'Hide the Id column' }))
+    expect(latest[0].columns).toEqual(['status', 'total', 'placedOn', 'customer', 'billTo'])
+    fireEvent.click(within(row).getByRole('button', { name: 'Show the Id column' }))
+    expect(latest[0].columns).toEqual(['status', 'total', 'placedOn', 'customer', 'billTo', 'id'])
+    fireEvent.click(within(row).getByRole('button', { name: 'All columns (default)' }))
+    expect(latest[0].columns).toBeUndefined()
+
+    // Sort: a sortable column (relations are not offered) and a direction.
+    const sort = within(row).getByLabelText('Sort rows by') as HTMLSelectElement
+    expect(Array.from(sort.options).map(o => o.value)).toEqual(['', 'id', 'status', 'total', 'placedOn'])
+    fireEvent.change(sort, { target: { value: 'placedOn' } })
+    expect(latest[0].sort).toEqual({ field: 'placedOn' })
+    fireEvent.click(within(row).getByRole('radio', { name: 'Descending' }))
+    expect(latest[0].sort).toEqual({ field: 'placedOn', dir: 'desc' })
+
+    // Views: only the ones the entity offers can be picked; the others say why not.
+    const views = within(row.querySelector('[data-control="view"]') as HTMLElement)
+    const calendar = views.getByRole('radio', { name: 'Calendar' }) as HTMLButtonElement
+    expect(calendar.disabled).toBe(true)
+    expect(calendar.title).toBe('Not ticked in the list views of Order')
+    fireEvent.click(views.getByRole('radio', { name: 'Board' }))
+    expect(latest[0].view).toBe('kanban')
+    expect(row.textContent).toContain('Order list · board · by placedOn ↓')
+    fireEvent.click(views.getByRole('radio', { name: 'Table' }))
+    expect(latest[0].view).toBeUndefined()
+
+    fireEvent.change(within(row).getByLabelText('Rows per page'), { target: { value: '50' } })
+    expect(latest[0].pageSize).toBe(50)
+    expect(validatePages(latest, board).count).toBe(0)
+  })
+
+  it('keeps a list page’s presentation across an entity switch and names what it dropped', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order', columns: ['status', 'id'], sort: { field: 'total' } }]} />)
+    const row = openRow('orders') as HTMLElement
+    fireEvent.change(within(row).getByLabelText('List entity'), { target: { value: 'Customer' } })
+    expect(latest[0]).toMatchObject({ entity: 'Customer', columns: ['id'] })
+    expect(latest[0].sort).toBeUndefined()
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the columns, sort settings')
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+  })
+
+  it('says what a record entity switch and a period-picker switch-off drop', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[
+      { id: 'desk', type: 'dashboard', dateRange: '30d', widgets: [{ kind: 'kpi', entity: 'Order', dateField: 'placedOn', compare: true }] },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, headerStats: [{ child: 'Order', title: 'Orders' }] },
+    ]} />)
+    const record = openRow('customer') as HTMLElement
+    fireEvent.change(within(record).getByLabelText('Record entity'), { target: { value: 'Order' } })
+    expect(latest[1].entity).toBe('Order')
+    expect(latest[1].headerStats).toBeUndefined()
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the header numbers setting')
+
+    const desk = openRow('desk') as HTMLElement
+    fireEvent.change(within(desk).getByLabelText('Period picker'), { target: { value: '' } })
+    expect(latest[0].dateRange).toBeUndefined()
+    expect(latest[0].widgets?.[0]).toEqual({ kind: 'kpi', entity: 'Order', dateField: undefined, compare: undefined })
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the period date, period comparison settings')
+    expect(pushUndo).toHaveBeenCalledTimes(2)
+  })
+
+  it('always offers page roles — disabled, with a shortcut, when no LDAP auth dependency is selected', () => {
+    const onAddDep = vi.fn()
+    const pages: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }, { id: 'customers', type: 'entity-list', entity: 'Customer' }]
+    render(
+      <PagesEditor
+        pages={pages}
+        entities={entities}
+        validation={validatePages(pages, entities)}
+        onChange={() => {}}
+        pushUndo={pushUndo}
+        onClear={() => {}}
+        ldapAuth={false}
+        onAddDep={onAddDep}
+      />,
+    )
+    const row = openRow('customers') as HTMLElement
+    expect((within(row).getByLabelText('Only ADMIN') as HTMLInputElement).disabled).toBe(true)
+    expect(row.textContent).toContain('Restricting pages needs ldap-auth-rest')
+    fireEvent.click(within(row).getByRole('button', { name: /Add ldap-auth-rest/ }))
+    expect(onAddDep).toHaveBeenCalledWith('ldap-auth-rest')
+  })
+
+  it('leaves the role boxes enabled when the dependency list is unknown', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }, { id: 'customers', type: 'entity-list', entity: 'Customer' }]} />)
+    const row = openRow('customers') as HTMLElement
+    fireEvent.click(within(row).getByLabelText('Only USER'))
+    expect(latest[1].roles).toEqual(['USER'])
+    expect(row.querySelector('[data-add-ldap-auth]')).toBeNull()
+  })
+
+  it('offers the bucket when a report groups over a date by default', () => {
+    const events: FullstackEntityDef[] = [{ name: 'Event', fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'on', type: 'LOCAL_DATE' }] }]
+    render(<Harness initial={[{ id: 'r', type: 'report', entity: 'Event', chart: {} }]} entities={events} />)
+    const row = openRow('r') as HTMLElement
+    fireEvent.change(within(row).getByLabelText('Bucket'), { target: { value: 'year' } })
+    expect(latest[0].chart).toEqual({ bucket: 'year' })
+    expect(validatePages(latest, events).count).toBe(0)
+  })
+
+  it('resets wizard steps and record tabs to the generator defaults', () => {
+    render(<Harness initial={[
+      { id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ fields: ['id', 'status', 'total', 'placedOn', 'customer', 'billTo'] }] },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, childTabs: [] },
+    ]} />)
+    let row = openRow('new-order') as HTMLElement
+    fireEvent.click(within(row).getByRole('button', { name: 'Reset to default steps' }))
+    expect(latest[0].steps).toBeUndefined()
+    expect(within(row).queryByRole('button', { name: 'Reset to default steps' })).toBeNull()
+    row = openRow('customer') as HTMLElement
+    fireEvent.click(within(row).getByRole('button', { name: 'All related lists (default)' }))
+    expect(latest[1].childTabs).toBeUndefined()
+    expect(within(row).queryByRole('button', { name: 'All related lists (default)' })).toBeNull()
+  })
+
+  it('collapses the widgets of a busy dashboard to one line each, and opens the one a problem points at', () => {
+    const widgets: NonNullable<FullstackPageDef['widgets']> = [
+      { kind: 'kpi', entity: 'Order' },
+      { kind: 'bar', entity: 'Order', groupBy: 'status', agg: 'sum', field: 'total' },
+      { kind: 'recent', entity: 'Customer' },
+      { kind: 'kpi', entity: 'Product', title: 'Products' },
+    ]
+    render(<Harness initial={[{ id: 'desk', type: 'dashboard', widgets }]} />)
+    const row = openRow('desk') as HTMLElement
+    expect(row.querySelectorAll('[data-widget-options]')).toHaveLength(0)
+    const summaries = Array.from(row.querySelectorAll('[data-widget-summary]')).map(el => el.textContent)
+    expect(summaries).toEqual([
+      'Number · Order · width 1',
+      'Breakdown · Order by status · sum of total · width 2',
+      'Recent · Customer · width 2',
+      'Number · Product · “Products” · width 1',
+    ])
+    fireEvent.click(within(row).getByRole('button', { name: 'Expand widget 2' }))
+    expect(row.querySelectorAll('[data-widget-options]')).toHaveLength(1)
+    expect(within(row).getByLabelText('Group by')).toBeTruthy()
+    fireEvent.click(within(row).getByRole('button', { name: 'Collapse widget 2' }))
+    fireEvent.click(within(row).getByRole('button', { name: 'Expand all' }))
+    expect(row.querySelectorAll('[data-widget-options]')).toHaveLength(4)
+    fireEvent.click(within(row).getByRole('button', { name: 'Collapse all' }))
+    expect(row.querySelectorAll('[data-widget-options]')).toHaveLength(0)
+    // A problem click opens the card it is about (widget 4 names a missing entity).
+    const problems = within(document.querySelector('[data-page-layout-problems]') as HTMLElement)
+    fireEvent.click(problems.getByRole('button', { name: /widget for “Product”/ }))
+    expect(row.querySelector('[data-widget="3"] [data-widget-options]')).toBeTruthy()
+    expect(row.querySelectorAll('[data-widget-options]')).toHaveLength(1)
+    // A new widget opens expanded; a short dashboard opens every card.
+    fireEvent.click(within(row).getByRole('button', { name: /Add widget/ }))
+    expect(row.querySelector('[data-widget="4"] [data-widget-options]')).toBeTruthy()
+  })
+
+  it('applies a one-click fix from the problems list, undoably', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[
+      { id: 'desk', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'kpi', entity: 'Product' }] },
+      { id: 'c', type: 'master-detail', parent: 'Customer', child: 'Order' },
+    ]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Fix: Remove widget 2' }))
+    expect(latest[0].widgets).toEqual([{ kind: 'kpi', entity: 'Order' }])
+    expect(pushUndo).toHaveBeenCalledWith('Remove widget 2')
+    fireEvent.click(screen.getByRole('button', { name: 'Fix: Link through “customer”' }))
+    expect(latest[1].via).toBe('customer')
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
   })
 
   it('lists a server rejection on the page it names', () => {

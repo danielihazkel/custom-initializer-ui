@@ -121,12 +121,116 @@
           }
         ]
       }
-    ]
+    ],
+    "pages": [
+      {
+        "id": "home",
+        "type": "dashboard",
+        "title": "Blog overview",
+        "description": "What was published lately, and what still waits for moderation.",
+        "widgets": [
+          {
+            "kind": "kpi",
+            "entity": "Post",
+            "title": "Posts"
+          },
+          {
+            "kind": "kpi",
+            "entity": "Comment",
+            "title": "Comments"
+          },
+          {
+            "kind": "kpi",
+            "entity": "Comment",
+            "title": "Awaiting approval",
+            "presetFilter": {
+              "approved": "false"
+            }
+          },
+          {
+            "kind": "kpi",
+            "entity": "Author",
+            "title": "Authors"
+          },
+          {
+            "kind": "donut",
+            "entity": "Post",
+            "title": "Posts by status",
+            "groupBy": "status"
+          },
+          {
+            "kind": "line",
+            "entity": "Post",
+            "title": "Posts per month",
+            "groupBy": "publishedAt",
+            "bucket": "month"
+          },
+          {
+            "kind": "top",
+            "entity": "Post",
+            "title": "Most active authors",
+            "groupBy": "author",
+            "limit": 5
+          },
+          {
+            "kind": "recent",
+            "entity": "Post",
+            "title": "Latest posts",
+            "sortBy": "publishedAt",
+            "limit": 6
+          }
+        ]
+      },
+      {
+        "id": "posts",
+        "type": "entity-list",
+        "group": "Content",
+        "icon": "FileText",
+        "entity": "Post"
+      },
+      {
+        "id": "authors",
+        "type": "master-detail",
+        "group": "Content",
+        "title": "Authors",
+        "parent": "Author",
+        "child": "Post"
+      },
+      {
+        "id": "moderation",
+        "type": "entity-list",
+        "group": "Community",
+        "icon": "Inbox",
+        "title": "Moderation queue",
+        "description": "Comments not approved yet.",
+        "entity": "Comment",
+        "presetFilter": {
+          "approved": "false"
+        }
+      },
+      {
+        "id": "post",
+        "type": "record",
+        "entity": "Post",
+        "hidden": true,
+        "childTabs": [
+          {
+            "entity": "Comment",
+            "via": "post"
+          }
+        ]
+      }
+    ],
+    "settings": {
+      "scaffold": [
+        "audit"
+      ]
+    }
   },
   {
     "id": "orders",
     "name": "Orders",
-    "description": "Customers place orders for products; each order has lines. Orders show on a kanban and a calendar.",
+    "description": "Customers place orders for products. Opens on a sales-desk dashboard; products and customers share a tabbed catalog page.",
     "icon": "shopping_cart",
     "entities": [
       {
@@ -284,12 +388,131 @@
           }
         ]
       }
-    ]
+    ],
+    "pages": [
+      {
+        "id": "desk",
+        "type": "dashboard",
+        "title": "Sales desk",
+        "description": "Orders at a glance: volume, status mix and the latest orders.",
+        "widgets": [
+          {
+            "kind": "kpi",
+            "entity": "Order",
+            "title": "Orders"
+          },
+          {
+            "kind": "kpi",
+            "entity": "Customer",
+            "title": "Customers"
+          },
+          {
+            "kind": "kpi",
+            "entity": "Product",
+            "title": "Products"
+          },
+          {
+            "kind": "kpi",
+            "entity": "OrderLine",
+            "title": "Order lines"
+          },
+          {
+            "kind": "bar",
+            "entity": "Order",
+            "groupBy": "status"
+          },
+          {
+            "kind": "top",
+            "entity": "Order",
+            "title": "Top customers",
+            "groupBy": "customer",
+            "agg": "sum",
+            "field": "total",
+            "limit": 5
+          },
+          {
+            "kind": "recent",
+            "entity": "Order",
+            "limit": 6
+          }
+        ]
+      },
+      {
+        "id": "orders",
+        "type": "entity-list",
+        "group": "Sales",
+        "icon": "ShoppingCart",
+        "entity": "Order"
+      },
+      {
+        "id": "customers",
+        "type": "master-detail",
+        "group": "Sales",
+        "icon": "Users",
+        "title": "Customers",
+        "description": "Pick a customer to see and add their orders.",
+        "parent": "Customer",
+        "child": "Order"
+      },
+      {
+        "id": "new-order",
+        "type": "wizard",
+        "title": "New order",
+        "description": "Who orders what, then the order itself.",
+        "entity": "Order",
+        "group": "Sales",
+        "steps": [
+          {
+            "title": "Customer",
+            "fields": [
+              "reference",
+              "customer"
+            ]
+          },
+          {
+            "title": "Order",
+            "fields": [
+              "status",
+              "placedAt",
+              "total"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "order-lines",
+        "type": "entity-list",
+        "group": "Catalog",
+        "icon": "ListChecks",
+        "entity": "OrderLine",
+        "title": "Order lines"
+      },
+      {
+        "id": "products",
+        "type": "entity-list",
+        "group": "Catalog",
+        "icon": "Package",
+        "entity": "Product"
+      },
+      {
+        "id": "order",
+        "type": "record",
+        "entity": "Order",
+        "childTabs": [
+          "OrderLine"
+        ]
+      }
+    ],
+    "settings": {
+      "scaffold": [
+        "csvExport"
+      ]
+    }
   },
   {
     "id": "tickets",
     "name": "Support tickets",
-    "description": "Teams of agents work tickets by priority and status, with due dates on a calendar.",
+    "description": "Tickets are routed to teams and assigned to agents. A support dashboard plus a queue page with Open / In progress / All tabs.",
     "icon": "confirmation_number",
     "entities": [
       {
@@ -415,7 +638,138 @@
           }
         ]
       }
-    ]
+    ],
+    "pages": [
+      {
+        "id": "overview",
+        "type": "dashboard",
+        "title": "Support overview",
+        "widgets": [
+          {
+            "kind": "kpi",
+            "entity": "Ticket",
+            "title": "Tickets"
+          },
+          {
+            "kind": "kpi",
+            "entity": "Agent",
+            "title": "Agents"
+          },
+          {
+            "kind": "kpi",
+            "entity": "Team",
+            "title": "Teams"
+          },
+          {
+            "kind": "bar",
+            "entity": "Ticket",
+            "groupBy": "status"
+          },
+          {
+            "kind": "bar",
+            "entity": "Ticket",
+            "groupBy": "priority"
+          },
+          {
+            "kind": "recent",
+            "entity": "Ticket",
+            "limit": 5
+          },
+          {
+            "kind": "donut",
+            "entity": "Ticket",
+            "title": "Status share",
+            "groupBy": "status"
+          },
+          {
+            "kind": "stacked",
+            "entity": "Ticket",
+            "title": "Priority by status",
+            "groupBy": "priority",
+            "series": "status"
+          },
+          {
+            "kind": "top",
+            "entity": "Ticket",
+            "title": "Busiest agents",
+            "groupBy": "assignee",
+            "limit": 5
+          },
+          {
+            "kind": "text",
+            "title": "How we triage",
+            "span": 4,
+            "text": "Urgent tickets are picked up within the hour; high ones the same day.\n\nAssign a ticket before you start on it, and resolve it once the reporter confirms."
+          }
+        ]
+      },
+      {
+        "id": "queue",
+        "type": "tabs",
+        "group": "Work",
+        "icon": "Inbox",
+        "title": "Ticket queue",
+        "tabs": [
+          {
+            "title": "Open",
+            "page": "tickets-open"
+          },
+          {
+            "title": "In progress",
+            "page": "tickets-in-progress"
+          },
+          {
+            "title": "All tickets",
+            "page": "tickets-all"
+          }
+        ]
+      },
+      {
+        "id": "tickets-open",
+        "type": "entity-list",
+        "entity": "Ticket",
+        "hidden": true,
+        "presetFilter": {
+          "status": "OPEN"
+        }
+      },
+      {
+        "id": "tickets-in-progress",
+        "type": "entity-list",
+        "entity": "Ticket",
+        "hidden": true,
+        "presetFilter": {
+          "status": "IN_PROGRESS"
+        }
+      },
+      {
+        "id": "tickets-all",
+        "type": "entity-list",
+        "entity": "Ticket",
+        "hidden": true
+      },
+      {
+        "id": "agents",
+        "type": "entity-list",
+        "group": "People",
+        "icon": "Users",
+        "entity": "Agent"
+      },
+      {
+        "id": "teams",
+        "type": "master-detail",
+        "group": "People",
+        "title": "Teams",
+        "parent": "Team",
+        "child": "Ticket",
+        "via": "team"
+      }
+    ],
+    "settings": {
+      "scaffold": [
+        "bulkUpdate"
+      ]
+    }
   },
   {
     "id": "inventory",
@@ -538,7 +892,137 @@
           }
         ]
       }
-    ]
+    ],
+    "pages": [
+      {
+        "id": "stock",
+        "type": "dashboard",
+        "title": "Stock overview",
+        "dateRange": "30d",
+        "widgets": [
+          {
+            "kind": "kpi",
+            "entity": "Item",
+            "title": "Items"
+          },
+          {
+            "kind": "kpi",
+            "entity": "Warehouse",
+            "title": "Warehouses"
+          },
+          {
+            "kind": "kpi",
+            "entity": "StockMovement",
+            "title": "Movements",
+            "compare": true
+          },
+          {
+            "kind": "kpi",
+            "entity": "StockMovement",
+            "title": "Units moved",
+            "agg": "sum",
+            "field": "quantity"
+          },
+          {
+            "kind": "bar",
+            "entity": "StockMovement",
+            "title": "Units by movement kind",
+            "groupBy": "kind",
+            "agg": "sum",
+            "field": "quantity"
+          },
+          {
+            "kind": "top",
+            "entity": "StockMovement",
+            "title": "Busiest warehouses",
+            "groupBy": "warehouse",
+            "limit": 5
+          },
+          {
+            "kind": "line",
+            "entity": "StockMovement",
+            "title": "Movements per day",
+            "groupBy": "movedOn",
+            "bucket": "day",
+            "span": 4
+          },
+          {
+            "kind": "text",
+            "title": "Reorder rule",
+            "span": 4,
+            "text": "An item is reordered when its stock falls below its reorder level.\n\nCount a warehouse before closing the month, and log the difference as an ADJUSTMENT movement."
+          }
+        ]
+      },
+      {
+        "id": "items",
+        "type": "entity-list",
+        "group": "Catalog",
+        "icon": "Package",
+        "entity": "Item",
+        "columns": [
+          "sku",
+          "name",
+          "unitCost",
+          "reorderLevel"
+        ],
+        "sort": {
+          "field": "name"
+        },
+        "view": "cards",
+        "pageSize": 50
+      },
+      {
+        "id": "warehouses",
+        "type": "entity-list",
+        "group": "Catalog",
+        "icon": "Building2",
+        "entity": "Warehouse"
+      },
+      {
+        "id": "movements",
+        "type": "report",
+        "group": "Reports",
+        "title": "Movement analysis",
+        "entity": "StockMovement",
+        "charts": [
+          {
+            "groupBy": "kind",
+            "agg": "sum",
+            "field": "quantity"
+          },
+          {
+            "groupBy": "movedOn",
+            "bucket": "month",
+            "agg": "sum",
+            "field": "quantity"
+          }
+        ]
+      },
+      {
+        "id": "warehouse",
+        "type": "record",
+        "entity": "Warehouse",
+        "hidden": true,
+        "headerStats": [
+          {
+            "child": "StockMovement",
+            "title": "Movements"
+          },
+          {
+            "child": "StockMovement",
+            "agg": "sum",
+            "field": "quantity",
+            "title": "Units moved"
+          }
+        ]
+      }
+    ],
+    "settings": {
+      "scaffold": [
+        "csvExport"
+      ]
+    }
   },
   {
     "id": "enrolments",
@@ -647,7 +1131,7 @@
   {
     "id": "reporting",
     "name": "Sales reporting",
-    "description": "Sales rows plus a read-only SELECT view that rolls them up per month — a @Subselect entity with no writes.",
+    "description": "Sales rows plus a read-only SELECT view that rolls them up per month. Shows the aggregate widgets and a report page with filters, a chart and a CSV export.",
     "icon": "monitoring",
     "entities": [
       {
@@ -701,10 +1185,10 @@
           "table",
           "cards"
         ],
-        "viewQuery": "SELECT SUBSTRING(CAST(s.sold_on AS VARCHAR), 1, 7) AS month, SUM(s.amount) AS total, COUNT(*) AS sales FROM sale s GROUP BY SUBSTRING(CAST(s.sold_on AS VARCHAR), 1, 7)",
+        "viewQuery": "SELECT SUBSTRING(CAST(s.sold_on AS VARCHAR), 1, 7) AS period, SUM(s.amount) AS total, COUNT(*) AS sales FROM sales s GROUP BY SUBSTRING(CAST(s.sold_on AS VARCHAR), 1, 7)",
         "fields": [
           {
-            "name": "month",
+            "name": "period",
             "type": "STRING",
             "primaryKey": true
           },
@@ -718,6 +1202,136 @@
           }
         ]
       }
-    ]
+    ],
+    "pages": [
+      {
+        "id": "report",
+        "type": "dashboard",
+        "title": "Sales report",
+        "description": "Revenue at a glance: totals, the split by region and the trend per month.",
+        "dateRange": "12m",
+        "widgets": [
+          {
+            "kind": "kpi",
+            "entity": "Sale",
+            "title": "Sales",
+            "compare": true
+          },
+          {
+            "kind": "kpi",
+            "entity": "Sale",
+            "title": "Total revenue",
+            "agg": "sum",
+            "field": "amount"
+          },
+          {
+            "kind": "kpi",
+            "entity": "Sale",
+            "title": "Average sale",
+            "agg": "avg",
+            "field": "amount"
+          },
+          {
+            "kind": "kpi",
+            "entity": "Sale",
+            "title": "North revenue",
+            "agg": "sum",
+            "field": "amount",
+            "presetFilter": {
+              "region": "NORTH"
+            }
+          },
+          {
+            "kind": "progress",
+            "entity": "Sale",
+            "title": "Revenue target",
+            "agg": "sum",
+            "field": "amount",
+            "target": "250000",
+            "span": 2
+          },
+          {
+            "kind": "bar",
+            "entity": "Sale",
+            "title": "Revenue by region",
+            "groupBy": "region",
+            "agg": "sum",
+            "field": "amount"
+          },
+          {
+            "kind": "line",
+            "entity": "Sale",
+            "title": "Revenue per month",
+            "groupBy": "soldOn",
+            "bucket": "month",
+            "agg": "sum",
+            "field": "amount",
+            "span": 4
+          },
+          {
+            "kind": "recent",
+            "entity": "Sale",
+            "title": "Latest sales",
+            "limit": 8,
+            "sortBy": "soldOn"
+          }
+        ]
+      },
+      {
+        "id": "sales",
+        "type": "entity-list",
+        "entity": "Sale"
+      },
+      {
+        "id": "revenue",
+        "type": "report",
+        "title": "Revenue analysis",
+        "description": "Filter the sales and read the totals per region — Export CSV gives exactly what you filtered.",
+        "entity": "Sale",
+        "charts": [
+          {
+            "groupBy": "region",
+            "agg": "sum",
+            "field": "amount"
+          },
+          {
+            "groupBy": "soldOn",
+            "bucket": "month",
+            "agg": "sum",
+            "field": "amount"
+          }
+        ]
+      },
+      {
+        "id": "north",
+        "type": "report",
+        "group": "Regions",
+        "title": "North region",
+        "description": "Revenue of the north region only.",
+        "entity": "Sale",
+        "presetFilter": {
+          "region": "NORTH"
+        },
+        "chart": {
+          "groupBy": "soldOn",
+          "bucket": "month",
+          "agg": "sum",
+          "field": "amount"
+        }
+      },
+      {
+        "id": "monthly",
+        "type": "entity-list",
+        "entity": "MonthlySales",
+        "roles": [
+          "ADMIN"
+        ]
+      }
+    ],
+    "settings": {
+      "scaffold": [
+        "csvExport"
+      ]
+    }
   }
 ]

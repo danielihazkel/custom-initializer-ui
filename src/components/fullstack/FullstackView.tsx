@@ -257,7 +257,7 @@ export function FullstackView() {
   // A layout outlives the entities it names (rename / delete) — flagged here, not as a 400 later.
   // Page roles are enforced by the generated backend's LDAP groups, so they need an LDAP auth variant (ldap-auth-rest, the sets' default, or ldap-auth).
   const ldapAuth = selectedDeps.some(d => d === 'ldap-auth' || d === 'ldap-auth-rest')
-  const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth }), [pages, entities, ldapAuth])
+  const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth, scaffoldOpts }), [pages, entities, ldapAuth, scaffoldOpts])
   const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageValidation.count
   const hasErrors = errorCount > 0
 
@@ -1256,6 +1256,7 @@ export function FullstackView() {
         compatibilityRules={compatibilityRules}
         entities={entities}
         revealRow={revealRow}
+        hasPages={pages.length > 0}
       />
         </div>
         )}
@@ -1272,6 +1273,7 @@ export function FullstackView() {
         revealRequest={pagesReveal}
         serverIssue={pageServerIssue}
         ldapAuth={ldapAuth}
+        onAddDep={dep => setSelectedDeps(prev => (prev.includes(dep) ? prev : [...prev, dep]))}
         history={{
           undoLabel: lastUndo ? `Undo: ${lastUndo.label}` : null,
           redoLabel: nextRedo ? `Redo: ${nextRedo.label}` : null,

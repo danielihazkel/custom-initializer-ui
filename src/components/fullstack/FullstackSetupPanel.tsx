@@ -67,6 +67,9 @@ export interface FullstackSetupPanelProps {
 
   /** The section-jump pills, rendered above the grid so they sit inside the panel they target. */
   nav?: ReactNode
+  /** A page layout is set: the classic dashboard's title and overview then have no effect (each
+   *  dashboard page carries its own), so those two inputs are disabled with a note. */
+  hasPages?: boolean
 }
 
 export function FullstackSetupPanel({
@@ -79,6 +82,7 @@ export function FullstackSetupPanel({
   selectedDeps, setSelectedDeps, currentDefaults, compatibilityRules,
   entities, revealRow,
   nav,
+  hasPages = false,
 }: FullstackSetupPanelProps) {
   return (
     <div className="space-y-5">
@@ -272,15 +276,23 @@ export function FullstackSetupPanel({
               <Labeled label="Dashboard Title" htmlFor="fs-dashboardTitle">
                 <input id="fs-dashboardTitle" className={inputClass()} value={meta.dashboardTitle}
                        placeholder={`Welcome to ${meta.artifactId || 'demo'}`}
-                       title="Heading of the generated dashboard (home) page"
+                       title={hasPages ? 'Not used with a page layout — set each dashboard page’s title in Frontend pages' : 'Heading of the generated dashboard (home) page'}
+                       disabled={hasPages}
                        onChange={e => updateMeta({ dashboardTitle: e.target.value })} />
               </Labeled>
               <Labeled label="Dashboard Overview" htmlFor="fs-dashboardOverview">
                 <input id="fs-dashboardOverview" className={inputClass()} value={meta.dashboardOverview}
                        placeholder="Manage your data below…"
-                       title="Blurb under the dashboard heading"
+                       title={hasPages ? 'Not used with a page layout — set each dashboard page’s description in Frontend pages' : 'Blurb under the dashboard heading'}
+                       disabled={hasPages}
                        onChange={e => updateMeta({ dashboardOverview: e.target.value })} />
               </Labeled>
+              {hasPages && (
+                <p className="sm:col-span-2 text-[11px] text-on-surface-variant" data-dashboard-meta-note>
+                  Your page layout is in charge: each dashboard page has its own title and description (Frontend pages below).
+                  These two only apply to the classic layout.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
               <Labeled label="Language" htmlFor="fs-locale">

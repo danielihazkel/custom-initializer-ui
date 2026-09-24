@@ -591,21 +591,54 @@ function MiniTable({ table, preview, accent, menora, compact }: {
         {table.hasExport && <FakeButton outline>CSV</FakeButton>}
         {table.newLabel && <FakeButton style={primary}>{table.newLabel}</FakeButton>}
       </div>
-      <FilterRow filters={table.filters} chips={table.presetChips} label={preview.strings.filters} />
-      <table className="w-full table-fixed text-[9px]">
-        <thead>
-          <tr className="text-secondary">
-            {table.columns.map(c => <th key={c} className="truncate pb-0.5 text-start font-semibold">{c}</th>)}
-          </tr>
-        </thead>
-        <tbody>
+      <FilterRow filters={table.filters} chips={[...table.presetChips, ...(table.sort ? [table.sort] : [])]} label={preview.strings.filters} />
+      {table.view === 'cards' ? (
+        <div className="grid grid-cols-3 gap-1" data-preview-view="cards">
           {table.rows.map((row, i) => (
-            <tr key={i} className="border-t border-outline-variant/60">
-              {row.map((cell, j) => <td key={j} className="truncate py-0.5 text-on-surface">{cell}</td>)}
-            </tr>
+            <div key={i} className="rounded border border-outline-variant/60 px-1.5 py-1 text-[9px]">
+              <p className="truncate font-semibold text-on-surface">{row[0]}</p>
+              {row.slice(1, 3).map((cell, j) => (
+                <p key={j} className="truncate text-secondary"><span className="text-secondary/70">{table.columns[j + 1]}:</span> {cell}</p>
+              ))}
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      ) : table.view === 'kanban' ? (
+        <div className="grid gap-1 text-[9px]" style={{ gridTemplateColumns: `repeat(${Math.max(1, table.lanes.length)}, minmax(0, 1fr))` }} data-preview-view="kanban">
+          {table.lanes.map((lane, li) => (
+            <div key={lane} className="rounded bg-surface-container px-1 py-1">
+              <p className="mb-1 truncate font-semibold text-secondary">{lane}</p>
+              {table.rows.filter((_, i) => i % table.lanes.length === li).map((row, i) => (
+                <div key={i} className="mb-1 truncate rounded border border-outline-variant/60 bg-surface-container-lowest px-1 py-0.5 text-on-surface">{row[0]}</div>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : table.view === 'calendar' ? (
+        <div className="grid grid-cols-7 gap-px rounded border border-outline-variant/60 bg-outline-variant/40 text-[8px]" data-preview-view="calendar">
+          {Array.from({ length: 14 }, (_, i) => (
+            <div key={i} className="min-h-[1.6rem] bg-surface-container-lowest p-0.5">
+              <span className="text-secondary/70">{i + 1}</span>
+              {i % 5 === 2 && <div className="mt-0.5 truncate rounded-sm px-0.5 text-[7px] font-semibold" style={primary}>{table.rows[(i / 5) | 0]?.[0]}</div>}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <table className="w-full table-fixed text-[9px]">
+          <thead>
+            <tr className="text-secondary">
+              {table.columns.map(c => <th key={c} className="truncate pb-0.5 text-start font-semibold">{c}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.map((row, i) => (
+              <tr key={i} className="border-t border-outline-variant/60">
+                {row.map((cell, j) => <td key={j} className="truncate py-0.5 text-on-surface">{cell}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }

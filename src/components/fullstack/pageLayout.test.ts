@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import {
-  describePage, pageLabel, pageLayoutProblems, renameEntityInPages, renameFieldInPages,
-  seedLayout, slugify, uniquePageId, validatePages,
+  describePage, enabledListViews, listColumns, pageLabel, pageLayoutProblems, renameEntityInPages, renameFieldInPages,
+  renameRelationInPages, seedLayout, slugify, sortableKeys, suggestPages, uniquePageId, validatePages,
 } from './pageLayout'
 
 const entities: FullstackEntityDef[] = [
@@ -59,6 +59,100 @@ describe('describePage / pageLabel', () => {
     expect(describePage({ id: 'o', type: 'record', entity: 'Order' }, [])).toBe('One Order · its related lists')
     expect(describePage({ id: 'o', type: 'record', entity: 'Order', childTabs: [] }, [])).toBe('One Order · no related lists')
     expect(describePage({ id: 'o', type: 'record', entity: 'Order', childTabs: ['OrderLine'] }, [])).toBe('One Order · OrderLine')
+  })
+})
+
+describe('list page presentation', () => {
+  const shop: FullstackEntityDef[] = [
+    { name: 'Customer', fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'name', type: 'STRING' }] },
+    {
+      name: 'Order',
+      listViews: ['table', 'kanban', 'calendar'],
+      fields: [
+        { name: 'id', type: 'LONG', primaryKey: true },
+        { name: 'status', type: 'ENUM', enumValues: ['OPEN', 'PAID'] },
+        { name: 'placedOn', type: 'LOCAL_DATE' },
+        { name: 'total', type: 'BIG_DECIMAL' },
+      ],
+      relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer' }],
+    },
+  ]
+  const list = (extra: Partial<FullstackPageDef>): FullstackPageDef => ({ id: 'orders', type: 'entity-list', entity: 'Order', ...extra })
+
+  it('lists the columns a page can show, with the audit pair only when audit applies', () => {
+    expect(listColumns(shop[1]).map(c => c.key)).toEqual(['id', 'status', 'placedOn', 'total', 'customer'])
+    expect(listColumns(shop[1]).map(c => [c.label, c.sortable, c.kind])).toContainEqual(['Customer', false, 'relation'])
+    expect(listColumns(shop[1], ['audit']).map(c => c.key)).toEqual(['id', 'status', 'placedOn', 'total', 'customer', 'createdAt', 'updatedAt'])
+    expect(listColumns({ ...shop[1], opts: { audit: false } }, ['audit']).map(c => c.key)).not.toContain('createdAt')
+    expect(listColumns({ ...shop[1], opts: { audit: true } }).map(c => c.key)).toContain('createdAt')
+    expect(listColumns({ ...shop[1], readOnly: true }, ['audit']).map(c => c.key)).not.toContain('createdAt')
+    expect(sortableKeys(shop[1])).toEqual(['id', 'status', 'placedOn', 'total'])
+    expect(enabledListViews(shop[1])).toEqual(['table', 'kanban', 'calendar'])
+    expect(enabledListViews(shop[0])).toEqual(['table'])
+  })
+
+  it('accepts columns, a sort, an offered view and a pager size', () => {
+    const page = list({ columns: ['status', 'customer', 'total'], sort: { field: 'placedOn', dir: 'desc' }, view: 'kanban', pageSize: 50 })
+    expect(validatePages([page], shop).count).toBe(0)
+    expect(describePage(page, [page])).toBe('Order list · board · 3 columns · by placedOn ↓')
+    const filtered = list({ view: 'calendar', presetFilter: { status: 'OPEN' } })
+    expect(describePage(filtered, [filtered])).toBe('Order list · calendar · filtered on status = OPEN')
+  })
+
+  it('names an unknown, duplicate or audit-only column', () => {
+    const v = validatePages([list({ columns: ['status', 'nope', 'status', 'createdAt'] })], shop)
+    expect(v.problems).toEqual([
+      'Page “orders” shows “nope”, which is not a column of Order',
+      'Page “orders” lists the “status” column twice',
+      'Page “orders” shows “createdAt”, which needs the audit scaffold option on Order',
+    ])
+    expect(v.byPage[0].columns).toBe('Order has no “nope” column')
+    expect(validatePages([list({ columns: [] })], shop).problems).toEqual(['Page “orders” shows no columns'])
+    // With the audit opt on, the audit pair is a column like any other.
+    expect(validatePages([list({ columns: ['createdAt'], sort: { field: 'updatedAt' } })], shop, { scaffoldOpts: ['audit'] }).count).toBe(0)
+  })
+
+  it('only sorts by a sortable column, in a known direction', () => {
+    expect(validatePages([list({ sort: { field: 'customer' } })], shop).problems)
+      .toEqual(['Page “orders” sorts by “customer”, which Order cannot sort by'])
+    expect(validatePages([list({ sort: { field: 'total', dir: 'down' as 'asc' } })], shop).byPage[0].sort).toBe('direction must be asc or desc')
+  })
+
+  it('only opens in a view the entity offers, and says why not', () => {
+    expect(validatePages([list({ view: 'cards' })], shop).problems)
+      .toEqual(['Page “orders” opens as cards, which Order does not offer (not ticked in the list views of Order)'])
+    const customers = validatePages([{ id: 'c', type: 'entity-list', entity: 'Customer', view: 'kanban' }], shop)
+    expect(customers.byPage[0].view).toBe('Kanban needs an enum or boolean field')
+    const readOnly = validatePages([list({ view: 'kanban' })], [shop[0], { ...shop[1], readOnly: true }])
+    expect(readOnly.byPage[0].view).toBe('Kanban needs a writable entity')
+    expect(validatePages([list({ pageSize: 25 })], shop).byPage[0].pageSize).toBe('must be 10, 20, 50, 100')
+  })
+
+  it('follows field and relation renames into a list page’s columns and sort', () => {
+    const pages: FullstackPageDef[] = [list({ columns: ['status', 'customer'], sort: { field: 'status' } })]
+    const fields = renameFieldInPages(pages, 'Order', 'status', 'state')
+    expect(fields[0]).toMatchObject({ columns: ['state', 'customer'], sort: { field: 'state' } })
+    const rels = renameRelationInPages(fields, 'Order', 'customer', 'buyer')
+    expect(rels[0].columns).toEqual(['state', 'buyer'])
+    expect(renameRelationInPages(rels, 'Order', 'nothing', 'x')).toBe(rels)
+  })
+
+  it('suggests a board and a calendar only for an entity that enables the view', () => {
+    const keys = suggestPages(shop, [], 10).map(s => s.key)
+    expect(keys).toContain('board:Order')
+    expect(keys).toContain('calendar:Order')
+    expect(keys).not.toContain('board:Customer')
+    const board = suggestPages(shop, [], 10).find(s => s.key === 'board:Order')!
+    expect(board.page).toMatchObject({ type: 'entity-list', entity: 'Order', view: 'kanban', title: 'Order board' })
+    expect(suggestPages(shop, [list({ view: 'kanban' })], 10).map(s => s.key)).not.toContain('board:Order')
+  })
+
+  it('lets a report bucket by the date it groups over by default', () => {
+    const events: FullstackEntityDef[] = [{ name: 'Event', fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'on', type: 'LOCAL_DATE' }] }]
+    expect(validatePages([{ id: 'r', type: 'report', entity: 'Event', chart: { bucket: 'year' } }], events).count).toBe(0)
+    // Order groups by status by default, so a bucket is still out of place there.
+    expect(validatePages([{ id: 'r', type: 'report', entity: 'Order', chart: { bucket: 'year' } }], shop).byPage[0]['chart.bucket'])
+      .toBe('a bucket applies to a date grouping')
   })
 })
 

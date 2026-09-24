@@ -124,7 +124,7 @@ export function FullstackExampleForm({ data, errors, onChange, teamModels, onImp
             <PagesEditor
               pages={visual.pages}
               entities={visual.entities}
-              validation={validatePages(visual.pages, visual.entities)}
+              validation={validatePages(visual.pages, visual.entities, { scaffoldOpts: visual.scaffold })}
               onChange={next => onChange({ pagesText: next.length ? JSON.stringify(next, null, 2) : '' })}
               pushUndo={() => {}}
               onClear={() => onChange({ pagesText: '' })}

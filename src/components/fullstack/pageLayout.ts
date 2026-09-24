@@ -5,12 +5,15 @@ import type {
   FullstackDateRange,
   FullstackEntityDef,
   FullstackFieldDef,
+  FullstackListView,
   FullstackNavIcon,
   FullstackPageDef,
   FullstackPageRole,
   FullstackPageType,
   FullstackWidgetDef,
 } from '../../types'
+import { humanize } from './naming'
+import { summarizeEntity } from './summary'
 
 /**
  * The frontend page layout (`pages`) model: validation, the summary lines the editor shows, and
@@ -34,6 +37,70 @@ export const MAX_STEPS = 8
 export const DEFAULT_STEP_SIZE = 4
 export const MAX_HEADER_STATS = 4
 export const MAX_TEXT = 2000
+/** The rows-per-page choices the generated pager offers — what a list page may open on. */
+export const LIST_PAGE_SIZES = [10, 20, 50, 100]
+export const DEFAULT_PAGE_SIZE = 20
+export const LIST_VIEWS: { value: FullstackListView; label: string; icon: string }[] = [
+  { value: 'table', label: 'Table', icon: 'table' },
+  { value: 'cards', label: 'Cards', icon: 'grid_view' },
+  { value: 'kanban', label: 'Board', icon: 'view_kanban' },
+  { value: 'calendar', label: 'Calendar', icon: 'calendar_month' },
+]
+
+// ── List presentation (entity-list pages) ───────────────────────────────────
+
+/** Whether the generated list of `entity` carries the audit columns (EntityScaffoldContext's
+ *  `auditApplicable`): the entity's own override, else the project's `audit` opt, on a writable entity. */
+export function auditOn(entity: FullstackEntityDef | undefined, scaffoldOpts: string[] = []): boolean {
+  if (!entity || entity.readOnly || entity.viewQuery != null) return false
+  return entity.opts?.audit ?? scaffoldOpts.includes('audit')
+}
+
+export interface ListColumnOption {
+  key: string
+  label: string
+  /** The generated list endpoint sorts by every field and the audit pair, never by a relation. */
+  sortable: boolean
+  kind: 'field' | 'relation' | 'audit'
+}
+
+/** The columns a list page can show, in the generated order: every field, every MANY_TO_ONE
+ *  relation (by field name) and, when audit applies, Created/Updated. */
+export function listColumns(entity: FullstackEntityDef | undefined, scaffoldOpts: string[] = []): ListColumnOption[] {
+  if (!entity) return []
+  const out: ListColumnOption[] = entity.fields
+    .filter(f => f.name.trim())
+    .map(f => ({ key: f.name, label: f.label?.trim() || humanize(f.name), sortable: true, kind: 'field' as const }))
+  for (const r of entity.relations ?? []) {
+    if (r.type === 'MANY_TO_ONE' && r.fieldName.trim()) out.push({ key: r.fieldName, label: humanize(r.fieldName), sortable: false, kind: 'relation' })
+  }
+  if (auditOn(entity, scaffoldOpts)) {
+    out.push({ key: 'createdAt', label: 'Created', sortable: true, kind: 'audit' }, { key: 'updatedAt', label: 'Updated', sortable: true, kind: 'audit' })
+  }
+  return out
+}
+
+/** The column keys a list page may open sorted by (the generated controller's SORTABLE). */
+export function sortableKeys(entity: FullstackEntityDef | undefined, scaffoldOpts: string[] = []): string[] {
+  return listColumns(entity, scaffoldOpts).filter(c => c.sortable).map(c => c.key)
+}
+
+/** The views the generated page of `entity` offers, in its order — the ticked list views minus the
+ *  ones its fields cannot support (EntityScaffoldContext.emittedListViews). */
+export function enabledListViews(entity: FullstackEntityDef | undefined): FullstackListView[] {
+  if (!entity) return ['table']
+  return summarizeEntity(entity).views.map(v => v.name as FullstackListView)
+}
+
+/** Why `view` is not offered on `entity`, or undefined when it is. */
+export function viewDisabledReason(entity: FullstackEntityDef | undefined, view: FullstackListView): string | undefined {
+  if (!entity || enabledListViews(entity).includes(view)) return undefined
+  const readOnly = Boolean(entity.readOnly) || entity.viewQuery != null
+  if (view === 'kanban' && readOnly) return 'Kanban needs a writable entity'
+  if (view === 'kanban' && !entity.fields.some(f => f.type === 'ENUM' || f.type === 'BOOLEAN')) return 'Kanban needs an enum or boolean field'
+  if (view === 'calendar' && !entity.fields.some(f => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME')) return 'Calendar needs a date field'
+  return `Not ticked in the list views of ${entity.name}`
+}
 
 /** What a wizard step can ask for: every field but a generated key, then the MANY_TO_ONE
  *  relations (by field name) — what the entity's form shows. */
@@ -225,6 +292,13 @@ export function relationsTo(child: FullstackEntityDef | undefined, parent: strin
     .map(r => r.fieldName)
 }
 
+/** A one-click repair of an issue. It takes the whole layout, so it can remove a page or a widget
+ *  as well as patch one page; the editor records an undo entry under `label` before applying it. */
+export interface PageFix {
+  label: string
+  apply: (pages: FullstackPageDef[]) => FullstackPageDef[]
+}
+
 export interface PageLayoutValidation {
   /** Page index → control name → message, for the inline errors in the editor. */
   byPage: Record<number, Record<string, string>>
@@ -232,8 +306,9 @@ export interface PageLayoutValidation {
   general: string[]
   /** Everything, as sentences naming the page — what the caller counts as errors. */
   problems: string[]
-  /** The same problems with where they live, so the list can jump to the offending control. */
-  issues: { page?: number; field?: string; summary: string }[]
+  /** The same problems with where they live, so the list can jump to the offending control, and
+   *  a fix when the problem has one obvious repair. */
+  issues: { page?: number; field?: string; summary: string; fix?: PageFix }[]
   count: number
 }
 
@@ -244,6 +319,7 @@ interface Issue {
   message: string
   /** Shown in the problem list, naming the page. */
   summary: string
+  fix?: PageFix
 }
 
 const singlePk = (e: FullstackEntityDef) => e.fields.filter(f => f.primaryKey).length === 1
@@ -252,12 +328,15 @@ const singlePk = (e: FullstackEntityDef) => e.fields.filter(f => f.primaryKey).l
  *  (page roles need one). Omitted, that check is skipped. */
 export interface PageLayoutContext {
   ldapAuth?: boolean
+  /** The project-wide scaffold opts: a list page may show or sort by the audit columns only with
+   *  `audit` among them (or overridden on the entity). Omitted: no audit columns. */
+  scaffoldOpts?: string[]
 }
 
 export const PAGE_ROLES: FullstackPageRole[] = ['ADMIN', 'USER']
 
 export function validatePages(pages: FullstackPageDef[], entities: FullstackEntityDef[], context: PageLayoutContext = {}): PageLayoutValidation {
-  const issues = collect(pages, entities)
+  const issues = collect(pages, entities, context.scaffoldOpts ?? [])
   issues.push(...roleIssues(pages, context))
   const byPage: Record<number, Record<string, string>> = {}
   const general: string[] = []
@@ -273,7 +352,7 @@ export function validatePages(pages: FullstackPageDef[], entities: FullstackEnti
     byPage,
     general,
     problems: issues.map(i => i.summary),
-    issues: issues.map(({ page, field, summary }) => ({ page, field, summary })),
+    issues: issues.map(({ page, field, summary, fix }) => ({ page, field, summary, ...(fix ? { fix } : {}) })),
     count: issues.length,
   }
 }
@@ -301,7 +380,7 @@ export function pageLayoutProblems(pages: FullstackPageDef[], entities: Fullstac
   return validatePages(pages, entities).problems
 }
 
-type AddIssue = (field: string, message: string, summary?: string) => void
+type AddIssue = (field: string, message: string, summary?: string, fix?: PageFix) => void
 
 /** The opening filters of a list or report page: equality on a filterable enum/boolean column. */
 function checkPresetFilter(filter: Record<string, string> | undefined, e: FullstackEntityDef, add: AddIssue, where: string,
@@ -343,7 +422,48 @@ function aggIssues(agg: FullstackAgg | undefined, field: string | undefined, e: 
   return []
 }
 
-function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Issue[] {
+/** How a list page opens: known columns (none twice), a sortable sort, an offered view, a pager size. */
+function checkListPresentation(page: FullstackPageDef, e: FullstackEntityDef, add: AddIssue, where: string, scaffoldOpts: string[]): void {
+  const isAudit = (key: string) => key === 'createdAt' || key === 'updatedAt'
+  if (page.columns) {
+    if (page.columns.length === 0) add('columns', 'needs at least one column', `${where} shows no columns`)
+    const keys = listColumns(e, scaffoldOpts).map(c => c.key)
+    const seen = new Set<string>()
+    for (const key of page.columns) {
+      if (!keys.includes(key)) {
+        add('columns', isAudit(key) ? `“${key}” needs the audit option on ${e.name}` : `${e.name} has no “${key}” column`,
+          isAudit(key) ? `${where} shows “${key}”, which needs the audit scaffold option on ${e.name}`
+            : `${where} shows “${key}”, which is not a column of ${e.name}`)
+      } else if (seen.has(key)) add('columns', `“${key}” is listed twice`, `${where} lists the “${key}” column twice`)
+      seen.add(key)
+    }
+  }
+  if (page.sort) {
+    const key = page.sort.field
+    if (!key?.trim()) add('sort', 'needs a column', `${where} sorts by no column`)
+    else if (!sortableKeys(e, scaffoldOpts).includes(key)) {
+      add('sort', isAudit(key) ? `“${key}” needs the audit option on ${e.name}` : `${e.name} cannot sort by “${key}”`,
+        isAudit(key) ? `${where} sorts by “${key}”, which needs the audit scaffold option on ${e.name}`
+          : `${where} sorts by “${key}”, which ${e.name} cannot sort by`)
+    }
+    if (page.sort.dir && page.sort.dir !== 'asc' && page.sort.dir !== 'desc') {
+      add('sort', 'direction must be asc or desc', `${where} has a sort direction that is neither asc nor desc`)
+    }
+  }
+  if (page.view) {
+    if (!LIST_VIEWS.some(v => v.value === page.view)) add('view', `“${page.view}” is not a list view`, `${where} opens as “${page.view}”, which is not a list view`)
+    else if (!enabledListViews(e).includes(page.view)) {
+      const reason = viewDisabledReason(e, page.view)
+      add('view', reason ?? `${e.name} does not offer it`,
+        `${where} opens as ${page.view}, which ${e.name} does not offer${reason ? ` (${reason.charAt(0).toLowerCase()}${reason.slice(1)})` : ''}`)
+    }
+  }
+  if (page.pageSize != null && !LIST_PAGE_SIZES.includes(page.pageSize)) {
+    add('pageSize', `must be ${LIST_PAGE_SIZES.join(', ')}`, `${where} opens with ${page.pageSize} rows per page, which the pager does not offer`)
+  }
+}
+
+function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaffoldOpts: string[] = []): Issue[] {
   if (pages.length === 0) return []
   const issues: Issue[] = []
   const byLower = new Map(entities.map(e => [e.name.trim().toLowerCase(), e]))
@@ -357,10 +477,21 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
     issues.push({ message: '', summary: `A layout can have at most ${MAX_PAGES} pages` })
   }
 
+  // The fixes: a stale reference is removed (the page, or just the widget / tab / tile that holds
+  // it), an ambiguous link takes the first relation, a wizard asks for what it forgot.
+  const removePage = (index: number): PageFix => ({
+    label: `Remove the “${pageLabel(pages[index])}” page`,
+    apply: all => dropTabsTo(all.filter((_, i) => i !== index), all[index]?.id ?? ''),
+  })
+  const patchPage = (index: number, label: string, patch: (page: FullstackPageDef) => FullstackPageDef): PageFix => ({
+    label,
+    apply: all => all.map((p, i) => (i === index ? patch(p) : p)),
+  })
+
   pages.forEach((page, index) => {
     const where = `Page “${page.title || page.id || index + 1}”`
-    const add = (field: string, message: string, summary = `${where} ${message}`) =>
-      issues.push({ page: index, field, message, summary })
+    const add = (field: string, message: string, summary = `${where} ${message}`, fix?: PageFix) =>
+      issues.push({ page: index, field, message, summary, ...(fix ? { fix } : {}) })
 
     if (!page.id.trim()) add('id', 'needs an id')
     else if (!PAGE_ID.test(page.id) || page.id.length > 40) {
@@ -383,10 +514,12 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
         const e = entityOf(page.entity)
         if (!e) {
           add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
-            page.entity ? `${where} lists “${page.entity}”, which is no longer an entity` : `${where} lists no entity`)
+            page.entity ? `${where} lists “${page.entity}”, which is no longer an entity` : `${where} lists no entity`,
+            page.entity ? removePage(index) : undefined)
           break
         }
         checkPresetFilter(page.presetFilter, e, add, where)
+        checkListPresentation(page, e, add, where, scaffoldOpts)
         break
       }
       case 'dashboard': {
@@ -402,7 +535,10 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
           const e = entityOf(w.entity)
           if (!e) {
             add(`widget.${wi}`, w.entity ? `“${w.entity}” is no longer an entity` : 'needs an entity',
-              `${where} has a widget for “${w.entity}”, which is no longer an entity`)
+              `${where} has a widget for “${w.entity}”, which is no longer an entity`,
+              !w.entity ? undefined
+                : widgets.length === 1 ? removePage(index)
+                  : patchPage(index, `Remove widget ${wi + 1}`, p => ({ ...p, widgets: (p.widgets ?? []).filter((_, j) => j !== wi) })))
             return
           }
           if (w.series && w.kind !== 'stacked') {
@@ -538,14 +674,16 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
         const child = entityOf(page.child)
         if (!parent) {
           add('parent', page.parent ? `“${page.parent}” is no longer an entity` : 'needs a parent entity',
-            `${where} lists “${page.parent ?? ''}”, which is no longer an entity`)
+            `${where} lists “${page.parent ?? ''}”, which is no longer an entity`,
+            page.parent ? removePage(index) : undefined)
         } else if (!singlePk(parent)) {
           add('parent', `${parent.name} has a composite key`,
             `${where} lists ${parent.name}, which has a composite key`)
         }
         if (!child) {
           add('child', page.child ? `“${page.child}” is no longer an entity` : 'needs a child entity',
-            `${where} shows “${page.child ?? ''}”, which is no longer an entity`)
+            `${where} shows “${page.child ?? ''}”, which is no longer an entity`,
+            page.child ? removePage(index) : undefined)
         } else if (parent) {
           const candidates = relationsTo(child, parent.name)
           if (candidates.length === 0) {
@@ -556,7 +694,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
               `${where} links through “${page.via}”, which is not a relation of ${child.name} to ${parent.name}`)
           } else if (!page.via && candidates.length > 1) {
             add('via', 'pick the relation to link through',
-              `${where} must say which of the relations of ${child.name} to ${parent.name} it links through`)
+              `${where} must say which of the relations of ${child.name} to ${parent.name} it links through`,
+              patchPage(index, `Link through “${candidates[0]}”`, p => ({ ...p, via: candidates[0] })))
           }
         }
         break
@@ -566,7 +705,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
         if (!e) {
           add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
             page.entity ? `${where} reports on “${page.entity}”, which is no longer an entity`
-              : `${where} reports on no entity`)
+              : `${where} reports on no entity`,
+            page.entity ? removePage(index) : undefined)
           break
         }
         const charts = reportCharts(page)
@@ -577,7 +717,9 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
         const chartable = chartableFields(e)
         charts.forEach((chart, ci) => {
           const which = charts.length > 1 ? `${where} (chart ${ci + 1})` : where
-          const grouped = chart.groupBy ? e.fields.find(f => f.name === chart.groupBy) : undefined
+          // The grouping the chart resolves to: the named field, else the generator's default.
+          const groupName = chart.groupBy ?? defaultReportGroupBy(e)
+          const grouped = groupName ? e.fields.find(f => f.name === groupName) : undefined
           if (chart.groupBy && !chartable.some(f => f.name === chart.groupBy)) {
             add(chartControl(ci, 'groupBy'), `${e.name} has no enum, boolean or date field “${chart.groupBy}”`,
               `${which} groups by “${chart.groupBy}”, which is not an enum, boolean or date field of ${e.name}`)
@@ -601,7 +743,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
         const e = entityOf(page.entity)
         if (!e) {
           add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
-            `${where} opens “${page.entity ?? ''}”, which is no longer an entity`)
+            `${where} opens “${page.entity ?? ''}”, which is no longer an entity`,
+            page.entity ? removePage(index) : undefined)
           break
         }
         if (!singlePk(e)) {
@@ -622,7 +765,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
           const child = entityOf(name)
           if (!child) {
             add(`childTab.${ci}`, `“${name}” is no longer an entity`,
-              `${where} has a tab for “${name}”, which is no longer an entity`)
+              `${where} has a tab for “${name}”, which is no longer an entity`,
+              patchPage(index, `Remove the ${name} tab`, p => ({ ...p, childTabs: (p.childTabs ?? []).filter((_, j) => j !== ci) })))
           } else if (relationsTo(child, e.name).length === 0) {
             add(`childTab.${ci}`, `${child.name} has no relation to ${e.name}`,
               `${where} has a tab for ${child.name}, which has no relation to ${e.name}`)
@@ -641,7 +785,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
           const child = entityOf(s.child)
           if (!child) {
             add(`headerStat.${si}`, `“${s.child}” is no longer an entity`,
-              `${where} has a header tile for “${s.child}”, which is no longer an entity`)
+              `${where} has a header tile for “${s.child}”, which is no longer an entity`,
+              patchPage(index, `Remove the ${s.title || s.child} tile`, p => ({ ...p, headerStats: (p.headerStats ?? []).filter((_, j) => j !== si) })))
           } else if (relationsTo(child, e.name).length === 0) {
             add(`headerStat.${si}`, `${child.name} has no relation to ${e.name}`,
               `${where} has a header tile for ${child.name}, which has no relation to ${e.name}`)
@@ -660,7 +805,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
         const e = entityOf(page.entity)
         if (!e) {
           add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
-            `${where} creates “${page.entity ?? ''}”, which is no longer an entity`)
+            `${where} creates “${page.entity ?? ''}”, which is no longer an entity`,
+            page.entity ? removePage(index) : undefined)
           break
         }
         if (e.readOnly) add('entity', `${e.name} is read-only`, `${where} creates ${e.name}, which is read-only`)
@@ -685,7 +831,16 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
         if (steps.length > 0) {
           const missing = askable.filter(a => a.required && !asked.has(a.name)).map(a => a.name)
           if (missing.length > 0) {
-            add('steps', `never asks for ${missing.map(m => `“${m}”`).join(', ')}, which ${missing.length === 1 ? 'is' : 'are'} required`)
+            add('steps', `never asks for ${missing.map(m => `“${m}”`).join(', ')}, which ${missing.length === 1 ? 'is' : 'are'} required`,
+              undefined,
+              patchPage(index, `Add ${missing.join(', ')} to the last step`, p => {
+                const next = [...(p.steps ?? [])]
+                if (next.length === 0) return p
+                const last = next[next.length - 1]
+                const asked = new Set(next.flatMap(s => s.fields))
+                next[next.length - 1] = { ...last, fields: [...last.fields, ...missing.filter(m => !asked.has(m))] }
+                return { ...p, steps: next }
+              }))
           }
         }
         if (askable.length === 0) add('entity', `${e.name} has no field to ask for`)
@@ -704,8 +859,13 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Iss
 export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]): string {
   switch (page.type) {
     case 'entity-list': {
+      const parts = [`${page.entity} list`]
+      if (page.view) parts.push(LIST_VIEWS.find(v => v.value === page.view)?.label.toLowerCase() ?? page.view)
+      if (page.columns?.length) parts.push(`${page.columns.length} column${page.columns.length === 1 ? '' : 's'}`)
+      if (page.sort?.field) parts.push(`by ${page.sort.field} ${page.sort.dir === 'desc' ? '↓' : '↑'}`)
       const filter = Object.entries(page.presetFilter ?? {}).map(([k, v]) => `${k} = ${v}`).join(', ')
-      return filter ? `${page.entity} list · filtered on ${filter}` : `${page.entity} list`
+      if (filter) parts.push(`filtered on ${filter}`)
+      return parts.join(' · ')
     }
     case 'dashboard': {
       const counts = { kpi: 0, bar: 0, donut: 0, stacked: 0, line: 0, recent: 0, top: 0, progress: 0, text: 0 }
@@ -828,6 +988,8 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
       for (const [k, v] of Object.entries(next.presetFilter)) filter[k === from ? to : k] = v
       next.presetFilter = filter
     }
+    if (isEntity(next.entity) && next.columns?.includes(from)) next.columns = next.columns.map(k => (k === from ? to : k))
+    if (isEntity(next.entity) && next.sort?.field === from) next.sort = { ...next.sort, field: to }
     if (next.widgets) {
       next.widgets = next.widgets.map(w => {
         if (!isEntity(w.entity)) return w
@@ -935,6 +1097,10 @@ export function renameRelationInPages(pages: FullstackPageDef[], child: string, 
   const isChild = (name: string | undefined) => name != null && name.trim().toLowerCase() === child.trim().toLowerCase()
   let changed = false
   const next = pages.map(page => {
+    if (page.type === 'entity-list' && isChild(page.entity) && page.columns?.includes(from)) {
+      changed = true
+      return { ...page, columns: page.columns.map(k => (k === from ? to : k)) }
+    }
     if (page.type === 'wizard' && isChild(page.entity) && page.steps?.some(step => step.fields.includes(from))) {
       changed = true
       return { ...page, steps: page.steps.map(step => ({ ...step, fields: step.fields.map(name => (name === from ? to : name)) })) }
@@ -1017,6 +1183,31 @@ export function suggestPages(entities: FullstackEntityDef[], pages: FullstackPag
       blurb: `Open one ${parent.name} with its related lists as tabs.`,
       page: { idBase: parent.name, type: 'record', entity: parent.name, hidden: true },
     })
+  }
+  // A board or a calendar for an entity that already enables the view: a list page opening in it.
+  for (const e of named) {
+    const views = enabledListViews(e)
+    const hasListIn = (view: FullstackListView) => pages.some(p => p.type === 'entity-list' && sameName(p.entity, e.name) && p.view === view)
+    if (views.includes('kanban') && !hasListIn('kanban')) {
+      const lane = e.fields.find(f => f.type === 'ENUM')?.name ?? e.fields.find(f => f.type === 'BOOLEAN')?.name ?? 'status'
+      out.push({
+        key: `board:${e.name}`,
+        icon: 'view_kanban',
+        label: `${e.name} board`,
+        blurb: `${e.name} rows as cards, a lane per ${lane} — drag one to move it.`,
+        page: { idBase: `${e.name}-board`, type: 'entity-list', entity: e.name, title: `${e.name} board`, view: 'kanban' },
+      })
+    }
+    if (views.includes('calendar') && !hasListIn('calendar')) {
+      const date = e.fields.find(f => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME')?.name ?? 'date'
+      out.push({
+        key: `calendar:${e.name}`,
+        icon: 'calendar_month',
+        label: `${e.name} calendar`,
+        blurb: `${e.name} rows on a month grid, by ${date}.`,
+        page: { idBase: `${e.name}-calendar`, type: 'entity-list', entity: e.name, title: `${e.name} calendar`, view: 'calendar' },
+      })
+    }
   }
   for (const e of named) {
     const groupBy = defaultBarGroupBy(e)
@@ -1174,6 +1365,87 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
   }
   if (next.span != null && next.span === defaultSpan(kind)) delete next.span
   return { widget: next, dropped }
+}
+
+/** A list page moved to another entity: the filter, columns, sort and view keep whatever the new
+ *  entity also has; `dropped` names what had to go. */
+export function retargetEntityList(page: FullstackPageDef, entity: FullstackEntityDef | undefined,
+                                   scaffoldOpts: string[] = []): { patch: Partial<FullstackPageDef>; dropped: string[] } {
+  const dropped: string[] = []
+  const presetFilter = keptPresetFilter(page.presetFilter, entity)
+  if (Object.keys(presetFilter ?? {}).length < Object.keys(page.presetFilter ?? {}).length) dropped.push('filter')
+  let columns = page.columns
+  if (columns) {
+    const keys = listColumns(entity, scaffoldOpts).map(c => c.key)
+    const kept = columns.filter(k => keys.includes(k))
+    if (kept.length < columns.length) dropped.push('columns')
+    columns = kept.length ? kept : undefined
+  }
+  let sort = page.sort
+  if (sort && !sortableKeys(entity, scaffoldOpts).includes(sort.field)) {
+    dropped.push('sort')
+    sort = undefined
+  }
+  let view = page.view
+  if (view && !enabledListViews(entity).includes(view)) {
+    dropped.push('view')
+    view = undefined
+  }
+  return { patch: { entity: entity?.name ?? page.entity, presetFilter, columns, sort, view }, dropped }
+}
+
+/** A master-detail page moved to another parent: the child stays when it still relates to the new
+ *  parent (a lone candidate is picked, as before), and the link when it is still one of the child's. */
+export function retargetMasterDetail(page: FullstackPageDef, parent: string, entities: FullstackEntityDef[]): { patch: Partial<FullstackPageDef>; dropped: string[] } {
+  const dropped: string[] = []
+  const kids = entities.filter(e => relationsTo(e, parent).length > 0)
+  let child = page.child
+  if (child && !kids.some(e => e.name === child)) {
+    dropped.push('child')
+    child = undefined
+  }
+  if (!child && kids.length === 1) child = kids[0].name
+  let via = page.via
+  if (via && !relationsTo(entities.find(e => e.name === child), parent).includes(via)) {
+    dropped.push('linked-through relation')
+    via = undefined
+  }
+  return { patch: { parent, child, via }, dropped }
+}
+
+/** A master-detail page moved to another child: the link stays when the new child also has it. */
+export function retargetMasterDetailChild(page: FullstackPageDef, child: string, entities: FullstackEntityDef[]): { patch: Partial<FullstackPageDef>; dropped: string[] } {
+  const dropped: string[] = []
+  let via = page.via
+  if (via && !relationsTo(entities.find(e => e.name === child), page.parent).includes(via)) {
+    dropped.push('linked-through relation')
+    via = undefined
+  }
+  return { patch: { child, via }, dropped }
+}
+
+/** A record page moved to another entity: its related lists and header numbers described the old
+ *  entity's relations, so both go back to the defaults. */
+export function retargetRecord(page: FullstackPageDef, entity: string): { patch: Partial<FullstackPageDef>; dropped: string[] } {
+  const dropped: string[] = []
+  if (page.childTabs != null) dropped.push('related lists')
+  if (page.headerStats != null) dropped.push('header numbers')
+  return { patch: { entity, childTabs: undefined, headerStats: undefined }, dropped }
+}
+
+/** A dashboard whose period picker is switched off: its widgets' period date and comparison go with it. */
+export function stripDateRange(page: FullstackPageDef): { patch: Partial<FullstackPageDef>; dropped: string[] } {
+  const widgets = page.widgets ?? []
+  const dropped: string[] = []
+  if (widgets.some(w => w.dateField)) dropped.push('period date')
+  if (widgets.some(w => w.compare)) dropped.push('period comparison')
+  return {
+    patch: {
+      dateRange: undefined,
+      widgets: widgets.map(w => (w.dateField || w.compare ? { ...w, dateField: undefined, compare: undefined } : w)),
+    },
+    dropped,
+  }
 }
 
 /** A report page moved to another entity: the charts and filter keep whatever the new entity has. */

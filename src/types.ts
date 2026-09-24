@@ -400,10 +400,10 @@ export interface FullstackEntityDef {
    *  calendar, ordered; first = initial). A runtime toggle is emitted only when 2+ are enabled,
    *  and unsupported modes are dropped (kanban needs an ENUM/BOOLEAN field + a writable entity;
    *  calendar needs a LOCAL_DATE/LOCAL_DATE_TIME field). Empty/absent defaults to ['table']. */
-  listViews?: Array<'table' | 'cards' | 'kanban' | 'calendar'>
+  listViews?: FullstackListView[]
   /** @deprecated Legacy single initial view — still read for back-compat when {@link listViews}
    *  is absent. New code should write {@link listViews}. */
-  listView?: 'table' | 'cards' | 'kanban' | 'calendar'
+  listView?: FullstackListView
   /** Raw SELECT this entity maps to via Hibernate @Immutable/@Subselect. Implies readOnly. */
   viewQuery?: string
   /** Originating CREATE TABLE this entity was imported from. Informational only —
@@ -521,6 +521,15 @@ export type FullstackBucket = 'day' | 'month' | 'year'
 /** The periods a dashboard's picker offers, each ending today. */
 export type FullstackDateRange = 'all' | '7d' | '30d' | '90d' | 'ytd' | '12m'
 
+/** The list views a generated entity page can offer (see {@link FullstackEntityDef.listViews}). */
+export type FullstackListView = 'table' | 'cards' | 'kanban' | 'calendar'
+
+/** How an entity-list page opens sorted: a sortable column, ascending unless `dir` is `desc`. */
+export interface FullstackListSort {
+  field: string
+  dir?: 'asc' | 'desc'
+}
+
 /** A dashboard widget: one number, a breakdown by an enum/boolean field, a time series over a
  *  date field, the latest rows, the largest groups ranked, or one number against a target. */
 export interface FullstackWidgetDef {
@@ -591,6 +600,15 @@ export interface FullstackPageDef {
   entity?: string
   /** entity-list: enum/boolean field → value the page opens filtered on. */
   presetFilter?: Record<string, string>
+  /** entity-list: the columns the list shows, by key, in this order — field names, relation field
+   *  names and, with the audit option, `createdAt`/`updatedAt`. Omitted: every column. */
+  columns?: string[]
+  /** entity-list: the column the list opens sorted by (default: the primary key). */
+  sort?: FullstackListSort
+  /** entity-list: the view the list opens in — one the entity actually offers (default: its first). */
+  view?: FullstackListView
+  /** entity-list: rows per page it opens with — 10, 20, 50 or 100 (default 20). */
+  pageSize?: number
   /** dashboard */
   widgets?: FullstackWidgetDef[]
   /** dashboard: a period picker over the widgets' dates, opening on this period. */

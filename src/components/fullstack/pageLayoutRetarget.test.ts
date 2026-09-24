@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
-import { pageOfServerError, retargetReport, retargetWidget, retargetWizardSteps } from './pageLayout'
+import {
+  pageOfServerError, retargetEntityList, retargetMasterDetail, retargetMasterDetailChild, retargetRecord, retargetReport,
+  retargetWidget, retargetWizardSteps, stripDateRange,
+} from './pageLayout'
 
 const customer: FullstackEntityDef = {
   name: 'Customer',
@@ -20,6 +23,80 @@ const order: FullstackEntityDef = {
   ],
   relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer' }],
 }
+
+describe('retargetEntityList', () => {
+  it('keeps the columns, sort and view the new entity also has, and names the rest', () => {
+    const page: FullstackPageDef = {
+      id: 'l', type: 'entity-list', entity: 'Order', columns: ['status', 'total', 'customer'],
+      sort: { field: 'total', dir: 'desc' }, view: 'table', presetFilter: { status: 'OPEN' },
+    }
+    const { patch, dropped } = retargetEntityList(page, customer)
+    expect(patch).toEqual({ entity: 'Customer', presetFilter: undefined, columns: undefined, sort: undefined, view: 'table' })
+    expect(dropped).toEqual(['filter', 'columns', 'sort'])
+  })
+
+  it('is silent when everything fits', () => {
+    const page: FullstackPageDef = { id: 'l', type: 'entity-list', entity: 'Order', columns: ['status'], sort: { field: 'status' } }
+    const { patch, dropped } = retargetEntityList(page, { ...order, name: 'Purchase' })
+    expect(patch).toEqual({ entity: 'Purchase', presetFilter: undefined, columns: ['status'], sort: { field: 'status' }, view: undefined })
+    expect(dropped).toEqual([])
+  })
+
+  it('drops a view the new entity does not offer, and keeps a partial column set', () => {
+    const board: FullstackEntityDef = { ...order, name: 'Task', listViews: ['table', 'kanban'] }
+    const page: FullstackPageDef = { id: 'l', type: 'entity-list', entity: 'Task', view: 'kanban', columns: ['status', 'vip'] }
+    expect(retargetEntityList(page, customer)).toEqual({ patch: { entity: 'Customer', presetFilter: undefined, columns: ['vip'], sort: undefined, view: undefined }, dropped: ['columns', 'view'] })
+    expect(retargetEntityList(page, board).dropped).toEqual(['columns'])
+  })
+})
+
+describe('retargetMasterDetail / retargetMasterDetailChild / retargetRecord / stripDateRange', () => {
+  const invoice: FullstackEntityDef = {
+    name: 'Invoice',
+    fields: [{ name: 'id', type: 'LONG', primaryKey: true }],
+    relations: [
+      { type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer' },
+      { type: 'MANY_TO_ONE', fieldName: 'payer', targetEntity: 'Customer' },
+    ],
+  }
+  const entities = [customer, order, invoice]
+
+  it('keeps a master-detail child and link that still fit the new parent, and picks a lone child', () => {
+    const page: FullstackPageDef = { id: 'md', type: 'master-detail', parent: 'Customer', child: 'Invoice', via: 'payer' }
+    expect(retargetMasterDetail(page, 'Order', entities))
+      .toEqual({ patch: { parent: 'Order', child: undefined, via: undefined }, dropped: ['child', 'linked-through relation'] })
+    expect(retargetMasterDetail({ ...page, parent: 'Order' }, 'Customer', entities))
+      .toEqual({ patch: { parent: 'Customer', child: 'Invoice', via: 'payer' }, dropped: [] })
+    expect(retargetMasterDetail({ id: 'md', type: 'master-detail' }, 'Customer', [customer, order]).patch)
+      .toEqual({ parent: 'Customer', child: 'Order', via: undefined })
+  })
+
+  it('keeps the link when the new child also has it', () => {
+    const page: FullstackPageDef = { id: 'md', type: 'master-detail', parent: 'Customer', child: 'Invoice', via: 'payer' }
+    expect(retargetMasterDetailChild(page, 'Order', entities))
+      .toEqual({ patch: { child: 'Order', via: undefined }, dropped: ['linked-through relation'] })
+    expect(retargetMasterDetailChild({ ...page, via: 'customer' }, 'Order', entities))
+      .toEqual({ patch: { child: 'Order', via: 'customer' }, dropped: [] })
+  })
+
+  it('resets a record page’s related lists and header numbers', () => {
+    expect(retargetRecord({ id: 'r', type: 'record', entity: 'Customer', childTabs: ['Order'], headerStats: [{ child: 'Order' }] }, 'Order'))
+      .toEqual({ patch: { entity: 'Order', childTabs: undefined, headerStats: undefined }, dropped: ['related lists', 'header numbers'] })
+    expect(retargetRecord({ id: 'r', type: 'record', entity: 'Customer' }, 'Order').dropped).toEqual([])
+  })
+
+  it('strips the period date and comparison when the picker goes', () => {
+    const page: FullstackPageDef = {
+      id: 'd', type: 'dashboard', dateRange: '30d',
+      widgets: [{ kind: 'kpi', entity: 'Order', dateField: 'placedOn', compare: true }, { kind: 'kpi', entity: 'Customer' }],
+    }
+    const { patch, dropped } = stripDateRange(page)
+    expect(patch.dateRange).toBeUndefined()
+    expect(patch.widgets).toEqual([{ kind: 'kpi', entity: 'Order', dateField: undefined, compare: undefined }, { kind: 'kpi', entity: 'Customer' }])
+    expect(dropped).toEqual(['period date', 'period comparison'])
+    expect(stripDateRange({ ...page, widgets: [{ kind: 'kpi', entity: 'Customer' }] }).dropped).toEqual([])
+  })
+})
 
 describe('retargetWidget', () => {
   it('keeps what the new kind can still use', () => {
