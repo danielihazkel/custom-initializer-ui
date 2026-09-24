@@ -40,6 +40,8 @@ export const MAX_HEADER_STATS = 4
 export const MAX_TEXT = 2000
 /** The pages one links widget can open. */
 export const MAX_LINKS = 8
+/** A list widget's rows per page: the pager's own sizes that fit a card. */
+export const LIST_WIDGET_LIMITS = [10, 20]
 /** The rows-per-page choices the generated pager offers — what a list page may open on. */
 export const LIST_PAGE_SIZES = [10, 20, 50, 100]
 export const DEFAULT_PAGE_SIZE = 20
@@ -161,7 +163,7 @@ export const DATE_RANGES: { value: FullstackDateRange; label: string }[] = [
 
 /** Grid columns a widget takes when it names none: a tile one, a chart or list two, a launcher the row. */
 export function defaultSpan(kind: FullstackWidgetDef['kind']): number {
-  return kind === 'kpi' || kind === 'progress' ? 1 : kind === 'links' ? 4 : 2
+  return kind === 'kpi' || kind === 'progress' ? 1 : kind === 'links' || kind === 'list' ? 4 : 2
 }
 
 /** What a stacked chart splits by when no series is named: the next enum/boolean after `groupBy`. */
@@ -472,7 +474,7 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       const dateless: number[] = []
       ;(page.widgets ?? []).forEach((w, wi) => {
         const e = entityOf(w.entity)
-        if (!e || w.kind === 'text' || w.kind === 'links') return
+        if (!e || w.kind === 'text' || w.kind === 'links' || w.kind === 'list') return
         const chart = w.kind === 'bar' || w.kind === 'donut' || w.kind === 'stacked' || w.kind === 'top' || w.kind === 'line'
         if (chart && !visibleList(e.name)) {
           warn(`widget.${wi}`, `${where}: clicking a bar of the ${e.name} chart goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e))
@@ -709,6 +711,16 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
               !w.entity ? undefined
                 : widgets.length === 1 ? removePage(index)
                   : patchPage(index, `Remove widget ${wi + 1}`, p => ({ ...p, widgets: (p.widgets ?? []).filter((_, j) => j !== wi) })))
+            return
+          }
+          if (w.kind === 'list') {
+            // The same presentation rules as a list page, reported on the widget.
+            checkListPresentation({ id: page.id, type: 'entity-list', entity: e.name, columns: w.columns, sort: w.sort }, e,
+              (_field, message, summary, fix) => add(`widget.${wi}`, message, summary, fix), where, scaffoldOpts)
+            if (w.limit != null && !LIST_WIDGET_LIMITS.includes(w.limit)) {
+              add(`widget.${wi}`, `shows ${LIST_WIDGET_LIMITS.join(' or ')} rows`, `${where} embeds a list of ${w.limit} rows (${LIST_WIDGET_LIMITS.join(' or ')})`)
+            }
+            checkPresetFilter(w.presetFilter, e, add, where, field => `widget.${wi}.presetFilter.${field}`)
             return
           }
           if (w.series && w.kind !== 'stacked') {
@@ -1038,7 +1050,7 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       return parts.join(' · ')
     }
     case 'dashboard': {
-      const counts = { kpi: 0, bar: 0, donut: 0, stacked: 0, line: 0, recent: 0, top: 0, progress: 0, text: 0, links: 0 }
+      const counts = { kpi: 0, bar: 0, donut: 0, stacked: 0, line: 0, recent: 0, top: 0, progress: 0, text: 0, links: 0, list: 0 }
       for (const w of page.widgets ?? []) if (w.kind in counts) counts[w.kind]++
       const parts = [
         counts.kpi && `${counts.kpi} tile${counts.kpi === 1 ? '' : 's'}`,
@@ -1051,6 +1063,7 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
         counts.recent && `${counts.recent} recent list${counts.recent === 1 ? '' : 's'}`,
         counts.text && `${counts.text} note${counts.text === 1 ? '' : 's'}`,
         counts.links && `${counts.links} link panel${counts.links === 1 ? '' : 's'}`,
+        counts.list && `${counts.list} embedded list${counts.list === 1 ? '' : 's'}`,
       ].filter(Boolean)
       return parts.join(' · ') || 'No widgets'
     }
@@ -1170,6 +1183,8 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
         if (patched.sortBy === from) patched.sortBy = to
         if (patched.dateField === from) patched.dateField = to
         if (patched.series === from) patched.series = to
+        if (patched.columns?.includes(from)) patched.columns = patched.columns.map(k => (k === from ? to : k))
+        if (patched.sort?.field === from) patched.sort = { ...patched.sort, field: to }
         if (patched.presetFilter && from in patched.presetFilter) {
           const filter: Record<string, string> = {}
           for (const [k, v] of Object.entries(patched.presetFilter)) filter[k === from ? to : k] = v
@@ -1753,7 +1768,7 @@ export function keptPresetFilter(filter: Record<string, string> | undefined, ent
  * still use. `dropped` names what had to go, so the editor can say so instead of wiping silently.
  */
 export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: FullstackWidgetDef['kind']; entity?: string },
-                               entity: FullstackEntityDef | undefined): { widget: FullstackWidgetDef; dropped: string[] } {
+                               entity: FullstackEntityDef | undefined, scaffoldOpts: string[] = []): { widget: FullstackWidgetDef; dropped: string[] } {
   const kind = patch.kind ?? widget.kind
   const next: FullstackWidgetDef = { ...widget, ...patch, kind }
   const dropped: string[] = []
@@ -1775,6 +1790,20 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
   }
   if (next.text != null) drop(['text'], 'text')
   if (next.pages != null) drop(['pages'], 'pages')
+  if (kind === 'list') {
+    if (next.columns) {
+      const keys = listColumns(entity, scaffoldOpts).map(c => c.key)
+      const kept = next.columns.filter(k => keys.includes(k))
+      if (kept.length < next.columns.length) dropped.push('columns')
+      if (kept.length) next.columns = kept
+      else delete next.columns
+    }
+    if (next.sort && !sortableKeys(entity, scaffoldOpts).includes(next.sort.field)) drop(['sort'], 'sort')
+    if (next.limit != null && !LIST_WIDGET_LIMITS.includes(next.limit)) drop(['limit'], 'row limit')
+  } else {
+    if (next.columns != null) drop(['columns'], 'columns')
+    if (next.sort != null) drop(['sort'], 'sort')
+  }
   if (next.groupBy != null) {
     const fits = kind === 'bar' || kind === 'donut' || kind === 'stacked' ? groupableFields(entity).some(f => f.name === next.groupBy)
       : kind === 'line' ? dateFields(entity).some(f => f.name === next.groupBy)
@@ -1784,9 +1813,9 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
   }
   if (kind !== 'line') drop(['bucket'], 'bucket')
   if (next.series != null && (kind !== 'stacked' || !groupableFields(entity).some(f => f.name === next.series))) drop(['series'], 'split by')
-  if (kind === 'recent') drop(['agg', 'field'], 'aggregate')
+  if (kind === 'recent' || kind === 'list') drop(['agg', 'field'], 'aggregate')
   else if (next.field != null && !numericFields(entity).some(f => f.name === next.field)) drop(['agg', 'field'], 'aggregate')
-  if (kind !== 'recent' && kind !== 'top') drop(['limit'], 'row limit')
+  if (kind !== 'recent' && kind !== 'top' && kind !== 'list') drop(['limit'], 'row limit')
   if (next.sortBy != null && (kind !== 'recent' || !(entity?.fields ?? []).some(f => !f.primaryKey && f.name === next.sortBy))) {
     drop(['sortBy'], 'sort')
   }

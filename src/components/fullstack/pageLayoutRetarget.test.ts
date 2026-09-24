@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { FullstackEntityDef, FullstackPageDef } from '../../types'
+import type { FullstackEntityDef, FullstackPageDef, FullstackWidgetDef } from '../../types'
 import {
   describePagesChange, duplicatePage, masterDetailPairs, pageOfServerError, requestPages, retargetEntityList, retargetMasterDetail,
   retargetMasterDetailChild, retargetPage, retargetRecord, retargetReport, retargetWidget, retargetWizardSteps, stripDateRange,
@@ -193,6 +193,21 @@ describe('the donut, stacked and text widgets', () => {
     const { widget, dropped } = retargetWidget({ kind: 'bar', entity: 'Order', groupBy: 'status', title: 'Mix' }, { kind: 'text' }, order)
     expect(widget).toEqual({ kind: 'text', entity: '', title: 'Mix' })
     expect(dropped).toEqual(['data settings'])
+  })
+})
+
+describe('retargetWidget for a list widget', () => {
+  const list: FullstackWidgetDef = { kind: 'list', entity: 'Order', columns: ['status', 'customer'], sort: { field: 'total', dir: 'desc' }, limit: 20 }
+
+  it('keeps the columns and sort the new entity has, and drops the rest by name', () => {
+    const same = retargetWidget(list, { entity: 'Purchase' }, { ...order, name: 'Purchase' })
+    expect(same.dropped).toEqual([])
+    const moved = retargetWidget(list, { entity: 'Customer' }, customer)
+    expect(moved.widget).toEqual({ kind: 'list', entity: 'Customer', limit: 20 })
+    expect(moved.dropped).toEqual(['columns', 'sort'])
+    // Another kind takes none of it; a list takes no aggregate.
+    expect(retargetWidget(list, { kind: 'kpi' }, order).dropped).toEqual(['columns', 'sort', 'row limit'])
+    expect(retargetWidget({ kind: 'kpi', entity: 'Order', agg: 'sum', field: 'total' }, { kind: 'list' }, order).dropped).toEqual(['aggregate'])
   })
 })
 

@@ -100,6 +100,23 @@ describe('PagesEditor', () => {
     expect(screen.queryByRole('button', { name: 'Open the guide on frontend pages' })).toBeNull()
   })
 
+  it('edits a list widget: columns as toggles, a sort, the pager’s sizes', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'list', entity: 'Order', title: 'Open orders' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+    ]} />)
+    openRow('home')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hide the Placed on column' }))
+    expect(latest[0].widgets?.[0].columns).toEqual(['id', 'status', 'total', 'customer', 'billTo'])
+    fireEvent.change(screen.getByLabelText('Widget sort'), { target: { value: 'total' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sort descending' }))
+    expect(latest[0].widgets?.[0].sort).toEqual({ field: 'total', dir: 'desc' })
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Rows per page' })).getByRole('radio', { name: '20' }))
+    expect(latest[0].widgets?.[0].limit).toBe(20)
+    expect(document.querySelector('[data-preview-list]')).toBeTruthy()
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+  })
+
   it('edits a links widget as a pick of the pages it opens', () => {
     render(<Harness initial={[
       { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'links', entity: '', title: 'Go to', pages: ['orders'] }] },

@@ -181,7 +181,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           </div>
           <div className="grid grid-cols-4 gap-1.5">
             {screen.widgets.map(w => (
-              <Widget key={w.index} widget={w} accent={accent} viewAll={preview.strings.viewAll} {...link} />
+              <Widget key={w.index} widget={w} accent={accent} viewAll={preview.strings.viewAll} preview={preview} menora={menora} {...link} />
             ))}
           </div>
           {screen.widgets.length === 0 && <p className="text-[10px] text-secondary">No widgets yet.</p>}
@@ -418,7 +418,7 @@ function Editable({ page, control, onEdit, highlight, label, className, children
 /** Literal classes, so Tailwind's scanner keeps them. */
 const SPAN = ['col-span-1', 'col-span-2', 'col-span-3', 'col-span-4']
 
-function Widget({ widget, accent, viewAll, ...link }: LinkProps & { widget: PreviewWidget; accent: string; viewAll: string }) {
+function Widget({ widget, accent, viewAll, preview, menora, ...link }: LinkProps & { widget: PreviewWidget; accent: string; viewAll: string; preview: LayoutPreviewModel; menora: boolean }) {
   return (
     <Editable {...link} control={`widget.${widget.index}`} label={`Edit widget ${widget.index + 1}`} className={`${SPAN[widget.span - 1] ?? 'col-span-1'} block min-w-0 text-start`}>
       <div
@@ -488,6 +488,11 @@ function Widget({ widget, accent, viewAll, ...link }: LinkProps & { widget: Prev
               </span>
             ))}
             {widget.tiles.length === 0 && <span className="col-span-3 text-[9px] text-secondary">No pages picked</span>}
+          </div>
+        )}
+        {widget.kind === 'list' && (
+          <div className="mt-0.5" data-preview-list>
+            <MiniTable table={widget.table} preview={preview} accent={accent} menora={menora} compact />
           </div>
         )}
         {widget.kind === 'line' && <LineChart points={widget.points} accent={accent} />}

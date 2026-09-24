@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { FullstackEntityDef, FullstackPageDef } from '../../types'
+import type { FullstackEntityDef, FullstackPageDef, FullstackWidgetDef } from '../../types'
 import {
   defaultWizardSteps, renameEntityInPages,
   defaultBarGroupBy, defaultLineGroupBy, defaultOptionLabel, defaultReportGroupBy, describePagesChange,
@@ -304,6 +304,30 @@ describe('links widgets', () => {
     expect(renamePageIdInPages(pages, 'orders', 'all-orders')[0].widgets?.[0].pages).toEqual(['all-orders', 'new-order'])
     expect(dropTabsTo(pages, 'new-order')[0].widgets?.[0].pages).toEqual(['orders'])
     expect(describePage(pages[0], pages)).toBe('1 link panel')
+  })
+})
+
+describe('list widgets', () => {
+  const home: FullstackPageDef = {
+    id: 'home', type: 'dashboard', widgets: [{ kind: 'list', entity: 'Order', columns: ['status', 'customer'], sort: { field: 'total', dir: 'desc' }, presetFilter: { status: 'OPEN' } }],
+  }
+
+  it('takes a list page’s presentation and the pager’s sizes, reported on the widget', () => {
+    expect(validatePages([home], entities).count).toBe(0)
+    const bad = (w: Partial<FullstackWidgetDef>) => validatePages([{ ...home, widgets: [{ ...home.widgets![0], ...w }] }], entities)
+    expect(bad({ columns: ['nope'] }).byPage[0]?.['widget.0']).toBe('Order has no “nope” column')
+    expect(bad({ sort: { field: 'customer' } }).byPage[0]?.['widget.0']).toBe('Order cannot sort by “customer”')
+    expect(bad({ limit: 15 }).byPage[0]?.['widget.0']).toBe('shows 10 or 20 rows')
+    expect(bad({ presetFilter: { status: 'NOPE' } }).byPage[0]?.['widget.0.presetFilter.status']).toContain('is not one of the values')
+    expect(describePage(home, [home])).toBe('1 embedded list')
+  })
+
+  it('follows a field rename into the columns and sort', () => {
+    const renamed = renameFieldInPages([home], 'Order', 'total', 'amount')[0].widgets![0]
+    expect(renamed.sort).toEqual({ field: 'amount', dir: 'desc' })
+    const cols = renameFieldInPages([home], 'Order', 'status', 'state')[0].widgets![0]
+    expect(cols.columns).toEqual(['state', 'customer'])
+    expect(cols.presetFilter).toEqual({ state: 'OPEN' })
   })
 })
 

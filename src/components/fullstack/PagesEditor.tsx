@@ -15,6 +15,7 @@ import { ConfirmDialog } from '../ConfirmDialog'
 import { inputClass } from './controls'
 import { enumValueOption, fieldOption, keyOption, relationOption } from './fieldOptions'
 import { cssEscape } from './focus'
+import { pluralize } from './naming'
 import { buildLayoutPreview } from './layoutPreviewModel'
 import { LayoutPreview, type EditTarget } from './LayoutPreview'
 import { moveItem } from './reorder'
@@ -55,6 +56,7 @@ import {
   askableFields,
   blankPage,
   linkablePages,
+  LIST_WIDGET_LIMITS,
   MAX_LINKS,
   relationKeys,
   reportGroupKeys,
@@ -171,6 +173,7 @@ const WIDGET_KINDS: { kind: FullstackWidgetDef['kind']; icon: string; label: str
   { kind: 'progress', icon: 'data_usage', label: 'Progress to target', short: 'Progress', hint: 'An aggregate against a fixed target' },
   { kind: 'text', icon: 'notes', label: 'Text note', short: 'Text', hint: 'A heading and paragraphs of your own — no data' },
   { kind: 'links', icon: 'apps', label: 'Page links', short: 'Links', hint: 'Tiles that open other pages — a launcher' },
+  { kind: 'list', icon: 'table_rows', label: 'Embedded list', short: 'List', hint: 'An entity’s rows in a card — your columns, sort and filter' },
 ]
 
 function readPreviewOpen(): boolean {
@@ -1129,6 +1132,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                           page={page}
                           index={index}
                           pages={pages}
+                          projectOpts={projectOpts}
                           entities={named}
                           errors={errors}
                           update={update}
@@ -1729,8 +1733,10 @@ function EntityListForm({ page, index, entities, errors, update, lossy, dnd, pro
 /** Widgets a dashboard has before its cards start collapsed; a short list reads fine open. */
 const COLLAPSE_WIDGETS_FROM = 4
 
-function DashboardForm({ page, index, pages, entities, errors, update, dnd, lossy, expandRequest }: FormProps & {
+function DashboardForm({ page, index, pages, projectOpts, entities, errors, update, dnd, lossy, expandRequest }: FormProps & {
   pages: FullstackPageDef[]
+  /** The project-wide scaffold opts — a list widget's audit columns exist only with `audit` on. */
+  projectOpts: string[]
   dnd: ReturnType<typeof useDragReorder>
   /** A problem click about widget `widget` of this page: open that card (a new `n` per click). */
   expandRequest?: { widget: number; n: number } | null
@@ -1841,6 +1847,7 @@ function DashboardForm({ page, index, pages, entities, errors, update, dnd, loss
             wi={wi}
             count={widgets.length}
             pages={pages.filter(p => p !== page)}
+            projectOpts={projectOpts}
             entities={entities}
             dateRange={page.dateRange}
             errors={errors}
@@ -1923,6 +1930,14 @@ function widgetSummary(w: FullstackWidgetDef, span: number): string {
     const n = w.pages?.length ?? 0
     return `${kind} · ${w.title ? `“${w.title}” · ` : ''}${n} page${n === 1 ? '' : 's'} · width ${span}`
   }
+  if (w.kind === 'list') {
+    const parts = [kind, w.entity || '(no entity)']
+    if (w.columns?.length) parts.push(`${w.columns.length} column${w.columns.length === 1 ? '' : 's'}`)
+    if (w.sort?.field) parts.push(`by ${w.sort.field} ${w.sort.dir === 'desc' ? '↓' : '↑'}`)
+    if (w.title) parts.push(`“${w.title}”`)
+    parts.push(`width ${span}`)
+    return parts.join(' · ')
+  }
   if (w.kind === 'text') {
     const text = (w.text ?? '').split('\n').find(line => line.trim()) ?? ''
     return `${kind} · ${w.title || text.slice(0, 60) || 'empty'} · width ${span}`
@@ -1934,12 +1949,13 @@ function widgetSummary(w: FullstackWidgetDef, span: number): string {
   return parts.join(' · ')
 }
 
-function WidgetCard({ widget, wi, count, pages, entities, dateRange, errors, atCap, dnd, list, expanded, onToggle, onChange, onRetarget, onMove, onDuplicate, onRemove }: {
+function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange, errors, atCap, dnd, list, expanded, onToggle, onChange, onRetarget, onMove, onDuplicate, onRemove }: {
   widget: FullstackWidgetDef
   wi: number
   count: number
   /** The layout — a links widget picks the pages it opens from it. */
   pages: FullstackPageDef[]
+  projectOpts: string[]
   entities: FullstackEntityDef[]
   dateRange: FullstackDateRange | undefined
   errors: Record<string, string>
@@ -2042,7 +2058,103 @@ function WidgetCard({ widget, wi, count, pages, entities, dateRange, errors, atC
           })}
         </div>
       )}
-      {!expanded ? null : widget.kind === 'links' ? (
+      {!expanded ? null : widget.kind === 'list' ? (
+        <div className="space-y-2" data-widget-options>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
+            <MiniField label="Entity">
+              <EntitySelect label="Widget entity" value={widget.entity} options={entities.map(e => e.name)} error={error} onChange={name => onRetarget({ entity: name })} />
+            </MiniField>
+            <MiniField label="Title" grow>
+              <input
+                type="text"
+                aria-label="Widget title"
+                value={widget.title ?? ''}
+                placeholder={entity ? pluralize(entity.name) : 'Optional heading'}
+                onChange={e => onChange({ title: e.target.value || undefined })}
+                className={`${inputClass()} w-full py-1 text-xs`}
+              />
+            </MiniField>
+            <MiniField label="Rows" hint="A page of the list">
+              <div role="radiogroup" aria-label="Rows per page" className="inline-flex overflow-hidden rounded border border-outline-variant">
+                {LIST_WIDGET_LIMITS.map(n => {
+                  const on = (widget.limit ?? LIST_WIDGET_LIMITS[0]) === n
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => onChange({ limit: n === LIST_WIDGET_LIMITS[0] ? undefined : n })}
+                      className={`px-2 py-0.5 text-[11px] ${on ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5'}`}
+                    >
+                      {n}
+                    </button>
+                  )
+                })}
+              </div>
+            </MiniField>
+            <MiniField label="Width" hint={`Columns of 4 · default ${fallbackSpan}`}>
+              <SpanPicker span={span} fallback={fallbackSpan} onChange={s => onChange({ span: s })} />
+            </MiniField>
+          </div>
+          <MiniField label="Columns" hint="Click to hide or show · default: every column">
+            <div className="flex flex-wrap gap-1" data-widget-columns>
+              {listColumns(entity, projectOpts).map(c => {
+                const shown = !widget.columns || widget.columns.includes(c.key)
+                return (
+                  <button
+                    key={c.key}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={shown}
+                    aria-label={`${shown ? 'Hide' : 'Show'} the ${c.label} column`}
+                    onClick={() => {
+                      const all = listColumns(entity, projectOpts).map(x => x.key)
+                      const next = shown ? (widget.columns ?? all).filter(k => k !== c.key) : all.filter(k => k === c.key || widget.columns?.includes(k))
+                      onChange({ columns: next.length === all.length || next.length === 0 ? undefined : next })
+                    }}
+                    className={`rounded-full px-2 py-0.5 text-[11px] ${shown ? 'bg-primary/10 text-primary' : 'border border-dashed border-outline-variant text-secondary'}`}
+                  >
+                    {c.label}
+                  </button>
+                )
+              })}
+            </div>
+          </MiniField>
+          <MiniField label="Sort rows by">
+            <div className="flex items-center gap-1.5">
+              <select
+                aria-label="Widget sort"
+                value={widget.sort?.field ?? ''}
+                onChange={e => onChange({ sort: e.target.value ? { field: e.target.value, dir: widget.sort?.dir } : undefined })}
+                className={`${inputClass()} max-w-[12rem] py-1 text-xs`}
+              >
+                <option value="">Default (the key)</option>
+                {sortableKeys(entity, projectOpts).map(k => <option key={k} value={k}>{labelOf(k)}</option>)}
+              </select>
+              {widget.sort && (
+                <button
+                  type="button"
+                  onClick={() => onChange({ sort: { ...widget.sort!, dir: widget.sort!.dir === 'desc' ? undefined : 'desc' } })}
+                  className={SMALL_BUTTON}
+                  aria-label={widget.sort.dir === 'desc' ? 'Sort ascending' : 'Sort descending'}
+                >
+                  {widget.sort.dir === 'desc' ? '↓ desc' : '↑ asc'}
+                </button>
+              )}
+            </div>
+          </MiniField>
+          <PresetFilters
+            filter={widget.presetFilter}
+            entity={entity}
+            errors={filterErrors}
+            controlPrefix={filterPrefix}
+            onChange={presetFilter => onChange({ presetFilter })}
+            heading="Only rows where"
+          />
+          {error && <p className="text-[11px] text-error">{error}</p>}
+        </div>
+      ) : widget.kind === 'links' ? (
         <div className="space-y-2" data-widget-options>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
             <MiniField label="Title" grow>

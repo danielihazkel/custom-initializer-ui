@@ -69,6 +69,7 @@ export type PreviewWidget = WidgetBase & (
   | { kind: 'stacked'; rows: { label: string; parts: number[] }[]; series: string[] }
   | { kind: 'text'; paragraphs: string[] }
   | { kind: 'links'; tiles: { label: string; icon: string }[] }
+  | { kind: 'list'; table: PreviewTable }
   | { kind: 'line'; points: PreviewBar[] }
   | { kind: 'recent'; rows: string[] }
   | { kind: 'broken'; message: string }
@@ -410,6 +411,10 @@ export function buildLayoutPreview(
           }
           if (!e) return { ...base, kind: 'broken', title: w.title || w.entity || '?', message: `No entity “${w.entity}”` }
           const { plural } = labels(e)
+          if (w.kind === 'list') {
+            const tbl = table(e, w.presetFilter, undefined, { columns: w.columns, sort: w.sort })
+            return { ...base, filters: [], kind: 'list', title: w.title || plural, table: { ...tbl, rows: tbl.rows.slice(0, Math.min(w.limit ?? 10, 4)) } }
+          }
           const reduces = !!w.agg && w.agg !== 'count'
           const valueField = reduces ? fieldOf(e, w.field) : undefined
           const measured = reduces ? aggTitle(w.agg!, valueField) : plural

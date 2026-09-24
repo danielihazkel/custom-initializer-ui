@@ -533,7 +533,7 @@ export interface FullstackListSort {
 /** A dashboard widget: one number, a breakdown by an enum/boolean field, a time series over a
  *  date field, the latest rows, the largest groups ranked, or one number against a target. */
 export interface FullstackWidgetDef {
-  kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'line' | 'recent' | 'top' | 'progress' | 'text' | 'links'
+  kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'line' | 'recent' | 'top' | 'progress' | 'text' | 'links' | 'list'
   /** The entity the widget reads — empty for a text or links widget. */
   entity: string
   title?: string
@@ -545,7 +545,7 @@ export interface FullstackWidgetDef {
   agg?: FullstackAgg
   /** The numeric field `agg` reduces — required unless agg is count, and forbidden when it is. */
   field?: string
-  /** recent: how many rows (1–20, default 5). */
+  /** recent/top: how many rows (1–20, default 5); list: its page size, 10 or 20 (default 10). */
   limit?: number
   /** Dashboard grid columns (1–4); default 1 for a tile, 2 for a chart or list. */
   span?: number
@@ -566,6 +566,10 @@ export interface FullstackWidgetDef {
   /** links: the ids of the pages its tiles open (1–8; never a record page, nor a hidden page
    *  that is not a wizard). */
   pages?: string[]
+  /** list: the columns it shows, in order (as on a list page; omitted: every column). */
+  columns?: string[]
+  /** list: the column it opens sorted by. */
+  sort?: FullstackListSort
 }
 
 /** A report page's single chart: bars when `groupBy` is an enum/boolean, a line when it is a date. */
