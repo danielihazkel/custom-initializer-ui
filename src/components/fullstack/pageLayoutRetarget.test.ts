@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import {
-  duplicatePage, pageOfServerError, requestPages, retargetEntityList, retargetMasterDetail, retargetMasterDetailChild, retargetRecord, retargetReport,
-  retargetWidget, retargetWizardSteps, stripDateRange,
+  describePagesChange, duplicatePage, masterDetailPairs, pageOfServerError, requestPages, retargetEntityList, retargetMasterDetail,
+  retargetMasterDetailChild, retargetPage, retargetRecord, retargetReport, retargetWidget, retargetWizardSteps, stripDateRange,
 } from './pageLayout'
 
 const customer: FullstackEntityDef = {
@@ -193,5 +193,69 @@ describe('the donut, stacked and text widgets', () => {
     const { widget, dropped } = retargetWidget({ kind: 'bar', entity: 'Order', groupBy: 'status', title: 'Mix' }, { kind: 'text' }, order)
     expect(widget).toEqual({ kind: 'text', entity: '', title: 'Mix' })
     expect(dropped).toEqual(['data settings'])
+  })
+})
+
+describe('masterDetailPairs', () => {
+  it('lists every child → single-key parent relation, naming the relation only when there are several', () => {
+    expect(masterDetailPairs([customer, order])).toEqual([{ parent: 'Customer', child: 'Order' }])
+    const twice = { ...order, relations: [...order.relations!, { type: 'MANY_TO_ONE' as const, fieldName: 'billTo', targetEntity: 'Customer' }] }
+    expect(masterDetailPairs([customer, twice])).toEqual([{ parent: 'Customer', child: 'Order', via: 'customer' }])
+    expect(masterDetailPairs([order])).toEqual([])
+  })
+})
+
+describe('retargetPage', () => {
+  const entities = [customer, order]
+  const list: FullstackPageDef = {
+    id: 'open', type: 'entity-list', entity: 'Order', title: 'Open orders', description: 'Waiting', roles: ['ADMIN'], group: 'Sales', icon: 'Inbox',
+    presetFilter: { status: 'OPEN' }, columns: ['status'], sort: { field: 'total', dir: 'desc' }, view: 'table', pageSize: 50,
+  }
+
+  it('is the same page for the same type', () => {
+    expect(retargetPage(list, 'entity-list', entities, [list])).toEqual({ page: list, dropped: [] })
+  })
+
+  it('keeps the id, words, place and entity a report can use; names what a list-only setting was', () => {
+    const { page, dropped } = retargetPage(list, 'report', entities, [list])
+    expect(page).toEqual({
+      id: 'open', type: 'report', entity: 'Order', title: 'Open orders', description: 'Waiting', roles: ['ADMIN'], group: 'Sales', icon: 'Inbox',
+      presetFilter: { status: 'OPEN' }, chart: {},
+    })
+    expect(dropped).toEqual(['columns', 'sort', 'view', 'page size'])
+  })
+
+  it('makes a record page hidden and drops its nav place; a wizard gets default steps', () => {
+    const record = retargetPage(list, 'record', entities, [list])
+    expect(record.page).toEqual({ id: 'open', type: 'record', entity: 'Order', title: 'Open orders', description: 'Waiting', roles: ['ADMIN'], hidden: true })
+    expect(record.dropped).toEqual(['filter', 'columns', 'sort', 'view', 'page size', 'nav place'])
+    const wizard = retargetPage({ id: 'orders', type: 'entity-list', entity: 'Order' }, 'wizard', entities, [])
+    expect(wizard.page).toEqual({ id: 'orders', type: 'wizard', entity: 'Order', title: 'New Order', steps: [{ fields: ['id', 'status', 'total', 'placedOn'] }, { fields: ['customer'] }] })
+    expect(wizard.dropped).toEqual([])
+  })
+
+  it('turns a list of a parent into a master-detail over its child, and back', () => {
+    const md = retargetPage({ id: 'customers', type: 'entity-list', entity: 'Customer', idLocked: true }, 'master-detail', entities, [])
+    expect(md.page).toEqual({ id: 'customers', idLocked: true, type: 'master-detail', parent: 'Customer', child: 'Order' })
+    expect(md.dropped).toEqual([])
+    const back = retargetPage(md.page, 'entity-list', entities, [md.page])
+    expect(back.page).toEqual({ id: 'customers', idLocked: true, type: 'entity-list', entity: 'Customer' })
+    expect(back.dropped).toEqual(['child list'])
+  })
+
+  it('falls back to the blank page and says so when the entity cannot follow', () => {
+    // Order has nothing to be a master-detail parent of, so the blank page's first pair is used.
+    const { page, dropped } = retargetPage(list, 'master-detail', entities, [list])
+    expect(page).toMatchObject({ id: 'open', type: 'master-detail', parent: 'Customer', child: 'Order', title: 'Open orders' })
+    expect(dropped[0]).toBe('entity')
+    // A dashboard keeps no entity at all.
+    const dash = retargetPage({ id: 'orders', type: 'entity-list', entity: 'Order' }, 'dashboard', entities, [])
+    expect(dash.page).toEqual({ id: 'orders', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Customer' }, { kind: 'kpi', entity: 'Order' }] })
+    expect(dash.dropped).toEqual(['entity'])
+  })
+
+  it('is what the undo history calls a type change', () => {
+    const { page } = retargetPage(list, 'report', entities, [list])
+    expect(describePagesChange([list], [page])).toBe('Changed “Open orders” to a report page')
   })
 })

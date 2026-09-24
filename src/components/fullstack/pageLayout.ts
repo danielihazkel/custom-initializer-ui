@@ -1465,6 +1465,138 @@ export function pageFromSuggestion(s: PageSuggestion, taken: Iterable<string>): 
   return { id: uniquePageId(slugify(idBase) || 'page', taken), ...rest }
 }
 
+
+// ── New pages, and a page moved to another type ─────────────────────────────
+
+/** A new page of `type`, filled in with the first entities (and pages) that fit so it is valid on sight. */
+export function blankPage(type: FullstackPageType, entities: FullstackEntityDef[], pages: FullstackPageDef[]): FullstackPageDef {
+  const taken = pages.map(p => p.id)
+  const first = entities[0]?.name ?? ''
+  const id = (base: string) => uniquePageId(slugify(base) || 'page', taken)
+  switch (type) {
+    case 'dashboard':
+      return { id: id('dashboard'), type, widgets: entities.slice(0, 4).map(e => ({ kind: 'kpi', entity: e.name })) }
+    case 'entity-list':
+      return { id: id(first), type, entity: first }
+    case 'tabs': {
+      // Start from two pages that can be tabs — lists first — so the page is valid straight away.
+      const picked = tabCandidates(pages).slice(0, 2)
+      return { id: id('tabs'), type, title: 'Tabs', tabs: picked.map(p => ({ page: p.id })) }
+    }
+    case 'master-detail': {
+      const pair = masterDetailPairs(entities)[0]
+      return { id: id(pair?.parent ?? first), type, parent: pair?.parent ?? first, child: pair?.child, ...(pair?.via ? { via: pair.via } : {}) }
+    }
+    case 'record':
+      return { id: id(first), type, entity: first, hidden: true }
+    case 'report': {
+      // Prefer an entity that actually has something to chart, so the page is valid on sight.
+      const e = entities.find(x => chartableFields(x).length > 0) ?? entities[0]
+      return { id: id(`${e?.name ?? 'report'}-report`), type, entity: e?.name ?? first, chart: {} }
+    }
+    case 'wizard': {
+      // A writable entity, with its default steps spelled out so they can be edited.
+      const e = entities.find(x => !x.readOnly && askableFields(x).length > 0) ?? entities[0]
+      return { id: id(`new-${e?.name ?? 'record'}`), type, entity: e?.name ?? first, title: `New ${e?.name ?? 'record'}`, steps: defaultWizardSteps(e) }
+    }
+  }
+}
+
+/** The pages a new tabs page can embed, lists first: not a tabs or record page, not already a tab. */
+export function tabCandidates(pages: FullstackPageDef[]): FullstackPageDef[] {
+  const free = pages.filter(p => p.type !== 'tabs' && p.type !== 'record' && pagesEmbedding(pages, p.id).length === 0)
+  return [...free.filter(p => p.type === 'entity-list'), ...free.filter(p => p.type !== 'entity-list')]
+}
+
+/** Every parent → child pair a master-detail page can show: a MANY_TO_ONE from the child to a
+ *  single-key parent in the model, with `via` set where the child has several such relations. */
+export function masterDetailPairs(entities: FullstackEntityDef[]): { parent: string; child: string; via?: string }[] {
+  const named = entities.filter(e => e.name.trim())
+  const eq = (a: string | undefined, b: string) => a != null && a.trim().toLowerCase() === b.trim().toLowerCase()
+  const out: { parent: string; child: string; via?: string }[] = []
+  for (const child of named) {
+    for (const r of child.relations ?? []) {
+      if (r.type !== 'MANY_TO_ONE') continue
+      const parent = named.find(e => eq(e.name, r.targetEntity))
+      if (!parent || parent === child || !singlePk(parent)) continue
+      if (out.some(p => p.parent === parent.name && p.child === child.name)) continue
+      out.push({ parent: parent.name, child: child.name, ...(relationsTo(child, parent.name).length > 1 ? { via: r.fieldName } : {}) })
+    }
+  }
+  return out
+}
+
+/**
+ * A page changed to another type, keeping what the new type can use — its id, title, description,
+ * roles, nav place and (where the type takes one) its entity and filter — and starting the rest
+ * from `blankPage`. `dropped` names what had to go, so the editor can say so instead of wiping silently.
+ */
+export function retargetPage(page: FullstackPageDef, type: FullstackPageType, entities: FullstackEntityDef[],
+                             pages: FullstackPageDef[]): { page: FullstackPageDef; dropped: string[] } {
+  if (type === page.type) return { page, dropped: [] }
+  const eq = (a: string | undefined, b: string | undefined) => a != null && b != null && a.trim().toLowerCase() === b.trim().toLowerCase()
+  const named = entities.filter(e => e.name.trim())
+  const base = blankPage(type, named, pages.filter(p => p.id !== page.id))
+  const next: FullstackPageDef = { ...base, id: page.id }
+  if (page.idLocked) next.idLocked = true
+  if (page.title?.trim()) next.title = page.title
+  if (page.description?.trim()) next.description = page.description
+  if (page.roles?.length) next.roles = page.roles
+  if (type === 'record') next.hidden = true
+  else if (page.hidden) next.hidden = true
+  else delete next.hidden
+  if (inNav(next)) {
+    if (page.group) next.group = page.group
+    if (page.icon) next.icon = page.icon
+  }
+
+  // The entity follows where the new type can take it as the blank page would have picked it.
+  const was = page.entity ?? page.parent
+  const e = named.find(x => eq(x.name, was))
+  if (e) {
+    if (type === 'entity-list') next.entity = e.name
+    else if (type === 'record' && singlePk(e)) next.entity = e.name
+    else if (type === 'report' && chartableFields(e).length > 0) next.entity = e.name
+    else if (type === 'wizard' && !e.readOnly && askableFields(e).length > 0) {
+      next.entity = e.name
+      next.steps = defaultWizardSteps(e)
+      if (!page.title?.trim()) next.title = `New ${e.name}`
+    } else if (type === 'master-detail') {
+      const pair = masterDetailPairs(named).find(p => eq(p.parent, e.name))
+      if (pair) {
+        next.parent = pair.parent
+        next.child = pair.child
+        if (pair.via) next.via = pair.via
+        else delete next.via
+      }
+    }
+  }
+  if ((type === 'entity-list' || type === 'report') && page.presetFilter && eq(next.entity, was)) {
+    const kept = keptPresetFilter(page.presetFilter, e)
+    if (kept) next.presetFilter = kept
+  }
+
+  const dropped: string[] = []
+  const lost = (had: unknown, has: unknown, label: string) => { if (had != null && has == null) dropped.push(label) }
+  const nowEntity = next.entity ?? next.parent
+  if (was && !eq(nowEntity, was)) dropped.push('entity')
+  lost(page.presetFilter, next.presetFilter, 'filter')
+  lost(page.columns, next.columns, 'columns')
+  lost(page.sort, next.sort, 'sort')
+  lost(page.view, next.view, 'view')
+  lost(page.pageSize, next.pageSize, 'page size')
+  lost(page.widgets, next.widgets, 'widgets')
+  lost(page.dateRange, next.dateRange, 'period picker')
+  lost(page.tabs, next.tabs, 'tabs')
+  if (page.type === 'master-detail' && type !== 'master-detail') dropped.push('child list')
+  lost(page.chart ?? page.charts, next.chart ?? next.charts, 'charts')
+  lost(page.steps, next.steps, 'wizard steps')
+  lost(page.childTabs, next.childTabs, 'related lists')
+  lost(page.headerStats, next.headerStats, 'header numbers')
+  if ((page.group || page.icon) && !inNav(next)) dropped.push('nav place')
+  return { page: next, dropped }
+}
+
 // ── Undo labels ──────────────────────────────────────────────────────────────
 
 /** A short name for what changed between two layouts — the undo history's entry label. */
@@ -1486,6 +1618,7 @@ export function describePagesChange(prev: FullstackPageDef[], next: FullstackPag
     const a = prev[i]; const b = next[i]
     if (key(a) === key(b)) continue
     const name = pageLabel(b)
+    if (a.type !== b.type) return `Changed “${name}” to a ${PAGE_TYPE_META[b.type].label.toLowerCase()} page`
     if (a.title !== b.title || a.id !== b.id) return `Renamed the “${name}” page`
     const wa = a.widgets ?? []; const wb = b.widgets ?? []
     if (wb.length > wa.length) return `Added a widget to “${name}”`

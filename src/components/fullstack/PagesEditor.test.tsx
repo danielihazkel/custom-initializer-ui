@@ -55,15 +55,38 @@ describe('PagesEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
     fireEvent.click(screen.getByRole('button', { name: /Master–detail/ }))
 
-    expect(latest).toEqual([{ id: 'customer', type: 'master-detail', parent: 'Customer', child: 'Order' }])
-    // Two relations point at Customer, so the page must say which one it links through.
-    expect(screen.getByLabelText('Relation to link through')).toBeTruthy()
-    expect(document.querySelector('[data-page-layout-problems]')?.textContent)
-      .toContain('must say which of the relations of Order to Customer it links through')
+    // Two relations point at Customer, so the page says which one it links through from the start.
+    expect(latest).toEqual([{ id: 'customer', type: 'master-detail', parent: 'Customer', child: 'Order', via: 'customer' }])
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
 
     fireEvent.change(screen.getByLabelText('Relation to link through'), { target: { value: 'billTo' } })
     expect(latest[0].via).toBe('billTo')
     expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+  })
+
+  it('will not offer a master-detail page without a relation to build it from', () => {
+    render(<Harness initial={[]} entities={[entities[0]]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    const card = screen.getByRole('button', { name: /Master–detail/ }) as HTMLButtonElement
+    expect(card.disabled).toBe(true)
+    expect(card.textContent).toContain('Add a many-to-one relation between two entities first')
+  })
+
+  it('changes a page to another type, keeping what fits and saying what was dropped', () => {
+    render(<Harness initial={[
+      { id: 'open', type: 'entity-list', entity: 'Order', title: 'Open orders', group: 'Sales', presetFilter: { status: 'OPEN' }, columns: ['status', 'total'], pageSize: 50 },
+    ]} />)
+    openRow('open')
+    fireEvent.change(screen.getByLabelText('Page type'), { target: { value: 'report' } })
+    expect(latest[0]).toEqual({ id: 'open', type: 'report', entity: 'Order', title: 'Open orders', group: 'Sales', presetFilter: { status: 'OPEN' }, chart: {} })
+    expect(pushUndo).toHaveBeenCalledWith('Changed “Open orders” to a report page')
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the columns, page size settings')
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    // A record page is never in the nav, so the group goes; the entity stays.
+    fireEvent.change(screen.getByLabelText('Page type'), { target: { value: 'record' } })
+    expect(latest[0]).toEqual({ id: 'open', type: 'record', entity: 'Order', title: 'Open orders', hidden: true })
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the filter, charts, nav place settings')
   })
 
   it('derives the id from the title until the id is edited by hand', () => {
@@ -323,10 +346,28 @@ describe('PagesEditor', () => {
     ]} />)
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
     fireEvent.click(screen.getByRole('button', { name: /^Tabs/ }))
-    expect(latest[2]).toMatchObject({ type: 'tabs', tabs: [{ page: 'orders' }, { page: 'customers' }] })
+    // The picker starts from the two lists, ticked, and hides them from the nav once added.
+    const form = document.querySelector('[data-tabs-form]') as HTMLElement
+    expect(form).toBeTruthy()
+    expect((within(form).getByLabelText('Tab: Order') as HTMLInputElement).checked).toBe(true)
+    expect((within(form).getByLabelText('Tab: Customer') as HTMLInputElement).checked).toBe(true)
+    expect(latest).toHaveLength(2)
+
+    fireEvent.change(within(form).getByLabelText('Tabs page title'), { target: { value: 'Work' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Add tabs page' }))
+    expect(latest[2]).toMatchObject({ id: 'work', type: 'tabs', title: 'Work', tabs: [{ page: 'orders' }, { page: 'customers' }] })
+    expect(latest.slice(0, 2).map(p => p.hidden)).toEqual([true, true])
+    expect(pushUndo).toHaveBeenCalledWith('Added a tabs page over 2 pages')
     expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+    expect(document.querySelector('[data-page-layout-warnings]')).toBeNull()
     // Every candidate is already a tab.
     expect((screen.getByRole('button', { name: /Add tab/ }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('needs two pages that can be tabs before offering a tabs page, and can leave them in the nav', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    expect((screen.getByRole('button', { name: /^Tabs/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('offers pages the model is shaped for', () => {

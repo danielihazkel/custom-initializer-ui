@@ -37,6 +37,7 @@ import {
   NAV_ICONS,
   PAGE_ROLES,
   MAX_TABS,
+  MIN_TABS,
   MAX_TEXT,
   MAX_WIDGETS,
   PAGE_TYPE_META,
@@ -52,6 +53,10 @@ import {
   describePage,
   dropTabsTo,
   askableFields,
+  blankPage,
+  masterDetailPairs,
+  retargetPage,
+  tabCandidates,
   chartControl,
   childTab,
   childTabEntity,
@@ -189,6 +194,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const keys = useStableKeys(pages, p => p.id)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  // The "Tabs" gallery card asks which pages to embed before adding anything.
+  const [tabsForm, setTabsForm] = useState<{ picked: string[]; title: string; hide: boolean } | null>(null)
   const [confirmRemove, setConfirmRemove] = useState<number | null>(null)
   const [confirmClassic, setConfirmClassic] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(readPreviewOpen)
@@ -300,6 +307,40 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
 
   function addPage(type: FullstackPageType) {
     add(blankPage(type, named, pages))
+  }
+  const hasMdPair = masterDetailPairs(named).length > 0
+  const tabsEligible = tabCandidates(pages)
+
+  function openTabsForm() {
+    setTabsForm({ picked: tabsEligible.slice(0, 2).map(p => p.id), title: 'Tabs', hide: true })
+  }
+  function addTabsPage() {
+    if (!tabsForm) return
+    const { picked, title, hide } = tabsForm
+    const tabsPage: FullstackPageDef = {
+      id: uniquePageId(slugify(title) || 'tabs', pages.map(p => p.id)),
+      type: 'tabs',
+      title: title.trim() || 'Tabs',
+      tabs: picked.map(page => ({ page })),
+    }
+    pushUndo(`Added a tabs page over ${picked.length} pages`)
+    setTabsForm(null)
+    setAddOpen(false)
+    onChange([
+      ...(hide ? pages.map(p => (picked.includes(p.id) && !p.hidden ? { ...p, hidden: true, group: undefined, icon: undefined } : p)) : pages),
+      tabsPage,
+    ])
+    pendingOpen.current = pages.length
+  }
+
+  // A page moved to another type: what the new type cannot use is dropped, and said so.
+  function changeType(index: number, type: FullstackPageType) {
+    const page = pages[index]
+    const { page: next, dropped } = retargetPage(page, type, named, pages)
+    const label = `Changed “${pageLabel(page)}” to a ${PAGE_TYPE_META[type].label.toLowerCase()} page`
+    if (dropped.length) lossy(label, dropped)
+    else pushUndo(label)
+    onChange(pages.map((p, i) => (i === index ? next : p)))
   }
 
   function removePage(index: number, dropTabs = false) {
@@ -618,23 +659,91 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {(Object.keys(PAGE_TYPE_META) as FullstackPageType[]).map(type => {
               const meta = PAGE_TYPE_META[type]
+              const reason = type === 'master-detail' && !hasMdPair
+                ? 'Add a many-to-one relation between two entities first (the child’s Relations table)'
+                : type === 'tabs' && tabsEligible.length < MIN_TABS
+                  ? 'Add two pages that can be tabs first — a list, dashboard, report or master–detail'
+                  : undefined
               return (
                 <li key={type}>
                   <button
                     type="button"
-                    onClick={() => addPage(type)}
-                    className="w-full h-full text-start rounded-lg border border-outline-variant px-3 py-2 hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                    onClick={() => (type === 'tabs' ? openTabsForm() : addPage(type))}
+                    disabled={Boolean(reason)}
+                    title={reason}
+                    aria-pressed={type === 'tabs' ? tabsForm != null : undefined}
+                    className="w-full h-full text-start rounded-lg border border-outline-variant px-3 py-2 hover:border-primary/50 hover:bg-primary/5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-outline-variant disabled:hover:bg-transparent"
                   >
                     <span className="flex items-center gap-1.5 text-xs font-semibold text-on-surface">
                       <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{meta.icon}</span>
                       {meta.label}
                     </span>
-                    <span className="block mt-0.5 text-[11px] text-secondary">{meta.blurb}</span>
+                    <span className="block mt-0.5 text-[11px] text-secondary">{reason ?? meta.blurb}</span>
                   </button>
                 </li>
               )
             })}
           </ul>
+          {tabsForm && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2" data-tabs-form>
+              <p className="text-xs font-semibold text-on-surface">New tabs page</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-secondary" htmlFor="new-tabs-title">Title</label>
+                <input
+                  id="new-tabs-title"
+                  type="text"
+                  aria-label="Tabs page title"
+                  value={tabsForm.title}
+                  onChange={e => setTabsForm({ ...tabsForm, title: e.target.value })}
+                  className={`${inputClass()} max-w-[14rem] py-1 text-xs`}
+                />
+              </div>
+              <p className="text-[11px] text-secondary">Pages to show as tabs, {MIN_TABS} to {MAX_TABS}, in this order:</p>
+              <ul className="flex flex-wrap gap-2">
+                {tabsEligible.map(p => {
+                  const on = tabsForm.picked.includes(p.id)
+                  return (
+                    <li key={p.id}>
+                      <label className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] ${on ? 'border-primary/50 bg-primary/10 text-primary' : 'border-outline-variant text-on-surface'}`}>
+                        <input
+                          type="checkbox"
+                          className="accent-primary"
+                          checked={on}
+                          aria-label={`Tab: ${pageLabel(p)}`}
+                          onChange={() => setTabsForm({ ...tabsForm, picked: on ? tabsForm.picked.filter(id => id !== p.id) : [...tabsForm.picked, p.id] })}
+                        />
+                        {pageLabel(p)}
+                        <span className="text-[10px] text-secondary">{PAGE_TYPE_META[p.type]?.label ?? p.type}</span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+              <label className="inline-flex items-center gap-1.5 text-xs text-on-surface">
+                <input
+                  type="checkbox"
+                  className="accent-primary"
+                  checked={tabsForm.hide}
+                  aria-label="Hide these pages from the navigation"
+                  onChange={e => setTabsForm({ ...tabsForm, hide: e.target.checked })}
+                />
+                Hide these pages from the navigation — they open only as tabs
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={addTabsPage}
+                  disabled={tabsForm.picked.length < MIN_TABS || tabsForm.picked.length > MAX_TABS}
+                  className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-on-primary disabled:opacity-50"
+                  title={tabsForm.picked.length < MIN_TABS ? `Pick at least ${MIN_TABS} pages` : tabsForm.picked.length > MAX_TABS ? `At most ${MAX_TABS} tabs` : undefined}
+                >
+                  Add tabs page
+                </button>
+                <button type="button" onClick={() => setTabsForm(null)} className={SMALL_BUTTON}>Cancel</button>
+                <span className="text-[10px] text-secondary">{tabsForm.picked.length} of {MAX_TABS} picked</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -874,6 +983,23 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
 
                   {open && (
                     <div className="mt-2 space-y-3 border-t border-outline-variant pt-2">
+                      <div className="flex flex-wrap items-center gap-2" data-control="type">
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-secondary" htmlFor={`page-type-${key}`}>Page type</label>
+                        <select
+                          id={`page-type-${key}`}
+                          aria-label="Page type"
+                          value={page.type}
+                          onChange={e => changeType(index, e.target.value as FullstackPageType)}
+                          className={`${inputClass()} max-w-[12rem] py-1 text-xs`}
+                          data-page-type
+                        >
+                          {(Object.keys(PAGE_TYPE_META) as FullstackPageType[]).map(t => {
+                            const blocked = t === 'master-detail' && !hasMdPair
+                            return <option key={t} value={t} disabled={blocked}>{PAGE_TYPE_META[t].label}{blocked ? ' — needs a many-to-one relation' : ''}</option>
+                          })}
+                        </select>
+                        <span className="text-[10px] text-secondary">Changing the type keeps the title, place and entity; settings the new type cannot use are dropped (undoable)</span>
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <Field label="Title" error={errors.title} control="title" hint={isStart ? 'The start page — the app opens here, for everyone' : undefined}>
                           <input
@@ -2877,41 +3003,3 @@ function EntitySelect({ label, value, options, error, empty, className, onChange
   )
 }
 
-/** A new page of `type`, filled in with the first entities (and pages) that fit so it is valid on sight. */
-function blankPage(type: FullstackPageType, entities: FullstackEntityDef[], pages: FullstackPageDef[]): FullstackPageDef {
-  const taken = pages.map(p => p.id)
-  const first = entities[0]?.name ?? ''
-  const id = (base: string) => uniquePageId(slugify(base) || 'page', taken)
-  switch (type) {
-    case 'dashboard':
-      return { id: id('dashboard'), type, widgets: entities.slice(0, 4).map(e => ({ kind: 'kpi', entity: e.name })) }
-    case 'entity-list':
-      return { id: id(first), type, entity: first }
-    case 'tabs': {
-      // Start from two pages that can be tabs — lists first — so the page is valid straight away.
-      const candidates = pages.filter(p => p.type !== 'tabs' && p.type !== 'record')
-      const picked = [...candidates.filter(p => p.type === 'entity-list'), ...candidates.filter(p => p.type !== 'entity-list')].slice(0, 2)
-      return { id: id('tabs'), type, title: 'Tabs', tabs: picked.map(p => ({ page: p.id })) }
-    }
-    case 'master-detail': {
-      const pair = entities
-        .flatMap(child => (child.relations ?? [])
-          .filter(r => r.type === 'MANY_TO_ONE')
-          .map(r => ({ parent: r.targetEntity, child: child.name })))
-        .find(p => entities.some(e => e.name === p.parent))
-      return { id: id(pair?.parent ?? first), type, parent: pair?.parent ?? first, child: pair?.child }
-    }
-    case 'record':
-      return { id: id(first), type, entity: first, hidden: true }
-    case 'report': {
-      // Prefer an entity that actually has something to chart, so the page is valid on sight.
-      const e = entities.find(x => chartableFields(x).length > 0) ?? entities[0]
-      return { id: id(`${e?.name ?? 'report'}-report`), type, entity: e?.name ?? first, chart: {} }
-    }
-    case 'wizard': {
-      // A writable entity, with its default steps spelled out so they can be edited.
-      const e = entities.find(x => !x.readOnly && askableFields(x).length > 0) ?? entities[0]
-      return { id: id(`new-${e?.name ?? 'record'}`), type, entity: e?.name ?? first, title: `New ${e?.name ?? 'record'}`, steps: defaultWizardSteps(e) }
-    }
-  }
-}
