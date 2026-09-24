@@ -20,6 +20,10 @@ interface Props {
   onReorderWidget?: (page: number, from: number, to: number) => void
   /** A dashboard widget given another width (1–4 columns). Absent: no handles. */
   onResizeWidget?: (page: number, index: number, span: number) => void
+  /** The tailwind shell's navigation: the default sidebar, or a top bar. */
+  navStyle?: 'sidebar' | 'topbar'
+  /** Sidebar sections with a group name fold. */
+  collapsibleGroups?: boolean
 }
 
 const MENORA = { purple: '#684eed', yellow: '#ffc700', ink: '#37374e' }
@@ -30,10 +34,13 @@ const WIDGET_LIST = 'preview-widgets:'
  * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
-export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget }: Props) {
+export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups }: Props) {
   const screen = preview.screens[selected]
   const menora = skin === 'menora'
   const accent = menora ? MENORA.purple : 'var(--color-primary)'
+  // The tailwind shell's top bar lays the nav out like the Menora one, on the dark shell colour.
+  const topbar = !menora && navStyle === 'topbar'
+  const horizontal = menora || topbar
   // One drag context for every dashboard drawn (a tab may embed another): the list key names the page.
   const dnd = useDragReorder((list, from, to) => onReorderWidget?.(Number(list.slice(WIDGET_LIST.length)), from, to))
 
@@ -52,7 +59,9 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         title={item.start ? `${item.label} — ${preview.strings.startPage}` : item.label}
         className={`${menora
           ? `shrink-0 whitespace-nowrap border-b-2 px-1.5 py-1 text-[10px] font-semibold ${active ? 'border-[#684eed] text-[#684eed]' : 'border-transparent text-[#37374e]/70'}`
-          : `flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-start text-[10px] ${active ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/5'}`
+          : topbar
+            ? `flex shrink-0 items-center gap-1 whitespace-nowrap border-b-2 px-1.5 py-1 text-[10px] ${active ? 'border-amber-300 text-white' : 'border-transparent text-slate-300 hover:text-white'}`
+            : `flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-start text-[10px] ${active ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/5'}`
         } ${lit ? 'ring-2 ring-inset ring-primary' : ''}`}
       >
         {!menora && <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>{item.icon}</span>}
@@ -69,14 +78,18 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
   // Grouped like the generated nav: a labelled section in the sidebar, a caret item in the Menora
   // top bar (its menu is not drawn — the pages are listed after it, dimmed, instead).
   const navItems = preview.sections.map((section, i) => (
-    <div key={i} className={menora ? 'flex shrink-0 items-center gap-1' : 'space-y-0.5'} data-preview-nav-group={section.group ?? ''}>
+    <div key={i} className={horizontal ? 'flex shrink-0 items-center gap-1' : 'space-y-0.5'} data-preview-nav-group={section.group ?? ''}>
       {section.group && (
         menora ? (
           <span className="shrink-0 whitespace-nowrap px-1 text-[10px] font-semibold text-[#37374e]">
             {section.group}<span aria-hidden="true"> ▾</span>
           </span>
+        ) : topbar ? (
+          <span className="shrink-0 whitespace-nowrap px-1 text-[8px] font-semibold uppercase tracking-wider text-slate-500">{section.group}</span>
         ) : (
-          <div className="px-1.5 pt-1 text-[8px] font-semibold uppercase tracking-wider text-slate-500">{section.group}</div>
+          <div className="px-1.5 pt-1 text-[8px] font-semibold uppercase tracking-wider text-slate-500">
+            {collapsibleGroups && <span aria-hidden="true" data-preview-fold>▾ </span>}{section.group}
+          </div>
         )
       )}
       {section.items.map(navButton)}
@@ -117,6 +130,14 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
           </div>
           {body}
           <div className="h-3" style={{ background: MENORA.ink }} />
+        </div>
+      ) : topbar ? (
+        <div className="flex min-h-[18rem] flex-col">
+          <div className="flex items-center gap-2 px-2.5 py-1.5" style={{ background: '#2B2F4C' }}>
+            <span className="h-1 w-6 shrink-0 rounded-full" style={{ background: 'linear-gradient(90deg,#9A83F7,#FEDB41)' }} />
+            <nav className="flex min-w-0 gap-1 overflow-x-auto" aria-label="Preview navigation" data-preview-topbar>{navItems}</nav>
+          </div>
+          {body}
         </div>
       ) : (
         <div className="flex min-h-[18rem]">

@@ -104,6 +104,36 @@ describe('PagesEditor', () => {
     expect(screen.queryByRole('button', { name: 'Open the guide on frontend pages' })).toBeNull()
   })
 
+  it('offers the tailwind shell’s navigation variants and previews them', () => {
+    const onNavChange = vi.fn()
+    const pages: FullstackPageDef[] = [
+      { id: 'orders', type: 'entity-list', entity: 'Order', group: 'Sales' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', group: 'People' },
+    ]
+    const { rerender } = render(
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} />,
+    )
+    expect(document.querySelector('[data-preview-topbar]')).toBeNull()
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Navigation style' })).getByRole('radio', { name: 'Top bar' }))
+    expect(onNavChange).toHaveBeenCalledWith({ style: 'topbar' })
+    fireEvent.click(screen.getByLabelText('Collapsible groups'))
+    expect(onNavChange).toHaveBeenCalledWith({ collapsibleGroups: true })
+
+    rerender(
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} nav={{ style: 'topbar' }} />,
+    )
+    expect(document.querySelector('[data-preview-topbar]')).toBeTruthy()
+    rerender(
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} nav={{ collapsibleGroups: true }} />,
+    )
+    expect(document.querySelectorAll('[data-preview-fold]')).toHaveLength(2)
+    // The Menora shell is a top bar already: no row.
+    rerender(
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} previewSettings={{ locale: 'en', projectOpts: [], skin: 'menora' }} />,
+    )
+    expect(document.querySelector('[data-nav-options]')).toBeNull()
+  })
+
   it('reorders and resizes widgets from the preview', () => {
     render(<Harness initial={[
       { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'kpi', entity: 'Order', title: 'A' }, { kind: 'kpi', entity: 'Customer', title: 'B' }] },

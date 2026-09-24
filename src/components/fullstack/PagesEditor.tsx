@@ -7,6 +7,7 @@ import type {
   FullstackEntityDef,
   FullstackFieldDef,
   FullstackListDetail,
+  FullstackNav,
   FullstackNavIcon,
   FullstackPageDef,
   FullstackPageRole,
@@ -127,6 +128,10 @@ interface Props {
   entities: FullstackEntityDef[]
   /** Opens the guide on a topic — the header's help button. Absent (the admin form): no button. */
   onOpenGuide?: (topicId: string) => void
+  /** The generated shell's navigation for the layout; the preview follows it. */
+  nav?: FullstackNav
+  /** Present, a "Navigation" row above the pages offers the tailwind shell's variants. */
+  onNavChange?: (nav: FullstackNav | undefined) => void
   /** From validatePages — inline messages per control plus the problem list. */
   validation: PageLayoutValidation
   onChange: (next: FullstackPageDef[]) => void
@@ -210,7 +215,7 @@ function summarizeLayout(pages: FullstackPageDef[]): string {
  * dashboard plus one list page per entity), which "Start from my entities" materializes as an
  * editable starting point.
  */
-export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide }: Props) {
+export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange }: Props) {
   const keys = useStableKeys(pages, p => p.id)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -907,6 +912,39 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         </div>
       ) : (
         <div className={!showPreview ? '' : layout === 'stacked' ? 'space-y-3' : 'grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]'}>
+          {onNavChange && settings.skin === 'tailwind' && (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-outline-variant px-2.5 py-1.5" data-nav-options>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary" title="How the generated app lays out its navigation">Navigation</span>
+              <span role="radiogroup" aria-label="Navigation style" className="inline-flex overflow-hidden rounded border border-outline-variant">
+                {([['sidebar', 'Sidebar'], ['topbar', 'Top bar']] as const).map(([value, label]) => {
+                  const on = (nav?.style ?? 'sidebar') === value
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      aria-label={label}
+                      onClick={() => onNavChange(value === 'sidebar' ? (nav?.collapsibleGroups ? { collapsibleGroups: true } : undefined) : { ...nav, style: value })}
+                      className={`px-2 py-0.5 text-[11px] ${on ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5'}`}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </span>
+              <label className="inline-flex items-center gap-1.5 text-[11px] text-on-surface" title="Nav sections with a group name fold">
+                <input
+                  type="checkbox"
+                  className="accent-primary"
+                  checked={Boolean(nav?.collapsibleGroups)}
+                  aria-label="Collapsible groups"
+                  onChange={e => onNavChange(e.target.checked ? { ...nav, collapsibleGroups: true } : (nav?.style && nav.style !== 'sidebar' ? { style: nav.style } : undefined))}
+                />
+                Collapsible groups
+              </label>
+            </div>
+          )}
           {navGroupSections.some(s => s.group) && (
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant px-2.5 py-1.5" data-nav-groups>
               <span
@@ -1194,6 +1232,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 offNavNote={offNavNote}
                 onReorderWidget={reorderWidget}
                 onResizeWidget={resizeWidget}
+                navStyle={nav?.style}
+                collapsibleGroups={nav?.collapsibleGroups}
               />
             </aside>
           )}
@@ -1214,6 +1254,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             offNavNote={offNavNote}
             onReorderWidget={reorderWidget}
             onResizeWidget={resizeWidget}
+            navStyle={nav?.style}
+            collapsibleGroups={nav?.collapsibleGroups}
           />
         </PreviewDrawer>
       )}

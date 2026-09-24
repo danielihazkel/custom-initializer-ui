@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import type { FullstackNav } from '../../../types'
 import type { FullstackEntityDef, FullstackPageDef, TeamModelSummary } from '../../../types'
 import { PagesEditor } from '../../fullstack/PagesEditor'
 import { requestPages, validatePages } from '../../fullstack/pageLayout'
@@ -130,6 +131,7 @@ export function FullstackExampleForm({ data, errors, onChange, teamModels, onImp
               pushUndo={() => {}}
               onClear={() => onChange({ pagesText: '' })}
               previewSettings={{ locale: visual.locale, projectOpts: visual.scaffold, skin: visual.menora ? 'menora' : 'tailwind' }}
+              nav={visual.nav}
               layout="stacked"
             />
           ) : (
@@ -179,7 +181,7 @@ export function FullstackExampleForm({ data, errors, onChange, teamModels, onImp
 /** What the visual page editor needs from the form's JSON fields — or why it cannot be shown
  *  (it edits a parsed layout, so broken JSON has to be fixed in the text first). */
 function parseForVisualEditor(entitiesText: string, pagesText: string | undefined, settingsText: string | undefined):
-  { entities: FullstackEntityDef[]; pages: FullstackPageDef[]; locale: 'en' | 'he'; scaffold: string[]; menora: boolean } | { error: string } {
+  { entities: FullstackEntityDef[]; pages: FullstackPageDef[]; locale: 'en' | 'he'; scaffold: string[]; menora: boolean; nav?: FullstackNav } | { error: string } {
   let entities: unknown
   try { entities = JSON.parse(entitiesText || '[]') } catch { return { error: 'The entities are not valid JSON' } }
   if (!Array.isArray(entities)) return { error: 'The entities are not a JSON array' }
@@ -199,5 +201,6 @@ function parseForVisualEditor(entitiesText: string, pagesText: string | undefine
     locale: settings.locale === 'he' ? 'he' : 'en',
     scaffold: Array.isArray(settings.scaffold) ? (settings.scaffold as unknown[]).filter((x): x is string => typeof x === 'string') : [],
     menora: typeof settings.frontendTemplateSet === 'string' && settings.frontendTemplateSet.includes('menora'),
+    nav: settings.nav && typeof settings.nav === 'object' ? settings.nav as FullstackNav : undefined,
   }
 }

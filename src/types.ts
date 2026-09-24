@@ -456,6 +456,8 @@ export interface FullstackStarterRequest {
   dashboardOverview?: string
   /** Language of the generated frontend's own chrome strings; omitted = English. */
   locale?: 'en' | 'he'
+  /** The shell's navigation for a page layout (needs `pages`). */
+  nav?: FullstackNav
   /** Department id exposed to both halves' templates as {{department}}; omitted = the default. */
   department?: string
   /** Opt-in scaffolding extras, e.g. { scaffold: ["audit","softDelete","inverseCollections","tests"] }. */
@@ -668,6 +670,14 @@ export interface ExampleSettings {
   frontendTemplateSet?: string
   colorPalette?: string
   scaffold?: string[]
+  nav?: FullstackNav
+}
+
+/** The generated shell's navigation, for a page layout: a sidebar (default) or a top bar, and
+ *  whether nav sections fold. The Menora set is a top bar already and ignores it. */
+export interface FullstackNav {
+  style?: 'sidebar' | 'topbar'
+  collapsibleGroups?: boolean
 }
 
 export interface AdminColorPalette {

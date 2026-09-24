@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { FullstackNav } from '../../types'
 import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
@@ -72,6 +73,7 @@ const DEFAULT_ENTITIES: FullstackEntityDef[] = [
 // localStorage keys — namespaced so they don't collide with the Backend/Frontend tabs.
 const LS = {
   meta: 'fullstack:meta',
+  nav: 'fullstack:nav',
   entities: 'fullstack:entities',
   deps: 'fullstack:deps',
   backendSet: 'fullstack:backendSet',
@@ -128,6 +130,7 @@ function readStoredSnapshot(): FullstackSnapshot {
     frontendSet: item(LS.frontendSet) ?? 'react-tailwind-crud',
     colorPalette: item(LS.palette) ?? '',
     pages: loadJson<FullstackPageDef[]>(LS.pages, []),
+    nav: loadJson<FullstackNav | null>(LS.nav, null) ?? undefined,
   })
 }
 
@@ -166,6 +169,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const [colorPalette, setColorPalette] = useState<string>(() => shared ? (shared.colorPalette ?? '') : (localStorage.getItem(LS.palette) ?? ''))
   // The frontend page layout — empty = the classic shell. Arrives with an example / preset / link.
   const [pages, setPages] = useState<FullstackPageDef[]>(() => shared ? (shared.pages ?? []) : loadJson<FullstackPageDef[]>(LS.pages, []))
+  // The generated shell's navigation for the layout (sidebar/top bar, folding sections).
+  const [nav, setNav] = useState<FullstackNav | undefined>(() => shared ? shared.nav : (loadJson<FullstackNav | null>(LS.nav, null) ?? undefined))
   // A Generate 400 that names a page: shown on that page until the layout changes.
   const [pageServerIssue, setPageServerIssue] = useState<{ page: number; message: string } | null>(null)
   useEffect(() => { setPageServerIssue(null) }, [pages])
@@ -302,6 +307,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   useEffect(() => { persist(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
   useEffect(() => { persist(LS.palette, colorPalette) }, [colorPalette])
   useEffect(() => { persist(LS.pages, JSON.stringify(pages)) }, [pages])
+  useEffect(() => { persist(LS.nav, JSON.stringify(nav ?? null)) }, [nav])
   useEffect(() => { persist(LS.collapsed, JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { persist(LS.graph, JSON.stringify(showGraph)) }, [showGraph])
   useEffect(() => { persist(LS.setup, setupOpen ? 'open' : 'closed') }, [setupOpen])
@@ -309,7 +315,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
   const currentSnapshot = useMemo(
-    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages }),
+    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages, nav }),
     [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages],
   )
   const snapshotRef = useRef(currentSnapshot)
@@ -518,6 +524,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     setFrontendSet(s.frontendSet)
     setColorPalette(s.colorPalette ?? '')
     setPages(s.pages ? JSON.parse(JSON.stringify(s.pages)) as FullstackPageDef[] : [])
+    setNav(s.nav ? { ...s.nav } : undefined)
     if (keepView) {
       const alive = new Set(next.map(e => e.uid))
       setCollapsed(prev => new Set([...prev].filter(uid => alive.has(uid))))
@@ -573,6 +580,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   /** The editor settings an example carries. Only the keys present change; a template set or
    *  palette this installation doesn't have is skipped rather than selected blind. */
   function applyExampleSettings(settings: ExampleSettings | null | undefined) {
+    // An example replaces the navigation too: one without says the default sidebar.
+    setNav(settings?.nav ? { ...settings.nav } : undefined)
     if (!settings) return
     const metaPatch: Partial<ProjectMeta> = {}
     if (settings.locale) metaPatch.locale = settings.locale
@@ -798,6 +807,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       colorPalette: colorPalette || undefined,
       entities: stripUids(entities),
       pages: pages.length ? requestPages(pages) : undefined,
+      nav: pages.length && nav && (nav.style || nav.collapsibleGroups) ? nav : undefined,
     }
   }
 
@@ -1408,6 +1418,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         ldapAuth={ldapAuth}
         onAddDep={dep => setSelectedDeps(prev => (prev.includes(dep) ? prev : [...prev, dep]))}
         onOpenGuide={onOpenGuide}
+        nav={nav}
+        onNavChange={setNav}
         history={{
           undoLabel: lastUndo ? `Undo: ${lastUndo.label}` : null,
           redoLabel: nextRedo ? `Redo: ${nextRedo.label}` : null,
