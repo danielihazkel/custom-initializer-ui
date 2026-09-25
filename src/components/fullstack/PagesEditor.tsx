@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import type {
   FullstackAgg,
   FullstackBucket,
@@ -147,6 +147,8 @@ interface Props {
   addRequest?: number
   /** Bumped by the caller (the command palette) to show the layout preview. */
   previewRequest?: number
+  /** Bumped by the caller (the command palette's "Find page…") to focus the page search. */
+  findRequest?: number
   /** `stacked` puts the preview under the page list at every width — for narrow hosts (the
    *  admin drawer), where the viewport-wide split would squeeze both. */
   layout?: 'split' | 'stacked'
@@ -172,6 +174,8 @@ const ICON_BUTTON = 'shrink-0 rounded-lg p-1.5 text-secondary hover:text-primary
 const SMALL_BUTTON = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-colors disabled:opacity-40 disabled:hover:text-secondary disabled:hover:border-outline-variant disabled:hover:bg-transparent'
 const PREVIEW_KEY = 'fullstack:layoutPreview'
 const SECTION_KEY = 'fullstack:pagesSection'
+/** From this many pages on, the page list carries a search box (fewer: `/` or the palette shows it). */
+const PAGE_SEARCH_FROM = 6
 /** Nav page names the collapsed summary lists before it says "and N more". */
 const SUMMARY_NAMES = 5
 
@@ -216,7 +220,7 @@ function summarizeLayout(pages: FullstackPageDef[]): string {
  * dashboard plus one list page per entity), which "Start from my entities" materializes as an
  * editable starting point.
  */
-export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange }: Props) {
+export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange }: Props) {
   const keys = useStableKeys(pages, p => p.id)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -522,6 +526,51 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     if (serverIssue) reveal({ page: serverIssue.page })
   }, [serverIssue])
 
+  // Finding a page: the search box shows past a handful of pages, or when asked for.
+  const [pageQuery, setPageQuery] = useState('')
+  const [searchWanted, setSearchWanted] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const showSearch = pages.length >= PAGE_SEARCH_FROM || searchWanted || pageQuery !== ''
+  const matchesQuery = (page: FullstackPageDef) => {
+    const q = pageQuery.trim().toLowerCase()
+    if (!q) return true
+    return [pageLabel(page), page.id, page.title, page.entity, page.parent, page.child, page.group, PAGE_TYPE_META[page.type]?.label]
+      .some(v => v?.toLowerCase().includes(q))
+  }
+  const matchCount = pages.filter(matchesQuery).length
+  function focusSearch() {
+    setSectionOpen(true)
+    setSearchWanted(true)
+    requestAnimationFrame(() => {
+      searchRef.current?.focus()
+      searchRef.current?.select()
+    })
+  }
+  useEffect(() => {
+    if (!findRequest) return
+    focusSearch()
+    requestAnimationFrame(() => scrollToElement(sectionRef.current, 'start'))
+  }, [findRequest])
+  /** `/` finds a page; ↑/↓ on a page title moves to the next visible one. */
+  function onSectionKey(e: ReactKeyboardEvent) {
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
+    const target = e.target as HTMLElement
+    const typing = target.closest('input, textarea, select, [contenteditable="true"]') !== null
+    if (e.key === '/' && !typing && pages.length > 0) {
+      e.preventDefault()
+      focusSearch()
+      return
+    }
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && target.hasAttribute('data-page-toggle')) {
+      const toggles = [...(sectionRef.current?.querySelectorAll<HTMLElement>('[data-page-toggle]') ?? [])]
+      const next = toggles[toggles.indexOf(target) + (e.key === 'ArrowDown' ? 1 : -1)]
+      if (next) {
+        e.preventDefault()
+        next.focus()
+      }
+    }
+  }
+
   // The command palette's "Add page": the section and its gallery open, in view.
   useEffect(() => {
     if (!addRequest) return
@@ -570,6 +619,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 space-y-3"
       aria-label="Frontend page layout"
       data-page-layout
+      onKeyDown={onSectionKey}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-2.5">
@@ -1061,6 +1111,40 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               )))}
             </div>
           )}
+          {showSearch && (
+            <div className="flex items-center gap-2" data-page-search>
+              <label className="relative min-w-0 flex-1">
+                <span className="material-symbols-outlined pointer-events-none absolute start-2 top-1/2 -translate-y-1/2 text-secondary" style={{ fontSize: '16px' }} aria-hidden="true">search</span>
+                <input
+                  ref={searchRef}
+                  type="search"
+                  aria-label="Find a page"
+                  placeholder="Find a page — title, route, entity, type or group"
+                  value={pageQuery}
+                  onChange={e => setPageQuery(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      setPageQuery('')
+                      setSearchWanted(false)
+                      e.currentTarget.blur()
+                    } else if (e.key === 'Enter') {
+                      // Enter opens the first match.
+                      const first = pages.findIndex(matchesQuery)
+                      if (first >= 0) { e.preventDefault(); openPage(first) }
+                    }
+                  }}
+                  className={`${inputClass()} py-1 ps-7 text-xs`}
+                />
+              </label>
+              {pageQuery.trim() && (
+                <span className="shrink-0 text-[11px] text-secondary" data-page-search-count>{matchCount} of {pages.length}</span>
+              )}
+            </div>
+          )}
+          {pageQuery.trim() && matchCount === 0 && (
+            <p className="text-[11px] text-secondary" data-page-search-empty>No page matches “{pageQuery.trim()}”.</p>
+          )}
           <ol
             className="min-w-0 space-y-2"
             onMouseOver={e => setHoverTo(targetOf(e.target))}
@@ -1077,6 +1161,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               const open = openKey === key
               const indicator = dnd.indicatorFor('pages', index)
               const isStart = preview.nav[0]?.index === index
+              if (!matchesQuery(page)) return null
               return (
                 <li
                   key={key}
@@ -1107,6 +1192,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                       type="button"
                       onClick={() => openPage(open ? null : index)}
                       aria-expanded={open}
+                      data-page-toggle
                       className="flex min-w-0 flex-1 items-center gap-1.5 text-start"
                     >
                       <span className="truncate text-xs font-semibold text-on-surface">{pageLabel(page)}</span>

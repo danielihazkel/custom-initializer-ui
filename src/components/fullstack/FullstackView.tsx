@@ -178,6 +178,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const [pagesReveal, setPagesReveal] = useState(0)
   // Bumped by the command palette: open the "Add page" gallery / the layout preview.
   const [pagesAdd, setPagesAdd] = useState(0)
+  const [pagesFind, setPagesFind] = useState(0)
   const [pagesPreview, setPagesPreview] = useState(0)
   // Collapsed cards survive a refresh: entities persist with their uids, so the uid set stays valid.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(shared ? [] : loadJson<string[]>(LS.collapsed, [])))
@@ -1164,6 +1165,13 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     savePreset: (target: SaveTarget = 'browser') => requestSave(target),
     toggleShortcuts: () => setShortcutsOpen(v => !v),
     // The page layout — the same actions as the section's own buttons, reachable from ⌘K.
+    findPage: () => {
+      if (pages.length === 0) {
+        setToast({ message: 'No pages yet — the layout is the classic one', type: 'error' })
+        return
+      }
+      setPagesFind(n => n + 1)
+    },
     addPage: () => {
       if (!entities.some(e => e.name.trim())) {
         setToast({ message: 'Name an entity first — pages are built from your entities', type: 'error' })
@@ -1239,6 +1247,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     { id: 'fs-redo', title: 'Redo', icon: 'redo', group: 'Fullstack', shortcut: 'Ctrl+Shift+Z', run: () => commandRef.current.redo() },
     { id: 'fs-collapse', title: 'Collapse / expand all entities', icon: 'unfold_less', group: 'Fullstack', run: () => commandRef.current.toggleCollapse() },
     { id: 'fs-find', title: 'Find entity…', description: 'Filter the entity list by name, label, table or field', icon: 'search', group: 'Fullstack', run: () => commandRef.current.findEntity() },
+    { id: 'fs-find-page', title: 'Find page…', description: 'Filter the frontend pages by title, route, entity or type', icon: 'find_in_page', group: 'Fullstack', shortcut: '/', run: () => commandRef.current.findPage() },
     { id: 'fs-add-page', title: 'Add a page to the layout', description: 'Opens the page gallery of the frontend page layout', icon: 'web', group: 'Fullstack', run: () => commandRef.current.addPage() },
     { id: 'fs-seed-pages', title: 'Start a page layout from my entities', description: 'A dashboard plus one list page per entity, ready to edit', icon: 'auto_awesome', group: 'Fullstack', run: () => commandRef.current.seedPages() },
     { id: 'fs-classic-layout', title: 'Use the classic page layout', description: 'Drops the page layout (undoable)', icon: 'restart_alt', group: 'Fullstack', run: () => commandRef.current.classicLayout() },
@@ -1452,6 +1461,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         previewSettings={pagesPreviewSettings}
         revealRequest={pagesReveal}
         addRequest={pagesAdd}
+        findRequest={pagesFind}
         previewRequest={pagesPreview}
         serverIssue={pageServerIssue}
         ldapAuth={ldapAuth}

@@ -185,6 +185,36 @@ describe('PagesEditor', () => {
     expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('Removed widget 2 (Number tile) from “Home”')
   })
 
+  it('finds a page by title, entity or type, and moves between page rows with the arrow keys', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer' },
+    ]} />)
+    // Three pages: no search box until asked for with `/`.
+    expect(document.querySelector('[data-page-search]')).toBeNull()
+    const section = screen.getByRole('region', { name: 'Frontend page layout' })
+    fireEvent.keyDown(section, { key: '/' })
+    const search = screen.getByLabelText('Find a page')
+    fireEvent.change(search, { target: { value: 'customer' } })
+    const visible = () => [...document.querySelectorAll('[data-page-id]')].map(el => el.getAttribute('data-page-id'))
+    expect(visible()).toEqual(['customers'])
+    expect(document.querySelector('[data-page-search-count]')?.textContent).toBe('1 of 3')
+    fireEvent.change(search, { target: { value: 'dashboard' } })
+    expect(visible()).toEqual(['home'])
+    fireEvent.change(search, { target: { value: 'nothing' } })
+    expect(document.querySelector('[data-page-search-empty]')).toBeTruthy()
+    fireEvent.keyDown(search, { key: 'Escape' })
+    expect(visible()).toEqual(['home', 'orders', 'customers'])
+
+    const toggles = [...document.querySelectorAll<HTMLElement>('[data-page-toggle]')]
+    toggles[0].focus()
+    fireEvent.keyDown(toggles[0], { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(toggles[1])
+    fireEvent.keyDown(toggles[1], { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(toggles[0])
+  })
+
   it('picks where a list opens its rows, offering the record page only when the layout has one', () => {
     render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
     openRow('orders')
