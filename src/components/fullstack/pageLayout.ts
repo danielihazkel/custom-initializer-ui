@@ -13,7 +13,7 @@ import type {
   FullstackWidgetDef,
 } from '../../types'
 import { humanize, pluralize } from './naming'
-import { enumLabel } from './enumLabels'
+import { enumLabel, humanizeConstant } from './enumLabels'
 import { summarizeEntity } from './summary'
 
 /**
@@ -451,7 +451,7 @@ export interface PageLayoutValidation {
   problems: string[]
   /** The same problems with where they live, so the list can jump to the offending control, and
    *  a fix when the problem has one obvious repair. */
-  issues: { page?: number; field?: string; summary: string; fix?: PageFix }[]
+  issues: { page?: number; field?: string; summary: string; fix?: PageFix; alsoFix?: PageFix }[]
   count: number
   /** Advice, not errors: the layout generates, but with a dead end the user probably did not mean
    *  (a hidden page nothing opens, a chart nothing drills from, a default that was capped). Never
@@ -469,6 +469,8 @@ interface Issue {
   /** Shown in the problem list, naming the page. */
   summary: string
   fix?: PageFix
+  /** A second repair, offered beside `fix` (a stale entity: switch to the likely replacement, or remove). */
+  alsoFix?: PageFix
 }
 
 const singlePk = (e: FullstackEntityDef) => e.fields.filter(f => f.primaryKey).length === 1
@@ -504,7 +506,7 @@ export function validatePages(pages: FullstackPageDef[], entities: FullstackEnti
     byPage,
     general,
     problems: issues.map(i => i.summary),
-    issues: issues.map(({ page, field, summary, fix }) => ({ page, field, summary, ...(fix ? { fix } : {}) })),
+    issues: issues.map(({ page, field, summary, fix, alsoFix }) => ({ page, field, summary, ...(fix ? { fix } : {}), ...(alsoFix ? { alsoFix } : {}) })),
     count: issues.length,
     warnings: warnings.map(({ page, field, summary, fix }) => ({ page, field, summary, ...(fix ? { fix } : {}) })),
     warningsByPage,
@@ -733,11 +735,45 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
     label,
     apply: all => all.map((p, i) => (i === index ? patch(p) : p)),
   })
+  // A page (or widget) naming an entity that is gone can switch to the likely replacement: the
+  // one entity the layout does not mention yet — the usual shape of a rename by delete-and-add or
+  // a re-import under a new name.
+  const mentioned = new Set<string>()
+  const mention = (name: string | undefined) => { if (name?.trim()) mentioned.add(name.trim().toLowerCase()) }
+  for (const p of pages) {
+    mention(p.entity); mention(p.parent); mention(p.child)
+    p.widgets?.forEach(w => mention(w.entity))
+    p.childTabs?.forEach(t => mention(childTabEntity(t)))
+    p.headerStats?.forEach(st => mention(st.child))
+  }
+  const unmentioned = entities.filter(e => e.name.trim() && !mentioned.has(e.name.trim().toLowerCase()))
+  const replacement = unmentioned.length === 1 ? unmentioned[0] : undefined
+  const switchPage = (index: number): PageFix | undefined => {
+    const page = pages[index]
+    const r = replacement
+    if (!r) return undefined
+    const label = `Switch to ${r.name}`
+    switch (page.type) {
+      case 'entity-list':
+        return patchPage(index, label, p => ({ ...p, ...retargetEntityList(p, r, scaffoldOpts).patch }))
+      case 'report':
+        return reportGroupKeys(r).length ? patchPage(index, label, p => ({ ...p, ...retargetReport(p, r).patch })) : undefined
+      case 'record':
+        return singlePk(r) ? patchPage(index, label, p => ({ ...p, ...retargetRecord(p, r.name).patch })) : undefined
+      case 'wizard':
+        return !r.readOnly && askableFields(r).length ? patchPage(index, label, p => ({ ...p, entity: r.name, steps: retargetWizardSteps(p.steps, r).steps })) : undefined
+      default:
+        return undefined
+    }
+  }
+  const switchWidget = (index: number, wi: number): PageFix | undefined => (replacement ? patchPage(index, `Switch widget ${wi + 1} to ${replacement.name}`,
+    p => ({ ...p, widgets: (p.widgets ?? []).map((w, j) => (j === wi ? retargetWidget(w, { entity: replacement.name }, replacement, scaffoldOpts).widget : w)) }))
+    : undefined)
 
   pages.forEach((page, index) => {
     const where = `Page “${page.title || page.id || index + 1}”`
-    const add = (field: string, message: string, summary = `${where} ${message}`, fix?: PageFix) =>
-      issues.push({ page: index, field, message, summary, ...(fix ? { fix } : {}) })
+    const add = (field: string, message: string, summary = `${where} ${message}`, fix?: PageFix, alsoFix?: PageFix) =>
+      issues.push({ page: index, field, message, summary, ...(fix ? { fix } : {}), ...(alsoFix ? { alsoFix } : {}) })
 
     if (!page.id.trim()) add('id', 'needs an id')
     else if (!PAGE_ID.test(page.id) || page.id.length > 40) {
@@ -761,7 +797,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         if (!e) {
           add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
             page.entity ? `${where} lists “${page.entity}”, which is no longer an entity` : `${where} lists no entity`,
-            page.entity ? removePage(index) : undefined)
+            page.entity ? switchPage(index) ?? removePage(index) : undefined,
+            page.entity && switchPage(index) ? removePage(index) : undefined)
           break
         }
         checkPresetFilter(page.presetFilter, e, add, where)
@@ -807,6 +844,9 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
             add(`widget.${wi}`, w.entity ? `“${w.entity}” is no longer an entity` : 'needs an entity',
               `${where} has a widget for “${w.entity}”, which is no longer an entity`,
               !w.entity ? undefined
+                : switchWidget(index, wi) ?? (widgets.length === 1 ? removePage(index)
+                  : patchPage(index, `Remove widget ${wi + 1}`, p => ({ ...p, widgets: (p.widgets ?? []).filter((_, j) => j !== wi) }))),
+              !w.entity || !switchWidget(index, wi) ? undefined
                 : widgets.length === 1 ? removePage(index)
                   : patchPage(index, `Remove widget ${wi + 1}`, p => ({ ...p, widgets: (p.widgets ?? []).filter((_, j) => j !== wi) })))
             return
@@ -986,7 +1026,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
             page.entity ? `${where} reports on “${page.entity}”, which is no longer an entity`
               : `${where} reports on no entity`,
-            page.entity ? removePage(index) : undefined)
+            page.entity ? switchPage(index) ?? removePage(index) : undefined,
+            page.entity && switchPage(index) ? removePage(index) : undefined)
           break
         }
         const charts = reportCharts(page)
@@ -1024,7 +1065,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         if (!e) {
           add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
             `${where} opens “${page.entity ?? ''}”, which is no longer an entity`,
-            page.entity ? removePage(index) : undefined)
+            page.entity ? switchPage(index) ?? removePage(index) : undefined,
+            page.entity && switchPage(index) ? removePage(index) : undefined)
           break
         }
         if (!singlePk(e)) {
@@ -1086,7 +1128,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         if (!e) {
           add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
             `${where} creates “${page.entity ?? ''}”, which is no longer an entity`,
-            page.entity ? removePage(index) : undefined)
+            page.entity ? switchPage(index) ?? removePage(index) : undefined,
+            page.entity && switchPage(index) ? removePage(index) : undefined)
           break
         }
         if (e.readOnly) add('entity', `${e.name} is read-only`, `${where} creates ${e.name}, which is read-only`)
@@ -1415,44 +1458,83 @@ export function dropTabsTo(pages: FullstackPageDef[], id: string): FullstackPage
   })
 }
 
-/** Follows a relation rename on `child` into the master-detail pages that link through it. */
+/** Follows a relation rename on `child` (the entity that owns it) into every reference a layout
+ *  can hold: list and list-widget columns, wizard steps, report and top-list groupings, record
+ *  tabs and tiles, and master-detail links. */
 export function renameRelationInPages(pages: FullstackPageDef[], child: string, from: string, to: string): FullstackPageDef[] {
   if (!child || !from || !to || from === to) return pages
-  // `child` is the entity that owns the relation.
   const isChild = (name: string | undefined) => name != null && name.trim().toLowerCase() === child.trim().toLowerCase()
+  const cols = (list: string[] | undefined) => (list?.includes(from) ? list.map(k => (k === from ? to : k)) : list)
   let changed = false
   const next = pages.map(page => {
-    if (page.type === 'entity-list' && isChild(page.entity) && page.columns?.includes(from)) {
-      changed = true
-      return { ...page, columns: page.columns.map(k => (k === from ? to : k)) }
-    }
+    const out: FullstackPageDef = { ...page }
+    if (page.type === 'entity-list' && isChild(page.entity) && page.columns?.includes(from)) out.columns = cols(page.columns)
     if (page.type === 'wizard' && isChild(page.entity) && page.steps?.some(step => step.fields.includes(from))) {
-      changed = true
-      return { ...page, steps: page.steps.map(step => ({ ...step, fields: step.fields.map(name => (name === from ? to : name)) })) }
+      out.steps = page.steps.map(step => ({ ...step, fields: step.fields.map(name => (name === from ? to : name)) }))
     }
     if (page.type === 'report' && isChild(page.entity) && reportCharts(page).some(c => c.groupBy === from)) {
-      changed = true
       const follow = (c: FullstackChartDef) => (c.groupBy === from ? { ...c, groupBy: to } : c)
-      return { ...page, ...(page.charts?.length ? { charts: page.charts.map(follow) } : { chart: follow(page.chart ?? {}) }) }
+      if (page.charts?.length) out.charts = page.charts.map(follow)
+      else out.chart = follow(page.chart ?? {})
     }
-    if (page.type === 'dashboard' && page.widgets?.some(w => w.kind === 'top' && isChild(w.entity) && w.groupBy === from)) {
-      changed = true
-      return { ...page, widgets: page.widgets.map(w => (w.kind === 'top' && isChild(w.entity) && w.groupBy === from ? { ...w, groupBy: to } : w)) }
+    if (page.widgets?.some(w => isChild(w.entity) && (w.groupBy === from || w.columns?.includes(from)))) {
+      out.widgets = page.widgets.map(w => {
+        if (!isChild(w.entity) || (w.groupBy !== from && !w.columns?.includes(from))) return w
+        return { ...w, ...(w.groupBy === from ? { groupBy: to } : {}), ...(w.columns?.includes(from) ? { columns: cols(w.columns) } : {}) }
+      })
     }
     if (page.type === 'record' && (page.childTabs?.some(t => isChild(childTabEntity(t)) && childTabVia(t) === from)
-      || page.headerStats?.some(s => isChild(s.child) && s.via === from))) {
-      changed = true
-      return {
-        ...page,
-        childTabs: page.childTabs?.map(t => (isChild(childTabEntity(t)) && childTabVia(t) === from ? childTab(childTabEntity(t), to) : t)),
-        headerStats: page.headerStats?.map(s => (isChild(s.child) && s.via === from ? { ...s, via: to } : s)),
-      }
+      || page.headerStats?.some(st => isChild(st.child) && st.via === from))) {
+      out.childTabs = page.childTabs?.map(t => (isChild(childTabEntity(t)) && childTabVia(t) === from ? childTab(childTabEntity(t), to) : t))
+      out.headerStats = page.headerStats?.map(st => (isChild(st.child) && st.via === from ? { ...st, via: to } : st))
     }
-    if (page.type !== 'master-detail' || !isChild(page.child) || page.via !== from) return page
+    if (page.type === 'master-detail' && isChild(page.child) && page.via === from) out.via = to
+    if (JSON.stringify(out) === JSON.stringify(page)) return page
     changed = true
-    return { ...page, via: to }
+    return out
   })
   return changed ? next : pages
+}
+
+/**
+ * Follows a renamed enum constant (or its display) on `entity.field` into the presets that name
+ * it — a page's or a widget's `presetFilter` — and into a tab still titled with the constant's
+ * derived label (the lists "Split into tabs" makes).
+ */
+export function renameEnumValueInPages(pages: FullstackPageDef[], entity: string, field: string, from: string, to: string): FullstackPageDef[] {
+  if (!entity || !field || !from || !to || from === to) return pages
+  const eq = (a: string | undefined, b: string) => a != null && a.trim().toLowerCase() === b.trim().toLowerCase()
+  const follow = (filter: Record<string, string> | undefined): Record<string, string> | undefined => {
+    if (!filter) return filter
+    const key = Object.keys(filter).find(k => eq(k, field))
+    if (key == null || !eq(filter[key], from)) return filter
+    return { ...filter, [key]: to }
+  }
+  const moved = new Set<string>()
+  let changed = false
+  const next = pages.map(page => {
+    const out: FullstackPageDef = { ...page }
+    if (eq(page.entity, entity)) {
+      const f = follow(page.presetFilter)
+      if (f !== page.presetFilter) { out.presetFilter = f; moved.add(page.id) }
+    }
+    if (page.widgets?.some(w => eq(w.entity, entity) && follow(w.presetFilter) !== w.presetFilter)) {
+      out.widgets = page.widgets.map(w => {
+        const f = eq(w.entity, entity) ? follow(w.presetFilter) : w.presetFilter
+        return f === w.presetFilter ? w : { ...w, presetFilter: f }
+      })
+    }
+    if (JSON.stringify(out) === JSON.stringify(page)) return page
+    changed = true
+    return out
+  })
+  const oldTitle = humanizeConstant(from)
+  const final = next.map(page => {
+    if (page.type !== 'tabs' || !page.tabs?.some(t => moved.has(t.page) && t.title === oldTitle)) return page
+    changed = true
+    return { ...page, tabs: page.tabs.map(t => (moved.has(t.page) && t.title === oldTitle ? { ...t, title: humanizeConstant(to) } : t)) }
+  })
+  return changed ? final : pages
 }
 
 /** A copy of `page` under a fresh id and a "(copy)" title; the caller places it. The copy's id

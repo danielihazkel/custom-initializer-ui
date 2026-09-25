@@ -902,6 +902,20 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                   Fix: {issue.fix.label}
                 </button>
               )}
+              {issue.alsoFix && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    pushUndo(issue.alsoFix!.label)
+                    onChange(issue.alsoFix!.apply(pages))
+                  }}
+                  className="inline-flex items-center gap-1 rounded border border-error/30 px-1.5 py-0.5 text-[10px] text-error hover:bg-error/10"
+                  title="Apply this fix instead (undoable)"
+                  data-page-fix-alt
+                >
+                  or {issue.alsoFix.label}
+                </button>
+              )}
             </li>
           ))}
         </ul>

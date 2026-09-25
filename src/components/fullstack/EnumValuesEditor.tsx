@@ -15,10 +15,13 @@ interface Props {
  * Controlled editor for an ENUM field's constants: removable chips plus a draft input
  * that commits on Enter, comma, or blur. A pasted "A,B,C" splits into three chips, and
  * "OPEN:Open" sets the label along with the value (the Paste-fields syntax). Dedupe is
- * case-sensitive to match the backend, which uppercases constants on render.
+ * case-sensitive to match the backend, which uppercases constants on render. Clicking a chip's
+ * value renames it in place — same position, label carried over — so the page layout can tell a
+ * rename from a remove-and-add and follow it.
  */
 export function EnumValuesEditor({ values, onChange, labels, onLabelsChange, invalid }: Props) {
   const [draft, setDraft] = useState('')
+  const [editing, setEditing] = useState<{ index: number; text: string } | null>(null)
   const withLabels = onLabelsChange !== undefined
 
   function setLabel(value: string, label: string) {
@@ -47,6 +50,23 @@ export function EnumValuesEditor({ values, onChange, labels, onLabelsChange, inv
     setDraft('')
   }
 
+  function renameAt(idx: number, raw: string) {
+    setEditing(null)
+    const from = values[idx]
+    const to = raw.trim()
+    if (!to || to === from || values.some((v, i) => i !== idx && v === to)) return
+    onChange(values.map((v, i) => (i === idx ? to : v)))
+    const label = lookupLabel(labels, from)
+    if (withLabels && labels && label !== undefined) {
+      const next: Record<string, string> = {}
+      for (const [k, v] of Object.entries(labels)) {
+        if (k.trim().toLowerCase() === from.trim().toLowerCase()) next[to] = v
+        else next[k] = v
+      }
+      onLabelsChange?.(next)
+    }
+  }
+
   function removeAt(idx: number) {
     const removed = values[idx]
     onChange(values.filter((_, i) => i !== idx))
@@ -73,7 +93,31 @@ export function EnumValuesEditor({ values, onChange, labels, onLabelsChange, inv
       {values.map((v, i) => (
         // Values are deduped (see commit), so the value itself is a stable key.
         <span key={v} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[11px] font-mono">
-          {v}
+          {editing?.index === i ? (
+            <input
+              type="text"
+              autoFocus
+              aria-label={`New name for ${v}`}
+              className="w-[10ch] bg-background border border-primary/40 rounded px-1 py-0 text-[11px] font-mono outline-none"
+              value={editing.text}
+              onChange={e => setEditing({ index: i, text: e.target.value })}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); renameAt(i, editing.text) }
+                else if (e.key === 'Escape') { e.preventDefault(); setEditing(null) }
+              }}
+              onBlur={() => renameAt(i, editing.text)}
+            />
+          ) : (
+            <button
+              type="button"
+              className="hover:underline"
+              title="Rename this value (pages that filter on it follow)"
+              aria-label={`Rename ${v}`}
+              onClick={() => setEditing({ index: i, text: v })}
+            >
+              {v}
+            </button>
+          )}
           {withLabels && (
             <input
               type="text"

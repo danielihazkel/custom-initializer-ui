@@ -75,4 +75,23 @@ describe('EnumValuesEditor — display labels', () => {
     expect(onChange).toHaveBeenLastCalledWith([])
     expect(onLabelsChange).toHaveBeenLastCalledWith(undefined)
   })
+
+  it('renames a value in place, carrying its label, and ignores a clash', () => {
+    const onChange = vi.fn()
+    const onLabelsChange = vi.fn()
+    render(<EnumValuesEditor values={['OPEN', 'DONE']} onChange={onChange} labels={{ OPEN: 'Open' }} onLabelsChange={onLabelsChange} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Rename OPEN' }))
+    const input = screen.getByLabelText('New name for OPEN')
+    fireEvent.change(input, { target: { value: 'NEW' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onChange).toHaveBeenCalledWith(['NEW', 'DONE'])
+    expect(onLabelsChange).toHaveBeenCalledWith({ NEW: 'Open' })
+
+    onChange.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Rename DONE' }))
+    const again = screen.getByLabelText('New name for DONE')
+    fireEvent.change(again, { target: { value: 'OPEN' } })
+    fireEvent.keyDown(again, { key: 'Enter' })
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })

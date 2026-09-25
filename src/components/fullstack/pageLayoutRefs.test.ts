@@ -6,7 +6,7 @@ import {
   adoptedGroup, describePage, describePresetValue, dropTabsTo, duplicatePage, keptPresetFilter, moveNavGroup, navSections, pageFromSuggestion,
   pagesEmbedding, renameFieldInPages,
   renameGroupInPages, renamePageIdInPages,
-  renameRelationInPages, reportCharts, suggestPages, validatePages,
+  renameEnumValueInPages, renameRelationInPages, reportCharts, suggestPages, validatePages,
 } from './pageLayout'
 
 const entities: FullstackEntityDef[] = [
@@ -422,5 +422,40 @@ describe('nav group tools', () => {
     expect(adoptedGroup([nav[1], nav[4], nav[5]], 2)).toBeUndefined()
     expect(adoptedGroup([nav[1], nav[3], nav[4]], 1)).toBeUndefined()
     expect(adoptedGroup([nav[1], { ...nav[5], group: 'Sales' }, nav[4]], 1)).toBeUndefined()
+  })
+})
+
+describe('renameEnumValueInPages', () => {
+  it('follows a renamed constant into page and widget presets, and a tab titled after it', () => {
+    const pages: FullstackPageDef[] = [
+      { id: 'queue', type: 'tabs', title: 'Orders by status', tabs: [{ page: 'order-open', title: 'Open' }, { page: 'order-paid', title: 'Paid' }] },
+      { id: 'order-open', type: 'entity-list', entity: 'Order', hidden: true, presetFilter: { status: 'OPEN' } },
+      { id: 'order-paid', type: 'entity-list', entity: 'Order', hidden: true, presetFilter: { status: 'PAID' } },
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order', presetFilter: { Status: 'open' } }, { kind: 'kpi', entity: 'Customer' }] },
+    ]
+    const next = renameEnumValueInPages(pages, 'order', 'status', 'OPEN', 'NEW')
+    expect(next[1].presetFilter).toEqual({ status: 'NEW' })
+    expect(next[2]).toBe(pages[2])
+    expect(next[3].widgets?.[0].presetFilter).toEqual({ Status: 'NEW' })
+    expect(next[3].widgets?.[1]).toBe(pages[3].widgets?.[1])
+    expect(next[0].tabs).toEqual([{ page: 'order-open', title: 'New' }, { page: 'order-paid', title: 'Paid' }])
+    expect(renameEnumValueInPages(pages, 'Order', 'status', 'CLOSED', 'DONE')).toBe(pages)
+  })
+})
+
+describe('renameRelationInPages — every reference', () => {
+  it('follows a list widget and a page holding several references at once', () => {
+    const pages: FullstackPageDef[] = [
+      { id: 'home', type: 'dashboard', widgets: [
+        { kind: 'top', entity: 'Order', groupBy: 'customer' },
+        { kind: 'list', entity: 'Order', columns: ['status', 'customer'] },
+      ] },
+    ]
+    const next = renameRelationInPages(pages, 'Order', 'customer', 'buyer')
+    expect(next[0].widgets).toEqual([
+      { kind: 'top', entity: 'Order', groupBy: 'buyer' },
+      { kind: 'list', entity: 'Order', columns: ['status', 'buyer'] },
+    ])
+    expect(renameRelationInPages(pages, 'Customer', 'customer', 'buyer')).toBe(pages)
   })
 })

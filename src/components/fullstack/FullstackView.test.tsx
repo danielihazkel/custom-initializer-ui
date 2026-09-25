@@ -367,6 +367,23 @@ describe('FullstackView — page layouts', () => {
     await waitFor(() => expect(topbar().getAttribute('aria-checked')).toBe('false'))
   })
 
+  it('follows an enum value renamed in place into the presets, as one undo step with it', async () => {
+    mockServer()
+    render(<FullstackView />)
+    const panel = await loadDesk()
+    for (const b of screen.getAllByRole('button', { name: 'Edit field details' })) fireEvent.click(b)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Rename OPEN' })[0])
+    const input = screen.getByLabelText('New name for OPEN')
+    fireEvent.change(input, { target: { value: 'NEW' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('filtered on status = NEW')
+    expect(panel.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('filtered on status = OPEN'))
+    expect(screen.getAllByRole('button', { name: 'Rename OPEN' }).length).toBeGreaterThan(0)
+  })
+
   it('flags a page whose entity was deleted, rather than dropping the page', async () => {
     mockServer()
     render(<FullstackView />)

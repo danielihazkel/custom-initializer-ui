@@ -39,7 +39,7 @@ import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writ
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesEditor } from './PagesEditor'
-import { pageOfServerError, renameEntityInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
+import { pageOfServerError, renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
@@ -328,14 +328,35 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // follow instead of breaking. (A *deleted* entity is left in place and flagged — silently
   // dropping the page that shows it would lose more than it saves.)
   const namesByUidRef = useRef<Map<string, string>>(new Map())
+  // Set when the layout is rewritten to follow a rename, so undo files both as one step.
+  const followsModelRef = useRef(false)
+  const enumValuesByUidRef = useRef<Map<string, string[]>>(new Map())
   useEffect(() => {
     const before = namesByUidRef.current
     const now = new Map<string, string>()
+    const enumsBefore = enumValuesByUidRef.current
+    const enumsNow = new Map<string, string[]>()
+    let follow: ((ps: FullstackPageDef[]) => FullstackPageDef[])[] = []
+    const followPages = (fn: (ps: FullstackPageDef[]) => FullstackPageDef[]) => { follow = [...follow, fn] }
     for (const e of entities) {
       if (e.uid) now.set(e.uid, e.name)
-      for (const f of e.fields) if (f.uid) now.set(f.uid, `${e.name}.${f.name}`)
+      for (const f of e.fields) {
+        if (!f.uid) continue
+        now.set(f.uid, `${e.name}.${f.name}`)
+        if (f.type !== 'ENUM' || !f.enumValues) continue
+        enumsNow.set(f.uid, f.enumValues)
+        // A value renamed in place: same list length, exactly one position changed.
+        const was = enumsBefore.get(f.uid)
+        if (!was || was === f.enumValues || was.length !== f.enumValues.length) continue
+        const diff = f.enumValues.flatMap((v, i) => (v !== was[i] ? [i] : []))
+        if (diff.length === 1) {
+          const [i] = diff
+          followPages(ps => renameEnumValueInPages(ps, e.name, f.name, was[i], f.enumValues![i]))
+        }
+      }
       for (const r of e.relations ?? []) if (r.uid) now.set(r.uid, `${e.name}#${r.fieldName}`)
     }
+    enumValuesByUidRef.current = enumsNow
     if (before.size > 0) {
       for (const [uid, name] of now) {
         const was = before.get(uid)
@@ -343,18 +364,26 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         if (was.includes('#')) {
           const [, wasRelation] = was.split('#')
           const [nowEntity, nowRelation] = name.split('#')
-          if (nowRelation?.trim()) setPages(ps => renameRelationInPages(ps, nowEntity, wasRelation, nowRelation))
+          if (nowRelation?.trim()) followPages(ps => renameRelationInPages(ps, nowEntity, wasRelation, nowRelation))
           continue
         }
         const [wasEntity, wasField] = was.split('.')
         const [nowEntity, nowField] = name.split('.')
-        if (wasField == null && nowEntity.trim()) setPages(ps => renameEntityInPages(ps, wasEntity, nowEntity))
+        if (wasField == null && nowEntity.trim()) followPages(ps => renameEntityInPages(ps, wasEntity, nowEntity))
         else if (wasField != null && nowField?.trim() && wasField !== nowField) {
-          setPages(ps => renameFieldInPages(ps, nowEntity, wasField, nowField))
+          followPages(ps => renameFieldInPages(ps, nowEntity, wasField, nowField))
         }
       }
     }
     namesByUidRef.current = now
+    if (follow.length > 0) {
+      // The layout follows the model edit that caused it: one undo step for both.
+      setPages(ps => {
+        const next = follow.reduce((acc, fn) => fn(acc), ps)
+        if (next !== ps) followsModelRef.current = true
+        return next
+      })
+    }
   }, [entities])
 
   // Keep the URL in step (debounced) so the header's Share button copies a link that reproduces
@@ -490,6 +519,16 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     if (prev === currentSnapshot) return
     lastSnapshotRef.current = currentSnapshot
     if (silentFromRef.current === prev) { silentFromRef.current = null; return }
+    if (followsModelRef.current) {
+      // The layout following a model edit belongs to that edit's undo step (or to none, when
+      // the edit itself was recorded explicitly): keep the open burst, start no new one.
+      followsModelRef.current = false
+      if (burstRef.current) {
+        if (burstTimerRef.current) clearTimeout(burstTimerRef.current)
+        burstTimerRef.current = setTimeout(flushBurst, BURST_IDLE_MS)
+      }
+      return
+    }
     if (snapshotsEqual(prev, currentSnapshot)) return
     const key = snapshotChangeKey(prev, currentSnapshot)
     if (burstRef.current && burstRef.current.key !== key) flushBurst()
