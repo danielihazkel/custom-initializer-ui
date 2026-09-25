@@ -316,7 +316,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
   const currentSnapshot = useMemo(
     () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages, nav }),
-    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages],
+    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages, nav],
   )
   const snapshotRef = useRef(currentSnapshot)
   snapshotRef.current = currentSnapshot

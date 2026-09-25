@@ -356,6 +356,17 @@ describe('FullstackView — page layouts', () => {
     await waitFor(() => expect(document.querySelector('[data-page-id="open"]')).toBeTruthy())
   })
 
+  it('records a navigation-only change for undo', async () => {
+    mockServer()
+    render(<FullstackView />)
+    await loadDesk()
+    const topbar = () => screen.getByRole('radio', { name: 'Top bar' })
+    fireEvent.click(topbar())
+    expect(topbar().getAttribute('aria-checked')).toBe('true')
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(topbar().getAttribute('aria-checked')).toBe('false'))
+  })
+
   it('flags a page whose entity was deleted, rather than dropping the page', async () => {
     mockServer()
     render(<FullstackView />)
