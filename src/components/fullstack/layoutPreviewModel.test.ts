@@ -46,6 +46,9 @@ describe('buildLayoutPreview', () => {
     expect(screen.table.columns).toEqual(['Status', 'Customer'])
     expect(screen.table.view).toBe('kanban')
     expect(screen.table.lanes).toEqual(['Waiting', 'Paid'])
+    // Each card sits in the lane of its own status, not dealt round the lanes.
+    expect(screen.table.rowLanes).toHaveLength(screen.table.rows.length)
+    screen.table.rowLanes.forEach((lane, i) => expect(screen.table.rows[i][0]).toBe(screen.table.lanes[lane]))
     expect(screen.table.sort).toBe('Placed on ↓')
     // Without a presentation the table opens in the entity's first view, first columns, default order.
     const plain = buildLayoutPreview([{ id: 'o', type: 'entity-list', entity: 'Order' }], orders, ctx).screens[0]
@@ -166,6 +169,20 @@ describe('buildLayoutPreview', () => {
     // A record page counts each related tab by default.
     expect(record.stats.map(s => s.title)).toEqual(['Orders'])
   })
+
+  it('walks a wizard’s every step to a review, and lists each related tab of a record', () => {
+    const wizard: FullstackPageDef = { id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ fields: ['status'] }, { title: 'Who', fields: ['customer', 'total'] }] }
+    const record: FullstackPageDef = { id: 'customer', type: 'record', entity: 'Customer', hidden: true }
+    const [w, r] = buildLayoutPreview([wizard, record], entities, ctx).screens
+    if (w.type !== 'wizard' || r.type !== 'record') throw new Error('types')
+    expect(w.steps).toEqual(['Step 1', 'Who', 'Review'])
+    expect(w.stepFields).toEqual([['Status'], ['Customer', 'Total']])
+    expect(w.review.map(x => x.label)).toEqual(['Status', 'Customer', 'Total'])
+    expect(w.save).toBe('Save')
+    expect(r.tabs).toEqual(['Customer details', 'Orders'])
+    // The related list leaves out its link back to the record.
+    expect(r.tabTables[0]?.columns).toEqual(['Id', 'Status', 'Total', 'Placed on'])
+  })
 })
 
 describe('previewPartOf', () => {
@@ -186,7 +203,10 @@ describe('previewPartOf', () => {
       ['title', 'title'],
       ['description', 'title'],
       ['via', 'child'],
-      ['sort', 'entity'],
+      ['sort', 'sort'],
+      ['columns', 'columns'],
+      ['detail', 'detail'],
+      ['view', 'entity'],
       ['presetFilter.status', 'entity'],
       ['dateRange', 'dateRange'],
       // Nav-only settings and the row itself are the page: its nav item.

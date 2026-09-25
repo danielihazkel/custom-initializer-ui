@@ -229,16 +229,18 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               />
             ))}
           </div>
-          {screen.widgets.length === 0 && <p className="text-[10px] text-secondary">No widgets yet.</p>}
+          {screen.widgets.length === 0 && (
+            <Editable {...link} control="widgets" label="Add a widget" className="block w-full">
+              <p className="rounded border border-dashed border-outline-variant px-2 py-3 text-center text-[10px] text-secondary">No widgets yet — click to add one</p>
+            </Editable>
+          )}
         </div>
       )
     case 'entity-list':
       return (
         <div className="space-y-2">
           {heading}
-          <Editable {...link} control="entity" label="Edit the listed entity" className="block w-full">
-            <MiniTable table={screen.table} preview={preview} accent={accent} menora={menora} />
-          </Editable>
+          <MiniTable table={screen.table} preview={preview} accent={accent} menora={menora} link={link} />
         </div>
       )
     case 'tabs':
@@ -281,68 +283,9 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
         </div>
       )
     case 'record':
-      return (
-        <div className="space-y-2">
-          {screen.back && <p className="text-[10px] text-secondary">{preview.rtl ? '→' : '←'} {screen.back}</p>}
-          <Editable {...link} control="entity" label="Edit the record entity" className="block text-start">
-            <h3 className="text-[13px] font-bold text-on-surface">{screen.heading}</h3>
-          </Editable>
-          {screen.stats.length > 0 && (
-            <Editable {...link} control="headerStats" label="Edit the header numbers" className="block w-full">
-              <div className="grid grid-cols-4 gap-1.5" data-preview-stats>
-                {screen.stats.map((s, i) => (
-                  <div key={i} className="min-w-0 rounded border border-outline-variant p-1">
-                    <p className="truncate text-[8px] text-secondary">{s.title}</p>
-                    <p className="text-[12px] font-bold tabular-nums text-on-surface">{s.value}</p>
-                  </div>
-                ))}
-              </div>
-            </Editable>
-          )}
-          <Editable {...link} control="childTabs" label="Edit the related tabs" className="block w-full">
-            <TabStrip labels={screen.tabs} active={0} accent={accent} />
-          </Editable>
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-1 rounded border border-outline-variant p-2">
-            {screen.details.map(d => (
-              <div key={d.label} className="min-w-0">
-                <dt className="truncate text-[9px] uppercase tracking-wide text-secondary">{d.label}</dt>
-                <dd className="truncate text-[10px] text-on-surface">{d.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      )
+      return <RecordScreen screen={screen} link={link} preview={preview} accent={accent} menora={menora} />
     case 'wizard':
-      return (
-        <div className="space-y-2">
-          {heading}
-          <Editable {...link} control="steps" label="Edit the steps" className="block w-full">
-            <ol className="flex flex-wrap gap-1" data-preview-steps>
-              {screen.steps.map((s, i) => (
-                <li
-                  key={i}
-                  className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold"
-                  style={i === 0 ? { borderColor: accent, color: accent } : undefined}
-                >
-                  {i + 1} {s}
-                </li>
-              ))}
-            </ol>
-          </Editable>
-          <div className="space-y-1 rounded border border-outline-variant p-2">
-            {screen.fields.map(label => (
-              <div key={label}>
-                <p className="text-[9px] text-secondary">{label}</p>
-                <div className="h-3 rounded border border-outline-variant bg-surface-container-lowest" />
-              </div>
-            ))}
-            <div className="flex justify-between pt-1">
-              <FakeButton outline>{screen.back}</FakeButton>
-              <FakeButton style={menora ? { background: MENORA.yellow, color: MENORA.ink } : { background: accent, color: 'white' }}>{screen.next}</FakeButton>
-            </div>
-          </div>
-        </div>
-      )
+      return <WizardScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} />
     case 'report':
       return (
         <div className="space-y-2">
@@ -437,6 +380,140 @@ function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent
       {screen.tabs.length > 0 && target == null && (
         <p className="text-[10px] text-error">This tab points at no page.</p>
       )}
+    </div>
+  )
+}
+
+/** A record page: its tabs switch between the details and each related list. */
+function RecordScreen({ screen, link, preview, accent, menora }: {
+  screen: Extract<PreviewScreen, { type: 'record' }>
+  link: LinkProps
+  preview: LayoutPreviewModel
+  accent: string
+  menora: boolean
+}) {
+  const [active, setActive] = useState(0)
+  const current = Math.min(active, screen.tabs.length - 1)
+  const tabTable = current > 0 ? screen.tabTables[current - 1] : undefined
+  return (
+    <div className="space-y-2">
+      {screen.back && <p className="text-[10px] text-secondary">{preview.rtl ? '→' : '←'} {screen.back}</p>}
+      <Editable {...link} control="entity" label="Edit the record entity" className="block text-start">
+        <h3 className="text-[13px] font-bold text-on-surface">{screen.heading}</h3>
+      </Editable>
+      {screen.stats.length > 0 && (
+        <Editable {...link} control="headerStats" label="Edit the header numbers" className="block w-full">
+          <div className="grid grid-cols-4 gap-1.5" data-preview-stats>
+            {screen.stats.map((s, i) => (
+              <div key={i} className="min-w-0 rounded border border-outline-variant p-1">
+                <p className="truncate text-[8px] text-secondary">{s.title}</p>
+                <p className="text-[12px] font-bold tabular-nums text-on-surface">{s.value}</p>
+              </div>
+            ))}
+          </div>
+        </Editable>
+      )}
+      <div className="flex items-end gap-1">
+        <div role="tablist" className="flex min-w-0 flex-1 gap-3 border-b border-outline-variant" data-preview-record-tabs>
+          {screen.tabs.map((label, i) => (
+            <button
+              key={i}
+              type="button"
+              role="tab"
+              aria-selected={i === current}
+              onClick={() => setActive(i)}
+              className={`-mb-px truncate border-b-2 pb-1 text-[10px] font-semibold ${i === current ? '' : 'border-transparent text-secondary'}`}
+              style={i === current ? { borderColor: accent, color: accent } : undefined}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <Editable {...link} control="childTabs" label="Edit the related tabs" className="shrink-0 px-1 text-secondary">
+          <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">edit</span>
+        </Editable>
+      </div>
+      {current === 0 ? (
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-1 rounded border border-outline-variant p-2">
+          {screen.details.map(d => (
+            <div key={d.label} className="min-w-0">
+              <dt className="truncate text-[9px] uppercase tracking-wide text-secondary">{d.label}</dt>
+              <dd className="truncate text-[10px] text-on-surface">{d.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : tabTable ? (
+        <div data-preview-record-tab={current}>
+          <MiniTable table={tabTable} preview={preview} accent={accent} menora={menora} />
+        </div>
+      ) : (
+        <p className="text-[10px] text-error">This tab lists no entity.</p>
+      )}
+    </div>
+  )
+}
+
+/** A wizard: its steps can be walked through, ending on the review. */
+function WizardScreen({ screen, link, heading, accent, menora }: {
+  screen: Extract<PreviewScreen, { type: 'wizard' }>
+  link: LinkProps
+  heading: ReactNode
+  accent: string
+  menora: boolean
+}) {
+  const [active, setActive] = useState(0)
+  const last = screen.steps.length - 1
+  const step = Math.min(active, last)
+  const reviewing = step === last
+  const primary = menora ? { background: MENORA.yellow, color: MENORA.ink } : { background: accent, color: 'white' }
+  return (
+    <div className="space-y-2">
+      {heading}
+      <div className="flex items-start gap-1">
+        <ol className="flex min-w-0 flex-1 flex-wrap gap-1" data-preview-steps>
+          {screen.steps.map((s, i) => (
+            <li key={i}>
+              <button
+                type="button"
+                aria-current={i === step ? 'step' : undefined}
+                onClick={() => setActive(i)}
+                className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold"
+                style={i === step ? { borderColor: accent, color: accent } : undefined}
+              >
+                {i + 1} {s}
+              </button>
+            </li>
+          ))}
+        </ol>
+        <Editable {...link} control="steps" label="Edit the steps" className="shrink-0 px-1 text-secondary">
+          <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">edit</span>
+        </Editable>
+      </div>
+      <div className="space-y-1 rounded border border-outline-variant p-2" data-preview-step={reviewing ? 'review' : step}>
+        {reviewing ? (
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1">
+            {screen.review.map((r, i) => (
+              <div key={i} className="min-w-0">
+                <dt className="truncate text-[9px] text-secondary">{r.label}</dt>
+                <dd className="truncate text-[10px] text-on-surface">{r.value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (screen.stepFields[step] ?? []).map(label => (
+          <div key={label}>
+            <p className="text-[9px] text-secondary">{label}</p>
+            <div className="h-3 rounded border border-outline-variant bg-surface-container-lowest" />
+          </div>
+        ))}
+        <div className="flex justify-between pt-1">
+          <button type="button" onClick={() => setActive(Math.max(0, step - 1))} disabled={step === 0} className="disabled:opacity-40" aria-label="Previous step">
+            <FakeButton outline>{screen.back}</FakeButton>
+          </button>
+          <button type="button" onClick={() => setActive(Math.min(last, step + 1))} disabled={reviewing} aria-label={reviewing ? screen.save : 'Next step'}>
+            <FakeButton style={primary}>{reviewing ? screen.save : screen.next}</FakeButton>
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -711,22 +788,6 @@ function LineChart({ points, accent }: { points: PreviewBar[]; accent: string })
   )
 }
 
-function TabStrip({ labels, active, accent }: { labels: string[]; active: number; accent: string }) {
-  return (
-    <div className="flex gap-3 border-b border-outline-variant">
-      {labels.map((label, i) => (
-        <span
-          key={i}
-          className={`-mb-px truncate border-b-2 pb-1 text-[10px] font-semibold ${i === active ? '' : 'border-transparent text-secondary'}`}
-          style={i === active ? { borderColor: accent, color: accent } : undefined}
-        >
-          {label}
-        </span>
-      ))}
-    </div>
-  )
-}
-
 function FilterRow({ filters, chips, label }: { filters: string[]; chips: string[]; label: string }) {
   if (filters.length === 0 && chips.length === 0) return null
   return (
@@ -755,14 +816,19 @@ function FakeButton({ children, outline, style }: { children: ReactNode; outline
   )
 }
 
-function MiniTable({ table, preview, accent, menora, compact }: {
+function MiniTable({ table, preview, accent, menora, compact, link }: {
   table: PreviewTable
   preview: LayoutPreviewModel
   accent: string
   menora: boolean
   compact?: boolean
+  /** A list page's own table: the column headings, the sort and the side pane jump to their own
+   *  controls, the rows to the entity. Without it the table is drawn as one inert block. */
+  link?: LinkProps
 }) {
   const primary = menora ? { background: MENORA.yellow, color: MENORA.ink } : { background: accent, color: 'white' }
+  const part = (control: string, label: string, children: ReactNode, className = 'block w-full') =>
+    link ? <Editable {...link} control={control} label={label} className={className}>{children}</Editable> : children
   return (
     <div className="space-y-1 text-start">
       <div className="flex items-center gap-1">
@@ -776,9 +842,27 @@ function MiniTable({ table, preview, accent, menora, compact }: {
         {table.hasExport && <FakeButton outline>CSV</FakeButton>}
         {table.newLabel && <FakeButton style={primary}>{table.newLabel}</FakeButton>}
       </div>
-      <FilterRow filters={table.filters} chips={[...table.presetChips, ...(table.sort ? [table.sort] : [])]} label={preview.strings.filters} />
+      {link ? (
+        <div className="flex flex-wrap items-center gap-1">
+          <FilterRow filters={table.filters} chips={table.presetChips} label={preview.strings.filters} />
+          {part('sort', 'Edit the sort', (
+            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary" data-preview-chip data-preview-sort>
+              {table.sort ?? '⇅'}
+            </span>
+          ), 'inline-flex')}
+        </div>
+      ) : (
+        <FilterRow filters={table.filters} chips={[...table.presetChips, ...(table.sort ? [table.sort] : [])]} label={preview.strings.filters} />
+      )}
       <div className={table.sidePane ? 'grid grid-cols-[minmax(0,1fr)_6rem] gap-1' : ''}>
-      <div className="min-w-0">
+      <div className="min-w-0 space-y-0.5">
+      {link && table.view !== 'cards' && table.view !== 'kanban' && table.view !== 'calendar' && part('columns', 'Edit the columns', (
+        <div className="grid gap-x-1 text-start text-[9px] font-semibold text-secondary" style={{ gridTemplateColumns: `repeat(${Math.max(1, table.columns.length)}, minmax(0, 1fr))` }} data-preview-columns>
+          {table.columns.map(c => <span key={c} className="truncate">{c}</span>)}
+        </div>
+      ))}
+      {part('entity', 'Edit the listed entity', (
+      <>
       {table.view === 'cards' ? (
         <div className="grid grid-cols-3 gap-1" data-preview-view="cards">
           {table.rows.map((row, i) => (
@@ -795,7 +879,7 @@ function MiniTable({ table, preview, accent, menora, compact }: {
           {table.lanes.map((lane, li) => (
             <div key={lane} className="rounded bg-surface-container px-1 py-1">
               <p className="mb-1 truncate font-semibold text-secondary">{lane}</p>
-              {table.rows.filter((_, i) => i % table.lanes.length === li).map((row, i) => (
+              {table.rows.filter((_, i) => (table.rowLanes.length ? table.rowLanes[i] === li : i % table.lanes.length === li)).map((row, i) => (
                 <div key={i} className="mb-1 truncate rounded border border-outline-variant/60 bg-surface-container-lowest px-1 py-0.5 text-on-surface">{row[0]}</div>
               ))}
             </div>
@@ -812,11 +896,13 @@ function MiniTable({ table, preview, accent, menora, compact }: {
         </div>
       ) : (
         <table className="w-full table-fixed text-[9px]">
-          <thead>
-            <tr className="text-secondary">
-              {table.columns.map(c => <th key={c} className="truncate pb-0.5 text-start font-semibold">{c}</th>)}
-            </tr>
-          </thead>
+          {!link && (
+            <thead>
+              <tr className="text-secondary">
+                {table.columns.map(c => <th key={c} className="truncate pb-0.5 text-start font-semibold">{c}</th>)}
+              </tr>
+            </thead>
+          )}
           <tbody>
             {table.rows.map((row, i) => (
               <tr key={i} className={`border-t border-outline-variant/60 ${table.sidePane && i === 0 ? 'bg-primary/5' : ''}`}>
@@ -826,14 +912,16 @@ function MiniTable({ table, preview, accent, menora, compact }: {
           </tbody>
         </table>
       )}
+      </>
+      ))}
       </div>
-      {table.sidePane && (
-        <aside className="rounded border border-outline-variant px-1.5 py-1 text-[8px]" data-preview-side-pane>
+      {table.sidePane && part('detail', 'Edit where rows open', (
+        <aside className="rounded border border-outline-variant px-1.5 py-1 text-start text-[8px]" data-preview-side-pane>
           {table.sidePane.map(item => (
             <p key={item.label} className="truncate"><span className="text-secondary">{item.label}:</span> <span className="text-on-surface">{item.value}</span></p>
           ))}
         </aside>
-      )}
+      ))}
       </div>
     </div>
   )

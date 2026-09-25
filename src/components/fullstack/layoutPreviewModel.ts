@@ -19,6 +19,7 @@ import {
   navSections,
   relationsTo,
   childTabEntity,
+  childTabVia,
 } from './pageLayout'
 import { buildUiPreview, fieldLabel } from './uiPreview'
 
@@ -84,6 +85,9 @@ export interface PreviewTable {
   view: FullstackListView
   /** Lane headings for a board (the breakdown field's first values); empty otherwise. */
   lanes: string[]
+  /** Per row, the lane it sits in on a board (its breakdown value), or -1 when that value's lane
+   *  is not drawn; empty when the list is not a board. */
+  rowLanes: number[]
   /** "Placed on ↓" when the page opens sorted; null for the default order. */
   sort: string | null
   showSearch: boolean
@@ -108,6 +112,8 @@ export type PreviewScreen =
   | {
     type: 'record'; title: string; description?: string; heading: string; back: string | null; tabs: string[]
     details: { label: string; value: string }[]
+    /** Per related tab (tabs[1..]), the rows it lists — the child's table without the link back. */
+    tabTables: (PreviewTable | null)[]
     /** The number tiles above the tabs. */
     stats: { title: string; value: string }[]
   }
@@ -117,6 +123,12 @@ export type PreviewScreen =
     steps: string[]
     /** The first step's field labels, as its form shows them. */
     fields: string[]
+    /** Every step's field labels, in order (the review is not among them). */
+    stepFields: string[][]
+    /** What the review step shows: each asked field with a sample value. */
+    review: { label: string; value: string }[]
+    /** The review step's button. */
+    save: string
     next: string
     back: string
   }
@@ -161,7 +173,7 @@ const STRINGS = {
     xReport: '{x} report', total: 'Total', aggSum: 'Total {x}', aggAvg: 'Average {x}', aggMin: 'Lowest {x}',
     aggMax: 'Highest {x}', viewAll: 'View all', back: 'Back', exportCsv: 'Export CSV', newX: 'New {x}',
     xDetails: '{x} details', search: 'Search…', filters: 'Filters', trueLabel: 'True', falseLabel: 'False',
-    count: 'Count', startPage: 'Start page', stepX: 'Step {x}', review: 'Review', next: 'Next', topXByY: 'Top {x} by {y}', vsPrevious: 'vs previous period',
+    count: 'Count', startPage: 'Start page', stepX: 'Step {x}', review: 'Review', next: 'Next', save: 'Save', topXByY: 'Top {x} by {y}', vsPrevious: 'vs previous period',
     percentOfTarget: '{x}% of target', periodAll: 'All time', period7d: 'Last 7 days',
     period30d: 'Last 30 days', period90d: 'Last 90 days', periodYtd: 'This year', period12m: 'Last 12 months',
   },
@@ -170,7 +182,7 @@ const STRINGS = {
     xReport: 'דוח {x}', total: 'סך הכול', aggSum: 'סך {x}', aggAvg: '{x} ממוצע', aggMin: '{x} מינימלי',
     aggMax: '{x} מקסימלי', viewAll: 'הצג הכל', back: 'חזרה', exportCsv: 'ייצוא ל-CSV', newX: '{x} חדש',
     xDetails: 'פרטי {x}', search: 'חיפוש…', filters: 'מסננים', trueLabel: 'כן', falseLabel: 'לא',
-    count: 'כמות', startPage: 'דף פתיחה', stepX: 'שלב {x}', review: 'סקירה', next: 'הבא', topXByY: '{x} מובילים לפי {y}', vsPrevious: 'לעומת התקופה הקודמת',
+    count: 'כמות', startPage: 'דף פתיחה', stepX: 'שלב {x}', review: 'סקירה', next: 'הבא', save: 'שמירה', topXByY: '{x} מובילים לפי {y}', vsPrevious: 'לעומת התקופה הקודמת',
     percentOfTarget: '{x}% מהיעד', periodAll: 'כל הזמן', period7d: '7 הימים האחרונים',
     period30d: '30 הימים האחרונים', period90d: '90 הימים האחרונים', periodYtd: 'מתחילת השנה',
     period12m: '12 החודשים האחרונים',
@@ -318,6 +330,8 @@ export function buildLayoutPreview(
     const lanes = view !== 'kanban' || !laneField ? []
       : laneField.type === 'ENUM' ? (laneField.enumValues ?? []).slice(0, 3).map(v => enumLabel(laneField, v))
         : [t('trueLabel'), t('falseLabel')]
+    const laneCell = cells.find(c => c.key === laneField?.name)
+    const rowLanes = lanes.length === 0 || !laneCell ? [] : Array.from({ length: SAMPLE_ROWS }, (_, i) => lanes.indexOf(laneCell.value(i + 1)))
     const sortCell = opening.sort ? cells.find(c => c.key === opening.sort!.field) : undefined
     return {
       title: plural,
@@ -325,6 +339,7 @@ export function buildLayoutPreview(
       rows: Array.from({ length: SAMPLE_ROWS }, (_, i) => shown.map(c => c.value(i + 1))),
       view,
       lanes,
+      rowLanes,
       sort: opening.sort ? `${sortCell?.label ?? opening.sort.field} ${opening.sort.dir === 'desc' ? '↓' : '↑'}` : null,
       showSearch: ui.showSearch,
       filters: ui.filters.filter(label => !hideRelation || label !== humanize(hideRelation)),
@@ -580,6 +595,13 @@ export function buildLayoutPreview(
             return c ? labels(c).plural : name
           })],
           details: e.fields.slice(0, 6).map(f => ({ label: fieldLabel(f), value: sampleCell(f, 1, t) })),
+          tabTables: (page.childTabs ?? related).map(tab => {
+            const name = typeof tab === 'string' ? tab : childTabEntity(tab)
+            const c = entityOf(name)
+            if (!c) return null
+            const via = (typeof tab === 'string' ? undefined : childTabVia(tab)) ?? relationsTo(c, e.name)[0]
+            return table(c, undefined, via)
+          }),
           // The generator's default: a row count per related tab.
           stats: (page.headerStats ?? related.slice(0, 4).map(child => ({ child } as { child: string; agg?: FullstackAgg; field?: string; title?: string })))
             .map((s, si) => {
@@ -608,6 +630,17 @@ export function buildLayoutPreview(
           description,
           steps: [...steps.map((s, i) => s.title || t('stepX', { x: String(i + 1) })), t('review')],
           fields: (steps[0]?.fields ?? []).map(labelOf),
+          stepFields: steps.map(st => st.fields.map(labelOf)),
+          review: steps.flatMap(st => st.fields).map(name => {
+            const f = fieldOf(e, name)
+            const r = (e.relations ?? []).find(x => x.fieldName === name)
+            const target = r ? entityOf(r.targetEntity) : undefined
+            return {
+              label: labelOf(name),
+              value: f ? sampleCell(f, 1, t) : target ? rowLabel(target, 1, labels(target).singular, t) : '—',
+            }
+          }),
+          save: t('save'),
           next: t('next'),
           back: t('back'),
         }
@@ -727,7 +760,9 @@ export function previewPartOf(control: string | undefined): string | undefined {
   if (/^chart\d*$/.test(head)) return head
   if (head === 'description') return 'title'
   if (head === 'via') return 'child'
-  if (head === 'presetFilter' || head === 'columns' || head === 'sort' || head === 'view' || head === 'pageSize') return 'entity'
+  // A list page draws its column headings, sort and side pane as parts of their own.
+  if (head === 'columns' || head === 'sort' || head === 'detail') return head
+  if (head === 'presetFilter' || head === 'view' || head === 'pageSize') return 'entity'
   if (head === 'id' || head === 'group' || head === 'icon' || head === 'roles') return undefined
   return head
 }

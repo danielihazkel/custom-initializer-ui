@@ -215,6 +215,32 @@ describe('PagesEditor', () => {
     expect(document.activeElement).toBe(toggles[0])
   })
 
+  it('steps through a wizard and a record page’s tabs in the preview, and jumps from a list’s headings to its columns', () => {
+    render(<Harness initial={[
+      { id: 'orders', type: 'entity-list', entity: 'Order', sort: { field: 'total' } },
+      { id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ fields: ['status'] }, { fields: ['customer', 'billTo', 'id'] }] },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, childTabs: [{ entity: 'Order', via: 'customer' }] },
+    ]} />)
+    const preview = () => document.querySelector('[data-layout-preview]') as HTMLElement
+
+    // The headings and the sort chip are parts of their own: a click opens the page at them.
+    expect(document.querySelector('[data-page-id="orders"] [data-control="columns"]')).toBeNull()
+    fireEvent.click(within(preview()).getByRole('button', { name: 'Edit the columns' }))
+    expect(document.querySelector('[data-page-id="orders"] [data-control="columns"]')).toBeTruthy()
+    expect(within(preview()).getByRole('button', { name: 'Edit the sort' }).textContent).toContain('Total ↑')
+
+    openRow('new-order')
+    expect(preview().querySelector('[data-preview-step]')?.getAttribute('data-preview-step')).toBe('0')
+    fireEvent.click(within(preview()).getByRole('button', { name: 'Next step' }))
+    expect(preview().querySelector('[data-preview-step]')?.getAttribute('data-preview-step')).toBe('1')
+    fireEvent.click(within(preview()).getByRole('button', { name: 'Next step' }))
+    expect(preview().querySelector('[data-preview-step]')?.getAttribute('data-preview-step')).toBe('review')
+
+    openRow('customer')
+    fireEvent.click(within(preview()).getByRole('tab', { name: 'Orders' }))
+    expect(preview().querySelector('[data-preview-record-tab="1"]')).toBeTruthy()
+  })
+
   it('picks where a list opens its rows, offering the record page only when the layout has one', () => {
     render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
     openRow('orders')
