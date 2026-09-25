@@ -912,8 +912,10 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         </div>
       ) : (
         <div className={!showPreview ? '' : layout === 'stacked' ? 'space-y-3' : 'grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]'}>
+          {/* The left column: the navigation strips over the page list. One grid cell, so the preview keeps its own. */}
+          <div className="min-w-0 space-y-2">
           {onNavChange && settings.skin === 'tailwind' && (
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-outline-variant px-2.5 py-1.5" data-nav-options>
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant px-2 py-1" data-nav-options>
               <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary" title="How the generated app lays out its navigation">Navigation</span>
               <span role="radiogroup" aria-label="Navigation style" className="inline-flex overflow-hidden rounded border border-outline-variant">
                 {([['sidebar', 'Sidebar'], ['topbar', 'Top bar']] as const).map(([value, label]) => {
@@ -946,7 +948,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             </div>
           )}
           {navGroupSections.some(s => s.group) && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant px-2.5 py-1.5" data-nav-groups>
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-outline-variant px-2 py-1" data-nav-groups>
               <span
                 className="text-[11px] font-semibold uppercase tracking-wider text-secondary"
                 title="The sections of the generated navigation, in order. Rename a group here to rename it on every page; move a section past its neighbour."
@@ -1216,6 +1218,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               )
             })}
           </ol>
+          </div>
           {showPreview && (
             <aside className={`min-w-0 space-y-1.5 ${layout === 'split' ? 'hidden xl:block xl:sticky xl:top-20 xl:self-start' : ''}`} aria-label="Layout preview">
               <p className="flex items-center justify-between gap-2 text-[11px] text-secondary">
