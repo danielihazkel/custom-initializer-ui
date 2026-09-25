@@ -203,14 +203,24 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
         <div className="space-y-2">
           <div className="flex items-start justify-between gap-2">
             {heading}
-            {screen.period && (
-              <Editable {...link} control="dateRange" label="Edit the period picker" className="shrink-0">
-                <span className="inline-flex items-center gap-0.5 rounded border border-outline-variant px-1 py-0.5 text-[9px] text-secondary" data-preview-period>
-                  <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">date_range</span>
-                  {screen.period}
-                </span>
-              </Editable>
-            )}
+            <span className="flex shrink-0 items-center gap-1">
+              {screen.period && (
+                <Editable {...link} control="dateRange" label="Edit the period picker" className="shrink-0">
+                  <span className="inline-flex items-center gap-0.5 rounded border border-outline-variant px-1 py-0.5 text-[9px] text-secondary" data-preview-period>
+                    <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">date_range</span>
+                    {screen.period}
+                  </span>
+                </Editable>
+              )}
+              {screen.refresh && (
+                <Editable {...link} control="refreshSeconds" label="Edit the auto-refresh" className="shrink-0">
+                  <span className="inline-flex items-center gap-0.5 rounded border border-outline-variant px-1 py-0.5 text-[9px] text-secondary" data-preview-refresh>
+                    <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">refresh</span>
+                    {screen.refresh.label}{screen.refresh.every && ` · ${screen.refresh.every}`}
+                  </span>
+                </Editable>
+              )}
+            </span>
           </div>
           <div ref={gridRef} className="grid grid-cols-4 gap-1.5">
             {screen.widgets.map(w => (

@@ -459,3 +459,15 @@ describe('renameRelationInPages — every reference', () => {
     expect(renameRelationInPages(pages, 'Customer', 'customer', 'buyer')).toBe(pages)
   })
 })
+
+describe('breakdowns by a relation', () => {
+  it('lets a bar or donut group by a many-to-one, as a top list does', () => {
+    const pages: FullstackPageDef[] = [{ id: 'home', type: 'dashboard', widgets: [
+      { kind: 'bar', entity: 'Order', groupBy: 'customer' },
+      { kind: 'donut', entity: 'Order', groupBy: 'customer' },
+    ] }]
+    expect(validatePages(pages, entities).problems).toEqual([])
+    const stacked: FullstackPageDef[] = [{ id: 'home', type: 'dashboard', widgets: [{ kind: 'stacked', entity: 'Order', groupBy: 'customer' }] }]
+    expect(validatePages(stacked, entities).problems[0]).toContain('which it no longer has')
+  })
+})

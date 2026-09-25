@@ -28,6 +28,8 @@ import { LAYOUT_TEMPLATES, buildLayoutTemplate, deletePageTemplate, pageFromTemp
 import { dropIndicatorClass, useDragReorder } from './useDragReorder'
 import {
   DATE_RANGES,
+  REFRESH_CHOICES,
+  reloads,
   DEFAULT_NAV_ICON,
   DEFAULT_PAGE_SIZE,
   LIST_PAGE_SIZES,
@@ -2244,6 +2246,26 @@ function DashboardForm({ page, index, pages, projectOpts, entities, errors, upda
           {DATE_RANGES.map(r => <option key={r.value} value={r.value}>Opens on: {r.label}</option>)}
         </select>
       </Field>
+      <Field
+        label="Auto-refresh"
+        error={errors.refreshSeconds}
+        control="refreshSeconds"
+        hint={(page.widgets ?? []).some(reloads)
+          ? page.refreshSeconds ? 'The widgets reload on this timer while the page is open; Refresh reloads them any time' : 'Off — the generated Refresh button reloads the widgets'
+          : 'Add a widget that shows data first'}
+      >
+        <select
+          aria-label="Auto-refresh"
+          aria-invalid={Boolean(errors.refreshSeconds)}
+          value={page.refreshSeconds ?? ''}
+          disabled={!(page.widgets ?? []).some(reloads) && page.refreshSeconds == null}
+          onChange={e => update(index, { refreshSeconds: e.target.value ? Number(e.target.value) : undefined })}
+          className={`${inputClass(errors.refreshSeconds)} max-w-[14rem]`}
+        >
+          <option value="">Off</option>
+          {REFRESH_CHOICES.map(r => <option key={r.value} value={r.value}>Reload {r.label}</option>)}
+        </select>
+      </Field>
       <div className="space-y-2" data-control="widgets">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
@@ -2698,8 +2720,24 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                 onChange={name => onRetarget({ entity: name })}
               />
             </MiniField>
-            {(widget.kind === 'bar' || widget.kind === 'donut' || widget.kind === 'stacked') && (
-              <MiniField label="Group by" hint={widget.kind === 'donut' ? 'One slice per value' : 'One bar per value'}>
+            {(widget.kind === 'bar' || widget.kind === 'donut') && (
+              <MiniField label="Group by" hint={widget.kind === 'donut' ? 'One slice per value (or related record)' : 'One bar per value (or related record)'}>
+                <select
+                  aria-label="Group by"
+                  value={widget.groupBy ?? ''}
+                  onChange={e => onChange({ groupBy: e.target.value || undefined })}
+                  className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                >
+                  <option value="">{defaultOptionLabel(defaultTopGroupBy(entity), 'enum, boolean or relation', labelOf)}</option>
+                  {rankableKeys(entity).map(k => <option key={k} value={k}>{labelOf(k)}</option>)}
+                  {widget.groupBy && !rankableKeys(entity).includes(widget.groupBy) && (
+                    <option value={widget.groupBy}>{widget.groupBy}</option>
+                  )}
+                </select>
+              </MiniField>
+            )}
+            {widget.kind === 'stacked' && (
+              <MiniField label="Group by" hint="One bar per value">
                 <select
                   aria-label="Group by"
                   value={widget.groupBy ?? ''}
@@ -3127,6 +3165,16 @@ function ChartFields({ chart, chartIndex, entity, errors, onChange }: {
             onChange={patch => setChart(patch)}
           />
         </span>
+        <label className="inline-flex items-center gap-1.5 pb-1 text-xs text-on-surface" title="The grouped totals under the chart (by default only under the first chart)">
+          <input
+            type="checkbox"
+            className="accent-primary"
+            aria-label={`Totals table under chart ${chartIndex + 1}`}
+            checked={chart.table ?? chartIndex === 0}
+            onChange={e => setChart({ table: e.target.checked === (chartIndex === 0) ? undefined : e.target.checked })}
+          />
+          Totals table
+        </label>
       </div>
       {errors[groupKey] && <p className="text-[11px] text-error">{errors[groupKey]}</p>}
       {errors[fieldKey] && <p className="text-[11px] text-error">{errors[fieldKey]}</p>}

@@ -1,4 +1,5 @@
 import type { FullstackEntityDef } from '../../types'
+import { formSectionsProblem } from './formSections'
 
 /**
  * Client-side mirror of the backend `FullstackRequestValidator` so users see problems
@@ -195,6 +196,8 @@ export interface EntityErrors {
   viewQuery?: string
   fields: Record<number, FieldErrors>
   relations?: Record<number, RelationErrors>
+  /** The form sections name a field twice, one that is gone, or have no title. */
+  formSections?: string
 }
 
 export interface FullstackErrors {
@@ -407,8 +410,13 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
     })
 
     if (eErr.name) result.count += 1
+    const sectionsErr = formSectionsProblem(entity)
+    if (sectionsErr) {
+      eErr.formSections = sectionsErr
+      result.count += 1
+    }
     const hasRelErrs = eErr.relations && Object.keys(eErr.relations).length > 0
-    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
+    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
       result.entities[eIdx] = eErr
     }
   })

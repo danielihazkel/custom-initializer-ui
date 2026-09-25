@@ -122,6 +122,12 @@ export function askableFields(entity: FullstackEntityDef | undefined): { name: s
 /** The steps a wizard gets when it names none (FullstackPageValidator): four fields to a step. */
 export function defaultWizardSteps(entity: FullstackEntityDef | undefined): { title?: string; fields: string[] }[] {
   const names = askableFields(entity).map(f => f.name)
+  // The entity's form sections, one step each, then whatever they leave out (FullstackPageValidator.steps).
+  if (entity?.formSections?.length) {
+    const placed = new Set(entity.formSections.flatMap(s => s.fields.map(f => f.toLowerCase())))
+    const rest = names.filter(n => !placed.has(n.toLowerCase()))
+    return [...entity.formSections.map(s => ({ title: s.title, fields: [...s.fields] })), ...(rest.length ? [{ fields: rest }] : [])]
+  }
   const steps: { fields: string[] }[] = []
   for (let i = 0; i < names.length; i += DEFAULT_STEP_SIZE) steps.push({ fields: names.slice(i, i + DEFAULT_STEP_SIZE) })
   return steps
@@ -160,6 +166,17 @@ export const DATE_RANGES: { value: FullstackDateRange; label: string }[] = [
   { value: 'ytd', label: 'This year' },
   { value: '12m', label: 'Last 12 months' },
 ]
+
+/** How often a dashboard may reload its widgets (FullstackPageValidator.REFRESH_SECONDS). */
+export const REFRESH_CHOICES: { value: number; label: string }[] = [
+  { value: 30, label: 'every 30 seconds' },
+  { value: 60, label: 'every minute' },
+  { value: 300, label: 'every 5 minutes' },
+  { value: 900, label: 'every 15 minutes' },
+]
+
+/** The widgets that show data (and so reload): every kind but a note, a launcher and an embedded list. */
+export const reloads = (w: FullstackWidgetDef) => w.kind !== 'text' && w.kind !== 'links' && w.kind !== 'list'
 
 /** Grid columns a widget takes when it names none: a tile one, a chart or list two, a launcher the row. */
 export function defaultSpan(kind: FullstackWidgetDef['kind']): number {
@@ -875,7 +892,17 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
                 `${where} has a stacked chart of ${e.name}, which has no second enum or boolean field to split by`)
             }
           }
-          if (w.kind === 'bar' || w.kind === 'donut' || w.kind === 'stacked') {
+          if (w.kind === 'bar' || w.kind === 'donut') {
+            const keys = rankableKeys(e)
+            if (w.groupBy && !keys.some(k => k.toLowerCase() === w.groupBy!.toLowerCase())) {
+              add(`widget.${wi}`, `${e.name} has no enum, boolean or relation “${w.groupBy}”`,
+                `${where} groups ${e.name} by “${w.groupBy}”, which it no longer has`)
+            } else if (!w.groupBy && keys.length === 0) {
+              add(`widget.${wi}`, `${e.name} has no enum, boolean or relation to group by`,
+                `${where} charts ${e.name}, which has no enum, boolean or relation to group by`)
+            }
+          }
+          if (w.kind === 'stacked') {
             const groupable = groupableFields(e)
             if (w.groupBy && !groupable.some(f => f.name === w.groupBy)) {
               add(`widget.${wi}`, `${e.name} has no enum or boolean field “${w.groupBy}”`,
@@ -957,6 +984,14 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
             }
           }
         })
+        if (page.refreshSeconds != null) {
+          if (!REFRESH_CHOICES.some(r => r.value === page.refreshSeconds)) {
+            add('refreshSeconds', `${page.refreshSeconds} seconds is not one of the refresh choices`)
+          } else if (widgets.length > 0 && !widgets.some(reloads)) {
+            add('refreshSeconds', 'no widget shows data to reload',
+              `${where} refreshes on a timer, but none of its widgets shows data to reload`)
+          }
+        }
         if (page.dateRange) {
           if (!DATE_RANGES.some(r => r.value === page.dateRange)) {
             add('dateRange', `“${page.dateRange}” is not a period`)
@@ -1208,6 +1243,8 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
         counts.links && `${counts.links} page-links panel${counts.links === 1 ? '' : 's'}`,
         counts.list && `${counts.list} embedded list${counts.list === 1 ? '' : 's'}`,
       ].filter(Boolean)
+      const every = REFRESH_CHOICES.find(r => r.value === page.refreshSeconds)
+      if (every && parts.length) parts.push(`refreshes ${every.label}`)
       return parts.join(' · ') || 'No widgets'
     }
     case 'tabs':
@@ -1390,7 +1427,7 @@ export function widgetKindDisabledReason(kind: FullstackWidgetDef['kind'], entit
   switch (kind) {
     case 'bar':
     case 'donut':
-      return groupableFields(entity).length > 0 ? undefined : `${name} has no enum or boolean field to break down by`
+      return rankableKeys(entity).length > 0 ? undefined : `${name} has no enum, boolean or relation to break down by`
     case 'stacked':
       return groupableFields(entity).length > 1 ? undefined : `${name} needs two enum or boolean fields to stack`
     case 'line':
@@ -1911,6 +1948,7 @@ export function retargetPage(page: FullstackPageDef, type: FullstackPageType, en
   lost(page.pageSize, next.pageSize, 'page size')
   lost(page.widgets, next.widgets, 'widgets')
   lost(page.dateRange, next.dateRange, 'period picker')
+  lost(page.refreshSeconds, next.refreshSeconds, 'auto-refresh')
   lost(page.tabs, next.tabs, 'tabs')
   if (page.type === 'master-detail' && type !== 'master-detail') dropped.push('child list')
   lost(page.chart ?? page.charts, next.chart ?? next.charts, 'charts')
@@ -2029,7 +2067,8 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     if (next.sort != null) drop(['sort'], 'sort')
   }
   if (next.groupBy != null) {
-    const fits = kind === 'bar' || kind === 'donut' || kind === 'stacked' ? groupableFields(entity).some(f => f.name === next.groupBy)
+    const fits = kind === 'bar' || kind === 'donut' ? rankableKeys(entity).includes(next.groupBy)
+      : kind === 'stacked' ? groupableFields(entity).some(f => f.name === next.groupBy)
       : kind === 'line' ? dateFields(entity).some(f => f.name === next.groupBy)
         : kind === 'top' ? rankableKeys(entity).includes(next.groupBy)
           : false

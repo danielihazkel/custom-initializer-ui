@@ -20,6 +20,7 @@ import {
   relationsTo,
   childTabEntity,
   childTabVia,
+  reloads,
 } from './pageLayout'
 import { buildUiPreview, fieldLabel } from './uiPreview'
 
@@ -101,7 +102,11 @@ export interface PreviewTable {
 }
 
 export type PreviewScreen =
-  | { type: 'dashboard'; title: string; description?: string; widgets: PreviewWidget[]; period: string | null }
+  | {
+    type: 'dashboard'; title: string; description?: string; widgets: PreviewWidget[]; period: string | null
+    /** The generated Refresh button, when a widget shows data; with the timer's interval when set. */
+    refresh: { label: string; every: string | null } | null
+  }
   | { type: 'entity-list'; title: string; description?: string; table: PreviewTable }
   | { type: 'tabs'; title: string; description?: string; tabs: { label: string; target: number | null }[] }
   | {
@@ -173,7 +178,7 @@ const STRINGS = {
     xReport: '{x} report', total: 'Total', aggSum: 'Total {x}', aggAvg: 'Average {x}', aggMin: 'Lowest {x}',
     aggMax: 'Highest {x}', viewAll: 'View all', back: 'Back', exportCsv: 'Export CSV', newX: 'New {x}',
     xDetails: '{x} details', search: 'Search…', filters: 'Filters', trueLabel: 'True', falseLabel: 'False',
-    count: 'Count', startPage: 'Start page', stepX: 'Step {x}', review: 'Review', next: 'Next', save: 'Save', topXByY: 'Top {x} by {y}', vsPrevious: 'vs previous period',
+    count: 'Count', startPage: 'Start page', stepX: 'Step {x}', review: 'Review', next: 'Next', save: 'Save', refresh: 'Refresh', topXByY: 'Top {x} by {y}', vsPrevious: 'vs previous period',
     percentOfTarget: '{x}% of target', periodAll: 'All time', period7d: 'Last 7 days',
     period30d: 'Last 30 days', period90d: 'Last 90 days', periodYtd: 'This year', period12m: 'Last 12 months',
   },
@@ -182,7 +187,7 @@ const STRINGS = {
     xReport: 'דוח {x}', total: 'סך הכול', aggSum: 'סך {x}', aggAvg: '{x} ממוצע', aggMin: '{x} מינימלי',
     aggMax: '{x} מקסימלי', viewAll: 'הצג הכל', back: 'חזרה', exportCsv: 'ייצוא ל-CSV', newX: '{x} חדש',
     xDetails: 'פרטי {x}', search: 'חיפוש…', filters: 'מסננים', trueLabel: 'כן', falseLabel: 'לא',
-    count: 'כמות', startPage: 'דף פתיחה', stepX: 'שלב {x}', review: 'סקירה', next: 'הבא', save: 'שמירה', topXByY: '{x} מובילים לפי {y}', vsPrevious: 'לעומת התקופה הקודמת',
+    count: 'כמות', startPage: 'דף פתיחה', stepX: 'שלב {x}', review: 'סקירה', next: 'הבא', save: 'שמירה', refresh: 'רענון', topXByY: '{x} מובילים לפי {y}', vsPrevious: 'לעומת התקופה הקודמת',
     percentOfTarget: '{x}% מהיעד', periodAll: 'כל הזמן', period7d: '7 הימים האחרונים',
     period30d: '30 הימים האחרונים', period90d: '90 הימים האחרונים', periodYtd: 'מתחילת השנה',
     period12m: '12 החודשים האחרונים',
@@ -489,7 +494,23 @@ export function buildLayoutPreview(
             }
             case 'bar':
             case 'donut': {
-              const group = fieldOf(e, w.groupBy ?? defaultBarGroupBy(e))
+              const by = w.groupBy ?? defaultTopGroupBy(e)
+              // Grouped by a relation: one bar per related record, named like a top list's rows.
+              const relation = (e.relations ?? []).find(r => r.fieldName === by && r.type === 'MANY_TO_ONE')
+              if (relation) {
+                const target = entityOf(relation.targetEntity)
+                const rand = seeded(seed)
+                const [lo, hi] = magnitude(w.agg, valueField)
+                return {
+                  ...base, kind: w.kind,
+                  title: w.title || t('xByY', { x: measured, y: humanize(relation.fieldName) }),
+                  bars: Array.from({ length: 5 }, (_, i) => ({
+                    label: target ? rowLabel(target, i + 1, labels(target).singular, t) : `#${i + 1}`,
+                    value: between(rand, lo, hi),
+                  })),
+                }
+              }
+              const group = fieldOf(e, by)
               if (!group) return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} has nothing to group by` }
               return {
                 ...base, kind: w.kind,
@@ -540,7 +561,10 @@ export function buildLayoutPreview(
           }
         })
         const period = page.dateRange ? t(PERIOD_KEYS[page.dateRange]) : null
-        return { type: 'dashboard', title: page.title || t('dashboard'), description, widgets, period }
+        const every = page.refreshSeconds == null ? null
+          : page.refreshSeconds < 60 ? `${page.refreshSeconds}s` : `${Math.round(page.refreshSeconds / 60)}m`
+        const refresh = (page.widgets ?? []).some(reloads) ? { label: t('refresh'), every } : null
+        return { type: 'dashboard', title: page.title || t('dashboard'), description, widgets, period, refresh }
       }
       case 'entity-list': {
         const e = entityOf(page.entity)

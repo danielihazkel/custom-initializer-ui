@@ -301,6 +301,10 @@
       },
       {
         "name": "Order",
+        "formSections": [
+          { "title": "The order", "fields": ["reference", "customer", "status"] },
+          { "title": "Amounts and dates", "fields": ["total", "placedAt"] }
+        ],
         "listViews": [
           "table",
           "kanban",
@@ -658,6 +662,7 @@
         "id": "overview",
         "type": "dashboard",
         "title": "Support overview",
+        "refreshSeconds": 300,
         "widgets": [
           {
             "kind": "kpi",
@@ -960,6 +965,12 @@
             "limit": 5
           },
           {
+            "kind": "donut",
+            "entity": "StockMovement",
+            "title": "Movements by warehouse",
+            "groupBy": "warehouse"
+          },
+          {
             "kind": "line",
             "entity": "StockMovement",
             "title": "Movements per day",
@@ -1024,7 +1035,8 @@
           {
             "groupBy": "warehouse",
             "agg": "sum",
-            "field": "quantity"
+            "field": "quantity",
+            "table": true
           }
         ]
       },

@@ -898,7 +898,7 @@ describe('PagesEditor', () => {
     const trend = within(gallery).getByRole('button', { name: 'Add trend over time' }) as HTMLButtonElement
     expect(trend.disabled).toBe(true)
     expect(trend.title).toBe('Customer has no date field to plot over')
-    expect((within(gallery).getByRole('button', { name: 'Add breakdown chart' }) as HTMLButtonElement).title).toBe('Customer has no enum or boolean field to break down by')
+    expect((within(gallery).getByRole('button', { name: 'Add breakdown chart' }) as HTMLButtonElement).title).toBe('Customer has no enum, boolean or relation to break down by')
     expect((within(gallery).getByRole('button', { name: 'Add number tile' }) as HTMLButtonElement).disabled).toBe(false)
 
     fireEvent.change(within(gallery).getByLabelText('New widget entity'), { target: { value: 'Order' } })

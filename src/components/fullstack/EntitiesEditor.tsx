@@ -15,6 +15,7 @@ import { dropIndicatorClass, useDragReorder } from './useDragReorder'
 import { uniqueName } from './naming'
 import { FieldChips } from './FieldChips'
 import { EntitySettingsPanel, settingsSummary } from './EntitySettingsPanel'
+import { syncFormSections } from './formSections'
 import { EntityUiPreview } from './EntityUiPreview'
 import { EntityCodePanel } from './EntityCodePanel'
 import type { EntityCodeFile } from './entityCode'
@@ -115,9 +116,15 @@ const ICON_BTN = 'p-1.5 rounded text-secondary hover:text-primary hover:bg-prima
 const SMALL_ICON_BTN = 'p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
 
 export function EntitiesEditor({
-  entities, onChange, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [], onNotice,
+  entities, onChange: onChangeRaw, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [], onNotice,
   onRowAdded, lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx, onGoToOptions, onCodeFiles, codeState,
 }: Props) {
+  // Every edit keeps the entity's form sections in step: a renamed field or relation is renamed
+  // there, a removed one dropped.
+  const onChange = (next: FullstackEntityDef[]) => onChangeRaw(next.map(e => {
+    const before = e.uid ? entities.find(x => x.uid === e.uid) : undefined
+    return before && before !== e ? syncFormSections(before, e) : e
+  }))
   // The latest list for the Undo closures on removal toasts: they fire after later edits, and must
   // re-insert into the list as it is *then*, not as it was when the row went.
   const entitiesRef = useRef(entities)
@@ -414,7 +421,7 @@ export function EntitiesEditor({
         const cardDrop = dnd.indicatorFor('entities', eIdx)
         const settingsChips = settingsSummary(entity)
         // A problem inside Settings (blank query, generated PK / relations on a view) forces it open.
-        const settingsForced = Boolean(eErr?.viewQuery)
+        const settingsForced = Boolean(eErr?.viewQuery || eErr?.formSections)
         const settingsOpen = settingsForced || (panelFor?.key === entityKey && panelFor.kind === 'settings')
         const overridesOpen = panelFor?.key === entityKey && panelFor.kind === 'overrides'
         const previewOpen = panelFor?.key === entityKey && panelFor.kind === 'preview'

@@ -63,3 +63,15 @@ describe('page roles', () => {
     expect(validatePages(tab, entities, { ldapAuth: true }).byPage[1]).toEqual({ roles: 'restrict the tabs page instead' })
   })
 })
+
+describe('dashboard auto-refresh', () => {
+  it('takes one of the refresh choices, on a dashboard with data to reload, and says so', () => {
+    const ok: FullstackPageDef[] = [{ id: 'desk', type: 'dashboard', refreshSeconds: 60, widgets: [{ kind: 'kpi', entity: 'Ticket' }] }]
+    expect(validatePages(ok, entities).problems).toEqual([])
+    expect(describePage(ok[0], ok)).toBe('1 number tile · refreshes every minute')
+    const odd: FullstackPageDef[] = [{ ...ok[0], refreshSeconds: 45 }]
+    expect(validatePages(odd, entities).byPage[0]).toEqual({ refreshSeconds: '45 seconds is not one of the refresh choices' })
+    const noData: FullstackPageDef[] = [{ id: 'desk', type: 'dashboard', refreshSeconds: 60, widgets: [{ kind: 'text', entity: '', text: 'Hi' }] }]
+    expect(validatePages(noData, entities).problems).toEqual(['Page “desk” refreshes on a timer, but none of its widgets shows data to reload'])
+  })
+})

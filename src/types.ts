@@ -411,6 +411,15 @@ export interface FullstackEntityDef {
   sourceSql?: string
   /** Per-entity overrides of the project-wide `opts.scaffold` flags (see {@link FullstackEntityOpts}). */
   opts?: FullstackEntityOpts
+  /** The form in titled sections (the drawer form, the record's details, and a wizard without
+   *  its own steps follow them); fields no section lists come after, untitled. */
+  formSections?: FullstackFormSection[]
+}
+
+/** A titled group of an entity's form: field and MANY_TO_ONE relation names, in order. */
+export interface FullstackFormSection {
+  title: string
+  fields: string[]
 }
 
 /** A fullstack model saved on the server for the whole team (`/metadata/fullstack/models`).
@@ -580,6 +589,8 @@ export interface FullstackChartDef {
   bucket?: FullstackBucket
   agg?: FullstackAgg
   field?: string
+  /** The grouped totals table under the chart. Absent: under a report's first chart only. */
+  table?: boolean
 }
 
 /** The generated security's logical roles (its Constants). */
@@ -633,6 +644,9 @@ export interface FullstackPageDef {
   widgets?: FullstackWidgetDef[]
   /** dashboard: a period picker over the widgets' dates, opening on this period. */
   dateRange?: FullstackDateRange
+  /** dashboard: reload the widgets every so many seconds while the page is open (30, 60, 300 or
+   *  900). Absent: only the generated Refresh button reloads them. */
+  refreshSeconds?: number
   /** tabs: 2–6 other pages (never a tabs or record page). */
   tabs?: { title?: string; page: string }[]
   /** master-detail: the entity listed on the left. Needs a single primary key. */
