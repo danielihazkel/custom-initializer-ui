@@ -227,7 +227,7 @@ describe('PagesEditor', () => {
     expect(document.querySelector('[data-page-id="orders"] [data-control="columns"]')).toBeNull()
     fireEvent.click(within(preview()).getByRole('button', { name: 'Edit the columns' }))
     expect(document.querySelector('[data-page-id="orders"] [data-control="columns"]')).toBeTruthy()
-    expect(within(preview()).getByRole('button', { name: 'Edit the sort' }).textContent).toContain('Total ↑')
+    expect(within(preview()).getByRole('button', { name: 'Edit the sort' }).parentElement!.textContent).toContain('Total ↑')
 
     openRow('new-order')
     expect(preview().querySelector('[data-preview-step]')?.getAttribute('data-preview-step')).toBe('0')
@@ -424,6 +424,15 @@ describe('PagesEditor', () => {
     expect(pushUndo.mock.calls[0][0]).toMatch(/^Replaced the page layout with the “.+” template$/)
     expect(latest.map(p => p.id)).not.toEqual(['orders'])
     expect(document.querySelector('[data-replace-templates]')).toBeNull()
+  })
+
+  it('names entities by their labels in the pickers', () => {
+    const labelled = [{ ...entities[0], label: 'Client' }, entities[1]]
+    render(<Harness initial={[{ id: 'customers', type: 'entity-list', entity: 'Customer' }]} entities={labelled} />)
+    openRow('customers')
+    const options = [...(screen.getByLabelText('List entity') as HTMLSelectElement).options].map(o => o.textContent)
+    expect(options).toContain('Client (Customer)')
+    expect(options).toContain('Order')
   })
 
   it('derives the id from the title until the id is edited by hand', () => {
@@ -1250,7 +1259,7 @@ describe('PagesEditor', () => {
     // Any control on the page maps onto a drawn part — the title field onto the heading.
     const title = within(home).getByLabelText('Page title')
     fireEvent.mouseOver(title)
-    expect(lit().map(el => el.getAttribute('aria-label'))).toEqual(['Edit the page title'])
+    expect(lit().map(el => el.querySelector(':scope > button')?.getAttribute('aria-label'))).toEqual(['Edit the page title'])
     // The row itself, outside any control, is the page: its nav entry.
     fireEvent.mouseOver(home.querySelector('button[aria-expanded]')!)
     expect(lit().map(el => el.getAttribute('data-preview-nav'))).toEqual(['0'])
@@ -1260,11 +1269,11 @@ describe('PagesEditor', () => {
     // Keyboard focus lights a part too, and the mouse passing over does not lose it.
     title.focus()
     fireEvent.focus(title)
-    expect(lit().map(el => el.getAttribute('aria-label'))).toEqual(['Edit the page title'])
+    expect(lit().map(el => el.querySelector(':scope > button')?.getAttribute('aria-label'))).toEqual(['Edit the page title'])
     fireEvent.mouseOver(home.querySelector('[data-widget="0"]')!)
     expect(lit()[0].querySelector('[data-preview-widget="0"]')).toBeTruthy()
     fireEvent.mouseLeave(list)
-    expect(lit().map(el => el.getAttribute('aria-label'))).toEqual(['Edit the page title'])
+    expect(lit().map(el => el.querySelector(':scope > button')?.getAttribute('aria-label'))).toEqual(['Edit the page title'])
     title.blur()
     fireEvent.blur(title)
     expect(lit()).toHaveLength(0)

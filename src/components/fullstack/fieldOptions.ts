@@ -19,6 +19,11 @@ export function optionText(label: string, raw: string): string {
 }
 
 /** A field: its label (or humanized name). */
+/** An entity in a picker: its label, with its name after it when they differ. */
+export function entityOption(e: Pick<FullstackEntityDef, 'name' | 'label'>): string {
+  return optionText(e.label ?? '', e.name)
+}
+
 export function fieldOption(f: Pick<FullstackFieldDef, 'name' | 'label'>): string {
   return optionText(f.label?.trim() || humanize(f.name), f.name)
 }

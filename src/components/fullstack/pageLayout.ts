@@ -850,7 +850,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
       if (tooLong(step.title)) add(`step.${si}`, `has a title longer than ${MAX_TITLE} characters`, `${where} has a step title over ${MAX_TITLE} characters`)
     })
     ;(page.headerStats ?? []).forEach((s, si) => {
-      if (tooLong(s.title)) add(`headerStat.${si}`, `has a title longer than ${MAX_TITLE} characters`, `${where} has a header tile title over ${MAX_TITLE} characters`)
+      if (tooLong(s.title)) add(`headerStat.${si}`, `has a title longer than ${MAX_TITLE} characters`, `${where} has a header number title over ${MAX_TITLE} characters`)
     })
     if (page.group?.trim() || page.icon) {
       if (!inNav(page)) {
@@ -1197,22 +1197,22 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         })
         if (childTabs.length > MAX_CHILD_TABS) add('childTabs', `has more than ${MAX_CHILD_TABS} related lists`)
         const stats = page.headerStats ?? []
-        if (stats.length > MAX_HEADER_STATS) add('headerStats', `has more than ${MAX_HEADER_STATS} header tiles`)
+        if (stats.length > MAX_HEADER_STATS) add('headerStats', `has more than ${MAX_HEADER_STATS} header numbers`)
         stats.forEach((s, si) => {
           const child = entityOf(s.child)
           if (!child) {
             add(`headerStat.${si}`, `“${s.child}” is no longer an entity`,
-              `${where} has a header tile for “${s.child}”, which is no longer an entity`,
+              `${where} has a header number for “${s.child}”, which is no longer an entity`,
               patchPage(index, `Remove the ${s.title || s.child} tile`, p => ({ ...p, headerStats: (p.headerStats ?? []).filter((_, j) => j !== si) })))
           } else if (relationsTo(child, e.name).length === 0) {
             add(`headerStat.${si}`, `${child.name} has no relation to ${e.name}`,
-              `${where} has a header tile for ${child.name}, which has no relation to ${e.name}`)
+              `${where} has a header number for ${child.name}, which has no relation to ${e.name}`)
           } else if (s.via && !relationsTo(child, e.name).includes(s.via)) {
             add(`headerStat.${si}`, `${child.name} has no relation “${s.via}” to ${e.name}`,
-              `${where} has a header tile linked through “${s.via}”, which is not a relation of ${child.name} to ${e.name}`)
+              `${where} has a header number linked through “${s.via}”, which is not a relation of ${child.name} to ${e.name}`)
           } else {
             for (const issue of aggIssues(s.agg, s.field, child, false)) {
-              add(`headerStat.${si}`, issue.message, `${where} has a header tile that ${issue.summary}`)
+              add(`headerStat.${si}`, issue.message, `${where} has a header number that ${issue.summary}`)
             }
           }
         })

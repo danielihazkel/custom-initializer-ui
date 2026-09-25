@@ -575,21 +575,23 @@ interface LinkProps {
 }
 
 /** A part of the mock that jumps to its control in the editor, and is ringed while that control
- *  is hovered or focused there. */
+ *  is hovered or focused there. The part is drawn as it is (tables, lists…) with a transparent
+ *  button laid over it — a button may not hold block content, and a screen reader then hears the
+ *  label, not the sample data. */
 function Editable({ page, control, onEdit, highlight, label, className, children }: LinkProps & { control: string; label: string; className?: string; children: ReactNode }) {
   const target = { page, control }
   const lit = highlights(highlight, target)
   return (
-    <button
-      type="button"
-      onClick={() => onEdit(target)}
-      title={label}
-      aria-label={label}
-      data-preview-highlight={lit ? '' : undefined}
-      className={`rounded outline-offset-2 hover:outline hover:outline-1 hover:outline-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${lit ? HIGHLIGHT : ''} ${className ?? ''}`}
-    >
-      {children}
-    </button>
+    <div className={`relative rounded ${lit ? HIGHLIGHT : ''} ${className ?? ''}`} data-preview-highlight={lit ? '' : undefined}>
+      <div aria-hidden="true">{children}</div>
+      <button
+        type="button"
+        onClick={() => onEdit(target)}
+        title={label}
+        aria-label={label}
+        className="absolute inset-0 h-full w-full cursor-pointer rounded outline-offset-2 hover:outline hover:outline-1 hover:outline-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+      />
+    </div>
   )
 }
 

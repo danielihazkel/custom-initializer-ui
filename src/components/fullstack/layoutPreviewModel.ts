@@ -27,7 +27,7 @@ import { buildUiPreview, fieldLabel } from './uiPreview'
 /**
  * View-model for the Fullstack tab's layout preview: a wireframe of the app the page layout
  * generates — the nav in order, and each screen as the templates draw it (ScreenDashboard,
- * ScreenEntityList, ScreenTabs, ScreenMasterDetail, ScreenRecord, ScreenReport). Titles follow
+ * ScreenEntityList, ScreenTabs, ScreenMasterDetail, ScreenRecord, ScreenReport, ScreenWizard). Titles follow
  * the backend defaults (EntityScaffoldContext.putPageContext) in the chosen chrome language;
  * the numbers and rows are sample data made up from the model, seeded by name so they stay put
  * between renders. Pure so it can be unit tested; LayoutPreview.tsx only draws it.

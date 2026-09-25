@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { handleRadioKeys, syncRadioTabStops } from './rovingRadios'
 import type {
   FullstackAgg,
   FullstackBucket,
@@ -17,7 +18,7 @@ import type {
 } from '../../types'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { inputClass } from './controls'
-import { enumValueOption, fieldOption, keyOption, relationOption } from './fieldOptions'
+import { entityOption, enumValueOption, fieldOption, keyOption, relationOption } from './fieldOptions'
 import { cssEscape } from './focus'
 import { pluralize } from './naming'
 import { buildLayoutPreview } from './layoutPreviewModel'
@@ -202,7 +203,7 @@ const WIDGET_KINDS: { kind: FullstackWidgetDef['kind']; icon: string; label: str
   { kind: 'top', icon: 'format_list_numbered', label: 'Top list', short: 'Top', hint: 'The largest groups, ranked' },
   { kind: 'progress', icon: 'data_usage', label: 'Progress to target', short: 'Progress', hint: 'An aggregate against a fixed target' },
   { kind: 'text', icon: 'notes', label: 'Text note', short: 'Text', hint: 'A heading and paragraphs of your own — no data' },
-  { kind: 'links', icon: 'apps', label: 'Page links', short: 'Links', hint: 'Tiles that open other pages — a launcher' },
+  { kind: 'links', icon: 'apps', label: 'Page links', short: 'Links', hint: 'Tiles that open other pages' },
   { kind: 'list', icon: 'table_rows', label: 'Embedded list', short: 'List', hint: 'An entity’s rows in a card — your columns, sort and filter' },
 ]
 
@@ -604,7 +605,11 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     requestAnimationFrame(() => scrollToElement(sectionRef.current, 'start'))
   }, [findRequest])
   /** `/` finds a page; ↑/↓ on a page title moves to the next visible one. */
-  function onSectionKey(e: ReactKeyboardEvent) {
+  // Each radio group is one Tab stop, walked with the arrow keys (after every render: a pick
+  // changes which option holds the stop).
+  useLayoutEffect(() => syncRadioTabStops(sectionRef.current))
+  function onSectionKey(e: ReactKeyboardEvent<HTMLElement>) {
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) handleRadioKeys(e)
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
     const target = e.target as HTMLElement
     const typing = target.closest('input, textarea, select, [contenteditable="true"]') !== null
@@ -643,6 +648,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   }, [previewRequest, layout])
 
   const settings = previewSettings ?? DEFAULT_PREVIEW_SETTINGS
+  const entityOptions = useMemo(() => new Map(entities.map(e => [e.name, entityOption(e)])), [entities])
   const warnPages = useMemo(() => new Set(validation.warnings.map(w => w.page).filter((p): p is number => p != null)), [validation.warnings])
   const preview = useMemo(
     () => buildLayoutPreview(pages, entities, { locale: settings.locale, projectOpts: settings.projectOpts, warnPages }),
@@ -661,7 +667,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const previewPage = pages[previewIndex]
   const offNavNote = !previewPage ? undefined
     : previewPage.type === 'record' ? `Opens from a ${previewPage.entity || 'record'} row — not in the navigation.`
-      : previewPage.hidden && previewPage.type === 'wizard' ? 'Link only — opened from a links tile or a list’s New button, not from the navigation.'
+      : previewPage.hidden && previewPage.type === 'wizard' ? 'Link only — opened from a Page links widget or a list’s New button, not from the navigation.'
         : previewPage.hidden ? 'Tab only — reachable inside a tabs page, not from the navigation.'
         : undefined
   const suggestions = useMemo(() => suggestPages(entities, pages), [entities, pages])
@@ -672,6 +678,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const showPreview = pages.length > 0 && previewOpen
 
   return (
+    <EntityOptions.Provider value={entityOptions}>
     <section
       ref={sectionRef}
       id="fs-pages"
@@ -1036,8 +1043,12 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         </div>
       )}
 
+      {/* Announced as a count, politely — the list itself would be read out again on every edit. */}
+      <p className="sr-only" role="status">
+        {issues.length === 0 ? '' : `${issues.length} layout problem${issues.length === 1 ? '' : 's'}`}
+      </p>
       {issues.length > 0 && (
-        <ul className="rounded-lg border border-error/40 bg-error/5 px-3 py-2 space-y-1" role="alert" data-page-layout-problems>
+        <ul className="rounded-lg border border-error/40 bg-error/5 px-3 py-2 space-y-1" aria-label="Layout problems" data-page-layout-problems>
           {issues.map((issue, i) => (
             <li key={`${i}:${issue.summary}`} className="flex flex-wrap items-start gap-x-3 gap-y-1 text-[11px] text-error">
               {issue.page != null ? (
@@ -1351,7 +1362,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                       )}
                       {page.hidden && page.type !== 'record' && (
                         page.type === 'wizard'
-                          ? <span className={`${CHIP} bg-surface-container text-secondary`} title="Hidden from the navigation — opened from a links tile or a list’s New button">Link only</span>
+                          ? <span className={`${CHIP} bg-surface-container text-secondary`} title="Hidden from the navigation — opened from a Page links widget or a list’s New button">Link only</span>
                           : <span className={`${CHIP} bg-surface-container text-secondary`} title="Hidden from the navigation — opens inside a tabs page">Tab only</span>
                       )}
                       {page.type === 'record' && (
@@ -1392,7 +1403,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                         onClick={() => update(index, page.hidden ? { hidden: false } : { hidden: true, group: undefined, icon: undefined })}
                         className={ICON_BUTTON}
                         aria-pressed={Boolean(page.hidden)}
-                        title={page.hidden ? 'Show in the navigation' : 'Hide from the navigation (tab only)'}
+                        title={page.hidden ? 'Show in the navigation' : page.type === 'wizard' ? 'Hide from the navigation (link only)' : 'Hide from the navigation (tab only)'}
                         aria-label={page.hidden ? `Show ${pageLabel(page)} in the navigation` : `Hide ${pageLabel(page)} from the navigation`}
                       >
                         <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
@@ -1466,9 +1477,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                           />
                         </Field>
                         <details className="space-y-1" data-control="id" data-page-id-details open={errors.id ? true : undefined}>
-                          <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-secondary" title="The page's URL and screen file name — open to edit it">
+                          <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-secondary" title="The page's route — its address in the app (#/id) and its screen file name. Open to edit the id.">
                             Route <span className="font-mono normal-case tracking-normal text-on-surface">#/{page.id || '…'}</span>
-                            <span className="ms-1 font-normal normal-case tracking-normal">· edit id</span>
+                            <span className="ms-1 font-normal normal-case tracking-normal">· edit</span>
                           </summary>
                           <input
                             type="text"
@@ -1615,6 +1626,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         />
       )}
     </section>
+    </EntityOptions.Provider>
   )
 }
 
@@ -1735,8 +1747,7 @@ function NavFields({ page, index, pages, errors, update }: Omit<FormProps, 'enti
   )
 }
 
-/** Who may open a page: everyone, or users holding one of the generated security's roles. */
-/** Who may open the page. Always shown, so the option is discoverable: without an LDAP auth
+/** Who may open the page: everyone, or users holding one of the generated security's roles. Always shown, so the option is discoverable: without an LDAP auth
  *  dependency the boxes are disabled and a shortcut adds ldap-auth-rest. */
 function RolesField({ page, index, errors, update, ldapAuth, onAddDep, isStart }: Omit<FormProps, 'entities' | 'lossy'> & { ldapAuth?: boolean; onAddDep?: (dep: string) => void; isStart?: boolean }) {
   const roles = page.roles ?? []
@@ -1852,8 +1863,8 @@ function MoveButtons({ label, canUp, canDown, onMove }: { label: string; canUp: 
   )
 }
 
-/** The "opens filtered on" rows of a list or report page: equality on a filterable enum/boolean
- *  column, which is exactly what the backend accepts as a preset filter. */
+/** The "opens filtered on" rows of a list, report or widget: a value of a filterable enum/boolean
+ *  column, or a period/range on a date or number column — what the backend accepts as a preset. */
 function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filtered on', controlPrefix = 'presetFilter.' }: {
   filter: Record<string, string> | undefined
   entity: FullstackEntityDef | undefined
@@ -2466,10 +2477,6 @@ function DashboardForm({ page, index, pages, projectOpts, entities, errors, upda
   )
 }
 
-/**
- * One dashboard widget as a card: a header (reorder, kind, duplicate, remove), then labelled
- * "Data" (what it measures) and "Display" (how it is shown) columns, then the rows it is limited to.
- */
 /** One line for a collapsed widget card: its kind, what it reads and how wide it is. */
 function widgetSummary(w: FullstackWidgetDef, span: number): string {
   const kind = WIDGET_KINDS.find(k => k.kind === w.kind)?.short ?? w.kind
@@ -2496,6 +2503,10 @@ function widgetSummary(w: FullstackWidgetDef, span: number): string {
   return parts.join(' · ')
 }
 
+/**
+ * One dashboard widget as a card: a header (reorder, kind, duplicate, remove), then labelled
+ * "Data" (what it measures) and "Display" (how it is shown) columns, then the rows it is limited to.
+ */
 function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange, errors, atCap, dnd, list, expanded, onToggle, onChange, onRetarget, onMove, onDuplicate, onRemove }: {
   widget: FullstackWidgetDef
   wi: number
@@ -3632,7 +3643,7 @@ function HeaderStatsFields({ page, index, entities, errors, update, lossy, remov
             />
             <input
               type="text"
-              aria-label="Tile title"
+              aria-label="Header number title"
               value={s.title ?? ''}
               maxLength={MAX_TITLE}
               placeholder="Title (optional)"
@@ -3956,15 +3967,30 @@ function ListOptions({ label, entity, projectOpts, columns, sort, onChange }: {
 
 /** The layout preview as a slide-over, for widths where it cannot sit beside the page list. */
 function PreviewDrawer({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    // Modal for real: Tab stays inside, and focus goes back where it was when it closes.
+    const opener = document.activeElement as HTMLElement | null
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return }
+      if (e.key !== 'Tab' || !dialogRef.current) return
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), select, input, [tabindex="0"]'))
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+    }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      opener?.focus?.()
+    }
   }, [onClose])
   return (
     <div className="fixed inset-0 z-40 flex justify-end" data-preview-drawer>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
-      <div role="dialog" aria-modal="true" aria-label="Layout preview" className="relative flex h-full w-full max-w-md flex-col gap-2 overflow-y-auto bg-surface-container-lowest p-4 shadow-xl">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Layout preview" className="relative flex h-full w-full max-w-md flex-col gap-2 overflow-y-auto bg-surface-container-lowest p-4 shadow-xl">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] text-secondary">
             <span className="font-semibold uppercase tracking-wider">Preview</span> · sample data · click a part to edit it
@@ -4016,6 +4042,9 @@ function ViaSelect({ label, relations, value, error, onChange }: {
 }
 
 /** Entity picker that keeps an unknown (renamed away) value visible instead of dropping it. */
+/** Entity name → its picker text (label, then name when they differ), for every EntitySelect. */
+const EntityOptions = createContext<ReadonlyMap<string, string>>(new Map())
+
 function EntitySelect({ label, value, options, error, empty, className, onChange }: {
   label: string
   value: string
@@ -4025,6 +4054,7 @@ function EntitySelect({ label, value, options, error, empty, className, onChange
   className?: string
   onChange: (name: string) => void
 }) {
+  const text = useContext(EntityOptions)
   return (
     <select
       aria-label={label}
@@ -4034,7 +4064,7 @@ function EntitySelect({ label, value, options, error, empty, className, onChange
       className={`${inputClass(error)} py-1 text-xs ${className ?? ''}`}
     >
       <option value="">{empty ?? '— pick an entity —'}</option>
-      {options.map(n => <option key={n} value={n}>{n}</option>)}
+      {options.map(n => <option key={n} value={n}>{text.get(n) ?? n}</option>)}
       {value && !options.includes(value) && <option value={value}>{value}</option>}
     </select>
   )
