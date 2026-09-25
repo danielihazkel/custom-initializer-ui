@@ -5,6 +5,7 @@ import type {
   FullstackDateRange,
   FullstackEntityDef,
   FullstackFieldDef,
+  FullstackListSort,
   FullstackListView,
   FullstackNavIcon,
   FullstackPageDef,
@@ -442,6 +443,19 @@ export function childTabVia(tab: FullstackChildTabDef): string | undefined {
 /** A tab entry in its shortest spelling: the bare entity unless a relation is named. */
 export function childTab(entity: string, via?: string): FullstackChildTabDef {
   return via ? { entity, via } : entity
+}
+
+/** A related-list tab with some of its parts changed, keeping the rest (its columns and sort);
+ *  a tab left with only its entity is written as the bare name. */
+export function withChildTab(tab: FullstackChildTabDef, patch: { entity?: string; via?: string; columns?: string[]; sort?: FullstackListSort }): FullstackChildTabDef {
+  const next: Record<string, unknown> = { ...(typeof tab === 'string' ? { entity: tab } : tab), ...patch }
+  for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k]
+  return Object.keys(next).length === 1 ? (next.entity as string) : (next as Exclude<FullstackChildTabDef, string>)
+}
+
+/** The columns and sort a related-list tab opens with (none: the list's defaults). */
+export function childTabPresentation(tab: FullstackChildTabDef): { columns?: string[]; sort?: FullstackListSort } {
+  return typeof tab === 'string' ? {} : { columns: tab.columns, sort: tab.sort }
 }
 
 /** The child's MANY_TO_ONE fields pointing at `parent`, in declaration order. */
@@ -1053,6 +1067,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
               patchPage(index, `Link through “${candidates[0]}”`, p => ({ ...p, via: candidates[0] })))
           }
         }
+        // The child list may open with its own columns and sort.
+        if (child && (page.columns || page.sort)) checkListPresentation(page, child, add, `${where}’s ${child.name} list`, scaffoldOpts)
         break
       }
       case 'report': {
@@ -1132,6 +1148,11 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           } else if (via && !relationsTo(child, e.name).includes(via)) {
             add(`childTab.${ci}`, `${child.name} has no relation “${via}” to ${e.name}`,
               `${where} links ${child.name} through “${via}”, which is not one of its relations to ${e.name}`)
+          }
+          const shown = childTabPresentation(tab)
+          if (child && (shown.columns || shown.sort)) {
+            checkListPresentation({ id: page.id, type: 'entity-list', ...shown }, child,
+              (_field, message, summary, fix) => add(`childTab.${ci}`, message, summary, fix), `${where}’s ${child.name} tab`, scaffoldOpts)
           }
           if (child) seenChildren.add(child.name)
         })
@@ -1335,7 +1356,7 @@ export function renameEntityInPages(pages: FullstackPageDef[], from: string, to:
     if (same(next.parent)) next.parent = to
     if (same(next.child)) next.child = to
     if (next.widgets) next.widgets = next.widgets.map(w => (same(w.entity) ? { ...w, entity: to } : w))
-    if (next.childTabs) next.childTabs = next.childTabs.map(tab => (same(childTabEntity(tab)) ? childTab(to, childTabVia(tab)) : tab))
+    if (next.childTabs) next.childTabs = next.childTabs.map(tab => (same(childTabEntity(tab)) ? withChildTab(tab, { entity: to }) : tab))
     if (next.headerStats) next.headerStats = next.headerStats.map(s => (same(s.child) ? { ...s, child: to } : s))
     return next
   })
@@ -1522,7 +1543,7 @@ export function renameRelationInPages(pages: FullstackPageDef[], child: string, 
     }
     if (page.type === 'record' && (page.childTabs?.some(t => isChild(childTabEntity(t)) && childTabVia(t) === from)
       || page.headerStats?.some(st => isChild(st.child) && st.via === from))) {
-      out.childTabs = page.childTabs?.map(t => (isChild(childTabEntity(t)) && childTabVia(t) === from ? childTab(childTabEntity(t), to) : t))
+      out.childTabs = page.childTabs?.map(t => (isChild(childTabEntity(t)) && childTabVia(t) === from ? withChildTab(t, { via: to }) : t))
       out.headerStats = page.headerStats?.map(st => (isChild(st.child) && st.via === from ? { ...st, via: to } : st))
     }
     if (page.type === 'master-detail' && isChild(page.child) && page.via === from) out.via = to
@@ -2154,7 +2175,10 @@ export function retargetMasterDetailChild(page: FullstackPageDef, child: string,
     dropped.push('linked-through relation')
     via = undefined
   }
-  return { patch: { child, via }, dropped }
+  // The child list's columns and sort named the old child's columns.
+  if (page.columns) dropped.push('columns')
+  if (page.sort) dropped.push('sort')
+  return { patch: { child, via, columns: undefined, sort: undefined }, dropped }
 }
 
 /** A record page moved to another entity: its related lists and header numbers described the old

@@ -470,7 +470,9 @@
         "description": "Pick a customer to see and add their orders.",
         "parent": "Customer",
         "child": "Order",
-        "showParent": true
+        "showParent": true,
+        "columns": ["reference", "status", "total"],
+        "sort": { "field": "placedAt", "dir": "desc" }
       },
       {
         "id": "new-order",
@@ -517,7 +519,7 @@
         "type": "record",
         "entity": "Order",
         "childTabs": [
-          "OrderLine"
+          { "entity": "OrderLine", "sort": { "field": "quantity", "dir": "desc" } }
         ]
       }
     ],

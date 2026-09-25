@@ -7,6 +7,7 @@ import type {
   FullstackEntityDef,
   FullstackFieldDef,
   FullstackListDetail,
+  FullstackListSort,
   FullstackNav,
   FullstackNavIcon,
   FullstackPageDef,
@@ -79,8 +80,9 @@ import {
   retargetPage,
   tabCandidates,
   chartControl,
-  childTab,
   childTabEntity,
+  childTabPresentation,
+  withChildTab,
   childTabVia,
   defaultWizardSteps,
   duplicatePage,
@@ -1468,10 +1470,10 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                         <TabsForm page={page} index={index} pages={pages} errors={errors} update={update} dnd={dnd} removed={removed} />
                       )}
                       {page.type === 'master-detail' && (
-                        <MasterDetailForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} />
+                        <MasterDetailForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} projectOpts={projectOpts} />
                       )}
                       {page.type === 'record' && (
-                        <RecordForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} removed={removed} dnd={dnd} />
+                        <RecordForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} removed={removed} dnd={dnd} projectOpts={projectOpts} />
                       )}
                       {page.type === 'report' && (
                         <ReportForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} removed={removed} dnd={dnd} />
@@ -3267,7 +3269,7 @@ function TabsForm({ page, index, pages, errors, update, dnd, removed }: Omit<For
   )
 }
 
-function MasterDetailForm({ page, index, entities, errors, update, lossy }: FormProps) {
+function MasterDetailForm({ page, index, entities, errors, update, lossy, projectOpts }: FormProps & { projectOpts: string[] }) {
   const parent = entities.find(e => e.name === page.parent)
   const child = entities.find(e => e.name === page.child)
   const children = entities.filter(e => relationsTo(e, page.parent).length > 0)
@@ -3326,6 +3328,16 @@ function MasterDetailForm({ page, index, entities, errors, update, lossy }: Form
           Show the selected {parent?.name ?? 'parent'}
         </label>
       </Field>
+      <Field label="Child list opens with" error={errors.columns ?? errors.sort} control="columns" hint="Its columns and sort — each absent: the list's own default">
+        <ListOptions
+          label={`${child?.name ?? 'child'} list`}
+          entity={child}
+          projectOpts={projectOpts}
+          columns={page.columns}
+          sort={page.sort}
+          onChange={patch => update(index, patch)}
+        />
+      </Field>
       {vias.length > 1 && (
         <Field label="Linked through" error={errors.via} control="via">
           <select
@@ -3344,7 +3356,7 @@ function MasterDetailForm({ page, index, entities, errors, update, lossy }: Form
   )
 }
 
-function RecordForm({ page, index, entities, errors, update, lossy, removed, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
+function RecordForm({ page, index, entities, errors, update, lossy, removed, dnd, projectOpts }: FormProps & { dnd: ReturnType<typeof useDragReorder>; projectOpts: string[] }) {
   const entity = entities.find(e => e.name === page.entity)
   const related = entities.filter(e => relationsTo(e, page.entity).length > 0).map(e => e.name)
   // Omitted childTabs means "every related list" — the same default the generator applies.
@@ -3358,7 +3370,10 @@ function RecordForm({ page, index, entities, errors, update, lossy, removed, dnd
     })
   }
   function setVia(name: string, via: string) {
-    update(index, { childTabs: tabs.map(t => (childTabEntity(t) === name ? childTab(name, via || undefined) : t)) })
+    update(index, { childTabs: tabs.map(t => (childTabEntity(t) === name ? withChildTab(t, { via: via || undefined }) : t)) })
+  }
+  function setShown(name: string, patch: { columns?: string[]; sort?: FullstackListSort }) {
+    update(index, { childTabs: tabs.map(t => (childTabEntity(t) === name ? withChildTab(t, patch) : t)) })
   }
 
   return (
@@ -3422,6 +3437,16 @@ function RecordForm({ page, index, entities, errors, update, lossy, removed, dnd
                       value={childTabVia(tabs[at])}
                       error={errors[`childTab.${at}`]}
                       onChange={via => setVia(name, via)}
+                    />
+                  )}
+                  {on && (
+                    <ListOptions
+                      label={`${name} tab`}
+                      entity={entities.find(e => e.name === name)}
+                      projectOpts={projectOpts}
+                      columns={childTabPresentation(tabs[at]).columns}
+                      sort={childTabPresentation(tabs[at]).sort}
+                      onChange={patch => setShown(name, patch)}
                     />
                   )}
                   {on && errors[`childTab.${at}`] && <span className="text-[11px] text-error">{errors[`childTab.${at}`]}</span>}
@@ -3734,6 +3759,75 @@ function DragGrip({ dnd, list, index }: { dnd: ReturnType<typeof useDragReorder>
     <span {...dnd.handleProps(list, index)} className="cursor-grab select-none text-secondary/70 hover:text-secondary" title="Drag to reorder" aria-hidden="true">
       <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>drag_indicator</span>
     </span>
+  )
+}
+
+/**
+ * How an embedded list opens — a record's related list, a master–detail child: its columns (chips,
+ * on or off, in the entity's order) and its sort. Folded until opened; absent parts are the list's
+ * own defaults.
+ */
+function ListOptions({ label, entity, projectOpts, columns, sort, onChange }: {
+  label: string
+  entity: FullstackEntityDef | undefined
+  projectOpts: string[]
+  columns?: string[]
+  sort?: FullstackListSort
+  onChange: (patch: { columns?: string[]; sort?: FullstackListSort }) => void
+}) {
+  const all = listColumns(entity, projectOpts)
+  const keys = all.map(c => c.key)
+  const shown = columns ?? keys
+  const summary = [columns ? `${columns.length} column${columns.length === 1 ? '' : 's'}` : null, sort ? `by ${sort.field} ${sort.dir === 'desc' ? '↓' : '↑'}` : null].filter(Boolean).join(' · ')
+  return (
+    <details className="text-[11px]" data-list-options>
+      <summary className="cursor-pointer select-none text-secondary hover:text-primary">{summary || 'Columns & sort'}</summary>
+      <div className="mt-1 space-y-1.5">
+        <div className="flex flex-wrap gap-1">
+          {all.map(c => {
+            const on = shown.includes(c.key)
+            return (
+              <button
+                key={c.key}
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                aria-label={`${c.label} column of the ${label}`}
+                disabled={on && shown.length === 1}
+                onClick={() => {
+                  const next = on ? shown.filter(k => k !== c.key) : keys.filter(k => k === c.key || shown.includes(k))
+                  onChange({ columns: next.length === keys.length ? undefined : next, sort })
+                }}
+                className={`rounded-full px-2 py-0.5 ${on ? 'bg-primary/10 text-primary' : 'border border-dashed border-outline-variant text-secondary'} disabled:opacity-50`}
+              >
+                {c.label}
+              </button>
+            )
+          })}
+        </div>
+        <span className="inline-flex items-center gap-1.5">
+          <select
+            aria-label={`Sort of the ${label}`}
+            value={sort?.field ?? ''}
+            onChange={e => onChange({ columns, sort: e.target.value ? { field: e.target.value, ...(sort?.dir ? { dir: sort.dir } : {}) } : undefined })}
+            className={`${inputClass()} max-w-[11rem] py-0.5 text-[11px]`}
+          >
+            <option value="">Default order (the key)</option>
+            {sortableKeys(entity, projectOpts).map(k => <option key={k} value={k}>{all.find(c => c.key === k)?.label ?? k}</option>)}
+          </select>
+          {sort && (
+            <button
+              type="button"
+              onClick={() => onChange({ columns, sort: { field: sort.field, ...(sort.dir === 'desc' ? {} : { dir: 'desc' as const }) } })}
+              className="rounded border border-outline-variant px-1.5 py-0.5 text-secondary hover:text-primary"
+              aria-label={`Sort the ${label} ${sort.dir === 'desc' ? 'ascending' : 'descending'}`}
+            >
+              {sort.dir === 'desc' ? '↓' : '↑'}
+            </button>
+          )}
+        </span>
+      </div>
+    </details>
   )
 }
 

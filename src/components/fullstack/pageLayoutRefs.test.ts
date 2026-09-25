@@ -471,3 +471,19 @@ describe('breakdowns by a relation', () => {
     expect(validatePages(stacked, entities).problems[0]).toContain('which it no longer has')
   })
 })
+
+describe('related lists that open with their own columns and sort', () => {
+  it('checks a record tab and a master-detail child like a list page, and keeps them through renames', () => {
+    const pages: FullstackPageDef[] = [
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, childTabs: [{ entity: 'Order', columns: ['status', 'total'], sort: { field: 'placedOn', dir: 'desc' } }] },
+      { id: 'md', type: 'master-detail', parent: 'Customer', child: 'Order', columns: ['total'], sort: { field: 'total' } },
+    ]
+    expect(validatePages(pages, entities).problems).toEqual([])
+    const bad: FullstackPageDef[] = [{ ...pages[0], childTabs: [{ entity: 'Order', columns: ['nope'] }] }, { ...pages[1], sort: { field: 'nope' } }]
+    const v = validatePages(bad, entities)
+    expect(v.byPage[0]['childTab.0']).toBe('Order has no “nope” column')
+    expect(v.byPage[1].sort).toBe('Order cannot sort by “nope”')
+    // An entity rename keeps the tab's presentation.
+    expect(renameEntityInPages(pages, 'Order', 'Sale')[0].childTabs).toEqual([{ entity: 'Sale', columns: ['status', 'total'], sort: { field: 'placedOn', dir: 'desc' } }])
+  })
+})

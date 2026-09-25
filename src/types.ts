@@ -598,7 +598,13 @@ export type FullstackPageRole = 'ADMIN' | 'USER'
 
 /** A record page's related-list tab: the entity, or `{ entity, via }` to pick which of its
  *  relations to the record entity links them (default: the first). */
-export type FullstackChildTabDef = string | { entity: string; via?: string }
+export type FullstackChildTabDef = string | {
+  entity: string
+  via?: string
+  /** How the related list opens: its columns, in order, and its sort (as a list page's). */
+  columns?: string[]
+  sort?: FullstackListSort
+}
 
 /** Where an entity-list page opens a row. */
 export type FullstackListDetail = 'drawer' | 'side' | 'record'
