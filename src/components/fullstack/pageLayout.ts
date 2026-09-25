@@ -27,6 +27,9 @@ import { summarizeEntity } from './summary'
 
 export const PAGE_ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
 export const MAX_PAGES = 30
+/** Every title in a layout — a page's, a widget's, a tab's, a step's, a header tile's (FullstackPageValidator.MAX_TITLE). */
+export const MAX_TITLE = 80
+export const MAX_DESCRIPTION = 300
 export const MAX_WIDGETS = 24
 export const MIN_TABS = 2
 export const MAX_TABS = 6
@@ -459,6 +462,28 @@ export function childTabPresentation(tab: FullstackChildTabDef): { columns?: str
 }
 
 /** The child's MANY_TO_ONE fields pointing at `parent`, in declaration order. */
+type HeaderStat = NonNullable<FullstackPageDef['headerStats']>[number]
+
+/** A record page's header tile moved to another related entity: it keeps its title, its measure
+ *  when the new entity has the same numeric field, and its link when that relation also points at
+ *  the record's entity. `dropped` names what did not fit, for the editor's notice. */
+export function retargetHeaderStat(stat: HeaderStat, child: FullstackEntityDef | undefined, recordEntity: string | undefined): { stat: HeaderStat; dropped: string[] } {
+  const next: HeaderStat = { child: child?.name ?? '' }
+  const dropped: string[] = []
+  if (stat.agg && stat.agg !== 'count') {
+    if (stat.field && numericFields(child).some(f => f.name === stat.field)) {
+      next.agg = stat.agg
+      next.field = stat.field
+    } else dropped.push('measure')
+  } else if (stat.agg) next.agg = stat.agg
+  if (stat.via) {
+    if (relationsTo(child, recordEntity).includes(stat.via)) next.via = stat.via
+    else dropped.push('link')
+  }
+  if (stat.title) next.title = stat.title
+  return { stat: next, dropped }
+}
+
 export function relationsTo(child: FullstackEntityDef | undefined, parent: string | undefined): string[] {
   if (!child || !parent) return []
   return (child.relations ?? [])
@@ -811,8 +836,22 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
       add('id', 'must be lower-case words joined by “-”', `${where} has an invalid id “${page.id}”`)
     } else if (seenIds.has(page.id)) add('id', 'is already used', `Two pages share the id “${page.id}”`)
     seenIds.add(page.id)
-    if ((page.title ?? '').length > 80) add('title', 'is longer than 80 characters')
-    if ((page.description ?? '').length > 300) add('description', 'is longer than 300 characters')
+    const tooLong = (title: string | undefined) => (title ?? '').trim().length > MAX_TITLE
+    if (tooLong(page.title)) add('title', `is longer than ${MAX_TITLE} characters`)
+    if ((page.description ?? '').trim().length > MAX_DESCRIPTION) add('description', `is longer than ${MAX_DESCRIPTION} characters`)
+    // The titles inside a page have the same cap on the server.
+    ;(page.widgets ?? []).forEach((w, wi) => {
+      if (tooLong(w.title)) add(`widget.${wi}`, `has a title longer than ${MAX_TITLE} characters`, `${where} has a widget title over ${MAX_TITLE} characters`)
+    })
+    ;(page.tabs ?? []).forEach((tab, ti) => {
+      if (tooLong(tab.title)) add(`tab.${ti}`, `has a title longer than ${MAX_TITLE} characters`, `${where} has a tab title over ${MAX_TITLE} characters`)
+    })
+    ;(page.steps ?? []).forEach((step, si) => {
+      if (tooLong(step.title)) add(`step.${si}`, `has a title longer than ${MAX_TITLE} characters`, `${where} has a step title over ${MAX_TITLE} characters`)
+    })
+    ;(page.headerStats ?? []).forEach((s, si) => {
+      if (tooLong(s.title)) add(`headerStat.${si}`, `has a title longer than ${MAX_TITLE} characters`, `${where} has a header tile title over ${MAX_TITLE} characters`)
+    })
     if (page.group?.trim() || page.icon) {
       if (!inNav(page)) {
         add(page.group?.trim() ? 'group' : 'icon', 'only applies to a page in the navigation',
@@ -1323,9 +1362,11 @@ export function uniquePageId(base: string, taken: Iterable<string>): string {
 /**
  * The layout that matches the classic shell: a dashboard (one count tile per entity, a chart per
  * entity that can be grouped, the latest rows of the first one) plus a list page per entity — the
- * starting point users then rearrange.
+ * starting point users then rearrange. A big model stays inside the validator's caps: tiles and
+ * charts are trimmed (charts first) to MAX_WIDGETS, list pages to MAX_PAGES. `heading` is the
+ * setup panel's dashboard title/overview, carried onto the dashboard page.
  */
-export function seedLayout(entities: FullstackEntityDef[]): FullstackPageDef[] {
+export function seedLayout(entities: FullstackEntityDef[], heading: { title?: string; description?: string } = {}): FullstackPageDef[] {
   const named = entities.filter(e => e.name.trim())
   if (named.length === 0) return []
   const ids = new Set<string>()
@@ -1334,16 +1375,21 @@ export function seedLayout(entities: FullstackEntityDef[]): FullstackPageDef[] {
     ids.add(id)
     return id
   }
+  const room = MAX_WIDGETS - 1 // the recent-rows widget always fits
+  const kpis = named.slice(0, room).map(e => ({ kind: 'kpi' as const, entity: e.name }))
+  const bars = named.filter(e => groupableFields(e).length > 0).slice(0, room - kpis.length)
+    .map(e => ({ kind: 'bar' as const, entity: e.name }))
   const dashboard: FullstackPageDef = {
     id: take('dashboard'),
     type: 'dashboard',
-    widgets: [
-      ...named.map(e => ({ kind: 'kpi' as const, entity: e.name })),
-      ...named.filter(e => groupableFields(e).length > 0).map(e => ({ kind: 'bar' as const, entity: e.name })),
-      { kind: 'recent' as const, entity: named[0].name },
-    ],
+    widgets: [...kpis, ...bars, { kind: 'recent' as const, entity: named[0].name }],
   }
-  return [dashboard, ...named.map(e => ({ id: take(e.name), type: 'entity-list' as const, entity: e.name }))]
+  const title = heading.title?.trim().slice(0, 80)
+  const description = heading.description?.trim().slice(0, 300)
+  if (title) dashboard.title = title
+  if (description) dashboard.description = description
+  const lists = named.slice(0, MAX_PAGES - 1).map(e => ({ id: take(e.name), type: 'entity-list' as const, entity: e.name }))
+  return [dashboard, ...lists]
 }
 
 /** Follows an entity rename through every reference a layout can hold. */
@@ -1413,13 +1459,13 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
 
 /** What each page type is, for the "Add page" gallery. */
 export const PAGE_TYPE_META: Record<FullstackPageType, { icon: string; label: string; blurb: string }> = {
-  dashboard: { icon: 'dashboard', label: 'Dashboard', blurb: 'Count tiles, breakdown charts and recent rows.' },
+  dashboard: { icon: 'dashboard', label: 'Dashboard', blurb: 'Number tiles, charts, rankings, recent rows, lists, notes and links to other pages — optionally with a period picker.' },
   'entity-list': { icon: 'table_rows', label: 'Entity list', blurb: 'One entity’s table, optionally filtered to start with.' },
   tabs: { icon: 'tab', label: 'Tabs', blurb: 'Two to six other pages side by side as tabs.' },
   'master-detail': { icon: 'vertical_split', label: 'Master–detail', blurb: 'A parent list beside the selected parent’s rows.' },
   record: { icon: 'article', label: 'Record', blurb: 'One row opened from a list, with its related lists as tabs.' },
-  report: { icon: 'monitoring', label: 'Report', blurb: 'Filters, charts and grouped totals, with a CSV export.' },
-  wizard: { icon: 'auto_fix_high', label: 'Wizard', blurb: 'A create form split into steps, with a review before saving.' },
+  report: { icon: 'monitoring', label: 'Report', blurb: 'One entity’s filters above up to four charts and a totals table (an Export button with the CSV export option).' },
+  wizard: { icon: 'format_list_numbered', label: 'Wizard', blurb: 'A create form split into steps, with a review before saving.' },
 }
 
 // ── Defaults the generator resolves ─────────────────────────────────────────

@@ -376,6 +376,56 @@ describe('PagesEditor', () => {
     expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the filter, charts, nav place settings')
   })
 
+  it('offers only the page types the page can become', () => {
+    render(<Harness initial={[{ id: 'customers', type: 'entity-list', entity: 'Customer' }]} entities={[entities[0]]} />)
+    openRow('customers')
+    const option = (value: string) => screen.getByLabelText('Page type').querySelector(`option[value="${value}"]`) as HTMLOptionElement
+    expect(option('entity-list').disabled).toBe(false)
+    expect(option('dashboard').disabled).toBe(false)
+    // Nothing on Customer to chart.
+    expect(option('report').disabled).toBe(true)
+    expect(option('master-detail').disabled).toBe(true)
+    // No other page to hold, so it cannot become a tabs page.
+    expect(option('tabs').disabled).toBe(true)
+    expect(option('tabs').textContent).toContain('needs two other pages')
+  })
+
+  it('opens the columns of a related list when set, and moves a column earlier', () => {
+    render(<Harness initial={[
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, childTabs: [{ entity: 'Order', via: 'customer', columns: ['total', 'status'] }] },
+    ]} />)
+    openRow('customer')
+    const fold = document.querySelector('[data-list-options]') as HTMLDetailsElement
+    expect(fold.open).toBe(true)
+    fireEvent.click(screen.getByLabelText('Move the Status column earlier in the Order tab'))
+    expect(latest[0].childTabs).toEqual([{ entity: 'Order', via: 'customer', columns: ['status', 'total'] }])
+    // A column switched on joins the end.
+    fireEvent.click(screen.getByLabelText('Placed on column of the Order tab'))
+    expect(latest[0].childTabs).toEqual([{ entity: 'Order', via: 'customer', columns: ['status', 'total', 'placedOn'] }])
+  })
+
+  it('previews the classic layout before there is one, and lists what a template builds', () => {
+    render(<Harness initial={[]} />)
+    expect(screen.queryByRole('region', { name: 'Classic layout preview' })).toBeNull()
+    fireEvent.click(document.querySelector('[data-classic-preview]')!)
+    expect(screen.getByRole('region', { name: 'Classic layout preview' })).toBeTruthy()
+    const card = document.querySelector('[data-layout-template]:not([disabled])') as HTMLButtonElement
+    expect(card.querySelector('[data-template-pages]')?.textContent).toBeTruthy()
+    expect(latest).toEqual([])
+  })
+
+  it('replaces a layout from a template in one undo step', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
+    fireEvent.click(document.querySelector('[data-open-templates]')!)
+    const card = document.querySelector('[data-replace-templates] [data-layout-template]:not([disabled])') as HTMLButtonElement
+    fireEvent.click(card)
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(pushUndo.mock.calls[0][0]).toMatch(/^Replaced the page layout with the “.+” template$/)
+    expect(latest.map(p => p.id)).not.toEqual(['orders'])
+    expect(document.querySelector('[data-replace-templates]')).toBeNull()
+  })
+
   it('derives the id from the title until the id is edited by hand', () => {
     render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
     openRow('orders')

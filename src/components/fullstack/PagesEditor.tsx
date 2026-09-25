@@ -25,7 +25,7 @@ import { LayoutPreview, type EditTarget } from './LayoutPreview'
 import { moveItem } from './reorder'
 import { useStableKeys } from './rowKeys'
 import { focusWithoutClipping, scrollToElement } from './scroll'
-import { LAYOUT_TEMPLATES, buildLayoutTemplate, deletePageTemplate, pageFromTemplate, readPageTemplates, savePageTemplate } from './layoutTemplates'
+import { LAYOUT_TEMPLATES, buildLayoutTemplate, deletePageTemplate, pageFromTemplate, readPageTemplates, savePageTemplate, type LayoutTemplate } from './layoutTemplates'
 import { dropIndicatorClass, useDragReorder } from './useDragReorder'
 import {
   DATE_RANGES,
@@ -69,7 +69,9 @@ import {
   presettableFields,
   linkablePages,
   LIST_WIDGET_LIMITS,
+  MAX_DESCRIPTION,
   MAX_LINKS,
+  MAX_TITLE,
   relationKeys,
   reportGroupKeys,
   masterDetailPairs,
@@ -103,6 +105,7 @@ import {
   retargetEntityList,
   retargetMasterDetail,
   retargetMasterDetailChild,
+  retargetHeaderStat,
   retargetRecord,
   retargetReport,
   retargetWidget,
@@ -127,7 +130,12 @@ export interface PagesPreviewSettings {
   locale: 'en' | 'he'
   projectOpts: string[]
   skin: 'tailwind' | 'menora'
+  /** The setup panel's dashboard heading — "Start from my entities" puts it on the dashboard page. */
+  dashboardTitle?: string
+  dashboardOverview?: string
 }
+
+const DEFAULT_PREVIEW_SETTINGS: PagesPreviewSettings = { locale: 'en', projectOpts: [], skin: 'tailwind' }
 
 interface Props {
   pages: FullstackPageDef[]
@@ -241,6 +249,10 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const [previewKey, setPreviewKey] = useState<string | null>(null)
   // Below the wide split the preview opens as a slide-over instead of dropping under the list.
   const [previewDrawer, setPreviewDrawer] = useState(false)
+  // With no layout yet: a preview of the classic shell, and (with one) the template gallery again.
+  const [classicPreview, setClassicPreview] = useState(false)
+  const [classicSelected, setClassicSelected] = useState(0)
+  const [templatesOpen, setTemplatesOpen] = useState(false)
   // "Changed widget 2 — dropped: target" after a switch that could not keep everything.
   const [notice, setNotice] = useState<string | null>(null)
   // A problem click about a widget: the dashboard form opens that card before the control is focused.
@@ -377,13 +389,29 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     else setEntityForm({ type, pick: fit[0].value })
   }
   /** Why a gallery card is off: no entity fits the type (each entity's own reason is in the chooser). */
-  function noFitReason(type: FullstackPageType): string | undefined {
-    const choices = newPageChoices(type, named, pages)
+  function noFitReason(type: FullstackPageType, others: FullstackPageDef[] = pages): string | undefined {
+    const choices = newPageChoices(type, named, others)
     if (!choices || choices.length === 0 || choices.some(c => !c.reason)) return undefined
     return `No entity fits: ${[...new Set(choices.map(c => c.reason!))].join('; ').toLowerCase()}`
   }
   const hasMdPair = masterDetailPairs(named).length > 0
   const tabsEligible = tabCandidates(pages)
+  /** Why an existing page cannot switch to `type` — the gallery's rules, with the page itself left
+   *  out (its own record/wizard slot is free to reuse, and it cannot be one of its own tabs). */
+  function switchBlocked(page: FullstackPageDef, type: FullstackPageType): { short: string; reason: string } | undefined {
+    if (type === page.type) return undefined
+    if (type === 'master-detail' && !hasMdPair) {
+      return { short: 'needs a many-to-one relation', reason: 'Add a many-to-one relation between two entities first' }
+    }
+    const others = pages.filter(p => p !== page)
+    if (type === 'tabs') {
+      return tabCandidates(others).length < MIN_TABS
+        ? { short: 'needs two other pages', reason: 'A tabs page holds two or more other pages — a list, dashboard, report or master–detail' }
+        : undefined
+    }
+    const reason = noFitReason(type, others)
+    return reason ? { short: 'no entity fits', reason } : undefined
+  }
 
   function openTabsForm() {
     setTabsForm({ picked: tabsEligible.slice(0, 2).map(p => p.id), title: 'Tabs', hide: true })
@@ -467,12 +495,13 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
 
   function startFromEntities() {
     pushUndo('Started a page layout from the entities')
-    onChange(seedLayout(entities))
+    onChange(seedLayout(entities, { title: previewSettings?.dashboardTitle, description: previewSettings?.dashboardOverview }))
   }
   const layoutTemplates = useMemo(() => LAYOUT_TEMPLATES.map(t => ({ template: t, result: buildLayoutTemplate(t, entities) })), [entities])
   function startFromTemplate(label: string, built: FullstackPageDef[]) {
-    pushUndo(`Started a page layout from the “${label}” template`)
+    pushUndo(pages.length > 0 ? `Replaced the page layout with the “${label}” template` : `Started a page layout from the “${label}” template`)
     onChange(built)
+    setTemplatesOpen(false)
   }
 
   // Pages saved as templates, in this browser: offered in the "Add page" gallery.
@@ -606,17 +635,24 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   useEffect(() => {
     if (!previewRequest) return
     setSectionOpen(true)
+    setClassicPreview(true)
     const wide = typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1280px)').matches
     if (layout === 'stacked' || wide) setPreviewOpen(true)
     else setPreviewDrawer(true)
     requestAnimationFrame(() => scrollToElement(sectionRef.current, 'start'))
   }, [previewRequest, layout])
 
-  const settings = previewSettings ?? { locale: 'en' as const, projectOpts: [], skin: 'tailwind' as const }
+  const settings = previewSettings ?? DEFAULT_PREVIEW_SETTINGS
   const warnPages = useMemo(() => new Set(validation.warnings.map(w => w.page).filter((p): p is number => p != null)), [validation.warnings])
   const preview = useMemo(
     () => buildLayoutPreview(pages, entities, { locale: settings.locale, projectOpts: settings.projectOpts, warnPages }),
     [pages, entities, settings.locale, settings.projectOpts, warnPages],
+  )
+  const classicModel = useMemo(
+    () => (pages.length === 0 && classicPreview
+      ? buildLayoutPreview(seedLayout(entities, { title: settings.dashboardTitle, description: settings.dashboardOverview }), entities, { locale: settings.locale, projectOpts: settings.projectOpts })
+      : null),
+    [pages.length, classicPreview, entities, settings.dashboardTitle, settings.dashboardOverview, settings.locale, settings.projectOpts],
   )
   const previewIndex = (() => {
     const i = previewKey ? keys.indexOf(previewKey) : -1
@@ -735,6 +771,19 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             >
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{previewOpen ? 'visibility_off' : 'preview'}</span>
               {previewOpen ? 'Hide preview' : 'Preview'}
+            </button>
+          )}
+          {sectionOpen && pages.length > 0 && named.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setTemplatesOpen(o => !o)}
+              aria-expanded={templatesOpen}
+              className={SMALL_BUTTON}
+              title="Replace this layout with one built from a template (undoable)"
+              data-open-templates
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>auto_awesome_mosaic</span>
+              Templates
             </button>
           )}
           {sectionOpen && pages.length > 0 && (
@@ -1101,36 +1150,47 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             Start from my entities
           </button>
           {named.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setClassicPreview(o => !o)}
+              aria-pressed={classicPreview}
+              className={SMALL_BUTTON}
+              title="See what the classic layout generates"
+              data-classic-preview
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{classicPreview ? 'visibility_off' : 'preview'}</span>
+              {classicPreview ? 'Hide preview' : 'Preview'}
+            </button>
+          )}
+          {classicModel && (
+            <div className="w-full space-y-1.5" aria-label="Classic layout preview" role="region">
+              <p className="text-[11px] text-secondary">Sample data · this is the app you get without a page layout</p>
+              <LayoutPreview
+                preview={classicModel}
+                selected={classicSelected}
+                onSelect={setClassicSelected}
+                onEdit={() => {}}
+                skin={settings.skin}
+              />
+            </div>
+          )}
+          {named.length > 0 && (
             <div className="w-full space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Or start from a layout template</p>
-              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" data-layout-templates>
-                {layoutTemplates.map(({ template, result }) => {
-                  const reason = 'reason' in result ? result.reason : undefined
-                  return (
-                    <li key={template.key}>
-                      <button
-                        type="button"
-                        disabled={Boolean(reason)}
-                        title={reason}
-                        onClick={() => { if ('pages' in result) startFromTemplate(template.label, result.pages) }}
-                        className="h-full w-full rounded-lg border border-outline-variant px-3 py-2 text-start transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-outline-variant disabled:hover:bg-transparent"
-                        data-layout-template={template.key}
-                      >
-                        <span className="flex items-center gap-1.5 text-xs font-semibold text-on-surface">
-                          <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{template.icon}</span>
-                          {template.label}
-                          {'pages' in result && <span className="text-[10px] font-normal text-secondary">· {result.pages.length} pages</span>}
-                        </span>
-                        <span className="mt-0.5 block text-[11px] text-secondary">{reason ?? template.blurb}</span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
+              <TemplateGallery templates={layoutTemplates} onPick={startFromTemplate} />
             </div>
           )}
         </div>
       ) : (
+        <>
+        {templatesOpen && (
+          <div className="mb-2 space-y-1 rounded-lg border border-dashed border-outline-variant px-3 py-2" data-replace-templates>
+            <p className="text-[11px] text-secondary">
+              <span className="font-semibold text-on-surface">Replace the layout</span> — builds a new one from your entities; Undo brings this one back.
+            </p>
+            <TemplateGallery templates={layoutTemplates} onPick={startFromTemplate} />
+          </div>
+        )}
         <div className={!showPreview ? '' : layout === 'stacked' ? 'space-y-3' : 'grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]'}>
           {/* The left column: the navigation strips over the page list. One grid cell, so the preview keeps its own. */}
           <div className="min-w-0 space-y-2">
@@ -1386,8 +1446,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                           data-page-type
                         >
                           {(Object.keys(PAGE_TYPE_META) as FullstackPageType[]).map(t => {
-                            const blocked = t === 'master-detail' && !hasMdPair
-                            return <option key={t} value={t} disabled={blocked}>{PAGE_TYPE_META[t].label}{blocked ? ' — needs a many-to-one relation' : ''}</option>
+                            const blocked = switchBlocked(page, t)
+                            return <option key={t} value={t} disabled={blocked != null} title={blocked?.reason}>{PAGE_TYPE_META[t].label}{blocked ? ` — ${blocked.short}` : ''}</option>
                           })}
                         </select>
                         <span className="text-[10px] text-secondary">Changing the type keeps the title, place and entity; settings the new type cannot use are dropped (undoable)</span>
@@ -1399,6 +1459,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                             aria-label="Page title"
                             aria-invalid={Boolean(errors.title)}
                             value={page.title ?? ''}
+                            maxLength={MAX_TITLE}
                             onChange={e => retitle(index, e.target.value)}
                             placeholder={pageLabel(page)}
                             className={inputClass(errors.title)}
@@ -1437,6 +1498,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                             aria-label="Page description"
                             aria-invalid={Boolean(errors.description)}
                             value={page.description ?? ''}
+                            maxLength={MAX_DESCRIPTION}
                             onChange={e => update(index, { description: e.target.value || undefined })}
                             placeholder="Optional line under the heading"
                             className={inputClass(errors.description)}
@@ -1510,6 +1572,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             </aside>
           )}
         </div>
+        </>
       )}
       </div>
       )}
@@ -1552,6 +1615,42 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         />
       )}
     </section>
+  )
+}
+
+/** The whole-layout templates: what each builds (its pages, listed), or why the model cannot fill it. */
+function TemplateGallery({ templates, onPick }: {
+  templates: { template: LayoutTemplate; result: ReturnType<typeof buildLayoutTemplate> }[]
+  onPick: (label: string, pages: FullstackPageDef[]) => void
+}) {
+  return (
+    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" data-layout-templates>
+      {templates.map(({ template, result }) => {
+        const reason = 'reason' in result ? result.reason : undefined
+        const built = 'pages' in result ? result.pages : []
+        const names = built.map(p => pageLabel(p)).join(' · ')
+        return (
+          <li key={template.key}>
+            <button
+              type="button"
+              disabled={Boolean(reason)}
+              title={reason ?? `Builds: ${names}`}
+              onClick={() => { if (!reason) onPick(template.label, built) }}
+              className="h-full w-full rounded-lg border border-outline-variant px-3 py-2 text-start transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-outline-variant disabled:hover:bg-transparent"
+              data-layout-template={template.key}
+            >
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-on-surface">
+                <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{template.icon}</span>
+                {template.label}
+                {!reason && <span className="text-[10px] font-normal text-secondary">· {built.length} pages</span>}
+              </span>
+              <span className="mt-0.5 block text-[11px] text-secondary">{reason ?? template.blurb}</span>
+              {!reason && <span className="mt-1 block line-clamp-2 text-[10px] text-secondary/80" data-template-pages>{names}</span>}
+            </button>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
@@ -2517,6 +2616,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                 type="text"
                 aria-label="Widget title"
                 value={widget.title ?? ''}
+                maxLength={MAX_TITLE}
                 placeholder={entity ? pluralize(entity.name) : 'Optional heading'}
                 onChange={e => onChange({ title: e.target.value || undefined })}
                 className={`${inputClass()} w-full py-1 text-xs`}
@@ -2633,7 +2733,6 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
             onChange={presetFilter => onChange({ presetFilter })}
             heading="Only rows where"
           />
-          {error && <p className="text-[11px] text-error">{error}</p>}
         </div>
       ) : widget.kind === 'links' ? (
         <div className="space-y-2" data-widget-options>
@@ -2643,6 +2742,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                 type="text"
                 aria-label="Widget title"
                 value={widget.title ?? ''}
+                maxLength={MAX_TITLE}
                 placeholder="Optional heading"
                 onChange={e => onChange({ title: e.target.value || undefined })}
                 className={`${inputClass()} w-full py-1 text-xs`}
@@ -2674,7 +2774,6 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
               })}
               {linkablePages(pages).length === 0 && <li className="text-[11px] text-secondary">Add another page first — a links widget opens other pages.</li>}
             </ul>
-            {error && <p className="text-[11px] text-error">{error}</p>}
           </MiniField>
         </div>
       ) : widget.kind === 'text' ? (
@@ -2684,6 +2783,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
               type="text"
               aria-label="Widget title"
               value={widget.title ?? ''}
+              maxLength={MAX_TITLE}
               placeholder="Optional heading"
               onChange={e => onChange({ title: e.target.value || undefined })}
               className={`${inputClass()} w-full py-1 text-xs`}
@@ -2856,6 +2956,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                 type="text"
                 aria-label="Widget title"
                 value={widget.title ?? ''}
+                maxLength={MAX_TITLE}
                 placeholder="Optional — named after the data"
                 onChange={e => onChange({ title: e.target.value || undefined })}
                 className={`${inputClass()} min-w-[8rem] w-full py-1 text-xs`}
@@ -3227,6 +3328,7 @@ function TabsForm({ page, index, pages, errors, update, dnd, removed }: Omit<For
               type="text"
               aria-label={`Tab ${ti + 1} title`}
               value={tab.title ?? ''}
+              maxLength={MAX_TITLE}
               placeholder="Tab label (optional)"
               onChange={e => setTabs(tabs.map((t, i) => (i === ti ? { ...t, title: e.target.value || undefined } : t)))}
               className={`${inputClass()} max-w-[12rem] py-1 text-xs`}
@@ -3470,7 +3572,7 @@ function RecordForm({ page, index, entities, errors, update, lossy, removed, dnd
 
 /** A record page's header tiles: none, the default (a count per related tab), or a list of
  *  counts/aggregates over related entities. */
-function HeaderStatsFields({ page, index, entities, errors, update, removed }: FormProps) {
+function HeaderStatsFields({ page, index, entities, errors, update, lossy, removed }: FormProps) {
   const related = entities.filter(e => relationsTo(e, page.entity).length > 0)
   const stats = page.headerStats
   const set = (next: FullstackPageDef['headerStats']) => update(index, { headerStats: next })
@@ -3508,7 +3610,11 @@ function HeaderStatsFields({ page, index, entities, errors, update, removed }: F
               options={related.map(e => e.name)}
               error={error}
               className="max-w-[10rem]"
-              onChange={name => set(stats.map((x, i) => (i === si ? { child: name } : x)))}
+              onChange={name => {
+                const { stat, dropped } = retargetHeaderStat(s, entities.find(e => e.name === name), page.entity)
+                lossy(`Switched header number ${si + 1} to ${name}`, dropped)
+                set(stats.map((x, i) => (i === si ? stat : x)))
+              }}
             />
             <ViaSelect
               label="Link the tile through"
@@ -3528,6 +3634,7 @@ function HeaderStatsFields({ page, index, entities, errors, update, removed }: F
               type="text"
               aria-label="Tile title"
               value={s.title ?? ''}
+              maxLength={MAX_TITLE}
               placeholder="Title (optional)"
               onChange={e => set(stats.map((x, i) => (i === si ? { ...x, title: e.target.value || undefined } : x)))}
               className={`${inputClass()} min-w-[8rem] flex-1 py-1 text-xs`}
@@ -3641,6 +3748,7 @@ function WizardForm({ page, index, entities, errors, update, lossy, removed, dnd
                   type="text"
                   aria-label={`Step ${si + 1} title`}
                   value={step.title ?? ''}
+                  maxLength={MAX_TITLE}
                   placeholder={`Step ${si + 1}`}
                   onChange={e => setSteps(steps.map((s, i) => (i === si ? { ...s, title: e.target.value || undefined } : s)))}
                   className={`${inputClass()} min-w-[8rem] flex-1 py-1 text-xs`}
@@ -3764,8 +3872,8 @@ function DragGrip({ dnd, list, index }: { dnd: ReturnType<typeof useDragReorder>
 
 /**
  * How an embedded list opens — a record's related list, a master–detail child: its columns (chips,
- * on or off, in the entity's order) and its sort. Folded until opened; absent parts are the list's
- * own defaults.
+ * on or off; the shown ones in their order, each movable earlier) and its sort. Folded unless
+ * something is set; absent parts are the list's own defaults.
  */
 function ListOptions({ label, entity, projectOpts, columns, sort, onChange }: {
   label: string
@@ -3779,29 +3887,44 @@ function ListOptions({ label, entity, projectOpts, columns, sort, onChange }: {
   const keys = all.map(c => c.key)
   const shown = columns ?? keys
   const summary = [columns ? `${columns.length} column${columns.length === 1 ? '' : 's'}` : null, sort ? `by ${sort.field} ${sort.dir === 'desc' ? '↓' : '↑'}` : null].filter(Boolean).join(' · ')
+  // Open on arrival when something is already set, so it is not missed; then the user's to fold.
+  const [startOpen] = useState(Boolean(columns || sort))
+  // The entity's order is the default: a list back to it drops the setting.
+  const keep = (next: string[]) => onChange({ columns: next.join() === keys.join() ? undefined : next, sort })
+  const ordered = [...shown.flatMap(k => all.filter(c => c.key === k)), ...all.filter(c => !shown.includes(c.key))]
   return (
-    <details className="text-[11px]" data-list-options>
+    <details className="text-[11px]" data-list-options open={startOpen}>
       <summary className="cursor-pointer select-none text-secondary hover:text-primary">{summary || 'Columns & sort'}</summary>
       <div className="mt-1 space-y-1.5">
         <div className="flex flex-wrap gap-1">
-          {all.map(c => {
+          {ordered.map(c => {
             const on = shown.includes(c.key)
+            const at = shown.indexOf(c.key)
             return (
-              <button
-                key={c.key}
-                type="button"
-                role="checkbox"
-                aria-checked={on}
-                aria-label={`${c.label} column of the ${label}`}
-                disabled={on && shown.length === 1}
-                onClick={() => {
-                  const next = on ? shown.filter(k => k !== c.key) : keys.filter(k => k === c.key || shown.includes(k))
-                  onChange({ columns: next.length === keys.length ? undefined : next, sort })
-                }}
-                className={`rounded-full px-2 py-0.5 ${on ? 'bg-primary/10 text-primary' : 'border border-dashed border-outline-variant text-secondary'} disabled:opacity-50`}
-              >
-                {c.label}
-              </button>
+              <span key={c.key} className="inline-flex items-center">
+                {on && at > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => keep(moveItem(shown, at, at - 1))}
+                    className="rounded-full px-1 text-secondary hover:text-primary"
+                    aria-label={`Move the ${c.label} column earlier in the ${label}`}
+                    title="Move earlier"
+                  >
+                    ‹
+                  </button>
+                )}
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  aria-label={`${c.label} column of the ${label}`}
+                  disabled={on && shown.length === 1}
+                  onClick={() => keep(on ? shown.filter(k => k !== c.key) : [...shown, c.key])}
+                  className={`rounded-full px-2 py-0.5 ${on ? 'bg-primary/10 text-primary' : 'border border-dashed border-outline-variant text-secondary'} disabled:opacity-50`}
+                >
+                  {c.label}
+                </button>
+              </span>
             )
           })}
         </div>

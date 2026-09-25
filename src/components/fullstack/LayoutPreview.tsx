@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
+import { Fragment, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import { highlights, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewScreen, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
 import { dropIndicatorClass, useDragReorder, type DragReorder } from './useDragReorder'
 
@@ -69,6 +69,9 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         {item.start && (
           <span className="material-symbols-outlined ms-auto text-amber-300" style={{ fontSize: '10px' }} aria-label={preview.strings.startPage}>home</span>
         )}
+        {item.roles.length > 0 && (
+          <span className="material-symbols-outlined shrink-0 opacity-70" style={{ fontSize: '10px' }} title={`Only ${item.roles.join(' or ')}`} aria-label={`Only ${item.roles.join(' or ')}`} data-preview-lock>lock</span>
+        )}
         {item.warning && (
           <span className={`${item.start ? '' : 'ms-auto '}h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400`} aria-label="Has a warning" data-preview-warning />
         )}
@@ -77,7 +80,11 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
   }
   // Grouped like the generated nav: a labelled section in the sidebar, a caret item in the Menora
   // top bar (its menu is not drawn — the pages are listed after it, dimmed, instead).
-  const navItems = preview.sections.map((section, i) => (
+  // "View as": the nav a signed-in user of that role gets (the generated shell hides the rest).
+  const [viewAs, setViewAs] = useState<'' | 'USER' | 'ADMIN'>('')
+  const guarded = preview.nav.some(item => item.roles.length > 0)
+  const visible = (item: LayoutPreviewModel['nav'][number]) => !viewAs || item.roles.length === 0 || item.roles.includes(viewAs)
+  const navItems = preview.sections.filter(section => section.items.some(visible)).map((section, i) => (
     <div key={i} className={horizontal ? 'flex shrink-0 items-center gap-1' : 'space-y-0.5'} data-preview-nav-group={section.group ?? ''}>
       {section.group && (
         menora ? (
@@ -92,7 +99,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
           </div>
         )
       )}
-      {section.items.map(navButton)}
+      {section.items.filter(visible).map(navButton)}
     </div>
   ))
 
@@ -121,6 +128,22 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         <span className="h-1.5 w-1.5 rounded-full bg-amber-400/70" />
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/60" />
         <span className="ms-2 truncate font-mono text-[9px] text-secondary">localhost:5173</span>
+        {guarded && (
+          <label className="ms-auto flex items-center gap-1 text-[9px] text-secondary">
+            View as
+            <select
+              value={viewAs}
+              onChange={e => setViewAs(e.target.value as '' | 'USER' | 'ADMIN')}
+              className="rounded border border-outline-variant bg-surface-container-lowest px-0.5 text-[9px]"
+              aria-label="View the preview as"
+              data-preview-view-as
+            >
+              <option value="">Everyone (all pages)</option>
+              <option value="USER">USER</option>
+              <option value="ADMIN">ADMIN</option>
+            </select>
+          </label>
+        )}
       </div>
       {menora ? (
         <div className="flex min-h-[18rem] flex-col">
@@ -312,26 +335,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                 : <Bars bars={screen.chart.bars} accent={accent} />}
             </div>
           </Editable>
-          <table className="w-full text-[10px]">
-            <thead>
-              <tr className="text-secondary">
-                <th className="text-start font-semibold">{screen.groupLabel}</th>
-                <th className="text-end font-semibold">{screen.valueLabel}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {screen.chart.bars.slice(0, 4).map(b => (
-                <tr key={b.label} className="border-t border-outline-variant/60">
-                  <td className="truncate text-on-surface">{b.label}</td>
-                  <td className="text-end tabular-nums text-on-surface">{b.value}</td>
-                </tr>
-              ))}
-              <tr className="border-t border-outline-variant font-semibold">
-                <td className="text-on-surface">{screen.totalLabel}</td>
-                <td className="text-end tabular-nums text-on-surface">{screen.chart.bars.reduce((s, b) => s + b.value, 0)}</td>
-              </tr>
-            </tbody>
-          </table>
+          {screen.chartTable && <TotalsTable bars={screen.chart.bars} group={screen.groupLabel} value={screen.valueLabel} total={screen.totalLabel} />}
           {screen.moreCharts.length > 0 && (
             <div className="grid grid-cols-2 gap-1.5">
               {screen.moreCharts.map((c, ci) => (
@@ -339,6 +343,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                   <div className="rounded border border-outline-variant p-1.5" data-preview-chart={ci + 1}>
                     <p className="mb-1 truncate text-[9px] font-semibold text-on-surface">{c.title}</p>
                     {c.line ? <LineChart points={c.bars} accent={accent} /> : <Bars bars={c.bars.slice(0, 4)} accent={accent} />}
+                    {c.table && <TotalsTable bars={c.bars} value={screen.valueLabel} total={screen.totalLabel} />}
                   </div>
                 </Editable>
               ))}
@@ -395,6 +400,32 @@ function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent
 }
 
 /** A record page: its tabs switch between the details and each related list. */
+/** A report chart's grouped totals: the first few groups, then the total. */
+function TotalsTable({ bars, group, value, total }: { bars: PreviewBar[]; group?: string; value: string; total: string }) {
+  return (
+    <table className="mt-1 w-full text-[10px]" data-preview-totals>
+      <thead>
+        <tr className="text-secondary">
+          <th className="text-start font-semibold">{group ?? ''}</th>
+          <th className="text-end font-semibold">{value}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {bars.slice(0, 4).map((b, i) => (
+          <tr key={i} className="border-t border-outline-variant/60">
+            <td className="truncate text-on-surface">{b.label}</td>
+            <td className="text-end tabular-nums text-on-surface">{b.value}</td>
+          </tr>
+        ))}
+        <tr className="border-t border-outline-variant font-semibold">
+          <td className="text-on-surface">{total}</td>
+          <td className="text-end tabular-nums text-on-surface">{bars.reduce((s, b) => s + b.value, 0)}</td>
+        </tr>
+      </tbody>
+    </table>
+  )
+}
+
 function RecordScreen({ screen, link, preview, accent, menora }: {
   screen: Extract<PreviewScreen, { type: 'record' }>
   link: LinkProps
@@ -445,11 +476,14 @@ function RecordScreen({ screen, link, preview, accent, menora }: {
       </div>
       {current === 0 ? (
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1 rounded border border-outline-variant p-2">
-          {screen.details.map(d => (
-            <div key={d.label} className="min-w-0">
-              <dt className="truncate text-[9px] uppercase tracking-wide text-secondary">{d.label}</dt>
-              <dd className="truncate text-[10px] text-on-surface">{d.value}</dd>
-            </div>
+          {screen.details.map((d, i) => (
+            <Fragment key={i}>
+              {d.section && <p className="col-span-2 mt-0.5 text-[9px] font-semibold text-on-surface first:mt-0" data-preview-section>{d.section}</p>}
+              <div className="min-w-0">
+                <dt className="truncate text-[9px] uppercase tracking-wide text-secondary">{d.label}</dt>
+                <dd className="truncate text-[10px] text-on-surface">{d.value}</dd>
+              </div>
+            </Fragment>
           ))}
         </dl>
       ) : tabTable ? (
@@ -688,6 +722,7 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
         {widget.kind === 'line' && <LineChart points={widget.points} accent={accent} />}
         {widget.kind === 'recent' && (
           <ul className="mt-0.5 space-y-0.5">
+            <li className="truncate text-[8px] text-secondary" data-preview-newest>{widget.by}</li>
             {widget.rows.slice(0, 4).map((r, i) => <li key={i} className="truncate text-[10px] text-on-surface">{r}</li>)}
             <li className="text-[9px] font-semibold" style={{ color: accent }}>{viewAll}</li>
           </ul>
@@ -933,6 +968,9 @@ function MiniTable({ table, preview, accent, menora, compact, link }: {
         </aside>
       ))}
       </div>
+      {!compact && part('pageSize', 'Edit rows per page and where rows open', (
+        <p className="truncate text-end text-[8px] text-secondary" data-preview-footer>{table.footer}</p>
+      ))}
     </div>
   )
 }

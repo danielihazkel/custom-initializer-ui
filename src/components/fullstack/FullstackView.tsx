@@ -253,7 +253,9 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     locale: meta.locale,
     projectOpts: scaffoldOpts,
     skin: (currentFrontendSet?.designSystem === 'MENORA_DIGITAL' || frontendSet.includes('menora') ? 'menora' : 'tailwind') as 'menora' | 'tailwind',
-  }), [meta.locale, scaffoldOpts, currentFrontendSet, frontendSet])
+    dashboardTitle: meta.dashboardTitle,
+    dashboardOverview: meta.dashboardOverview,
+  }), [meta.locale, meta.dashboardTitle, meta.dashboardOverview, scaffoldOpts, currentFrontendSet, frontendSet])
   const currentDefaults = currentBackendSet?.defaultDeps ?? []
   const palettes = feMetadata?.colorPalettes ?? []
   // What the generator will actually use: the explicit pick, else the set's default, else the
@@ -1189,7 +1191,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         return
       }
       pushUndoEntry('Started a page layout from the entities')
-      setPages(seedLayout(entities))
+      setPages(seedLayout(entities, { title: meta.dashboardTitle, description: meta.dashboardOverview }))
       requestAnimationFrame(() => scrollToElement(document.getElementById('fs-pages'), 'start'))
     },
     classicLayout: () => {

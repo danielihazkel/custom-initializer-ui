@@ -49,6 +49,8 @@ export interface PreviewNavItem {
   start: boolean
   /** The layout validation has advice about this page. */
   warning: boolean
+  /** The roles that may open the page (any of); empty for everyone. */
+  roles: string[]
 }
 
 export interface PreviewBar { label: string; value: number }
@@ -73,7 +75,7 @@ export type PreviewWidget = WidgetBase & (
   | { kind: 'links'; tiles: { label: string; icon: string }[] }
   | { kind: 'list'; table: PreviewTable }
   | { kind: 'line'; points: PreviewBar[] }
-  | { kind: 'recent'; rows: string[] }
+  | { kind: 'recent'; rows: string[]; /** "Newest by Placed on" — the column the rows are sorted by. */ by: string }
   | { kind: 'broken'; message: string }
 )
 
@@ -99,6 +101,8 @@ export interface PreviewTable {
   sidePane: { label: string; value: string }[] | null
   newLabel: string | null
   hasExport: boolean
+  /** Under the rows: rows per page, and where a row opens ("20 per page · rows open their page"). */
+  footer: string
 }
 
 export type PreviewScreen =
@@ -116,7 +120,9 @@ export type PreviewScreen =
   }
   | {
     type: 'record'; title: string; description?: string; heading: string; back: string | null; tabs: string[]
-    details: { label: string; value: string }[]
+    /** The details tab: fields in the entity's form sections (a section's first field carries its
+     *  title), else its first fields. */
+    details: { label: string; value: string; section?: string }[]
     /** Per related tab (tabs[1..]), the rows it lists — the child's table without the link back. */
     tabTables: (PreviewTable | null)[]
     /** The number tiles above the tabs. */
@@ -145,8 +151,10 @@ export type PreviewScreen =
     presetChips: string[]
     chartTitle: string
     chart: { line: boolean; bars: PreviewBar[] }
-    /** A report's second to fourth charts, drawn under the totals table. */
-    moreCharts: { title: string; line: boolean; bars: PreviewBar[] }[]
+    /** The first chart's totals table is drawn (its `table`, default on). */
+    chartTable: boolean
+    /** A report's second to fourth charts, drawn under the first; `table` as for the first (default off). */
+    moreCharts: { title: string; line: boolean; bars: PreviewBar[]; table: boolean }[]
     groupLabel: string
     valueLabel: string
     totalLabel: string
@@ -181,6 +189,7 @@ const STRINGS = {
     count: 'Count', startPage: 'Start page', stepX: 'Step {x}', review: 'Review', next: 'Next', save: 'Save', refresh: 'Refresh', topXByY: 'Top {x} by {y}', vsPrevious: 'vs previous period',
     percentOfTarget: '{x}% of target', periodAll: 'All time', period7d: 'Last 7 days',
     period30d: 'Last 30 days', period90d: 'Last 90 days', periodYtd: 'This year', period12m: 'Last 12 months',
+    perPage: '{n} per page', opensRecord: 'rows open their page', opensDrawer: 'rows open in a drawer', newestBy: 'Newest by {x}',
   },
   he: {
     dashboard: 'לוח בקרה', xByY: '{x} לפי {y}', xByYAndZ: '{x} לפי {y} ו{z}', recentX: '{x} – אחרונים', xOverTime: '{x} לאורך זמן',
@@ -191,6 +200,7 @@ const STRINGS = {
     percentOfTarget: '{x}% מהיעד', periodAll: 'כל הזמן', period7d: '7 הימים האחרונים',
     period30d: '30 הימים האחרונים', period90d: '90 הימים האחרונים', periodYtd: 'מתחילת השנה',
     period12m: '12 החודשים האחרונים',
+    perPage: '{n} בעמוד', opensRecord: 'שורה נפתחת בעמוד שלה', opensDrawer: 'שורה נפתחת במגירה', newestBy: 'החדשים לפי {x}',
   },
 } as const
 
@@ -298,7 +308,7 @@ export function buildLayoutPreview(
   }
 
   /** How a list page opens (its presentation), when it sets any of it. */
-  interface ListOpening { columns?: string[]; view?: FullstackListView; sort?: FullstackListSort; detail?: FullstackListDetail }
+  interface ListOpening { columns?: string[]; view?: FullstackListView; sort?: FullstackListSort; detail?: FullstackListDetail; pageSize?: number }
 
   function table(e: FullstackEntityDef, presetFilter?: Record<string, string>, hideRelation?: string, opening: ListOpening = {}): PreviewTable {
     const { plural, singular, ui } = labels(e)
@@ -352,7 +362,37 @@ export function buildLayoutPreview(
       sidePane: opening.detail === 'side' ? cells.slice(0, 5).map(c => ({ label: c.label, value: c.value(1) })) : null,
       newLabel: ui.canCreate ? t('newX', { x: singular }) : null,
       hasExport: ui.hasExport,
+      footer: [
+        t('perPage', { n: String(opening.pageSize ?? 20) }),
+        // Absent: the record page when the entity has one, else the drawer (the side pane is drawn).
+        opening.detail === 'side' ? null
+          : opening.detail === 'record' || (opening.detail == null && hasRecordPage(e)) ? t('opensRecord') : t('opensDrawer'),
+      ].filter(Boolean).join(' · '),
     }
+  }
+
+  function recordDetails(e: FullstackEntityDef): { label: string; value: string; section?: string }[] {
+    const sections = e.formSections ?? []
+    if (sections.length === 0) return e.fields.slice(0, 6).map(f => ({ label: fieldLabel(f), value: sampleCell(f, 1, t) }))
+    const out: { label: string; value: string; section?: string }[] = []
+    for (const s of sections) {
+      s.fields.forEach((name, i) => {
+        const f = fieldOf(e, name)
+        const r = f ? undefined : (e.relations ?? []).find(x => x.fieldName === name)
+        const target = r ? entityOf(r.targetEntity) : undefined
+        if (!f && !r) return
+        out.push({
+          label: f ? fieldLabel(f) : humanize(name),
+          value: f ? sampleCell(f, 1, t) : target ? rowLabel(target, 1, labels(target).singular, t) : '—',
+          ...(i === 0 && s.title ? { section: s.title } : {}),
+        })
+      })
+    }
+    return out.slice(0, 8)
+  }
+
+  function hasRecordPage(e: FullstackEntityDef): boolean {
+    return pages.some(p => p.type === 'record' && sameName(p.entity, e.name))
   }
 
   function presetChips(e: FullstackEntityDef, presetFilter?: Record<string, string>): string[] {
@@ -555,6 +595,7 @@ export function buildLayoutPreview(
               return {
                 ...base, kind: 'recent',
                 title: w.title || t('recentX', { x: plural }),
+                by: t('newestBy', { x: (() => { const f = fieldOf(e, w.sortBy); return f ? fieldLabel(f) : fieldLabel(e.fields.find(x => x.primaryKey) ?? e.fields[0]) })() }),
                 rows: Array.from({ length: Math.min(limit, 5) }, (_, i) => rowLabel(e, limit - i + 20, singular, t)),
               }
             }
@@ -569,7 +610,7 @@ export function buildLayoutPreview(
       case 'entity-list': {
         const e = entityOf(page.entity)
         if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
-        const tbl = table(e, page.presetFilter, undefined, { columns: page.columns, view: page.view, sort: page.sort, detail: page.detail })
+        const tbl = table(e, page.presetFilter, undefined, { columns: page.columns, view: page.view, sort: page.sort, detail: page.detail, pageSize: page.pageSize })
         return { type: 'entity-list', title: page.title || tbl.title, description, table: tbl }
       }
       case 'tabs': {
@@ -594,7 +635,7 @@ export function buildLayoutPreview(
           description,
           parentTitle: parentPlural,
           parentItems: Array.from({ length: 5 }, (_, i) => rowLabel(parent, i + 1, parentSingular, t)),
-          child: table(child, undefined, via),
+          child: table(child, undefined, via, { columns: page.columns, sort: page.sort }),
           childTitle: labels(child).plural,
           parentDetails: page.showParent
             ? parent.fields.filter(f => !f.primaryKey).slice(0, 4).map(f => ({ label: fieldLabel(f), value: sampleCell(f, 1, t) }))
@@ -618,13 +659,13 @@ export function buildLayoutPreview(
             const c = entityOf(name)
             return c ? labels(c).plural : name
           })],
-          details: e.fields.slice(0, 6).map(f => ({ label: fieldLabel(f), value: sampleCell(f, 1, t) })),
+          details: recordDetails(e),
           tabTables: (page.childTabs ?? related).map(tab => {
             const name = typeof tab === 'string' ? tab : childTabEntity(tab)
             const c = entityOf(name)
             if (!c) return null
             const via = (typeof tab === 'string' ? undefined : childTabVia(tab)) ?? relationsTo(c, e.name)[0]
-            return table(c, undefined, via)
+            return table(c, undefined, via, typeof tab === 'string' ? {} : { columns: tab.columns, sort: tab.sort })
           }),
           // The generator's default: a row count per related tab.
           stats: (page.headerStats ?? related.slice(0, 4).map(child => ({ child } as { child: string; agg?: FullstackAgg; field?: string; title?: string })))
@@ -698,7 +739,8 @@ export function buildLayoutPreview(
           }
           const groupLabel = relation ? humanize(relation.fieldName) : group ? fieldLabel(group) : undefined
           const title = groupLabel ? (line ? t('xOverTime', { x: measured }) : t('xByY', { x: measured, y: groupLabel })) : measured
-          return { groupLabel, reduces, measured, line, bars, title }
+          // The totals table: the chart's own choice, else the first chart only.
+          return { groupLabel, reduces, measured, line, bars, title, table: chart.table ?? ci === 0 }
         })
         const { groupLabel, reduces, measured, line, bars } = drawn[0]
         const csv = (e.opts?.csvExport ?? ctx.projectOpts.includes('csvExport'))
@@ -710,7 +752,8 @@ export function buildLayoutPreview(
           presetChips: presetChips(e, page.presetFilter),
           chartTitle: drawn[0].title,
           chart: { line, bars },
-          moreCharts: drawn.slice(1).map(c => ({ title: c.title, line: c.line, bars: c.bars })),
+          chartTable: drawn[0].table,
+          moreCharts: drawn.slice(1).map(c => ({ title: c.title, line: c.line, bars: c.bars, table: c.table })),
           groupLabel: groupLabel ?? '—',
           valueLabel: reduces ? measured : t('count'),
           totalLabel: t('total'),
@@ -744,11 +787,13 @@ export function buildLayoutPreview(
       icon: navSymbol(pages[index]),
       start: index === startIndex,
       warning: ctx.warnPages?.has(index) ?? false,
+      roles: pages[index].roles ?? [],
     })),
   }))
 
   return {
-    rtl: ctx.locale === 'he',
+    // The generated index.html turns right-to-left on the rtl opt, not on the chrome language.
+    rtl: ctx.projectOpts.includes('rtl'),
     nav: sections.flatMap(section => section.items),
     sections,
     screens,

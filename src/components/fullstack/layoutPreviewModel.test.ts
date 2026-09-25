@@ -107,8 +107,11 @@ describe('buildLayoutPreview', () => {
   })
 
   it('speaks Hebrew and flags pages whose entity is gone', () => {
-    const preview = buildLayoutPreview([...pages, { id: 'ghost', type: 'entity-list', entity: 'Ghost' }], entities, { locale: 'he', projectOpts: [] })
+    const preview = buildLayoutPreview([...pages, { id: 'ghost', type: 'entity-list', entity: 'Ghost' }], entities, { locale: 'he', projectOpts: ['rtl'] })
     expect(preview.rtl).toBe(true)
+    // Direction follows the rtl opt, not the chrome language (the generated index.html does too).
+    expect(buildLayoutPreview(pages, entities, { locale: 'he', projectOpts: [] }).rtl).toBe(false)
+    expect(buildLayoutPreview(pages, entities, { locale: 'en', projectOpts: ['rtl'] }).rtl).toBe(true)
     expect(preview.screens[0].title).toBe('לוח בקרה')
     expect(preview.screens[6]).toMatchObject({ type: 'broken', message: 'No entity “Ghost”' })
   })
@@ -242,5 +245,59 @@ describe('previewPartOf', () => {
     expect(plain.nav.map(item => item.warning)).toEqual(plain.nav.map(() => false))
     const warned = buildLayoutPreview(pages, entities, { locale: 'en', projectOpts: [], warnPages: new Set([0]) })
     expect(warned.nav.map(item => [item.index, item.warning])).toEqual(plain.nav.map(item => [item.index, item.index === 0]))
+  })
+})
+
+describe('buildLayoutPreview — the details the editor sets', () => {
+  it('says how many rows a page holds and where a row opens', () => {
+    const withRecord: FullstackPageDef[] = [
+      { id: 'orders', type: 'entity-list', entity: 'Order', pageSize: 50 },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', detail: 'drawer' },
+      { id: 'order', type: 'record', entity: 'Order', hidden: true },
+    ]
+    const [orders, customers] = buildLayoutPreview(withRecord, entities, ctx).screens
+    if (orders.type !== 'entity-list' || customers.type !== 'entity-list') throw new Error('lists')
+    expect(orders.table.footer).toBe('50 per page · rows open their page')
+    expect(customers.table.footer).toBe('20 per page · rows open in a drawer')
+  })
+
+  it('opens related lists with their own columns and sort, and the details by form section', () => {
+    const sectioned: FullstackEntityDef[] = [
+      { ...entities[0] },
+      { ...entities[1], formSections: [{ title: 'Money', fields: ['total'] }, { title: 'Who', fields: ['customer', 'status'] }] },
+    ]
+    const layout: FullstackPageDef[] = [
+      { id: 'customers', type: 'master-detail', parent: 'Customer', child: 'Order', columns: ['total', 'status'], sort: { field: 'total', dir: 'desc' } },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, childTabs: [{ entity: 'Order', columns: ['placedOn'] }] },
+      { id: 'order', type: 'record', entity: 'Order', hidden: true },
+    ]
+    const [md, customer, order] = buildLayoutPreview(layout, sectioned, ctx).screens
+    if (md.type !== 'master-detail' || customer.type !== 'record' || order.type !== 'record') throw new Error('types')
+    expect(md.child.columns).toEqual(['Total', 'Status'])
+    expect(md.child.sort).toBe('Total ↓')
+    expect(customer.tabTables[0]?.columns).toEqual(['Placed on'])
+    expect(order.details.map(d => [d.section ?? '', d.label])).toEqual([['Money', 'Total'], ['Who', 'Customer'], ['', 'Status']])
+  })
+
+  it('draws a totals table under each chart that asks for one', () => {
+    const report: FullstackPageDef = {
+      id: 'r', type: 'report', entity: 'Order',
+      charts: [{ groupBy: 'status', table: false }, { groupBy: 'placedOn' }, { groupBy: 'customer', table: true }],
+    }
+    const screen = buildLayoutPreview([report], entities, ctx).screens[0]
+    if (screen.type !== 'report') throw new Error(screen.type)
+    expect([screen.chartTable, ...screen.moreCharts.map(c => c.table)]).toEqual([false, false, true])
+  })
+
+  it('names the column recent rows are newest by, and the roles a page is for', () => {
+    const layout: FullstackPageDef[] = [
+      { id: 'desk', type: 'dashboard', widgets: [{ kind: 'recent', entity: 'Order', sortBy: 'placedOn' }] },
+      { id: 'admin', type: 'entity-list', entity: 'Customer', roles: ['ADMIN'] },
+    ]
+    const preview = buildLayoutPreview(layout, entities, ctx)
+    const desk = preview.screens[0]
+    if (desk.type !== 'dashboard' || desk.widgets[0].kind !== 'recent') throw new Error('recent')
+    expect(desk.widgets[0].by).toBe('Newest by Placed on')
+    expect(preview.nav.map(n => n.roles)).toEqual([[], ['ADMIN']])
   })
 })

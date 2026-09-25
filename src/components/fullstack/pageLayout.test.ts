@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import {
-  describePage, enabledListViews, listColumns, pageLabel, pageLayoutProblems, renameEntityInPages, renameFieldInPages,
+  MAX_PAGES, MAX_WIDGETS, describePage, enabledListViews, listColumns, pageLabel, pageLayoutProblems, renameEntityInPages, renameFieldInPages,
   renameRelationInPages, seedLayout, slugify, sortableKeys, suggestPages, uniquePageId, validatePages,
 } from './pageLayout'
 
@@ -230,6 +230,22 @@ describe('seedLayout / renames / slugs', () => {
     ])
     expect(validatePages(pages, entities).problems).toEqual([])
     expect(seedLayout([])).toEqual([])
+  })
+
+  it('carries the dashboard heading and stays inside the caps on a big model', () => {
+    const [dashboard] = seedLayout(entities, { title: '  Ops desk ', description: 'Everything today' })
+    expect(dashboard).toMatchObject({ title: 'Ops desk', description: 'Everything today' })
+    expect(seedLayout(entities, { title: ' ' })[0].title).toBeUndefined()
+
+    const many: FullstackEntityDef[] = Array.from({ length: 40 }, (_, i) => ({
+      name: `Thing${i}`,
+      fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'state', type: 'ENUM', enumValues: ['A', 'B'] }],
+    }))
+    const big = seedLayout(many)
+    expect(big).toHaveLength(MAX_PAGES)
+    expect(big[0].widgets).toHaveLength(MAX_WIDGETS)
+    expect(big[0].widgets?.[MAX_WIDGETS - 1]).toEqual({ kind: 'recent', entity: 'Thing0' })
+    expect(validatePages(big, many).problems).toEqual([])
   })
 
   it('follows an entity rename through every reference', () => {
