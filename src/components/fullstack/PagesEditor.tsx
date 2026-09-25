@@ -69,6 +69,7 @@ import {
   relationKeys,
   reportGroupKeys,
   masterDetailPairs,
+  newPageChoices,
   moveNavGroup,
   navSections,
   renameGroupInPages,
@@ -221,6 +222,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const [addOpen, setAddOpen] = useState(false)
   // The "Tabs" gallery card asks which pages to embed before adding anything.
   const [tabsForm, setTabsForm] = useState<{ picked: string[]; title: string; hide: boolean } | null>(null)
+  // The gallery's "which entity?" step, for a page type more than one entity fits.
+  const [entityForm, setEntityForm] = useState<{ type: FullstackPageType; pick: string } | null>(null)
   const [confirmRemove, setConfirmRemove] = useState<number | null>(null)
   const [confirmClassic, setConfirmClassic] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(readPreviewOpen)
@@ -336,8 +339,23 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     }
   }, [keys])
 
-  function addPage(type: FullstackPageType) {
-    add(blankPage(type, named, pages))
+  function addPage(type: FullstackPageType, pick?: string) {
+    add(blankPage(type, named, pages, pick))
+    setEntityForm(null)
+  }
+  /** A gallery card: straight in when the type takes no entity or only one fits, else ask which. */
+  function chooseType(type: FullstackPageType) {
+    if (type === 'tabs') { setEntityForm(null); openTabsForm(); return }
+    const fit = (newPageChoices(type, named, pages) ?? []).filter(c => !c.reason)
+    setTabsForm(null)
+    if (fit.length <= 1) addPage(type, fit[0]?.value)
+    else setEntityForm({ type, pick: fit[0].value })
+  }
+  /** Why a gallery card is off: no entity fits the type (each entity's own reason is in the chooser). */
+  function noFitReason(type: FullstackPageType): string | undefined {
+    const choices = newPageChoices(type, named, pages)
+    if (!choices || choices.length === 0 || choices.some(c => !c.reason)) return undefined
+    return `No entity fits: ${[...new Set(choices.map(c => c.reason!))].join('; ').toLowerCase()}`
   }
   const hasMdPair = masterDetailPairs(named).length > 0
   const tabsEligible = tabCandidates(pages)
@@ -643,7 +661,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           {sectionOpen && (
             <button
               type="button"
-              onClick={() => setAddOpen(o => !o)}
+              onClick={() => { setAddOpen(o => !o); setEntityForm(null) }}
               aria-expanded={addOpen}
               disabled={named.length === 0 || atPageCap}
               className={SMALL_BUTTON}
@@ -726,15 +744,15 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 ? 'Add a many-to-one relation between two entities first (the child’s Relations table)'
                 : type === 'tabs' && tabsEligible.length < MIN_TABS
                   ? 'Add two pages that can be tabs first — a list, dashboard, report or master–detail'
-                  : undefined
+                  : noFitReason(type)
               return (
                 <li key={type}>
                   <button
                     type="button"
-                    onClick={() => (type === 'tabs' ? openTabsForm() : addPage(type))}
+                    onClick={() => chooseType(type)}
                     disabled={Boolean(reason)}
                     title={reason}
-                    aria-pressed={type === 'tabs' ? tabsForm != null : undefined}
+                    aria-pressed={type === 'tabs' ? tabsForm != null : entityForm?.type === type ? true : undefined}
                     className="w-full h-full text-start rounded-lg border border-outline-variant px-3 py-2 hover:border-primary/50 hover:bg-primary/5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-outline-variant disabled:hover:bg-transparent"
                   >
                     <span className="flex items-center gap-1.5 text-xs font-semibold text-on-surface">
@@ -747,6 +765,45 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               )
             })}
           </ul>
+          {entityForm && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2" data-entity-form>
+              <p className="text-xs font-semibold text-on-surface">
+                New {PAGE_TYPE_META[entityForm.type].label.toLowerCase()} page — {entityForm.type === 'master-detail' ? 'which parent and child?' : 'which entity?'}
+              </p>
+              <ul role="radiogroup" aria-label="Entity for the new page" className="flex flex-wrap gap-2">
+                {(newPageChoices(entityForm.type, named, pages) ?? []).map(c => {
+                  const on = entityForm.pick === c.value
+                  return (
+                    <li key={c.value}>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        disabled={Boolean(c.reason)}
+                        title={c.reason}
+                        onClick={() => setEntityForm({ ...entityForm, pick: c.value })}
+                        onDoubleClick={() => { if (!c.reason) addPage(entityForm.type, c.value) }}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${on ? 'border-primary/50 bg-primary/10 font-semibold text-primary' : 'border-outline-variant text-on-surface hover:border-primary/40'}`}
+                      >
+                        {c.label}
+                        {c.reason && <span className="text-[10px] text-secondary">· {c.reason}</span>}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => addPage(entityForm.type, entityForm.pick)}
+                  className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-on-primary"
+                >
+                  Add {PAGE_TYPE_META[entityForm.type].label.toLowerCase()} page
+                </button>
+                <button type="button" onClick={() => setEntityForm(null)} className={SMALL_BUTTON}>Cancel</button>
+              </div>
+            </div>
+          )}
           {tabsForm && (
             <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2" data-tabs-form>
               <p className="text-xs font-semibold text-on-surface">New tabs page</p>

@@ -221,6 +221,30 @@ describe('PagesEditor', () => {
     expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
   })
 
+  it('asks which entity a new page is about when more than one fits, and says why the others do not', () => {
+    const three: FullstackEntityDef[] = [
+      ...entities,
+      { name: 'Line', fields: [{ name: 'order', type: 'LONG', primaryKey: true }, { name: 'no', type: 'INTEGER', primaryKey: true }] },
+    ]
+    render(<Harness initial={[{ id: 'customer', type: 'record', entity: 'Customer', hidden: true }]} entities={three} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Record/ }))
+    // Only Order fits (Customer has one, Line has a composite key), so it is added straight away.
+    expect(latest.map(p => p.entity)).toEqual(['Customer', 'Order'])
+
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^List/ }))
+    const chooser = document.querySelector('[data-entity-form]') as HTMLElement
+    expect(within(chooser).getAllByRole('radio').map(r => r.textContent)).toEqual(['Customer', 'Order', 'Line'])
+    fireEvent.click(within(chooser).getByRole('radio', { name: 'Line' }))
+    fireEvent.click(within(chooser).getByRole('button', { name: 'Add list page' }))
+    expect(latest[2]).toEqual({ id: 'line', type: 'entity-list', entity: 'Line' })
+
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Record/ }))
+    expect((screen.getByRole('button', { name: /^Record/ }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('will not offer a master-detail page without a relation to build it from', () => {
     render(<Harness initial={[]} entities={[entities[0]]} />)
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
@@ -641,6 +665,8 @@ describe('PagesEditor', () => {
     render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
     fireEvent.click(screen.getByRole('button', { name: /^Wizard/ }))
+    // Both entities can have a wizard, so the gallery asks; the first is picked to start with.
+    fireEvent.click(screen.getByRole('button', { name: 'Add wizard page' }))
     const wizard = latest[1]
     expect(wizard).toMatchObject({ type: 'wizard', entity: 'Customer', steps: [{ fields: ['id', 'name'] }] })
 

@@ -1669,9 +1669,10 @@ export function pageFromSuggestion(s: PageSuggestion, taken: Iterable<string>): 
 // ── New pages, and a page moved to another type ─────────────────────────────
 
 /** A new page of `type`, filled in with the first entities (and pages) that fit so it is valid on sight. */
-export function blankPage(type: FullstackPageType, entities: FullstackEntityDef[], pages: FullstackPageDef[]): FullstackPageDef {
+export function blankPage(type: FullstackPageType, entities: FullstackEntityDef[], pages: FullstackPageDef[], pick?: string): FullstackPageDef {
   const taken = pages.map(p => p.id)
-  const first = entities[0]?.name ?? ''
+  const picked = pick != null ? entities.find(e => e.name === pick) : undefined
+  const first = picked?.name ?? entities[0]?.name ?? ''
   const id = (base: string) => uniquePageId(slugify(base) || 'page', taken)
   switch (type) {
     case 'dashboard':
@@ -1684,21 +1685,56 @@ export function blankPage(type: FullstackPageType, entities: FullstackEntityDef[
       return { id: id('tabs'), type, title: 'Tabs', tabs: picked.map(p => ({ page: p.id })) }
     }
     case 'master-detail': {
-      const pair = masterDetailPairs(entities)[0]
+      const pairs = masterDetailPairs(entities)
+      const pair = pairs.find(p => pairKey(p) === pick) ?? pairs[0]
       return { id: id(pair?.parent ?? first), type, parent: pair?.parent ?? first, child: pair?.child, ...(pair?.via ? { via: pair.via } : {}), showParent: true }
     }
     case 'record':
       return { id: id(first), type, entity: first, hidden: true }
     case 'report': {
       // Prefer an entity that actually has something to chart, so the page is valid on sight.
-      const e = entities.find(x => chartableFields(x).length > 0) ?? entities[0]
+      const e = picked ?? entities.find(x => chartableFields(x).length > 0) ?? entities[0]
       return { id: id(`${e?.name ?? 'report'}-report`), type, entity: e?.name ?? first, chart: {} }
     }
     case 'wizard': {
       // A writable entity, with its default steps spelled out so they can be edited.
-      const e = entities.find(x => !x.readOnly && askableFields(x).length > 0) ?? entities[0]
+      const e = picked ?? entities.find(x => !x.readOnly && askableFields(x).length > 0) ?? entities[0]
       return { id: id(`new-${e?.name ?? 'record'}`), type, entity: e?.name ?? first, title: `New ${e?.name ?? 'record'}`, steps: defaultWizardSteps(e) }
     }
+  }
+}
+
+/** One entity (or, for a master–detail page, one parent → child pair) a new page can be about. */
+export interface NewPageChoice { value: string; label: string; reason?: string }
+
+/** The key of a master–detail pair, as `blankPage`'s `pick` takes it. */
+export const pairKey = (p: { parent: string; child: string; via?: string }) => `${p.parent}>${p.child}${p.via ? `.${p.via}` : ''}`
+
+/**
+ * What a new page of `type` can be about, each with the reason it cannot be when it cannot — the
+ * rules `validatePages` (and the server) apply, so the gallery never adds a page that is wrong on
+ * sight. `null` for the types that take no entity (dashboard, tabs).
+ */
+export function newPageChoices(type: FullstackPageType, entities: FullstackEntityDef[], pages: FullstackPageDef[]): NewPageChoice[] | null {
+  const named = entities.filter(e => e.name.trim())
+  const has = (t: FullstackPageType, name: string) => pages.some(p => p.type === t && p.entity?.trim().toLowerCase() === name.trim().toLowerCase())
+  const one = (e: FullstackEntityDef, reason?: string): NewPageChoice => ({ value: e.name, label: e.name, ...(reason ? { reason } : {}) })
+  switch (type) {
+    case 'dashboard':
+    case 'tabs':
+      return null
+    case 'entity-list':
+      return named.map(e => one(e))
+    case 'record':
+      return named.map(e => one(e, !singlePk(e) ? 'Needs a single primary key' : has('record', e.name) ? 'Already has a record page' : undefined))
+    case 'report':
+      return named.map(e => one(e, reportGroupKeys(e).length === 0 ? 'Nothing to chart — no enum, boolean or date field, nor a relation' : undefined))
+    case 'wizard':
+      return named.map(e => one(e, e.readOnly ? 'Read-only — nothing to create'
+        : askableFields(e).length === 0 ? 'No fields to ask for'
+          : has('wizard', e.name) ? 'Already has a wizard' : undefined))
+    case 'master-detail':
+      return masterDetailPairs(named).map(p => ({ value: pairKey(p), label: `${p.parent} → ${p.child}${p.via ? ` (via ${p.via})` : ''}` }))
   }
 }
 
