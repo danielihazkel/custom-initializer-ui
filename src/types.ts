@@ -363,8 +363,8 @@ export interface FullstackFieldDef {
 /** Per-entity override of a project-wide scaffold opt (true = force on, false = force off;
  *  absent = inherit). Keys: audit, softDelete, csvExport, bulkDelete, bulkUpdate, tests. */
 export type FullstackEntityOpts = Partial<Record<FullstackEntityOptKey, boolean>>
-export type FullstackEntityOptKey = 'audit' | 'softDelete' | 'csvExport' | 'bulkDelete' | 'bulkUpdate' | 'tests'
-export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests']
+export type FullstackEntityOptKey = 'audit' | 'softDelete' | 'csvExport' | 'bulkDelete' | 'bulkUpdate' | 'tests' | 'csvImport'
+export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests', 'csvImport']
 
 // v1 supports the FK-owning side only (MANY_TO_ONE); the inverse @OneToMany is auto-derived
 // server-side via the inverseCollections opt.
@@ -516,12 +516,16 @@ export interface ExampleModel {
 
 /** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
 export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record' | 'report' | 'wizard'
+  | 'calendar' | 'board' | 'content' | 'import' | 'search'
+
+/** The views a calendar page offers (FullstackPageValidator.calendar). */
+export type FullstackCalendarMode = 'month' | 'week' | 'agenda' | 'timeline'
 
 /** The lucide icons a page may show in the generated nav (FullstackPageValidator.NAV_ICONS). */
 export type FullstackNavIcon =
-  | 'BarChart3' | 'Building2' | 'Calendar' | 'FileText' | 'Inbox' | 'Layers' | 'LayoutDashboard' | 'ListChecks'
-  | 'Package' | 'PanelLeft' | 'Settings' | 'ShoppingCart' | 'Star' | 'Table2' | 'Tag' | 'Ticket' | 'Truck' | 'Users'
-  | 'Wallet' | 'Wand2'
+  | 'BarChart3' | 'Building2' | 'Calendar' | 'Columns3' | 'FileText' | 'Inbox' | 'Layers' | 'LayoutDashboard'
+  | 'ListChecks' | 'Package' | 'PanelLeft' | 'Search' | 'Settings' | 'ShoppingCart' | 'Star' | 'Table2' | 'Tag'
+  | 'Ticket' | 'Truck' | 'Upload' | 'Users' | 'Wallet' | 'Wand2'
 
 /** How a tile or chart reduces the rows it covers. Anything but `count` needs a numeric field. */
 export type FullstackAgg = 'count' | 'sum' | 'avg' | 'min' | 'max'
@@ -679,6 +683,30 @@ export interface FullstackPageDef {
   /** record: number tiles over its related lists (default: one row count per related tab;
    *  an empty array: none). */
   headerStats?: { child: string; agg?: FullstackAgg; field?: string; title?: string; via?: string }[]
+  /** calendar: the date field rows are placed by (default: the entity's first filterable date). */
+  dateField?: string
+  /** calendar: the date a row ends on (needed by the timeline); absent: rows are one day long. */
+  endField?: string
+  /** calendar: the views it offers, the first one opening (default: month). */
+  modes?: FullstackCalendarMode[]
+  /** board: the enum/boolean field the lanes split by (default: the first). */
+  laneField?: string
+  /** board: the lanes, in order (default: every value of the lane field). */
+  lanes?: string[]
+  /** board: what a card shows — 1–4 field or relation names, the first as its heading. */
+  cardFields?: string[]
+  /** board: lane value → the most cards it should hold. */
+  wipLimits?: Record<string, number>
+  /** board: the cards a lane loads at a time — 10, 20 or 50 (default 20). */
+  laneSize?: number
+  /** content: the page's text, in a small Markdown subset (see contentMarkdown.ts). */
+  body?: string
+  /** search: the entities searched (default: every entity with text to search, up to 8). */
+  entities?: string[]
+  /** search: the matches shown per entity — 3 to 10 (default 5). */
+  perEntity?: number
+  /** search: put a search box in the app's header that opens this page. */
+  shellSearch?: boolean
 }
 
 /** The editor state an example sets on load — FullstackExampleAdminController.validateSettings. */

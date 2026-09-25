@@ -1,4 +1,5 @@
 import { Fragment, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
+import type { ContentBlock, ContentRun } from './contentMarkdown'
 import { highlights, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewScreen, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
 import { dropIndicatorClass, useDragReorder, type DragReorder } from './useDragReorder'
 
@@ -351,6 +352,144 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           )}
         </div>
       )
+    case 'calendar':
+      return (
+        <div className="space-y-2" data-preview-calendar>
+          <div className="flex items-start justify-between gap-2">
+            {heading}
+            {screen.modes.length > 1 && (
+              <Editable {...link} control="modes" label="Edit the calendar views" className="shrink-0">
+                <span className="inline-flex overflow-hidden rounded border border-outline-variant text-[9px]">
+                  {screen.modes.map((m, i) => (
+                    <span key={m} className="px-1.5 py-0.5" style={i === 0 ? { background: accent, color: 'white' } : undefined}>{m}</span>
+                  ))}
+                </span>
+              </Editable>
+            )}
+          </div>
+          <Editable {...link} control="dateField" label="Edit the date rows are placed by" className="block w-full">
+            <div className="grid grid-cols-7 overflow-hidden rounded border border-outline-variant">
+              {screen.days.map((d, i) => (
+                <div key={i} className="min-h-9 border-b border-e border-outline-variant/60 p-0.5">
+                  <span className="block text-end text-[8px] text-secondary">{d.day}</span>
+                  {d.events.slice(0, 2).map((ev, j) => (
+                    <span key={j} className="mt-0.5 block truncate rounded px-0.5 text-[8px]" style={{ background: `${accent}22`, color: accent }}>{ev}</span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </Editable>
+          {screen.creates && <p className="text-[9px] text-secondary">Click a day to add a row on it</p>}
+        </div>
+      )
+    case 'board':
+      return (
+        <div className="space-y-2" data-preview-board>
+          {heading}
+          <Editable {...link} control="lanes" label="Edit the lanes" className="block w-full">
+            <div className="flex gap-1.5 overflow-x-auto">
+              {screen.lanes.map((lane, i) => {
+                const over = lane.limit != null && lane.count > lane.limit
+                return (
+                  <div key={i} className="w-28 shrink-0 space-y-1 rounded border border-outline-variant bg-surface-container-low p-1">
+                    <div className="flex items-center justify-between gap-1 text-[9px] font-semibold text-on-surface">
+                      <span className="truncate">{lane.label}</span>
+                      <span className={`tabular-nums ${over ? 'text-error' : 'text-secondary'}`}>{lane.limit != null ? `${lane.count}/${lane.limit}` : lane.count}</span>
+                    </div>
+                    {lane.cards.map((card, j) => (
+                      <div key={j} className="rounded border border-outline-variant bg-surface p-1">
+                        <p className="truncate text-[9px] font-semibold text-on-surface">{card.heading}</p>
+                        {card.details.map((d, k) => <p key={k} className="truncate text-[8px] text-secondary">{d}</p>)}
+                      </div>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+          </Editable>
+        </div>
+      )
+    case 'content':
+      return (
+        <div className="space-y-2" data-preview-content>
+          {heading}
+          <Editable {...link} control="body" label="Edit the text" className="block w-full text-start">
+            <div className="space-y-1.5 rounded border border-outline-variant p-2">
+              {screen.blocks.length === 0 && <p className="text-[10px] text-secondary">No text yet</p>}
+              {screen.blocks.map((b, i) => <ContentBlockView key={i} block={b} accent={accent} />)}
+            </div>
+          </Editable>
+        </div>
+      )
+    case 'import':
+      return (
+        <div className="space-y-2" data-preview-import>
+          {heading}
+          <Editable {...link} control="entity" label="Edit the imported entity" className="block w-full">
+            <div className="space-y-1.5 rounded border border-outline-variant p-2">
+              <div className="flex gap-1 text-[9px]">
+                {['1 · File', '2 · Columns', '3 · Review'].map((s, i) => (
+                  <span key={s} className="rounded-full px-1.5 py-0.5" style={i === 0 ? { background: accent, color: 'white' } : { background: 'var(--color-surface-container-high, #eee)' }}>{s}</span>
+                ))}
+              </div>
+              <div className="rounded border-2 border-dashed border-outline-variant px-2 py-3 text-center text-[10px] text-secondary">
+                Drop a CSV file of {screen.entity}
+              </div>
+              <p className="text-[9px] text-secondary">
+                Columns: {screen.fields.map(f => f.label + (f.required ? '*' : '')).join(', ')}
+              </p>
+            </div>
+          </Editable>
+        </div>
+      )
+    case 'search':
+      return (
+        <div className="space-y-2" data-preview-search>
+          {heading}
+          <div className="rounded-full border border-outline-variant px-2 py-1 text-[10px] text-secondary">{screen.words}</div>
+          <Editable {...link} control="entities" label="Edit the searched entities" className="block w-full">
+            <div className="space-y-1">
+              {screen.groups.map((g, i) => (
+                <div key={i} className="rounded border border-outline-variant">
+                  <p className="border-b border-outline-variant px-1.5 py-0.5 text-[9px] font-semibold text-on-surface">
+                    {g.title} <span className="font-normal text-secondary">{g.total}</span>
+                  </p>
+                  {g.rows.map((r, j) => <p key={j} className="truncate px-1.5 py-0.5 text-[9px] text-on-surface">{r}</p>)}
+                </div>
+              ))}
+            </div>
+          </Editable>
+          {screen.header && <p className="text-[9px] text-secondary">Also opened from the search box in the app’s header</p>}
+        </div>
+      )
+  }
+}
+
+/** One block of a content page, drawn from the same parse the generator makes. */
+function ContentBlockView({ block, accent }: { block: ContentBlock; accent: string }) {
+  const runs = (items: ContentRun[]) => items.map((r, i) => {
+    switch (r.kind) {
+      case 'bold': return <strong key={i}>{r.text}</strong>
+      case 'em': return <em key={i}>{r.text}</em>
+      case 'code': return <code key={i} className="rounded bg-surface-container-high px-0.5">{r.text}</code>
+      case 'page-link':
+      case 'link': return <span key={i} className="font-semibold underline" style={{ color: accent }}>{r.text}</span>
+      default: return <span key={i}>{r.text}</span>
+    }
+  })
+  switch (block.kind) {
+    case 'heading': return <p className={`font-bold text-on-surface ${block.level === 1 ? 'text-[12px]' : 'text-[11px]'}`}>{runs(block.items[0] ?? [])}</p>
+    case 'paragraph': return <p className="text-[10px] text-on-surface">{runs(block.items[0] ?? [])}</p>
+    case 'callout': return <p className="border-s-2 ps-1.5 text-[10px] text-on-surface" style={{ borderColor: accent }}>{runs(block.items[0] ?? [])}</p>
+    case 'rule': return <hr className="border-outline-variant" />
+    default: {
+      const List = block.kind === 'bullets' ? 'ul' : 'ol'
+      return (
+        <List className={`${block.kind === 'bullets' ? 'list-disc' : 'list-decimal'} ps-4 text-[10px] text-on-surface`}>
+          {block.items.map((item, i) => <li key={i}>{runs(item)}</li>)}
+        </List>
+      )
+    }
   }
 }
 

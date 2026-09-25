@@ -23,6 +23,10 @@ import {
   reloads,
 } from './pageLayout'
 import { buildUiPreview, fieldLabel } from './uiPreview'
+import { parseContent, type ContentBlock } from './contentMarkdown'
+import {
+  CALENDAR_MODES, cardFieldOptions, defaultCardFields, defaultLaneField, defaultSearchEntities, laneValues,
+} from './newPageTypes'
 
 /**
  * View-model for the Fullstack tab's layout preview: a wireframe of the app the page layout
@@ -160,6 +164,22 @@ export type PreviewScreen =
     totalLabel: string
     exportLabel: string | null
   }
+  | {
+    type: 'calendar'; title: string; description?: string
+    /** The views offered, the opening one first; the grid always previews a month. */
+    modes: string[]
+    /** Five weeks of days (1–35 of a sample month), each with the headings of its sample rows. */
+    days: { day: number; events: string[] }[]
+    /** Whether a day can be clicked to add a row. */
+    creates: boolean
+  }
+  | {
+    type: 'board'; title: string; description?: string
+    lanes: { label: string; count: number; limit: number | null; cards: { heading: string; details: string[] }[] }[]
+  }
+  | { type: 'content'; title: string; description?: string; blocks: ContentBlock[] }
+  | { type: 'import'; title: string; description?: string; entity: string; fields: { label: string; required: boolean }[] }
+  | { type: 'search'; title: string; description?: string; words: string; groups: { title: string; total: number; rows: string[] }[]; header: boolean }
   | { type: 'broken'; title: string; message: string }
 
 export interface PreviewNavSection {
@@ -761,6 +781,66 @@ export function buildLayoutPreview(
         }
       }
     }
+    switch (page.type) {
+      case 'calendar': {
+        const e = entityOf(page.entity)
+        if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
+        const modes = (page.modes ?? ['month']).map(m => CALENDAR_MODES.find(c => c.value === m)?.label ?? m)
+        const long = page.endField != null
+        const days = Array.from({ length: 35 }, (_, i) => {
+          const day = i + 1
+          // A few sample rows, spread over the month; with an end date they run over two days.
+          const starts = [3, 9, 9, 16, 22, 27].map((d, n) => ({ d, n: n + 1 }))
+          const events = starts.filter(s => day === s.d || (long && day === s.d + 1)).map(s => rowLabel(e, s.n, labels(e).singular, t))
+          return { day: ((day - 1) % 30) + 1, events }
+        })
+        return { type: 'calendar', title: page.title || labels(e).plural, description, modes, days, creates: !e.readOnly }
+      }
+      case 'board': {
+        const e = entityOf(page.entity)
+        if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
+        const lane = page.laneField ?? defaultLaneField(e)
+        const laneField = e.fields.find(f => f.name === lane)
+        const values = page.lanes ?? laneValues(e, lane)
+        const cardNames = (page.cardFields ?? defaultCardFields(e, lane)).filter(n => cardFieldOptions(e).includes(n))
+        const valueOf = (name: string, row: number) => {
+          const f = e.fields.find(x => x.name === name)
+          return f ? sampleCell(f, row, t) : `#${row}`
+        }
+        let row = 0
+        const lanes = values.map((v, li) => {
+          const count = [4, 2, 3, 1, 5][li % 5]
+          const cards = Array.from({ length: Math.min(count, 2) }, () => {
+            row += 1
+            const [head, ...rest] = cardNames
+            return { heading: head ? valueOf(head, row) : `#${row}`, details: rest.map(n => valueOf(n, row)) }
+          })
+          const label = laneField?.type === 'BOOLEAN' ? (v === 'true' ? t('trueLabel') : t('falseLabel')) : laneField ? enumLabel(laneField, v) : v
+          return { label, count, limit: page.wipLimits?.[v] ?? null, cards }
+        })
+        return { type: 'board', title: page.title || labels(e).plural, description, lanes }
+      }
+      case 'content':
+        return { type: 'content', title: page.title || page.id, description, blocks: parseContent(page.body ?? '') }
+      case 'import': {
+        const e = entityOf(page.entity)
+        if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
+        const fields = [
+          ...e.fields.filter(f => !(f.primaryKey && f.generated) && !f.readOnly).map(f => ({ label: fieldLabel(f), required: Boolean(f.required) || Boolean(f.primaryKey) })),
+          ...(e.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => ({ label: humanize(r.fieldName), required: Boolean(r.required) })),
+        ]
+        return { type: 'import', title: page.title || `Import ${labels(e).plural}`, description, entity: labels(e).plural, fields }
+      }
+      case 'search': {
+        const names = page.entities ?? defaultSearchEntities(named)
+        const groups = names.map(entityOf).filter((e): e is FullstackEntityDef => e != null).map((e, gi) => ({
+          title: labels(e).plural,
+          total: [12, 4, 7, 2][gi % 4],
+          rows: Array.from({ length: Math.min(page.perEntity ?? 5, 3) }, (_, i) => rowLabel(e, i + 1, labels(e).singular, t)),
+        }))
+        return { type: 'search', title: page.title || t('search').replace('…', ''), description, words: 'acme', groups, header: Boolean(page.shellSearch) }
+      }
+    }
     return { type: 'broken', title: page.id, message: `Unknown page type “${String((page as FullstackPageDef).type)}”` }
   })
 
@@ -774,6 +854,10 @@ export function buildLayoutPreview(
       case 'report': return e ? t('xReport', { x: labels(e).plural }) : p.id
       case 'wizard': return e ? t('newX', { x: labels(e).singular }) : p.id
       case 'record': return e ? labels(e).singular : p.id
+      case 'calendar':
+      case 'board': return e ? labels(e).plural : p.id
+      case 'import': return e ? `Import ${labels(e).plural}` : p.id
+      case 'search': return t('search').replace('…', '')
       default: return p.id
     }
   }

@@ -48,6 +48,35 @@ const openRow = (id: string) => {
 }
 
 describe('PagesEditor', () => {
+  it('adds a board, a content page and a search page, each valid on sight', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Board/ }))
+    expect(latest[1]).toMatchObject({ type: 'board', entity: 'Order', laneField: 'status' })
+    // The card picker: the default cards are the heading and the next fields; a pick replaces them.
+    fireEvent.click(screen.getByRole('button', { name: /^2Total/ }))
+    expect(latest[1].cardFields).toEqual(['id', 'placedOn', 'customer'])
+    fireEvent.change(screen.getByLabelText('Most cards in PAID'), { target: { value: '3' } })
+    expect(latest[1].wipLimits).toEqual({ PAID: 3 })
+
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Content/ }))
+    expect(latest[2]).toMatchObject({ type: 'content', title: 'Help' })
+    fireEvent.change(screen.getByLabelText('Page text'), { target: { value: 'See [the orders](#/nowhere).' } })
+    expect(document.querySelector('[data-page-layout-problems]')?.textContent).toContain('links to the missing page “nowhere”')
+    fireEvent.change(screen.getByLabelText('Page text'), { target: { value: 'See ' } })
+    fireEvent.change(screen.getByLabelText('Insert a link to'), { target: { value: 'orders' } })
+    expect(latest[2].body).toBe('See [Order](#/orders)')
+
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Search/ }))
+    expect(latest[3]).toMatchObject({ type: 'search', shellSearch: true })
+    // One search page per layout: the card says so.
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    expect((screen.getByRole('button', { name: /^Search.*already has a search page/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect(validatePages(latest, entities).count).toBe(0)
+  })
+
   it('adds a page of the chosen type, pre-filled so it is valid on sight', () => {
     render(<Harness initial={[]} />)
     expect(screen.getByText('Classic layout')).toBeTruthy()

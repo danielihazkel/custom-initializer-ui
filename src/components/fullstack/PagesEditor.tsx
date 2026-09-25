@@ -3,6 +3,7 @@ import { handleRadioKeys, syncRadioTabStops } from './rovingRadios'
 import type {
   FullstackAgg,
   FullstackBucket,
+  FullstackCalendarMode,
   FullstackChartDef,
   FullstackDateRange,
   FullstackEntityDef,
@@ -28,6 +29,11 @@ import { useStableKeys } from './rowKeys'
 import { focusWithoutClipping, scrollToElement } from './scroll'
 import { LAYOUT_TEMPLATES, buildLayoutTemplate, deletePageTemplate, pageFromTemplate, readPageTemplates, savePageTemplate, type LayoutTemplate } from './layoutTemplates'
 import { dropIndicatorClass, useDragReorder } from './useDragReorder'
+import {
+  CALENDAR_MODES, DEFAULT_LANE_SIZE, DEFAULT_PER_ENTITY, LANE_SIZES, MAX_BODY, MAX_CARD_FIELDS, MAX_PER_ENTITY, MAX_WIP_LIMIT,
+  MIN_PER_ENTITY, calendarDateFields, cardFieldOptions, defaultCalendarDate, defaultCardFields, defaultLaneField,
+  defaultSearchEntities, importable, laneFields, laneValues, searchableEntity,
+} from './newPageTypes'
 import {
   DATE_RANGES,
   REFRESH_CHOICES,
@@ -78,6 +84,7 @@ import {
   reportGroupKeys,
   masterDetailPairs,
   newPageChoices,
+  newPageTypeReason,
   moveNavGroup,
   navSections,
   renameGroupInPages,
@@ -414,6 +421,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         ? { short: 'needs two other pages', reason: 'A tabs page holds two or more other pages — a list, dashboard, report or master–detail' }
         : undefined
     }
+    const own = newPageTypeReason(type, named, others)
+    if (own) return { short: 'not available', reason: own }
     const reason = noFitReason(type, others)
     return reason ? { short: 'no entity fits', reason } : undefined
   }
@@ -925,7 +934,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 ? 'Add a many-to-one relation between two entities first (the child’s Relations table)'
                 : type === 'tabs' && tabsEligible.length < MIN_TABS
                   ? 'Add two pages that can be tabs first — a list, dashboard, report or master–detail'
-                  : noFitReason(type)
+                  : newPageTypeReason(type, named, pages) ?? noFitReason(type)
               return (
                 <li key={type}>
                   <button
@@ -1558,6 +1567,21 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                       )}
                       {page.type === 'wizard' && (
                         <WizardForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} removed={removed} dnd={dnd} />
+                      )}
+                      {page.type === 'calendar' && (
+                        <CalendarForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} />
+                      )}
+                      {page.type === 'board' && (
+                        <BoardForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} />
+                      )}
+                      {page.type === 'content' && (
+                        <ContentForm page={page} index={index} pages={pages} errors={errors} update={update} />
+                      )}
+                      {page.type === 'import' && (
+                        <ImportForm page={page} index={index} entities={named} errors={errors} update={update} />
+                      )}
+                      {page.type === 'search' && (
+                        <SearchForm page={page} index={index} entities={named} errors={errors} update={update} />
                       )}
                     </div>
                   )}
@@ -4010,6 +4034,352 @@ function PreviewDrawer({ onClose, children }: { onClose: () => void; children: R
           </button>
         </div>
         {children}
+      </div>
+    </div>
+  )
+}
+
+// ── Calendar, board, content, import and search pages ─────────────────────────
+
+function CalendarForm({ page, index, entities, errors, update, lossy }: FormProps) {
+  const entity = entities.find(e => e.name === page.entity)
+  const dates = calendarDateFields(entity)
+  const date = page.dateField ?? defaultCalendarDate(entity)
+  const modes = page.modes ?? ['month']
+  const setModes = (next: FullstackCalendarMode[]) => update(index, { modes: next })
+  const toggle = (mode: FullstackCalendarMode) => {
+    if (modes.includes(mode)) {
+      if (modes.length > 1) setModes(modes.filter(m => m !== mode))
+    } else {
+      setModes(CALENDAR_MODES.map(m => m.value).filter(m => m === mode || modes.includes(m)))
+    }
+  }
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Field label="Entity" error={errors.entity} control="entity">
+          <EntitySelect
+            label="Calendar entity"
+            value={page.entity ?? ''}
+            options={entities.filter(e => calendarDateFields(e).length > 0).map(e => e.name)}
+            error={errors.entity}
+            onChange={name => {
+              const next = entities.find(e => e.name === name)
+              const dropped = [page.endField && 'end date', Object.keys(page.presetFilter ?? {}).length > 0 && 'filter'].filter((d): d is string => Boolean(d))
+              lossy(`Showed ${name} in “${pageLabel(page)}”`, dropped)
+              update(index, { entity: name, dateField: defaultCalendarDate(next), endField: undefined, presetFilter: undefined, modes: modes.filter(m => m !== 'timeline').length ? modes.filter(m => m !== 'timeline') : ['month'] })
+            }}
+          />
+        </Field>
+        <Field label="Placed by" error={errors.dateField} control="dateField" hint="The date a row sits on; the page loads only the period on screen">
+          <select
+            aria-label="Date field"
+            value={page.dateField ?? ''}
+            onChange={e => update(index, { dateField: e.target.value || undefined })}
+            className={`${inputClass(errors.dateField)} w-full py-1 text-xs`}
+          >
+            <option value="">{defaultOptionLabel(defaultCalendarDate(entity), 'filterable date', k => keyOption(entity, k))}</option>
+            {dates.map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
+          </select>
+        </Field>
+        <Field label="Ends on" error={errors.endField} control="endField" hint="Optional — a row then spans its days, and the timeline draws it as a bar">
+          <select
+            aria-label="End date field"
+            value={page.endField ?? ''}
+            onChange={e => {
+              const endField = e.target.value || undefined
+              update(index, { endField, ...(endField ? {} : { modes: modes.filter(m => m !== 'timeline').length ? modes.filter(m => m !== 'timeline') : ['month'] }) })
+            }}
+            className={`${inputClass(errors.endField)} w-full py-1 text-xs`}
+          >
+            <option value="">None — one day each</option>
+            {dates.filter(f => f.name !== date).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
+          </select>
+        </Field>
+      </div>
+      <Field label="Views" error={errors.modes} control="modes" hint="The first ticked view opens; the others are a switch above the calendar">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Calendar views">
+          {CALENDAR_MODES.map(m => {
+            const on = modes.includes(m.value)
+            const blocked = m.value === 'timeline' && !page.endField
+            return (
+              <button
+                key={m.value}
+                type="button"
+                aria-pressed={on}
+                disabled={blocked && !on}
+                title={blocked && !on ? 'Pick an end date first — a timeline bar runs from one date to the other' : undefined}
+                onClick={() => toggle(m.value)}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors disabled:opacity-40 ${on ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant text-secondary hover:border-primary/50'}`}
+              >
+                {m.label}{on && modes[0] === m.value && modes.length > 1 ? ' · opens' : ''}
+              </button>
+            )
+          })}
+        </div>
+      </Field>
+      <PresetFilters filter={page.presetFilter} entity={entity} errors={errors} onChange={presetFilter => update(index, { presetFilter })} heading="Only rows with" />
+    </div>
+  )
+}
+
+function BoardForm({ page, index, entities, errors, update, lossy }: FormProps) {
+  const entity = entities.find(e => e.name === page.entity)
+  const lane = page.laneField ?? defaultLaneField(entity)
+  const laneField = entity?.fields.find(f => f.name === lane)
+  const values = laneValues(entity, lane)
+  const lanes = page.lanes ?? values
+  const cards = page.cardFields ?? defaultCardFields(entity, lane)
+  const options = cardFieldOptions(entity)
+  const labelOf = (key: string) => keyOption(entity, key)
+  const setLanes = (next: string[]) => {
+    // Every value ticked is the default — leave it off the request.
+    const ordered = values.filter(v => next.includes(v))
+    const limits = Object.fromEntries(Object.entries(page.wipLimits ?? {}).filter(([k]) => ordered.includes(k)))
+    update(index, { lanes: ordered.length === values.length ? undefined : ordered, wipLimits: Object.keys(limits).length ? limits : undefined })
+  }
+  const setLimit = (value: string, raw: string) => {
+    const n = Number(raw)
+    const next = { ...(page.wipLimits ?? {}) }
+    if (raw === '' || !Number.isFinite(n)) delete next[value]
+    else next[value] = Math.max(1, Math.min(MAX_WIP_LIMIT, Math.round(n)))
+    update(index, { wipLimits: Object.keys(next).length ? next : undefined })
+  }
+  const toggleCard = (name: string) => {
+    const next = cards.includes(name) ? cards.filter(c => c !== name) : [...cards, name]
+    if (next.length === 0 || next.length > MAX_CARD_FIELDS) return
+    update(index, { cardFields: next })
+  }
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Field label="Entity" error={errors.entity} control="entity">
+          <EntitySelect
+            label="Board entity"
+            value={page.entity ?? ''}
+            options={entities.filter(e => laneFields(e).length > 0).map(e => e.name)}
+            error={errors.entity}
+            onChange={name => {
+              const next = entities.find(e => e.name === name)
+              const dropped = [page.lanes && 'lanes', page.wipLimits && 'lane limits', page.cardFields && 'card fields', page.sort && 'sort',
+                Object.keys(page.presetFilter ?? {}).length > 0 && 'filter'].filter((d): d is string => Boolean(d))
+              lossy(`Showed ${name} in “${pageLabel(page)}”`, dropped)
+              update(index, { entity: name, laneField: defaultLaneField(next), lanes: undefined, wipLimits: undefined, cardFields: undefined, sort: undefined, presetFilter: undefined })
+            }}
+          />
+        </Field>
+        <Field label="Lanes by" error={errors.laneField} control="laneField" hint="Each lane is one value; moving a card sets it">
+          <select
+            aria-label="Lane field"
+            value={page.laneField ?? ''}
+            onChange={e => update(index, { laneField: e.target.value || undefined, lanes: undefined, wipLimits: undefined })}
+            className={`${inputClass(errors.laneField)} w-full py-1 text-xs`}
+          >
+            <option value="">{defaultOptionLabel(defaultLaneField(entity), 'enum or yes/no field', labelOf)}</option>
+            {laneFields(entity).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
+          </select>
+        </Field>
+        <Field label="Cards loaded per lane" error={errors.laneSize} control="laneSize" hint="“Load more” fetches the next ones">
+          <select
+            aria-label="Cards per lane"
+            value={page.laneSize ?? DEFAULT_LANE_SIZE}
+            onChange={e => update(index, { laneSize: Number(e.target.value) === DEFAULT_LANE_SIZE ? undefined : Number(e.target.value) })}
+            className={`${inputClass(errors.laneSize)} w-full py-1 text-xs`}
+          >
+            {LANE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </Field>
+      </div>
+      <Field label="Lanes and limits" error={errors.lanes ?? errors.wipLimits} control="lanes" hint="A limit refuses cards past it and marks the lane when it is full">
+        <div className="space-y-1">
+          {values.map(v => {
+            const on = lanes.includes(v)
+            return (
+              <div key={v} className="flex items-center gap-2 text-xs">
+                <label className="flex min-w-[10rem] items-center gap-1.5">
+                  <input type="checkbox" checked={on} onChange={() => setLanes(on ? lanes.filter(x => x !== v) : [...lanes, v])} disabled={on && lanes.length === 1} />
+                  {enumValueOption(laneField, v)}
+                </label>
+                {on && (
+                  <input
+                    type="number"
+                    min={1}
+                    max={MAX_WIP_LIMIT}
+                    aria-label={`Most cards in ${v}`}
+                    placeholder="No limit"
+                    value={page.wipLimits?.[v] ?? ''}
+                    onChange={e => setLimit(v, e.target.value)}
+                    className={`${inputClass()} w-24 py-0.5 text-xs`}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </Field>
+      <Field label="A card shows" error={errors.cardFields} control="cardFields" hint={`1–${MAX_CARD_FIELDS} fields, in the order picked; the first is its heading`}>
+        <div className="flex flex-wrap gap-1.5">
+          {options.map(name => {
+            const at = cards.indexOf(name)
+            return (
+              <button
+                key={name}
+                type="button"
+                aria-pressed={at >= 0}
+                onClick={() => toggleCard(name)}
+                disabled={at < 0 && cards.length >= MAX_CARD_FIELDS}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors disabled:opacity-40 ${at >= 0 ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant text-secondary hover:border-primary/50'}`}
+              >
+                {at >= 0 && <span className="me-1 tabular-nums">{at + 1}</span>}{labelOf(name)}{at === 0 ? ' · heading' : ''}
+              </button>
+            )
+          })}
+          {page.cardFields && (
+            <button type="button" onClick={() => update(index, { cardFields: undefined })} className={SMALL_BUTTON}>Reset to default</button>
+          )}
+        </div>
+      </Field>
+      <Field label="Cards sorted by" error={errors.sort} control="sort">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            aria-label="Card sort"
+            value={page.sort?.field ?? ''}
+            onChange={e => update(index, { sort: e.target.value ? { field: e.target.value, dir: page.sort?.dir ?? 'asc' } : undefined })}
+            className={`${inputClass(errors.sort)} max-w-[12rem] py-1 text-xs`}
+          >
+            <option value="">The key (default)</option>
+            {(entity?.fields ?? []).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
+          </select>
+          {page.sort?.field && (
+            <select
+              aria-label="Card sort direction"
+              value={page.sort.dir ?? 'asc'}
+              onChange={e => update(index, { sort: { field: page.sort!.field, dir: e.target.value as 'asc' | 'desc' } })}
+              className={`${inputClass()} max-w-[8rem] py-1 text-xs`}
+            >
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
+          )}
+        </div>
+      </Field>
+      <PresetFilters filter={page.presetFilter} entity={entity} errors={errors} onChange={presetFilter => update(index, { presetFilter })} heading="Only cards with" />
+    </div>
+  )
+}
+
+function ContentForm({ page, index, pages, errors, update }: Omit<FormProps, 'entities' | 'lossy'> & { pages: FullstackPageDef[] }) {
+  const body = page.body ?? ''
+  const areaRef = useRef<HTMLTextAreaElement>(null)
+  const targets = linkablePages(pages).filter(p => p.id !== page.id)
+  // Inserts `[label](#/id)` where the cursor is (or at the end).
+  const insertLink = (id: string) => {
+    const target = pages.find(p => p.id === id)
+    if (!target) return
+    const link = `[${pageLabel(target)}](#/${id})`
+    const area = areaRef.current
+    const at = area ? area.selectionStart : body.length
+    const next = body.slice(0, at) + link + body.slice(area ? area.selectionEnd : body.length)
+    update(index, { body: next })
+    requestAnimationFrame(() => {
+      area?.focus()
+      area?.setSelectionRange(at + link.length, at + link.length)
+    })
+  }
+  return (
+    <div className="space-y-2">
+      <Field label="Text" error={errors.body} control="body" hint={`${body.length}/${MAX_BODY} · ## heading · - list · 1. list · > note · **bold** · *em* · \`code\` · [text](#/page-id or https://…) · --- rule`}>
+        <textarea
+          ref={areaRef}
+          aria-label="Page text"
+          aria-invalid={Boolean(errors.body)}
+          value={body}
+          rows={10}
+          maxLength={MAX_BODY}
+          onChange={e => update(index, { body: e.target.value })}
+          className={`${inputClass(errors.body)} w-full font-mono text-xs`}
+        />
+      </Field>
+      {targets.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <label className="text-secondary" htmlFor={`content-link-${index}`}>Insert a link to</label>
+          <select
+            id={`content-link-${index}`}
+            value=""
+            onChange={e => { if (e.target.value) insertLink(e.target.value) }}
+            className={`${inputClass()} max-w-[14rem] py-1 text-xs`}
+          >
+            <option value="">— a page —</option>
+            {targets.map(p => <option key={p.id} value={p.id}>{pageLabel(p)}</option>)}
+          </select>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ImportForm({ page, index, entities, errors, update }: Omit<FormProps, 'lossy'>) {
+  const entity = entities.find(e => e.name === page.entity)
+  return (
+    <div className="space-y-2">
+      <Field label="Entity" error={errors.entity} control="entity" hint="Rows are checked in the browser first, then created all at once — or not at all">
+        <EntitySelect
+          label="Import entity"
+          value={page.entity ?? ''}
+          options={entities.filter(importable).map(e => e.name)}
+          error={errors.entity}
+          onChange={name => update(index, { entity: name })}
+        />
+      </Field>
+      {entity && (
+        <p className="text-[11px] text-secondary">
+          This switches on CSV import for {entity.name}: its backend gets <code>POST /import</code> and its list page an Import button that opens this page.
+          A file exported from the app imports as it is — columns match by field name or label.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function SearchForm({ page, index, entities, errors, update }: Omit<FormProps, 'lossy'>) {
+  const searchable = entities.filter(searchableEntity)
+  const chosen = page.entities ?? defaultSearchEntities(entities)
+  const toggle = (name: string) => {
+    const next = chosen.includes(name) ? chosen.filter(n => n !== name) : [...chosen, name]
+    if (next.length === 0) return
+    const ordered = searchable.map(e => e.name).filter(n => next.includes(n))
+    const isDefault = ordered.join('|') === defaultSearchEntities(entities).join('|')
+    update(index, { entities: isDefault ? undefined : ordered })
+  }
+  return (
+    <div className="space-y-3">
+      <Field label="Searches" error={errors.entities} control="entities" hint="Entities with a searchable text field; their matches are listed in this order">
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {searchable.map(e => (
+            <label key={e.name} className="flex items-center gap-1.5 text-xs">
+              <input type="checkbox" checked={chosen.includes(e.name)} onChange={() => toggle(e.name)} disabled={chosen.includes(e.name) && chosen.length === 1} />
+              {entityOption(e)}
+            </label>
+          ))}
+        </div>
+      </Field>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Matches per entity" error={errors.perEntity} control="perEntity" hint="“See all” opens the entity’s list with the same words">
+          <select
+            aria-label="Matches per entity"
+            value={page.perEntity ?? DEFAULT_PER_ENTITY}
+            onChange={e => update(index, { perEntity: Number(e.target.value) === DEFAULT_PER_ENTITY ? undefined : Number(e.target.value) })}
+            className={`${inputClass(errors.perEntity)} w-full py-1 text-xs`}
+          >
+            {Array.from({ length: MAX_PER_ENTITY - MIN_PER_ENTITY + 1 }, (_, i) => MIN_PER_ENTITY + i).map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </Field>
+        <Field label="Header" error={errors.shellSearch} control="shellSearch">
+          <label className="flex items-center gap-1.5 text-xs">
+            <input type="checkbox" checked={page.shellSearch ?? false} onChange={e => update(index, { shellSearch: e.target.checked || undefined })} />
+            A search box in the app’s header opens this page
+          </label>
+        </Field>
       </div>
     </div>
   )

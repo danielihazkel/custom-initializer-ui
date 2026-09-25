@@ -323,7 +323,7 @@ The Generate button POSTs to \`/starter-fullstack.zip\` and streams the result. 
       {
         id: 'fs-pages',
         title: 'Frontend Pages',
-        description: 'Shape the generated frontend as pages — dashboards, lists, tabs, master–detail, records, reports and wizards — instead of the fixed classic shell.',
+        description: 'Shape the generated frontend as pages — dashboards, lists, tabs, master–detail, records, reports, wizards, calendars, boards, content, import and search — instead of the fixed classic shell.',
         content: `### Classic shell or a layout
 Without a layout the generated app has a dashboard plus one list page per entity. The **Frontend pages** section (below Entities) replaces that with pages of your own. **Start from my entities** seeds a dashboard and a list per entity, the Examples ship layouts to learn from, and **Use classic layout** drops the layout again (undoable).
 
@@ -335,6 +335,11 @@ Without a layout the generated app has a dashboard plus one list page per entity
 - **Record** — one row opened from a list, with its related lists as tabs and number tiles above them. Never in the navigation: it needs a row.
 - **Report** — an entity's filter bar, one to four charts and grouped totals, with a CSV export when that option is on.
 - **Wizard** — a create (and edit) form split into steps, with a review before saving.
+- **Calendar** — one entity's rows by a date field, as a month, a week, an agenda or a timeline of bars (the timeline needs an end date). Only the period on screen is loaded; clicking a day adds a row on it.
+- **Board** — cards in lanes of an enum or yes/no field. Each lane loads its own cards and shows its real count; a lane limit refuses cards past it. Cards move by dragging or by their *Move to* menu.
+- **Content** — a page of text: headings, lists, notes, **bold**, *emphasis* and links to other pages (\`[text](#/page-id)\`) or the web. Written as plain text, it can never inject markup.
+- **Import** — upload a CSV file, match its columns to the entity's fields and check every row before anything is saved; then all rows are created, or none. It also switches on CSV import for that entity, whose list gets an Import button.
+- **Search** — one search box over several entities, results grouped by entity; with **Header search box** on, the app's header opens it.
 
 ### How the navigation is built
 - The first page in the navigation is the **start page** — the app opens there, for everyone. The home button on a row makes another page the start page.

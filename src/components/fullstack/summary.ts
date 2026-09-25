@@ -24,6 +24,7 @@ export function entityOptApplicability(entity: FullstackEntityDef): EntityOptApp
     bulkDelete: gate([mutable, readOnlyReason], [!composite, 'composite primary key']),
     bulkUpdate: gate([mutable, readOnlyReason], [!composite, 'composite primary key'], [editable, 'no editable field']),
     tests: { applicable: true },
+    csvImport: gate([mutable, readOnlyReason]),
   }
 }
 

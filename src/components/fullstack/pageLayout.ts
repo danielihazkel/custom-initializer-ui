@@ -13,6 +13,11 @@ import type {
   FullstackPageType,
   FullstackWidgetDef,
 } from '../../types'
+import {
+  blankNewTypePage, checkBoard, checkCalendar, checkContent, checkImport, checkSearch, describeNewTypePage,
+  newSearchReason, newTypeReason, renameEntityInNewPages, renameEnumValueInNewPages, renameFieldInNewPages,
+  renamePageIdInBody, renameRelationInNewPages,
+} from './newPageTypes'
 import { humanize, pluralize } from './naming'
 import { enumLabel, humanizeConstant } from './enumLabels'
 import { summarizeEntity } from './summary'
@@ -196,6 +201,9 @@ export function defaultSeries(entity: FullstackEntityDef | undefined, groupBy: s
  *  Material Symbol that looks like it). */
 export const NAV_ICONS: Record<FullstackNavIcon, { symbol: string; label: string }> = {
   LayoutDashboard: { symbol: 'dashboard', label: 'Dashboard' },
+  Columns3: { symbol: 'view_week', label: 'Board' },
+  Search: { symbol: 'search', label: 'Search' },
+  Upload: { symbol: 'upload', label: 'Upload' },
   Table2: { symbol: 'table', label: 'Table' },
   Layers: { symbol: 'layers', label: 'Layers' },
   PanelLeft: { symbol: 'vertical_split', label: 'Split panel' },
@@ -226,6 +234,11 @@ export const DEFAULT_NAV_ICON: Record<FullstackPageType, FullstackNavIcon> = {
   record: 'Table2',
   report: 'BarChart3',
   wizard: 'Wand2',
+  calendar: 'Calendar',
+  board: 'Columns3',
+  content: 'FileText',
+  import: 'Upload',
+  search: 'Search',
 }
 
 /** Whether a page is listed in the generated nav (a record page never is). */
@@ -1270,6 +1283,34 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         if (askable.length === 0) add('entity', `${e.name} has no field to ask for`)
         break
       }
+      case 'calendar':
+      case 'board':
+      case 'import': {
+        const e = entityOf(page.entity)
+        if (!e) {
+          add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
+            page.entity ? `${where} shows “${page.entity}”, which is no longer an entity` : `${where} names no entity`,
+            page.entity ? removePage(index) : undefined)
+          break
+        }
+        if (page.type === 'calendar') {
+          checkPresetFilter(page.presetFilter, e, add, where)
+          checkCalendar(page, e, add, where)
+        } else if (page.type === 'board') {
+          checkPresetFilter(page.presetFilter, e, add, where)
+          checkBoard(page, e, add, where)
+          if (page.sort) checkListPresentation({ id: page.id, type: 'entity-list', entity: e.name, sort: page.sort }, e, add, where, scaffoldOpts)
+        } else {
+          checkImport(page, e, pages, add, where)
+        }
+        break
+      }
+      case 'content':
+        checkContent(page, pages, add, where)
+        break
+      case 'search':
+        checkSearch(page, entities, pages, add, where)
+        break
     }
   })
 
@@ -1337,6 +1378,8 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
         : tabs.map(tab => (childTabVia(tab) ? `${childTabEntity(tab)} (${childTabVia(tab)})` : childTabEntity(tab))).join(', ')
       return `One ${page.entity ?? '?'} · ${related}`
     }
+    default:
+      return describeNewTypePage(page, [])
   }
 }
 
@@ -1410,7 +1453,7 @@ export function renameEntityInPages(pages: FullstackPageDef[], from: string, to:
     if (next.widgets) next.widgets = next.widgets.map(w => (same(w.entity) ? { ...w, entity: to } : w))
     if (next.childTabs) next.childTabs = next.childTabs.map(tab => (same(childTabEntity(tab)) ? withChildTab(tab, { entity: to }) : tab))
     if (next.headerStats) next.headerStats = next.headerStats.map(s => (same(s.child) ? { ...s, child: to } : s))
-    return next
+    return renameEntityInNewPages(next, from, to)
   })
 }
 
@@ -1474,7 +1517,7 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
     }
     if (isEntity(next.entity) && next.chart) next.chart = renameChart(next.chart)
     if (isEntity(next.entity) && next.charts) next.charts = next.charts.map(renameChart)
-    return next
+    return renameFieldInNewPages(next, entity, from, to)
   })
 }
 
@@ -1487,6 +1530,11 @@ export const PAGE_TYPE_META: Record<FullstackPageType, { icon: string; label: st
   record: { icon: 'article', label: 'Record', blurb: 'One row opened from a list, with its related lists as tabs.' },
   report: { icon: 'monitoring', label: 'Report', blurb: 'One entity’s filters above up to four charts and a totals table (an Export button with the CSV export option).' },
   wizard: { icon: 'format_list_numbered', label: 'Wizard', blurb: 'A create form split into steps, with a review before saving.' },
+  calendar: { icon: 'calendar_month', label: 'Calendar', blurb: 'One entity’s rows by date — month, week, agenda or a timeline of bars; click a day to add one.' },
+  board: { icon: 'view_kanban', label: 'Board', blurb: 'Cards in lanes of an enum or yes/no field, dragged between lanes, with optional lane limits.' },
+  content: { icon: 'description', label: 'Content', blurb: 'A page of text — headings, lists, notes and links to other pages or the web.' },
+  import: { icon: 'upload_file', label: 'Import', blurb: 'Upload a CSV file, match its columns, check every row, then create them all at once.' },
+  search: { icon: 'search', label: 'Search', blurb: 'One search box over several entities, results grouped by entity — optionally in the app’s header.' },
 }
 
 // ── Defaults the generator resolves ─────────────────────────────────────────
@@ -1557,6 +1605,14 @@ export function renamePageIdInPages(pages: FullstackPageDef[], from: string, to:
   if (!from || from === to) return pages
   let changed = false
   const next = pages.map(page => {
+    // A content page's links to it follow too.
+    if (page.type === 'content' && page.body) {
+      const body = renamePageIdInBody(page.body, from, to)
+      if (body !== page.body) {
+        changed = true
+        page = { ...page, body }
+      }
+    }
     if (page.widgets?.some(w => w.pages?.includes(from))) {
       changed = true
       page = { ...page, widgets: page.widgets.map(w => (w.pages?.includes(from) ? { ...w, pages: w.pages.map(id => (id === from ? to : id)) } : w)) }
@@ -1637,6 +1693,7 @@ export function renameRelationInPages(pages: FullstackPageDef[], child: string, 
       out.headerStats = page.headerStats?.map(st => (isChild(st.child) && st.via === from ? { ...st, via: to } : st))
     }
     if (page.type === 'master-detail' && isChild(page.child) && page.via === from) out.via = to
+    Object.assign(out, renameRelationInNewPages(out, child, from, to))
     if (page.type === 'master-detail' && isChild(page.child) && page.columns?.includes(from)) out.columns = cols(page.columns)
     if (page.childTabs?.some(t => typeof t !== 'string' && isChild(t.entity) && t.columns?.includes(from))) {
       out.childTabs = (out.childTabs ?? page.childTabs).map(t => (typeof t !== 'string' && isChild(t.entity) && t.columns?.includes(from)
@@ -1677,6 +1734,8 @@ export function renameEnumValueInPages(pages: FullstackPageDef[], entity: string
         return f === w.presetFilter ? w : { ...w, presetFilter: f }
       })
     }
+    // A board's lanes and limits name the constant too.
+    Object.assign(out, renameEnumValueInNewPages(out, entity, field, from, to))
     if (JSON.stringify(out) === JSON.stringify(page)) return page
     changed = true
     return out
@@ -1692,7 +1751,7 @@ export function renameEnumValueInPages(pages: FullstackPageDef[], entity: string
 
 /** Page types a layout holds at most one of (per entity, or at all): a copy would be invalid
  *  the moment it was made, so the editor does not offer to duplicate them. */
-const SINGLE_PAGE_TYPES: ReadonlySet<FullstackPageType> = new Set<FullstackPageType>(['record', 'wizard'])
+const SINGLE_PAGE_TYPES: ReadonlySet<FullstackPageType> = new Set<FullstackPageType>(['record', 'wizard', 'import', 'search'])
 
 /** Whether the editor offers to duplicate `page`. */
 export const canDuplicate = (page: FullstackPageDef): boolean => !SINGLE_PAGE_TYPES.has(page.type)
@@ -1945,6 +2004,16 @@ export function blankPage(type: FullstackPageType, entities: FullstackEntityDef[
       const e = picked ?? entities.find(x => !x.readOnly && askableFields(x).length > 0) ?? entities[0]
       return { id: id(`new-${e?.name ?? 'record'}`), type, entity: e?.name ?? first, title: `New ${e?.name ?? 'record'}`, steps: defaultWizardSteps(e) }
     }
+    case 'calendar':
+    case 'board':
+    case 'import': {
+      // The picked entity, else the first one the type fits.
+      const e = picked ?? entities.find(x => !newTypeReason(type, x, pages)) ?? entities[0]
+      return blankNewTypePage(type, e, entities, id)
+    }
+    case 'content':
+    case 'search':
+      return blankNewTypePage(type, undefined, entities, id)
   }
 }
 
@@ -1979,13 +2048,25 @@ export function newPageChoices(type: FullstackPageType, entities: FullstackEntit
           : has('wizard', e.name) ? 'Already has a wizard' : undefined))
     case 'master-detail':
       return masterDetailPairs(named).map(p => ({ value: pairKey(p), label: `${p.parent} → ${p.child}${p.via ? ` (via ${p.via})` : ''}` }))
+    case 'calendar':
+    case 'board':
+    case 'import':
+      return named.map(e => one(e, newTypeReason(type, e, pages)))
+    case 'content':
+    case 'search':
+      return null
   }
+}
+
+/** Why a new page of a type that takes no entity cannot be added, or undefined when it can. */
+export function newPageTypeReason(type: FullstackPageType, entities: FullstackEntityDef[], pages: FullstackPageDef[]): string | undefined {
+  return type === 'search' ? newSearchReason(entities, pages) : undefined
 }
 
 /** The pages a links widget can open: any but a record page (it needs a row) or a hidden page
  *  that is not a wizard (a hidden wizard is a route of its own). */
 export function linkablePages(pages: FullstackPageDef[]): FullstackPageDef[] {
-  return pages.filter(p => p.type !== 'record' && (!p.hidden || p.type === 'wizard'))
+  return pages.filter(p => p.type !== 'record' && (!p.hidden || p.type === 'wizard' || p.type === 'search'))
 }
 
 /** The pages a new tabs page can embed, lists first: not a tabs or record page, not already a tab. */
@@ -2047,6 +2128,10 @@ export function retargetPage(page: FullstackPageDef, type: FullstackPageType, en
       next.entity = e.name
       next.steps = defaultWizardSteps(e)
       if (!page.title?.trim()) next.title = `New ${e.name}`
+    } else if ((type === 'calendar' || type === 'board' || type === 'import') && !newTypeReason(type, e, pages.filter(p => p.id !== page.id))) {
+      // The entity follows, with its own date / lane field.
+      const { id: _id, title: _title, ...fitted } = blankNewTypePage(type, e, named, () => page.id)
+      Object.assign(next, fitted)
     } else if (type === 'master-detail') {
       const pair = masterDetailPairs(named).find(p => eq(p.parent, e.name))
       if (pair) {
@@ -2057,7 +2142,7 @@ export function retargetPage(page: FullstackPageDef, type: FullstackPageType, en
       }
     }
   }
-  if ((type === 'entity-list' || type === 'report') && page.presetFilter && eq(next.entity, was)) {
+  if ((type === 'entity-list' || type === 'report' || type === 'calendar' || type === 'board') && page.presetFilter && eq(next.entity, was)) {
     const kept = keptPresetFilter(page.presetFilter, e)
     if (kept) next.presetFilter = kept
   }
@@ -2080,6 +2165,11 @@ export function retargetPage(page: FullstackPageDef, type: FullstackPageType, en
   lost(page.steps, next.steps, 'wizard steps')
   lost(page.childTabs, next.childTabs, 'related lists')
   lost(page.headerStats, next.headerStats, 'header numbers')
+  lost(page.endField, next.endField, 'end date')
+  lost(page.cardFields, next.cardFields, 'card fields')
+  lost(page.wipLimits, next.wipLimits, 'lane limits')
+  lost(page.body, next.body, 'text')
+  lost(page.entities, next.entities, 'searched entities')
   if ((page.group || page.icon) && !inNav(next)) dropped.push('nav place')
   return { page: next, dropped }
 }
