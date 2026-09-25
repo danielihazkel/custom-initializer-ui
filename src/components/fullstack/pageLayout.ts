@@ -1196,16 +1196,16 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       const counts = { kpi: 0, bar: 0, donut: 0, stacked: 0, line: 0, recent: 0, top: 0, progress: 0, text: 0, links: 0, list: 0 }
       for (const w of page.widgets ?? []) if (w.kind in counts) counts[w.kind]++
       const parts = [
-        counts.kpi && `${counts.kpi} tile${counts.kpi === 1 ? '' : 's'}`,
-        counts.progress && `${counts.progress} target${counts.progress === 1 ? '' : 's'}`,
+        counts.kpi && `${counts.kpi} number tile${counts.kpi === 1 ? '' : 's'}`,
+        counts.progress && `${counts.progress} progress tile${counts.progress === 1 ? '' : 's'}`,
         counts.bar && `${counts.bar} breakdown chart${counts.bar === 1 ? '' : 's'}`,
-        counts.donut && `${counts.donut} donut${counts.donut === 1 ? '' : 's'}`,
+        counts.donut && `${counts.donut} donut chart${counts.donut === 1 ? '' : 's'}`,
         counts.stacked && `${counts.stacked} stacked chart${counts.stacked === 1 ? '' : 's'}`,
         counts.line && `${counts.line} trend${counts.line === 1 ? '' : 's'}`,
         counts.top && `${counts.top} top list${counts.top === 1 ? '' : 's'}`,
-        counts.recent && `${counts.recent} recent list${counts.recent === 1 ? '' : 's'}`,
-        counts.text && `${counts.text} note${counts.text === 1 ? '' : 's'}`,
-        counts.links && `${counts.links} link panel${counts.links === 1 ? '' : 's'}`,
+        counts.recent && `${counts.recent} recent-rows list${counts.recent === 1 ? '' : 's'}`,
+        counts.text && `${counts.text} text note${counts.text === 1 ? '' : 's'}`,
+        counts.links && `${counts.links} page-links panel${counts.links === 1 ? '' : 's'}`,
         counts.list && `${counts.list} embedded list${counts.list === 1 ? '' : 's'}`,
       ].filter(Boolean)
       return parts.join(' · ') || 'No widgets'
@@ -1356,7 +1356,7 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
 /** What each page type is, for the "Add page" gallery. */
 export const PAGE_TYPE_META: Record<FullstackPageType, { icon: string; label: string; blurb: string }> = {
   dashboard: { icon: 'dashboard', label: 'Dashboard', blurb: 'Count tiles, breakdown charts and recent rows.' },
-  'entity-list': { icon: 'table_rows', label: 'List', blurb: 'One entity’s table, optionally filtered to start with.' },
+  'entity-list': { icon: 'table_rows', label: 'Entity list', blurb: 'One entity’s table, optionally filtered to start with.' },
   tabs: { icon: 'tab', label: 'Tabs', blurb: 'Two to six other pages side by side as tabs.' },
   'master-detail': { icon: 'vertical_split', label: 'Master–detail', blurb: 'A parent list beside the selected parent’s rows.' },
   record: { icon: 'article', label: 'Record', blurb: 'One row opened from a list, with its related lists as tabs.' },

@@ -46,7 +46,7 @@ describe('describePage / pageLabel', () => {
       { id: 'open', type: 'entity-list', entity: 'Ticket', title: 'Open tickets' },
       { id: 'q', type: 'tabs', title: 'Queue', tabs: [{ page: 'open' }, { title: 'Overview', page: 'home' }] },
     ]
-    expect(describePage(pages[0], pages)).toBe('2 tiles · 1 recent list')
+    expect(describePage(pages[0], pages)).toBe('2 number tiles · 1 recent-rows list')
     expect(describePage(pages[1], pages)).toBe('Ticket list')
     expect(describePage(pages[2], pages)).toBe('Open tickets | Overview')
     expect(pages.map(pageLabel)).toEqual(['Dashboard', 'Open tickets', 'Queue'])

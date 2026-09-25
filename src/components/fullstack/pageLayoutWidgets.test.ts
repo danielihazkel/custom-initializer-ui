@@ -38,7 +38,7 @@ describe('validating the donut, stacked and text widgets', () => {
 
   it('counts them in the page summary', () => {
     expect(describePage(dash([{ kind: 'donut', entity: 'Ticket' }, { kind: 'text', entity: '', text: 'x' }])[0], []))
-      .toBe('1 donut · 1 note')
+      .toBe('1 donut chart · 1 text note')
   })
 })
 

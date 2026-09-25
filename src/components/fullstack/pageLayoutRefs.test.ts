@@ -358,7 +358,7 @@ describe('links widgets', () => {
   it('follows a page id change and a removal into the links', () => {
     expect(renamePageIdInPages(pages, 'orders', 'all-orders')[0].widgets?.[0].pages).toEqual(['all-orders', 'new-order'])
     expect(dropTabsTo(pages, 'new-order')[0].widgets?.[0].pages).toEqual(['orders'])
-    expect(describePage(pages[0], pages)).toBe('1 link panel')
+    expect(describePage(pages[0], pages)).toBe('1 page-links panel')
   })
 })
 

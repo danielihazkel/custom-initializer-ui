@@ -159,6 +159,32 @@ describe('PagesEditor', () => {
     expect(latest[0].widgets?.map(w => w.title)).toEqual(['B', 'A'])
   })
 
+  it('reorders a list widget’s columns by drag, and says so with an undo when a widget is removed', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'list', entity: 'Order', columns: ['id', 'status', 'total'] }, { kind: 'kpi', entity: 'Order' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+    ]} />)
+    openRow('home')
+    const grip = document.querySelector('[data-widget-column="total"] [draggable]') as HTMLElement
+    fireEvent.dragStart(grip, { dataTransfer: { setData: vi.fn(), effectAllowed: '' } })
+    const first = document.querySelector('[data-widget-column="id"]') as HTMLElement
+    const above = (type: 'dragOver' | 'drop') => {
+      const event = createEvent[type](first, { dataTransfer: { dropEffect: '' } })
+      Object.defineProperty(event, 'clientX', { value: -1 })
+      Object.defineProperty(event, 'clientY', { value: -1 })
+      return event
+    }
+    fireEvent(first, above('dragOver'))
+    fireEvent(first, above('drop'))
+    expect(latest[0].widgets?.[0].columns).toEqual(['total', 'id', 'status'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove widget 2' }))
+    expect(latest[0].widgets).toHaveLength(1)
+    expect(pushUndo).toHaveBeenCalledWith('Removed widget 2 (Number tile) from “Home”')
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('Removed widget 2 (Number tile) from “Home”')
+  })
+
   it('picks where a list opens its rows, offering the record page only when the layout has one', () => {
     render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
     openRow('orders')
@@ -233,11 +259,11 @@ describe('PagesEditor', () => {
     expect(latest.map(p => p.entity)).toEqual(['Customer', 'Order'])
 
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
-    fireEvent.click(screen.getByRole('button', { name: /^List/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Entity list/ }))
     const chooser = document.querySelector('[data-entity-form]') as HTMLElement
     expect(within(chooser).getAllByRole('radio').map(r => r.textContent)).toEqual(['Customer', 'Order', 'Line'])
     fireEvent.click(within(chooser).getByRole('radio', { name: 'Line' }))
-    fireEvent.click(within(chooser).getByRole('button', { name: 'Add list page' }))
+    fireEvent.click(within(chooser).getByRole('button', { name: 'Add entity list page' }))
     expect(latest[2]).toEqual({ id: 'line', type: 'entity-list', entity: 'Line' })
 
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))

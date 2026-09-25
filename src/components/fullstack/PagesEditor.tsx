@@ -252,10 +252,20 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       pushUndo(`Moved “${pageLabel(moved[to])}” into the “${group}” group`)
       return onChange(moved.map((p, i) => (i === to ? { ...p, group } : p)))
     }
-    const [kind, at] = list.split(':')
+    const [kind, at, sub] = list.split(':')
     const index = Number(at)
     const page = pages[index]
     if (!page) return
+    if (kind === 'wcolumns') {
+      // A list widget's columns: `wcolumns:<page>:<widget>`.
+      const wi = Number(sub)
+      const widget = page.widgets?.[wi]
+      if (!widget) return
+      const all = listColumns(entities.find(e => e.name === widget.entity), projectOpts).map(c => c.key)
+      const next = moveItem(widget.columns ?? all, from, to)
+      const isDefault = next.length === all.length && next.every((k, i) => k === all[i])
+      return update(index, { widgets: (page.widgets ?? []).map((w, j) => (j === wi ? { ...w, columns: isDefault ? undefined : next } : w)) })
+    }
     if (kind === 'widgets') update(index, { widgets: moveItem(page.widgets ?? [], from, to) })
     else if (kind === 'tabs') update(index, { tabs: moveItem(page.tabs ?? [], from, to) })
     else if (kind === 'charts') {
@@ -275,6 +285,12 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     if (dropped.length === 0) return
     pushUndo(label)
     setNotice(`${label} — dropped the ${dropped.join(', ')} setting${dropped.length === 1 ? '' : 's'}, which no longer fit.`)
+  }
+  // A part of a page taken out (a widget, tab, chart, tile or step): its own undo entry, and a
+  // notice with Undo — the button sits far from the part, so the removal should not go unseen.
+  const removed: Removed = (label, detail) => {
+    pushUndo(label)
+    setNotice(detail ? `${label} — ${detail}.` : `${label}.`)
   }
 
   useEffect(() => {
@@ -537,7 +553,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const previewPage = pages[previewIndex]
   const offNavNote = !previewPage ? undefined
     : previewPage.type === 'record' ? `Opens from a ${previewPage.entity || 'record'} row — not in the navigation.`
-      : previewPage.hidden ? 'Tab only — reachable inside a tabs page, not from the navigation.'
+      : previewPage.hidden && previewPage.type === 'wizard' ? 'Link only — opened from a links tile or a list’s New button, not from the navigation.'
+        : previewPage.hidden ? 'Tab only — reachable inside a tabs page, not from the navigation.'
         : undefined
   const suggestions = useMemo(() => suggestPages(entities, pages), [entities, pages])
 
@@ -987,7 +1004,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           <div className="min-w-0 space-y-2">
           {onNavChange && settings.skin === 'tailwind' && (
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant px-2 py-1" data-nav-options>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary" title="How the generated app lays out its navigation">Navigation</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary" title="How the generated app lays out its navigation">Nav style</span>
               <span role="radiogroup" aria-label="Navigation style" className="inline-flex overflow-hidden rounded border border-outline-variant">
                 {([['sidebar', 'Sidebar'], ['topbar', 'Top bar']] as const).map(([value, label]) => {
                   const on = (nav?.style ?? 'sidebar') === value
@@ -1024,7 +1041,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 className="text-[11px] font-semibold uppercase tracking-wider text-secondary"
                 title="The sections of the generated navigation, in order. Rename a group here to rename it on every page; move a section past its neighbour."
               >
-                Navigation
+                Nav groups
               </span>
               {navGroupSections.map((s, si) => (s.group ? (
                 <GroupChip
@@ -1105,7 +1122,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                         </span>
                       )}
                       {page.hidden && page.type !== 'record' && (
-                        <span className={`${CHIP} bg-surface-container text-secondary`}>Tab only</span>
+                        page.type === 'wizard'
+                          ? <span className={`${CHIP} bg-surface-container text-secondary`} title="Hidden from the navigation — opened from a links tile or a list’s New button">Link only</span>
+                          : <span className={`${CHIP} bg-surface-container text-secondary`} title="Hidden from the navigation — opens inside a tabs page">Tab only</span>
                       )}
                       {page.type === 'record' && (
                         <span className={`${CHIP} bg-surface-container text-secondary`} title="Record pages open from a row, so they are never in the navigation">
@@ -1264,24 +1283,25 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                           errors={errors}
                           update={update}
                           lossy={lossy}
+                          removed={removed}
                           dnd={dnd}
                           expandRequest={expandRequest?.page === index ? expandRequest : null}
                         />
                       )}
                       {page.type === 'tabs' && (
-                        <TabsForm page={page} index={index} pages={pages} errors={errors} update={update} dnd={dnd} />
+                        <TabsForm page={page} index={index} pages={pages} errors={errors} update={update} dnd={dnd} removed={removed} />
                       )}
                       {page.type === 'master-detail' && (
                         <MasterDetailForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} />
                       )}
                       {page.type === 'record' && (
-                        <RecordForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} dnd={dnd} />
+                        <RecordForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} removed={removed} dnd={dnd} />
                       )}
                       {page.type === 'report' && (
-                        <ReportForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} dnd={dnd} />
+                        <ReportForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} removed={removed} dnd={dnd} />
                       )}
                       {page.type === 'wizard' && (
-                        <WizardForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} dnd={dnd} />
+                        <WizardForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} removed={removed} dnd={dnd} />
                       )}
                     </div>
                   )}
@@ -1362,6 +1382,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
 type Update = (index: number, patch: Partial<FullstackPageDef>) => void
 /** Records an undo entry before a change that drops settings, and says what was dropped. */
 type Lossy = (label: string, dropped: string[]) => void
+/** Records an undo entry before a part of a page is removed, and says so with an Undo. */
+type Removed = (label: string, detail?: string) => void
 interface FormProps {
   page: FullstackPageDef
   index: number
@@ -1369,6 +1391,7 @@ interface FormProps {
   errors: Record<string, string>
   update: Update
   lossy: Lossy
+  removed?: Removed
 }
 
 /** Where a nav page sits in the generated nav: its section (group) and its icon. */
@@ -1957,7 +1980,7 @@ function EntityListForm({ page, index, entities, errors, update, lossy, dnd, pro
 /** Widgets a dashboard has before its cards start collapsed; a short list reads fine open. */
 const COLLAPSE_WIDGETS_FROM = 4
 
-function DashboardForm({ page, index, pages, projectOpts, entities, errors, update, dnd, lossy, expandRequest }: FormProps & {
+function DashboardForm({ page, index, pages, projectOpts, entities, errors, update, dnd, lossy, removed, expandRequest }: FormProps & {
   pages: FullstackPageDef[]
   /** The project-wide scaffold opts — a list widget's audit columns exist only with `audit` on. */
   projectOpts: string[]
@@ -2088,7 +2111,10 @@ function DashboardForm({ page, index, pages, projectOpts, entities, errors, upda
               next.splice(wi + 1, 0, { ...widget })
               setWidgets(next)
             }}
-            onRemove={() => setWidgets(widgets.filter((_, i) => i !== wi))}
+            onRemove={() => {
+              removed?.(`Removed widget ${wi + 1} (${WIDGET_KINDS.find(k => k.kind === widget.kind)?.label ?? widget.kind}) from “${pageLabel(page)}”`)
+              setWidgets(widgets.filter((_, i) => i !== wi))
+            }}
           />
         ))}
         <button
@@ -2321,28 +2347,61 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
               <SpanPicker span={span} fallback={fallbackSpan} onChange={s => onChange({ span: s })} />
             </MiniField>
           </div>
-          <MiniField label="Columns" hint="Click to hide or show · default: every column">
-            <div className="flex flex-wrap gap-1" data-widget-columns>
-              {listColumns(entity, projectOpts).map(c => {
-                const shown = !widget.columns || widget.columns.includes(c.key)
+          <MiniField label="Columns" hint="Click to hide or show, drag to reorder · default: every column">
+            <div className="flex flex-wrap items-center gap-1" data-widget-columns>
+              {(() => {
+                const cols = listColumns(entity, projectOpts)
+                const all = cols.map(c => c.key)
+                const shown = (widget.columns ?? all).filter(k => all.includes(k))
+                const hiddenKeys = all.filter(k => !shown.includes(k))
+                const colList = `wcolumns:${list.split(':')[1]}:${wi}`
+                const labelOf = (key: string) => cols.find(c => c.key === key)?.label ?? key
+                const set = (next: string[]) => {
+                  const isDefault = next.length === all.length && next.every((k, i) => k === all[i])
+                  onChange({ columns: isDefault || next.length === 0 ? undefined : next })
+                }
                 return (
-                  <button
-                    key={c.key}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={shown}
-                    aria-label={`${shown ? 'Hide' : 'Show'} the ${c.label} column`}
-                    onClick={() => {
-                      const all = listColumns(entity, projectOpts).map(x => x.key)
-                      const next = shown ? (widget.columns ?? all).filter(k => k !== c.key) : all.filter(k => k === c.key || widget.columns?.includes(k))
-                      onChange({ columns: next.length === all.length || next.length === 0 ? undefined : next })
-                    }}
-                    className={`rounded-full px-2 py-0.5 text-[11px] ${shown ? 'bg-primary/10 text-primary' : 'border border-dashed border-outline-variant text-secondary'}`}
-                  >
-                    {c.label}
-                  </button>
+                  <>
+                    {shown.map((key, i) => (
+                      <span
+                        key={key}
+                        {...dnd.rowProps(colList, i)}
+                        className={`inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary ${
+                          dnd.isDragging(colList, i) ? 'opacity-40' : ''} ${dropIndicatorClass(dnd.indicatorFor(colList, i))}`}
+                        data-widget-column={key}
+                      >
+                        <DragGrip dnd={dnd} list={colList} index={i} />
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked="true"
+                          aria-label={`Hide the ${labelOf(key)} column`}
+                          disabled={shown.length === 1}
+                          title={shown.length === 1 ? 'Keep at least one column' : 'Shown — click to hide'}
+                          onClick={() => set(shown.filter(k => k !== key))}
+                          className="inline-flex items-center gap-1 leading-none hover:text-error disabled:cursor-default disabled:hover:text-inherit"
+                        >
+                          {labelOf(key)} <span aria-hidden="true">×</span>
+                        </button>
+                      </span>
+                    ))}
+                    {hiddenKeys.map(key => (
+                      <button
+                        key={key}
+                        type="button"
+                        role="checkbox"
+                        aria-checked="false"
+                        aria-label={`Show the ${labelOf(key)} column`}
+                        title="Hidden — click to show"
+                        onClick={() => set([...shown, key])}
+                        className="inline-flex items-center gap-1 rounded-full border border-dashed border-outline-variant px-2 py-0.5 text-[11px] text-secondary hover:border-primary/50 hover:text-primary"
+                      >
+                        <span aria-hidden="true">+</span> {labelOf(key)}
+                      </button>
+                    ))}
+                  </>
                 )
-              })}
+              })()}
             </div>
           </MiniField>
           <MiniField label="Sort rows by">
@@ -2750,7 +2809,7 @@ function AggFields({ agg, field, entity, error, onChange }: {
   )
 }
 
-function ReportForm({ page, index, entities, errors, update, lossy, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
+function ReportForm({ page, index, entities, errors, update, lossy, removed, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
   const entity = entities.find(e => e.name === page.entity)
   const charts = reportCharts(page)
   // One chart is sent as `chart`, several as `charts` — the backend takes either spelling.
@@ -2799,7 +2858,10 @@ function ReportForm({ page, index, entities, errors, update, lossy, dnd }: FormP
             {charts.length > 1 && (
               <button
                 type="button"
-                onClick={() => setCharts(charts.filter((_, i) => i !== ci))}
+                onClick={() => {
+                  removed?.(`Removed chart ${ci + 1} from “${pageLabel(page)}”`)
+                  setCharts(charts.filter((_, i) => i !== ci))
+                }}
                 className={ICON_BUTTON}
                 aria-label={`Remove chart ${ci + 1}`}
               >
@@ -2899,7 +2961,7 @@ function ChartFields({ chart, chartIndex, entity, errors, onChange }: {
   )
 }
 
-function TabsForm({ page, index, pages, errors, update, dnd }: Omit<FormProps, 'entities' | 'lossy'> & { pages: FullstackPageDef[]; dnd: ReturnType<typeof useDragReorder> }) {
+function TabsForm({ page, index, pages, errors, update, dnd, removed }: Omit<FormProps, 'entities' | 'lossy'> & { pages: FullstackPageDef[]; dnd: ReturnType<typeof useDragReorder> }) {
   const tabs = page.tabs ?? []
   const targets = pages.filter(p => p.id !== page.id && p.type !== 'tabs' && p.type !== 'record')
   const nextTarget = targets.find(t => !tabs.some(x => x.page === t.id))
@@ -2947,7 +3009,12 @@ function TabsForm({ page, index, pages, errors, update, dnd }: Omit<FormProps, '
             />
             <button
               type="button"
-              onClick={() => setTabs(tabs.filter((_, i) => i !== ti))}
+              onClick={() => {
+                const target = pages.find(p => p.id === tab.page)
+                removed?.(`Removed the “${tab.title || (target ? pageLabel(target) : tab.page)}” tab from “${pageLabel(page)}”`,
+                  target?.hidden ? 'its page stays in the layout, hidden' : undefined)
+                setTabs(tabs.filter((_, i) => i !== ti))
+              }}
               className={ICON_BUTTON}
               aria-label={`Remove tab ${ti + 1}`}
             >
@@ -3055,7 +3122,7 @@ function MasterDetailForm({ page, index, entities, errors, update, lossy }: Form
   )
 }
 
-function RecordForm({ page, index, entities, errors, update, lossy, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
+function RecordForm({ page, index, entities, errors, update, lossy, removed, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
   const entity = entities.find(e => e.name === page.entity)
   const related = entities.filter(e => relationsTo(e, page.entity).length > 0).map(e => e.name)
   // Omitted childTabs means "every related list" — the same default the generator applies.
@@ -3149,14 +3216,14 @@ function RecordForm({ page, index, entities, errors, update, lossy, dnd }: FormP
           </button>
         )}
       </div>
-      <HeaderStatsFields page={page} index={index} entities={entities} errors={errors} update={update} lossy={lossy} />
+      <HeaderStatsFields page={page} index={index} entities={entities} errors={errors} update={update} lossy={lossy} removed={removed} />
     </div>
   )
 }
 
 /** A record page's header tiles: none, the default (a count per related tab), or a list of
  *  counts/aggregates over related entities. */
-function HeaderStatsFields({ page, index, entities, errors, update }: FormProps) {
+function HeaderStatsFields({ page, index, entities, errors, update, removed }: FormProps) {
   const related = entities.filter(e => relationsTo(e, page.entity).length > 0)
   const stats = page.headerStats
   const set = (next: FullstackPageDef['headerStats']) => update(index, { headerStats: next })
@@ -3220,7 +3287,10 @@ function HeaderStatsFields({ page, index, entities, errors, update }: FormProps)
             />
             <button
               type="button"
-              onClick={() => set(stats.filter((_, i) => i !== si))}
+              onClick={() => {
+                removed?.(`Removed header number ${si + 1} from “${pageLabel(page)}”`)
+                set(stats.filter((_, i) => i !== si))
+              }}
               className={ICON_BUTTON}
               aria-label={`Remove header number ${si + 1}`}
             >
@@ -3242,7 +3312,7 @@ function HeaderStatsFields({ page, index, entities, errors, update }: FormProps)
 }
 
 /** A wizard: its entity, and the form's fields dealt into steps (each field in exactly one). */
-function WizardForm({ page, index, entities, errors, update, lossy, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
+function WizardForm({ page, index, entities, errors, update, lossy, removed, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
   const entity = entities.find(e => e.name === page.entity)
   const askable = askableFields(entity)
   const steps = page.steps ?? defaultWizardSteps(entity)
@@ -3330,7 +3400,12 @@ function WizardForm({ page, index, entities, errors, update, lossy, dnd }: FormP
                 />
                 <button
                   type="button"
-                  onClick={() => setSteps(steps.filter((_, i) => i !== si))}
+                  onClick={() => {
+                    const fields = steps[si].fields
+                    removed?.(`Removed step ${si + 1} from “${pageLabel(page)}”`,
+                      fields.length ? `${fields.join(', ')} ${fields.length === 1 ? 'is' : 'are'} no longer asked — add ${fields.length === 1 ? 'it' : 'them'} to another step` : undefined)
+                    setSteps(steps.filter((_, i) => i !== si))
+                  }}
                   disabled={steps.length === 1}
                   className={ICON_BUTTON}
                   aria-label={`Remove step ${si + 1}`}
