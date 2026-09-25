@@ -25,6 +25,15 @@ interface Props {
   navStyle?: 'sidebar' | 'topbar'
   /** Sidebar sections with a group name fold. */
   collapsibleGroups?: boolean
+  /** The colour palette the generator will use. The tailwind shell and its accents follow it
+   *  (the Menora set keeps its fixed brand tokens, as the generated app does). */
+  palette?: PreviewPalette
+}
+
+/** The part of a colour palette the preview draws with. */
+export interface PreviewPalette {
+  primary: string
+  secondary: string
 }
 
 const MENORA = { purple: '#684eed', yellow: '#ffc700', ink: '#37374e' }
@@ -35,10 +44,17 @@ const WIDGET_LIST = 'preview-widgets:'
  * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
-export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups }: Props) {
+export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups, palette }: Props) {
   const screen = preview.screens[selected]
   const menora = skin === 'menora'
-  const accent = menora ? MENORA.purple : 'var(--color-primary)'
+  // The generated tailwind shell: `--color-brand`/`--color-primary` = palette primary,
+  // `--color-gold` = palette secondary, and `bg-app-shell`/`bg-app-bar` a brand → gold gradient.
+  const brand = palette?.primary ?? 'var(--color-primary)'
+  const gold = palette?.secondary ?? '#FEDB41'
+  const accent = menora ? MENORA.purple : brand
+  const shellBackground = (direction: string) => palette
+    ? `linear-gradient(${direction}, ${brand} 0%, ${brand} 75%, ${gold} 100%)`
+    : '#2B2F4C'
   // The tailwind shell's top bar lays the nav out like the Menora one, on the dark shell colour.
   const topbar = !menora && navStyle === 'topbar'
   const horizontal = menora || topbar
@@ -61,14 +77,15 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         className={`${menora
           ? `shrink-0 whitespace-nowrap border-b-2 px-1.5 py-1 text-[10px] font-semibold ${active ? 'border-[#684eed] text-[#684eed]' : 'border-transparent text-[#37374e]/70'}`
           : topbar
-            ? `flex shrink-0 items-center gap-1 whitespace-nowrap border-b-2 px-1.5 py-1 text-[10px] ${active ? 'border-amber-300 text-white' : 'border-transparent text-slate-300 hover:text-white'}`
-            : `flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-start text-[10px] ${active ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/5'}`
+            ? `flex shrink-0 items-center gap-1 whitespace-nowrap border-b-2 px-1.5 py-1 text-[10px] ${active ? 'text-white' : 'border-transparent text-slate-200 hover:text-white'}`
+            : `flex w-full items-center gap-1.5 rounded border-s-2 px-1.5 py-1 text-start text-[10px] ${active ? 'bg-white/15 text-white' : 'border-transparent text-slate-200 hover:bg-white/10'}`
         } ${lit ? 'ring-2 ring-inset ring-primary' : ''}`}
+        style={!menora && active ? { borderColor: gold } : undefined}
       >
         {!menora && <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>{item.icon}</span>}
         <span className="truncate">{item.label}</span>
         {item.start && (
-          <span className="material-symbols-outlined ms-auto text-amber-300" style={{ fontSize: '10px' }} aria-label={preview.strings.startPage}>home</span>
+          <span className="material-symbols-outlined ms-auto" style={{ fontSize: '10px', color: menora ? undefined : gold }} aria-label={preview.strings.startPage}>home</span>
         )}
         {item.roles.length > 0 && (
           <span className="material-symbols-outlined shrink-0 opacity-70" style={{ fontSize: '10px' }} title={`Only ${item.roles.join(' or ')}`} aria-label={`Only ${item.roles.join(' or ')}`} data-preview-lock>lock</span>
@@ -157,8 +174,8 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         </div>
       ) : topbar ? (
         <div className="flex min-h-[18rem] flex-col">
-          <div className="flex items-center gap-2 px-2.5 py-1.5" style={{ background: '#2B2F4C' }}>
-            <span className="h-1 w-6 shrink-0 rounded-full" style={{ background: 'linear-gradient(90deg,#9A83F7,#FEDB41)' }} />
+          <div className="flex items-center gap-2 px-2.5 py-1.5" style={{ background: shellBackground('to right') }} data-preview-shell>
+            {!palette && <span className="h-1 w-6 shrink-0 rounded-full" style={{ background: 'linear-gradient(90deg,#9A83F7,#FEDB41)' }} />}
             <nav className="flex min-w-0 gap-1 overflow-x-auto" aria-label="Preview navigation" data-preview-topbar>{navItems}</nav>
           </div>
           {body}
@@ -167,10 +184,11 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         <div className="flex min-h-[18rem]">
           <nav
             className="w-28 shrink-0 space-y-0.5 p-1.5"
-            style={{ background: '#2B2F4C' }}
+            style={{ background: shellBackground('to bottom') }}
             aria-label="Preview navigation"
+            data-preview-shell
           >
-            <div className="mb-1.5 h-1 rounded-full" style={{ background: 'linear-gradient(90deg,#9A83F7,#FEDB41)' }} />
+            {!palette && <div className="mb-1.5 h-1 rounded-full" style={{ background: 'linear-gradient(90deg,#9A83F7,#FEDB41)' }} />}
             {navItems}
           </nav>
           {body}
@@ -373,7 +391,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                 <div key={i} className="min-h-9 border-b border-e border-outline-variant/60 p-0.5">
                   <span className="block text-end text-[8px] text-secondary">{d.day}</span>
                   {d.events.slice(0, 2).map((ev, j) => (
-                    <span key={j} className="mt-0.5 block truncate rounded px-0.5 text-[8px]" style={{ background: `${accent}22`, color: accent }}>{ev}</span>
+                    <span key={j} className="mt-0.5 block truncate rounded px-0.5 text-[8px]" style={{ background: `color-mix(in srgb, ${accent} 13%, transparent)`, color: accent }}>{ev}</span>
                   ))}
                 </div>
               ))}

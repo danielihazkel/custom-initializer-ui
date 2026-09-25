@@ -248,14 +248,6 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const { rules: compatibilityRules } = useCompatibility('BACKEND')
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
   const currentFrontendSet = availableSets.find(s => s.setKey === frontendSet)
-  // The layout preview draws the shell of the chosen frontend set, in the chosen chrome language.
-  const pagesPreviewSettings = useMemo(() => ({
-    locale: meta.locale,
-    projectOpts: scaffoldOpts,
-    skin: (currentFrontendSet?.designSystem === 'MENORA_DIGITAL' || frontendSet.includes('menora') ? 'menora' : 'tailwind') as 'menora' | 'tailwind',
-    dashboardTitle: meta.dashboardTitle,
-    dashboardOverview: meta.dashboardOverview,
-  }), [meta.locale, meta.dashboardTitle, meta.dashboardOverview, scaffoldOpts, currentFrontendSet, frontendSet])
   const currentDefaults = currentBackendSet?.defaultDeps ?? []
   const palettes = feMetadata?.colorPalettes ?? []
   // What the generator will actually use: the explicit pick, else the set's default, else the
@@ -263,6 +255,17 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const setDefaultPalette = currentFrontendSet?.defaultPaletteId
     ?? palettes.find(p => p.isDefault)?.id ?? palettes[0]?.id ?? ''
   const effectivePalette = colorPalette || setDefaultPalette
+  const previewPalette = palettes.find(p => p.id === effectivePalette)
+  // The layout preview draws the shell of the chosen frontend set, in the chosen chrome language
+  // and colour palette.
+  const pagesPreviewSettings = useMemo(() => ({
+    locale: meta.locale,
+    projectOpts: scaffoldOpts,
+    skin: (currentFrontendSet?.designSystem === 'MENORA_DIGITAL' || frontendSet.includes('menora') ? 'menora' : 'tailwind') as 'menora' | 'tailwind',
+    palette: previewPalette,
+    dashboardTitle: meta.dashboardTitle,
+    dashboardOverview: meta.dashboardOverview,
+  }), [meta.locale, meta.dashboardTitle, meta.dashboardOverview, scaffoldOpts, currentFrontendSet, frontendSet, previewPalette])
 
   // Validation — mirrors the backend FullstackRequestValidator so problems surface inline
   // before submit. The server stays the source of truth.

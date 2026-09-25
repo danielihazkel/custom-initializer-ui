@@ -163,6 +163,24 @@ describe('PagesEditor', () => {
     expect(document.querySelector('[data-nav-options]')).toBeNull()
   })
 
+  it('draws the tailwind preview in the chosen colour palette, and the Menora one in its own', () => {
+    const pages: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }]
+    const palette = { primary: '#123456', secondary: '#abcdef' }
+    const props = { pages, entities, validation: validatePages(pages, entities), onChange: () => {}, pushUndo, onClear: () => {} }
+    const { rerender } = render(<PagesEditor {...props} previewSettings={{ locale: 'en', projectOpts: [], skin: 'tailwind', palette }} />)
+    const shell = document.querySelector<HTMLElement>('[data-layout-preview] [data-preview-shell]')!
+    expect(shell.style.background).toContain('rgb(18, 52, 86)')
+    expect(shell.style.background).toContain('rgb(171, 205, 239)')
+    const active = document.querySelector<HTMLElement>('[data-layout-preview] [aria-current="page"]')!
+    expect(active.style.borderColor).toBe('rgb(171, 205, 239)')
+    const accented = Array.from(document.querySelectorAll<HTMLElement>('[data-layout-preview] [style]'))
+      .filter(el => el.style.background === 'rgb(18, 52, 86)' || el.style.backgroundColor === 'rgb(18, 52, 86)')
+    expect(accented.length).toBeGreaterThan(0)
+
+    rerender(<PagesEditor {...props} previewSettings={{ locale: 'en', projectOpts: [], skin: 'menora', palette }} />)
+    expect(document.querySelector('[data-layout-preview]')!.innerHTML).not.toContain('rgb(18, 52, 86)')
+  })
+
   it('reorders and resizes widgets from the preview', () => {
     render(<Harness initial={[
       { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'kpi', entity: 'Order', title: 'A' }, { kind: 'kpi', entity: 'Customer', title: 'B' }] },

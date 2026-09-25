@@ -23,7 +23,7 @@ import { entityOption, enumValueOption, fieldOption, keyOption, relationOption }
 import { cssEscape } from './focus'
 import { pluralize } from './naming'
 import { buildLayoutPreview } from './layoutPreviewModel'
-import { LayoutPreview, type EditTarget } from './LayoutPreview'
+import { LayoutPreview, type EditTarget, type PreviewPalette } from './LayoutPreview'
 import { moveItem } from './reorder'
 import { useStableKeys } from './rowKeys'
 import { focusWithoutClipping, scrollToElement } from './scroll'
@@ -140,6 +140,8 @@ export interface PagesPreviewSettings {
   locale: 'en' | 'he'
   projectOpts: string[]
   skin: 'tailwind' | 'menora'
+  /** The colour palette the generator will use — the tailwind shell and accents follow it. */
+  palette?: PreviewPalette
   /** The setup panel's dashboard heading — "Start from my entities" puts it on the dashboard page. */
   dashboardTitle?: string
   dashboardOverview?: string
@@ -1196,6 +1198,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 onSelect={setClassicSelected}
                 onEdit={() => {}}
                 skin={settings.skin}
+                palette={settings.palette}
               />
             </div>
           )}
@@ -1603,6 +1606,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 onEdit={reveal}
                 highlight={hover}
                 skin={settings.skin}
+                palette={settings.palette}
                 offNavNote={offNavNote}
                 onReorderWidget={reorderWidget}
                 onResizeWidget={resizeWidget}
@@ -1626,6 +1630,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             onEdit={target => { setPreviewDrawer(false); reveal(target) }}
             highlight={hover}
             skin={settings.skin}
+            palette={settings.palette}
             offNavNote={offNavNote}
             onReorderWidget={reorderWidget}
             onResizeWidget={resizeWidget}
