@@ -151,7 +151,7 @@ export function chartControl(index: number, key: 'groupBy' | 'bucket' | 'field')
 /** What a top list can rank by: a groupable field, or a MANY_TO_ONE relation (its field name). */
 export function rankableKeys(entity: FullstackEntityDef | undefined): string[] {
   return [
-    ...groupableFields(entity).map(f => f.name),
+    ...groupByFields(entity).map(f => f.name),
     ...(entity?.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => r.fieldName),
   ]
 }
@@ -189,7 +189,7 @@ export function defaultSpan(kind: FullstackWidgetDef['kind']): number {
 
 /** What a stacked chart splits by when no series is named: the next enum/boolean after `groupBy`. */
 export function defaultSeries(entity: FullstackEntityDef | undefined, groupBy: string | undefined): string | undefined {
-  return groupableFields(entity).find(f => f.name !== groupBy)?.name
+  return groupByFields(entity).find(f => f.name !== groupBy)?.name
 }
 
 /** The nav icons a page may pick (the generated app draws the lucide icon; the editor shows the
@@ -305,7 +305,13 @@ export function adoptedGroup(pages: FullstackPageDef[], index: number): string |
   return page.group?.trim() === group ? undefined : group
 }
 
-/** What the generated app can group or preset-filter by: a filterable, non-key enum/boolean field. */
+/** What a chart can group or split by: any non-key enum/boolean field (the generated `/stats`
+ *  groups by every one; only preset filters and drill-downs need the field to be filterable). */
+export function groupByFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
+  return (entity?.fields ?? []).filter(f => !f.primaryKey && (f.type === 'ENUM' || f.type === 'BOOLEAN'))
+}
+
+/** What the generated app can preset-filter (or split into tabs) by: a filterable, non-key enum/boolean field. */
 export function groupableFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
   return (entity?.fields ?? []).filter(f => !f.primaryKey && f.filterable !== false && (f.type === 'ENUM' || f.type === 'BOOLEAN'))
 }
@@ -419,7 +425,7 @@ export function numericFields(entity: FullstackEntityDef | undefined): Fullstack
 
 /** What a report can group by: an enum/boolean draws bars, a date draws a line. */
 export function chartableFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
-  return [...groupableFields(entity), ...dateFields(entity)]
+  return [...groupByFields(entity), ...dateFields(entity)]
 }
 
 /** The MANY_TO_ONE relations of an entity, by field name — a report chart (like a top list) can
@@ -785,7 +791,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
   // it), an ambiguous link takes the first relation, a wizard asks for what it forgot.
   const removePage = (index: number): PageFix => ({
     label: `Remove the “${pageLabel(pages[index])}” page`,
-    apply: all => dropTabsTo(all.filter((_, i) => i !== index), all[index]?.id ?? ''),
+    apply: all => removePageAt(all, index),
   })
   const patchPage = (index: number, label: string, patch: (page: FullstackPageDef) => FullstackPageDef): PageFix => ({
     label,
@@ -841,7 +847,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
     if ((page.description ?? '').trim().length > MAX_DESCRIPTION) add('description', `is longer than ${MAX_DESCRIPTION} characters`)
     // The titles inside a page have the same cap on the server.
     ;(page.widgets ?? []).forEach((w, wi) => {
-      if (tooLong(w.title)) add(`widget.${wi}`, `has a title longer than ${MAX_TITLE} characters`, `${where} has a widget title over ${MAX_TITLE} characters`)
+      if (tooLong(w.title)) add(`widget.${wi}.title`, `has a title longer than ${MAX_TITLE} characters`, `${where} has a widget title over ${MAX_TITLE} characters`)
     })
     ;(page.tabs ?? []).forEach((tab, ti) => {
       if (tooLong(tab.title)) add(`tab.${ti}`, `has a title longer than ${MAX_TITLE} characters`, `${where} has a tab title over ${MAX_TITLE} characters`)
@@ -888,30 +894,30 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         if (widgets.length > MAX_WIDGETS) add('widgets', `has more than ${MAX_WIDGETS} widgets`)
         widgets.forEach((w, wi) => {
           if (w.kind === 'text') {
-            if (!w.text?.trim()) add(`widget.${wi}`, 'needs some text', `${where} has an empty text widget`)
-            else if (w.text.length > MAX_TEXT) add(`widget.${wi}`, `is longer than ${MAX_TEXT} characters`, `${where} has a text widget over ${MAX_TEXT} characters`)
+            if (!w.text?.trim()) add(`widget.${wi}.text`, 'needs some text', `${where} has an empty text widget`)
+            else if (w.text.length > MAX_TEXT) add(`widget.${wi}.text`, `is longer than ${MAX_TEXT} characters`, `${where} has a text widget over ${MAX_TEXT} characters`)
             return
           }
           if (w.kind === 'links') {
             const ids = w.pages ?? []
             const dropLink = (id: string) => patchPage(index, `Drop the link to “${id}”`,
               p => ({ ...p, widgets: (p.widgets ?? []).map((x, j) => (j === wi ? { ...x, pages: (x.pages ?? []).filter(k => k !== id) } : x)) }))
-            if (ids.length === 0) add(`widget.${wi}`, 'needs at least one page to open', `${where} has a links widget that opens no page`)
-            else if (ids.length > MAX_LINKS) add(`widget.${wi}`, `opens more than ${MAX_LINKS} pages`, `${where} has a links widget over ${MAX_LINKS} pages`)
+            if (ids.length === 0) add(`widget.${wi}.pages`, 'needs at least one page to open', `${where} has a links widget that opens no page`)
+            else if (ids.length > MAX_LINKS) add(`widget.${wi}.pages`, `opens more than ${MAX_LINKS} pages`, `${where} has a links widget over ${MAX_LINKS} pages`)
             ids.forEach((id, li) => {
               const target = pages.find(p => p.id === id)
-              if (!target) add(`widget.${wi}`, `no page “${id}”`, `${where} links to the missing page “${id}”`, dropLink(id))
+              if (!target) add(`widget.${wi}.pages`, `no page “${id}”`, `${where} links to the missing page “${id}”`, dropLink(id))
               else if (target.type === 'record') {
-                add(`widget.${wi}`, `“${pageLabel(target)}” opens from a row, not a link`, `${where} links to the record page “${pageLabel(target)}”, which opens from a row`, dropLink(id))
+                add(`widget.${wi}.pages`, `“${pageLabel(target)}” opens from a row, not a link`, `${where} links to the record page “${pageLabel(target)}”, which opens from a row`, dropLink(id))
               } else if (target.hidden && target.type !== 'wizard') {
-                add(`widget.${wi}`, `“${pageLabel(target)}” is hidden, so a link cannot open it`, `${where} links to “${pageLabel(target)}”, which is hidden from the navigation`, dropLink(id))
-              } else if (ids.indexOf(id) !== li) add(`widget.${wi}`, `links to “${pageLabel(target)}” twice`, `${where} links to “${pageLabel(target)}” twice`)
+                add(`widget.${wi}.pages`, `“${pageLabel(target)}” is hidden, so a link cannot open it`, `${where} links to “${pageLabel(target)}”, which is hidden from the navigation`, dropLink(id))
+              } else if (ids.indexOf(id) !== li) add(`widget.${wi}.pages`, `links to “${pageLabel(target)}” twice`, `${where} links to “${pageLabel(target)}” twice`)
             })
             return
           }
           const e = entityOf(w.entity)
           if (!e) {
-            add(`widget.${wi}`, w.entity ? `“${w.entity}” is no longer an entity` : 'needs an entity',
+            add(`widget.${wi}.entity`, w.entity ? `“${w.entity}” is no longer an entity` : 'needs an entity',
               `${where} has a widget for “${w.entity}”, which is no longer an entity`,
               !w.entity ? undefined
                 : switchWidget(index, wi) ?? (widgets.length === 1 ? removePage(index)
@@ -924,115 +930,115 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           if (w.kind === 'list') {
             // The same presentation rules as a list page, reported on the widget.
             checkListPresentation({ id: page.id, type: 'entity-list', entity: e.name, columns: w.columns, sort: w.sort }, e,
-              (_field, message, summary, fix) => add(`widget.${wi}`, message, summary, fix), where, scaffoldOpts)
+              (field, message, summary, fix) => add(`widget.${wi}.${field}`, message, summary, fix), where, scaffoldOpts)
             if (w.limit != null && !LIST_WIDGET_LIMITS.includes(w.limit)) {
-              add(`widget.${wi}`, `shows ${LIST_WIDGET_LIMITS.join(' or ')} rows`, `${where} embeds a list of ${w.limit} rows (${LIST_WIDGET_LIMITS.join(' or ')})`)
+              add(`widget.${wi}.limit`, `shows ${LIST_WIDGET_LIMITS.join(' or ')} rows`, `${where} embeds a list of ${w.limit} rows (${LIST_WIDGET_LIMITS.join(' or ')})`)
             }
             checkPresetFilter(w.presetFilter, e, add, where, field => `widget.${wi}.presetFilter.${field}`)
             return
           }
           if (w.series && w.kind !== 'stacked') {
-            add(`widget.${wi}`, 'only a stacked chart takes a series', `${where} splits a ${w.kind} widget by a series`)
+            add(`widget.${wi}.series`, 'only a stacked chart takes a series', `${where} splits a ${w.kind} widget by a series`)
           }
           if (w.kind === 'stacked') {
             const by = w.groupBy ?? defaultBarGroupBy(e)
             const series = w.series ?? defaultSeries(e, by)
-            if (w.series && !groupableFields(e).some(f => f.name === w.series)) {
-              add(`widget.${wi}`, `${e.name} has no enum or boolean field “${w.series}”`,
+            if (w.series && !groupByFields(e).some(f => f.name === w.series)) {
+              add(`widget.${wi}.series`, `${e.name} has no enum or boolean field “${w.series}”`,
                 `${where} splits ${e.name} by “${w.series}”, which it no longer has`)
             } else if (!series || series === by) {
-              add(`widget.${wi}`, 'needs a second enum or boolean field to split by',
+              add(`widget.${wi}.series`, 'needs a second enum or boolean field to split by',
                 `${where} has a stacked chart of ${e.name}, which has no second enum or boolean field to split by`)
             }
           }
           if (w.kind === 'bar' || w.kind === 'donut') {
             const keys = rankableKeys(e)
             if (w.groupBy && !keys.some(k => k.toLowerCase() === w.groupBy!.toLowerCase())) {
-              add(`widget.${wi}`, `${e.name} has no enum, boolean or relation “${w.groupBy}”`,
+              add(`widget.${wi}.groupBy`, `${e.name} has no enum, boolean or relation “${w.groupBy}”`,
                 `${where} groups ${e.name} by “${w.groupBy}”, which it no longer has`)
             } else if (!w.groupBy && keys.length === 0) {
-              add(`widget.${wi}`, `${e.name} has no enum, boolean or relation to group by`,
+              add(`widget.${wi}.groupBy`, `${e.name} has no enum, boolean or relation to group by`,
                 `${where} charts ${e.name}, which has no enum, boolean or relation to group by`)
             }
           }
           if (w.kind === 'stacked') {
-            const groupable = groupableFields(e)
+            const groupable = groupByFields(e)
             if (w.groupBy && !groupable.some(f => f.name === w.groupBy)) {
-              add(`widget.${wi}`, `${e.name} has no enum or boolean field “${w.groupBy}”`,
+              add(`widget.${wi}.groupBy`, `${e.name} has no enum or boolean field “${w.groupBy}”`,
                 `${where} groups ${e.name} by “${w.groupBy}”, which it no longer has`)
             } else if (!w.groupBy && groupable.length === 0) {
-              add(`widget.${wi}`, `${e.name} has no enum or boolean field to group by`,
+              add(`widget.${wi}.groupBy`, `${e.name} has no enum or boolean field to group by`,
                 `${where} charts ${e.name}, which has no enum or boolean field to group by`)
             }
           }
           if (w.kind === 'line') {
             const dates = dateFields(e)
             if (w.groupBy && !dates.some(f => f.name === w.groupBy)) {
-              add(`widget.${wi}`, `${e.name} has no date field “${w.groupBy}”`,
+              add(`widget.${wi}.groupBy`, `${e.name} has no date field “${w.groupBy}”`,
                 `${where} plots ${e.name} over “${w.groupBy}”, which is not one of its date fields`)
             } else if (!w.groupBy && dates.length === 0) {
-              add(`widget.${wi}`, `${e.name} has no date field to plot over time`,
+              add(`widget.${wi}.groupBy`, `${e.name} has no date field to plot over time`,
                 `${where} plots ${e.name} over time, but it has no date field`)
             }
           }
           if (w.kind === 'top') {
             const ranks = rankableKeys(e)
             if (w.groupBy && !ranks.some(k => k.toLowerCase() === w.groupBy!.toLowerCase())) {
-              add(`widget.${wi}`, `${e.name} has no enum, boolean or relation “${w.groupBy}”`,
+              add(`widget.${wi}.groupBy`, `${e.name} has no enum, boolean or relation “${w.groupBy}”`,
                 `${where} ranks ${e.name} by “${w.groupBy}”, which it no longer has`)
             } else if (!w.groupBy && ranks.length === 0) {
-              add(`widget.${wi}`, `${e.name} has no enum, boolean or relation to rank by`,
+              add(`widget.${wi}.groupBy`, `${e.name} has no enum, boolean or relation to rank by`,
                 `${where} ranks ${e.name}, which has nothing to rank by`)
             }
           }
           if (w.kind === 'progress') {
             const target = Number(w.target)
             if (!w.target?.trim()) {
-              add(`widget.${wi}`, 'needs a target', `${where} has a progress tile without a target`)
+              add(`widget.${wi}.target`, 'needs a target', `${where} has a progress tile without a target`)
             } else if (!Number.isFinite(target) || target <= 0) {
-              add(`widget.${wi}`, 'the target must be a number above 0', `${where} has a progress target of “${w.target}”`)
+              add(`widget.${wi}.target`, 'the target must be a number above 0', `${where} has a progress target of “${w.target}”`)
             }
           }
           if (w.compare) {
             if (w.kind !== 'kpi') {
-              add(`widget.${wi}`, 'only a number tile compares periods', `${where} compares periods on a ${w.kind} widget`)
+              add(`widget.${wi}.compare`, 'only a number tile compares periods', `${where} compares periods on a ${w.kind} widget`)
             } else if (!page.dateRange || !widgetDateField(w, e)) {
-              add(`widget.${wi}`, 'comparing needs the period picker and a filterable date',
+              add(`widget.${wi}.compare`, 'comparing needs the period picker and a filterable date',
                 `${where} compares periods, but ${!page.dateRange ? 'has no period picker' : `${e.name} has no filterable date`}`)
             }
           }
           if (w.bucket && w.kind !== 'line') {
-            add(`widget.${wi}`, 'only a trend takes a bucket', `${where} buckets a ${w.kind} widget`)
+            add(`widget.${wi}.bucket`, 'only a trend takes a bucket', `${where} buckets a ${w.kind} widget`)
           }
           for (const issue of aggIssues(w.kind === 'recent' ? undefined : w.agg, w.field, e, w.kind === 'recent')) {
-            add(`widget.${wi}`, issue.message, `${where} ${issue.summary}`)
+            add(`widget.${wi}.field`, issue.message, `${where} ${issue.summary}`)
           }
           if (w.kind === 'recent' && (w.agg || w.field)) {
-            add(`widget.${wi}`, 'a recent list shows rows, not an aggregate',
+            add(`widget.${wi}.agg`, 'a recent list shows rows, not an aggregate',
               `${where} asks a recent list for an aggregate`)
           }
           if ((w.kind === 'recent' || w.kind === 'top') && w.limit != null && (w.limit < 1 || w.limit > MAX_RECENT_LIMIT)) {
-            add(`widget.${wi}`, `between 1 and ${MAX_RECENT_LIMIT} rows`,
+            add(`widget.${wi}.limit`, `between 1 and ${MAX_RECENT_LIMIT} rows`,
               `${where} shows a ${w.kind} list of ${w.limit} rows (1–${MAX_RECENT_LIMIT})`)
           }
           if (w.span != null && (!Number.isInteger(w.span) || w.span < 1 || w.span > MAX_SPAN)) {
-            add(`widget.${wi}`, `spans 1 to ${MAX_SPAN} columns`, `${where} has a widget ${w.span} columns wide (1–${MAX_SPAN})`)
+            add(`widget.${wi}.span`, `spans 1 to ${MAX_SPAN} columns`, `${where} has a widget ${w.span} columns wide (1–${MAX_SPAN})`)
           }
           if (w.sortBy) {
             if (w.kind !== 'recent') {
-              add(`widget.${wi}`, 'only a recent list takes a sort', `${where} sorts a ${w.kind} widget`)
+              add(`widget.${wi}.sortBy`, 'only a recent list takes a sort', `${where} sorts a ${w.kind} widget`)
             } else if (!e.fields.some(f => f.name === w.sortBy)) {
-              add(`widget.${wi}`, `${e.name} has no field “${w.sortBy}”`,
+              add(`widget.${wi}.sortBy`, `${e.name} has no field “${w.sortBy}”`,
                 `${where} sorts ${e.name} by “${w.sortBy}”, which it no longer has`)
             }
           }
           checkPresetFilter(w.presetFilter, e, add, `${where} has a widget that`, field => `widget.${wi}.presetFilter.${field}`)
           if (w.dateField) {
             if (!page.dateRange) {
-              add(`widget.${wi}`, 'a date field needs the dashboard’s period picker',
+              add(`widget.${wi}.dateField`, 'a date field needs the dashboard’s period picker',
                 `${where} limits a widget by “${w.dateField}”, but has no period picker`)
             } else if (!filterableDateFields(e).some(f => f.name === w.dateField)) {
-              add(`widget.${wi}`, `${e.name} has no filterable date field “${w.dateField}”`,
+              add(`widget.${wi}.dateField`, `${e.name} has no filterable date field “${w.dateField}”`,
                 `${where} limits ${e.name} by “${w.dateField}”, which is not one of its filterable date fields`)
             }
           }
@@ -1377,7 +1383,7 @@ export function seedLayout(entities: FullstackEntityDef[], heading: { title?: st
   }
   const room = MAX_WIDGETS - 1 // the recent-rows widget always fits
   const kpis = named.slice(0, room).map(e => ({ kind: 'kpi' as const, entity: e.name }))
-  const bars = named.filter(e => groupableFields(e).length > 0).slice(0, room - kpis.length)
+  const bars = named.filter(e => groupByFields(e).length > 0).slice(0, room - kpis.length)
     .map(e => ({ kind: 'bar' as const, entity: e.name }))
   const dashboard: FullstackPageDef = {
     id: take('dashboard'),
@@ -1421,6 +1427,21 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
     }
     if (isEntity(next.entity) && next.columns?.includes(from)) next.columns = next.columns.map(k => (k === from ? to : k))
     if (isEntity(next.entity) && next.sort?.field === from) next.sort = { ...next.sort, field: to }
+    // A master-detail page's columns and sort are its child list's.
+    if (next.type === 'master-detail' && isEntity(next.child)) {
+      if (next.columns?.includes(from)) next.columns = next.columns.map(k => (k === from ? to : k))
+      if (next.sort?.field === from) next.sort = { ...next.sort, field: to }
+    }
+    // ...and a record page's related tabs carry their own.
+    if (next.childTabs?.some(t => typeof t !== 'string' && isEntity(t.entity) && (t.columns?.includes(from) || t.sort?.field === from))) {
+      next.childTabs = next.childTabs.map(t => {
+        if (typeof t === 'string' || !isEntity(t.entity)) return t
+        return withChildTab(t, {
+          ...(t.columns?.includes(from) ? { columns: t.columns.map(k => (k === from ? to : k)) } : {}),
+          ...(t.sort?.field === from ? { sort: { ...t.sort, field: to } } : {}),
+        })
+      })
+    }
     if (next.widgets) {
       next.widgets = next.widgets.map(w => {
         if (!isEntity(w.entity)) return w
@@ -1496,7 +1517,7 @@ export function widgetKindDisabledReason(kind: FullstackWidgetDef['kind'], entit
     case 'donut':
       return rankableKeys(entity).length > 0 ? undefined : `${name} has no enum, boolean or relation to break down by`
     case 'stacked':
-      return groupableFields(entity).length > 1 ? undefined : `${name} needs two enum or boolean fields to stack`
+      return groupByFields(entity).length > 1 ? undefined : `${name} needs two enum or boolean fields to stack`
     case 'line':
       return dateFields(entity).length > 0 ? undefined : `${name} has no date field to plot over`
     case 'top':
@@ -1562,6 +1583,29 @@ export function dropTabsTo(pages: FullstackPageDef[], id: string): FullstackPage
   })
 }
 
+/** The layout without the page at `index`, and without what pointed at it: links widgets stop
+ *  offering it and, when it was an entity's only record page, list pages that opened that entity's
+ *  rows there fall back to the default. Tabs that embed it go only with `dropTabs` — the editor asks
+ *  first, since that changes another page. */
+export function removePageAt(pages: FullstackPageDef[], index: number, dropTabs = true): FullstackPageDef[] {
+  const removed = pages[index]
+  if (!removed) return pages
+  const rest = pages.filter((_, i) => i !== index)
+  let next = rest.map(page => (page.widgets?.some(w => w.pages?.includes(removed.id))
+    ? { ...page, widgets: page.widgets.map(w => (w.pages?.includes(removed.id) ? { ...w, pages: w.pages.filter(k => k !== removed.id) } : w)) }
+    : page))
+  if (dropTabs) next = next.map(page => (page.tabs?.some(t => t.page === removed.id) ? { ...page, tabs: page.tabs.filter(t => t.page !== removed.id) } : page))
+  const entity = removed.entity
+  if (removed.type === 'record' && entity && !next.some(p => p.type === 'record' && sameName(p.entity, entity))) {
+    next = next.map(page => {
+      if (page.type !== 'entity-list' || page.detail !== 'record' || !sameName(page.entity, entity)) return page
+      const { detail: _detail, ...kept } = page
+      return kept
+    })
+  }
+  return next
+}
+
 /** Follows a relation rename on `child` (the entity that owns it) into every reference a layout
  *  can hold: list and list-widget columns, wizard steps, report and top-list groupings, record
  *  tabs and tiles, and master-detail links. */
@@ -1593,6 +1637,11 @@ export function renameRelationInPages(pages: FullstackPageDef[], child: string, 
       out.headerStats = page.headerStats?.map(st => (isChild(st.child) && st.via === from ? { ...st, via: to } : st))
     }
     if (page.type === 'master-detail' && isChild(page.child) && page.via === from) out.via = to
+    if (page.type === 'master-detail' && isChild(page.child) && page.columns?.includes(from)) out.columns = cols(page.columns)
+    if (page.childTabs?.some(t => typeof t !== 'string' && isChild(t.entity) && t.columns?.includes(from))) {
+      out.childTabs = (out.childTabs ?? page.childTabs).map(t => (typeof t !== 'string' && isChild(t.entity) && t.columns?.includes(from)
+        ? withChildTab(t, { columns: cols(t.columns) }) : t))
+    }
     if (JSON.stringify(out) === JSON.stringify(page)) return page
     changed = true
     return out
@@ -1641,13 +1690,22 @@ export function renameEnumValueInPages(pages: FullstackPageDef[], entity: string
   return changed ? final : pages
 }
 
+/** Page types a layout holds at most one of (per entity, or at all): a copy would be invalid
+ *  the moment it was made, so the editor does not offer to duplicate them. */
+const SINGLE_PAGE_TYPES: ReadonlySet<FullstackPageType> = new Set<FullstackPageType>(['record', 'wizard'])
+
+/** Whether the editor offers to duplicate `page`. */
+export const canDuplicate = (page: FullstackPageDef): boolean => !SINGLE_PAGE_TYPES.has(page.type)
+
 /** A copy of `page` under a fresh id and a "(copy)" title; the caller places it. The copy's id
- *  is minted, so it follows the copy's title again. */
+ *  is minted, so it follows the copy's title again. A copy of a tab-only page goes in the nav:
+ *  nothing embeds the copy, so hidden it could never be reached. */
 export function duplicatePage(page: FullstackPageDef, taken: Iterable<string>): FullstackPageDef {
   const copy = JSON.parse(JSON.stringify(page)) as FullstackPageDef
   copy.id = uniquePageId(`${page.id || 'page'}-copy`.slice(0, 40).replace(/-+$/, ''), taken)
   copy.title = `${pageLabel(page)} (copy)`
   delete copy.idLocked
+  if (copy.hidden) delete copy.hidden
   return copy
 }
 
@@ -1793,7 +1851,7 @@ export function suggestPages(entities: FullstackEntityDef[], pages: FullstackPag
   }
   for (const e of named) {
     const groupBy = defaultBarGroupBy(e)
-    if (!groupBy || !groupableFields(e).some(f => f.name === groupBy)) continue
+    if (!groupBy || !groupByFields(e).some(f => f.name === groupBy)) continue
     if (pages.some(p => p.type === 'report' && sameName(p.entity, e.name))) continue
     const number = numericFields(e)[0]
     out.push({
@@ -2135,14 +2193,14 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
   }
   if (next.groupBy != null) {
     const fits = kind === 'bar' || kind === 'donut' ? rankableKeys(entity).includes(next.groupBy)
-      : kind === 'stacked' ? groupableFields(entity).some(f => f.name === next.groupBy)
+      : kind === 'stacked' ? groupByFields(entity).some(f => f.name === next.groupBy)
       : kind === 'line' ? dateFields(entity).some(f => f.name === next.groupBy)
         : kind === 'top' ? rankableKeys(entity).includes(next.groupBy)
           : false
     if (!fits) drop(['groupBy'], 'group by')
   }
   if (kind !== 'line') drop(['bucket'], 'bucket')
-  if (next.series != null && (kind !== 'stacked' || !groupableFields(entity).some(f => f.name === next.series))) drop(['series'], 'split by')
+  if (next.series != null && (kind !== 'stacked' || !groupByFields(entity).some(f => f.name === next.series))) drop(['series'], 'split by')
   if (kind === 'recent' || kind === 'list') drop(['agg', 'field'], 'aggregate')
   else if (next.field != null && !numericFields(entity).some(f => f.name === next.field)) drop(['agg', 'field'], 'aggregate')
   if (kind !== 'recent' && kind !== 'top' && kind !== 'list') drop(['limit'], 'row limit')

@@ -6,6 +6,7 @@ import {
   chartableFields,
   dateFields,
   groupableFields,
+  groupByFields,
   masterDetailPairs,
   relationsTo,
   slugify,
@@ -103,7 +104,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       for (const e of chartable.slice(0, 4)) widgets.push({ kind: 'kpi', entity: e.name })
       for (const e of chartable.slice(0, 3)) {
         if (dateFields(e).length) widgets.push({ kind: 'line', entity: e.name, span: 2 })
-        if (groupableFields(e).length) widgets.push({ kind: 'bar', entity: e.name, span: 2 })
+        if (groupByFields(e).length) widgets.push({ kind: 'bar', entity: e.name, span: 2 })
       }
       const dashboard: FullstackPageDef = { id: id('dashboard'), type: 'dashboard', title: 'Dashboard', widgets }
       const reports = chartable.map(e => ({ id: id(`${e.name}-report`), type: 'report' as const, entity: e.name, title: `${e.name} report`, group: 'Reports', chart: {} }))

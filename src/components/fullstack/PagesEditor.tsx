@@ -59,7 +59,8 @@ import {
   defaultOptionLabel,
   defaultReportGroupBy,
   describePage,
-  dropTabsTo,
+  removePageAt,
+  canDuplicate,
   adoptedGroup,
   askableFields,
   blankPage,
@@ -92,6 +93,7 @@ import {
   enabledListViews,
   filterableDateFields,
   groupableFields,
+  groupByFields,
   inNav,
   listColumns,
   newWidget,
@@ -362,6 +364,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
 
   function add(page: FullstackPageDef) {
     setAddOpen(false)
+    // The new page must be on screen to open: a page search that would hide it is cleared.
+    setPageQuery('')
     onChange([...pages, page])
     // The new row's key is minted on the next render; open it by position once it exists.
     pendingOpen.current = pages.length
@@ -470,8 +474,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     setConfirmRemove(null)
     const page = pages[index]
     pushUndo(`Removed the “${pageLabel(page)}” page`)
-    const rest = pages.filter((_, i) => i !== index)
-    onChange(dropTabs ? dropTabsTo(rest, page.id) : rest)
+    onChange(removePageAt(pages, index, dropTabs))
     if (keys[index] === openKey) setOpenKey(null)
   }
 
@@ -522,6 +525,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   function reveal(target: EditTarget) {
     const key = keys[target.page]
     if (!key) return
+    // A jump to a page the search is hiding clears the search, or there would be nothing to open.
+    if (!matchesQuery(pages[target.page])) setPageQuery('')
     setSectionOpen(true)
     setOpenKey(key)
     setPreviewKey(key)
@@ -1411,7 +1416,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                         </span>
                       </button>
                     )}
-                    {page.type !== 'record' && (
+                    {canDuplicate(page) && (
                       <button
                         type="button"
                         onClick={() => duplicate(index)}
@@ -2530,12 +2535,17 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
   onRemove: () => void
 }) {
   const entity = entities.find(e => e.name === widget.entity)
-  const error = errors[`widget.${wi}`]
+  const own = `widget.${wi}`
+  // Each control is marked by its own messages only; the card lists them all under it.
+  const err = (control: string): string | undefined => errors[`${own}.${control}`]
   const filterPrefix = `widget.${wi}.presetFilter.`
   const filterErrors = Object.fromEntries(
     Object.entries(errors).filter(([k]) => k.startsWith(filterPrefix)).map(([k, v]) => [`presetFilter.${k.slice(filterPrefix.length)}`, v]),
   )
-  const invalid = Boolean(error) || Object.keys(filterErrors).length > 0
+  const messages = [...new Set(Object.entries(errors)
+    .filter(([k]) => (k === own || k.startsWith(`${own}.`)) && !k.startsWith(filterPrefix))
+    .map(([, v]) => v))]
+  const invalid = messages.length > 0 || Object.keys(filterErrors).length > 0
   const indicator = dnd.indicatorFor(list, wi)
   const fallbackSpan = defaultSpan(widget.kind)
   const span = widget.span ?? fallbackSpan
@@ -2620,7 +2630,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
         <div className="space-y-2" data-widget-options>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
             <MiniField label="Entity">
-              <EntitySelect label="Widget entity" value={widget.entity} options={entities.map(e => e.name)} error={error} onChange={name => onRetarget({ entity: name })} />
+              <EntitySelect label="Widget entity" value={widget.entity} options={entities.map(e => e.name)} error={err('entity')} onChange={name => onRetarget({ entity: name })} />
             </MiniField>
             <MiniField label="Title" grow>
               <input
@@ -2807,13 +2817,13 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
             <MiniField label="Text" hint={`Plain text; a blank line starts a new paragraph · ${(widget.text ?? '').length}/${MAX_TEXT}`}>
               <textarea
                 aria-label="Widget text"
-                aria-invalid={Boolean(error)}
+                aria-invalid={Boolean(err('text'))}
                 value={widget.text ?? ''}
                 rows={4}
                 maxLength={MAX_TEXT}
                 placeholder="e.g. How the team triages new tickets, who to call, links to the runbook…"
                 onChange={e => onChange({ text: e.target.value || undefined })}
-                className={`${inputClass(error)} w-full py-1 text-xs`}
+                className={`${inputClass(err('text'))} w-full py-1 text-xs`}
               />
             </MiniField>
           </div>
@@ -2828,7 +2838,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                 label="Widget entity"
                 value={widget.entity}
                 options={entities.map(e => e.name)}
-                error={error}
+                error={err('entity')}
                 className="max-w-[10rem]"
                 onChange={name => onRetarget({ entity: name })}
               />
@@ -2839,7 +2849,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                   aria-label="Group by"
                   value={widget.groupBy ?? ''}
                   onChange={e => onChange({ groupBy: e.target.value || undefined })}
-                  className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                  className={`${inputClass(err('groupBy'))} max-w-[11rem] py-1 text-xs`}
                 >
                   <option value="">{defaultOptionLabel(defaultTopGroupBy(entity), 'enum, boolean or relation', labelOf)}</option>
                   {rankableKeys(entity).map(k => <option key={k} value={k}>{labelOf(k)}</option>)}
@@ -2855,11 +2865,11 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                   aria-label="Group by"
                   value={widget.groupBy ?? ''}
                   onChange={e => onChange({ groupBy: e.target.value || undefined })}
-                  className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                  className={`${inputClass(err('groupBy'))} max-w-[11rem] py-1 text-xs`}
                 >
                   <option value="">{defaultOptionLabel(defaultBarGroupBy(entity), 'enum or boolean', labelOf)}</option>
-                  {groupableFields(entity).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
-                  {widget.groupBy && !groupableFields(entity).some(f => f.name === widget.groupBy) && (
+                  {groupByFields(entity).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
+                  {widget.groupBy && !groupByFields(entity).some(f => f.name === widget.groupBy) && (
                     <option value={widget.groupBy}>{widget.groupBy}</option>
                   )}
                 </select>
@@ -2871,13 +2881,13 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                   aria-label="Split by"
                   value={widget.series ?? ''}
                   onChange={e => onChange({ series: e.target.value || undefined })}
-                  className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                  className={`${inputClass(err('series'))} max-w-[11rem] py-1 text-xs`}
                 >
                   <option value="">{defaultOptionLabel(defaultSeries(entity, widget.groupBy ?? defaultBarGroupBy(entity)), 'second enum or boolean', labelOf)}</option>
-                  {groupableFields(entity).filter(f => f.name !== (widget.groupBy ?? defaultBarGroupBy(entity))).map(f => (
+                  {groupByFields(entity).filter(f => f.name !== (widget.groupBy ?? defaultBarGroupBy(entity))).map(f => (
                     <option key={f.name} value={f.name}>{fieldOption(f)}</option>
                   ))}
-                  {widget.series && !groupableFields(entity).some(f => f.name === widget.series) && (
+                  {widget.series && !groupByFields(entity).some(f => f.name === widget.series) && (
                     <option value={widget.series}>{widget.series}</option>
                   )}
                 </select>
@@ -2890,7 +2900,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                     aria-label="Date field"
                     value={widget.groupBy ?? ''}
                     onChange={e => onChange({ groupBy: e.target.value || undefined })}
-                    className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                    className={`${inputClass(err('groupBy'))} max-w-[11rem] py-1 text-xs`}
                   >
                     <option value="">{defaultOptionLabel(defaultLineGroupBy(entity), 'date field', labelOf)}</option>
                     {dateFields(entity).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
@@ -2910,7 +2920,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                   aria-label="Rank by"
                   value={widget.groupBy ?? ''}
                   onChange={e => onChange({ groupBy: e.target.value || undefined })}
-                  className={`${inputClass(error)} max-w-[11rem] py-1 text-xs`}
+                  className={`${inputClass(err('groupBy'))} max-w-[11rem] py-1 text-xs`}
                 >
                   <option value="">{defaultOptionLabel(defaultTopGroupBy(entity), 'enum, boolean or relation', labelOf)}</option>
                   {rankableKeys(entity).map(k => <option key={k} value={k}>{labelOf(k)}</option>)}
@@ -2923,7 +2933,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
             {widget.kind !== 'recent' && (
               <MiniField label="Measure" hint={AGG_HINT}>
                 <span className="inline-flex flex-wrap gap-2">
-                  <AggFields agg={widget.agg} field={widget.field} entity={entity} error={error} onChange={onChange} />
+                  <AggFields agg={widget.agg} field={widget.field} entity={entity} error={err('field') ?? err('agg')} onChange={onChange} />
                 </span>
               </MiniField>
             )}
@@ -2934,11 +2944,11 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                   min={0}
                   step="any"
                   aria-label="Target"
-                  aria-invalid={Boolean(error) && !widget.target}
+                  aria-invalid={Boolean(err('target'))}
                   value={widget.target ?? ''}
                   placeholder="e.g. 1000"
                   onChange={e => onChange({ target: e.target.value || undefined })}
-                  className={`${inputClass(error)} max-w-[7rem] py-1 text-xs`}
+                  className={`${inputClass(err('target'))} max-w-[7rem] py-1 text-xs`}
                 />
               </MiniField>
             )}
@@ -2986,7 +2996,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
                   value={widget.limit ?? ''}
                   placeholder="5"
                   onChange={e => onChange({ limit: e.target.value === '' ? undefined : Number(e.target.value) })}
-                  className={`${inputClass(error)} w-[4.5rem] py-1 text-xs`}
+                  className={`${inputClass(err('limit'))} w-[4.5rem] py-1 text-xs`}
                 />
               </MiniField>
             )}
@@ -3035,7 +3045,7 @@ function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange
         </div>
       </div>
       )}
-      {error && <p className="text-[11px] text-error">{error}</p>}
+      {messages.map(m => <p key={m} className="text-[11px] text-error">{m}</p>)}
     </div>
   )
 }
@@ -3247,9 +3257,9 @@ function ChartFields({ chart, chartIndex, entity, errors, onChange }: {
             className={`${inputClass(errors[groupKey])} max-w-[12rem] py-1 text-xs`}
           >
             <option value="">{defaultOptionLabel(defaultReportGroupBy(entity), 'enum, boolean or date', k => keyOption(entity, k))}</option>
-            {groupableFields(entity).length > 0 && (
+            {groupByFields(entity).length > 0 && (
               <optgroup label="Breakdown">
-                {groupableFields(entity).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
+                {groupByFields(entity).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
               </optgroup>
             )}
             {dateFields(entity).length > 0 && (

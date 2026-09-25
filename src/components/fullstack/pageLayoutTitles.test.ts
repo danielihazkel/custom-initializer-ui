@@ -31,7 +31,7 @@ describe('titles inside a page', () => {
       { id: 'customer', type: 'record', entity: 'Customer', hidden: true, headerStats: [{ child: 'Order', title: long }] },
     ]
     const fields = validatePages(pages, entities).issues.map(p => p.field)
-    expect(fields).toEqual(expect.arrayContaining(['widget.0', 'tab.0', 'step.0', 'headerStat.0']))
+    expect(fields).toEqual(expect.arrayContaining(['widget.0.title', 'tab.0', 'step.0', 'headerStat.0']))
   })
 
   it('counts a title the way the server does: trimmed', () => {

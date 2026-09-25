@@ -146,10 +146,10 @@ describe('dashboard layout and filters', () => {
       { kind: 'kpi', entity: 'Order', dateField: 'placedOn' },
     ]), entities)
     expect(v.byPage[0]).toMatchObject({
-      'widget.0': 'spans 1 to 4 columns',
-      'widget.1': 'only a recent list takes a sort',
+      'widget.0.span': 'spans 1 to 4 columns',
+      'widget.1.sortBy': 'only a recent list takes a sort',
       'widget.2.presetFilter.status': '“LOST” is not one of the values of status',
-      'widget.3': 'a date field needs the dashboard’s period picker',
+      'widget.3.dateField': 'a date field needs the dashboard’s period picker',
     })
     // A period picker needs some widget with a date to limit.
     expect(validatePages(dash([{ kind: 'kpi', entity: 'Customer' }], { dateRange: '7d' }), entities).byPage[0]?.dateRange)
@@ -186,11 +186,11 @@ describe('top lists, targets, comparisons and report charts', () => {
       ],
     }], entities)
     expect(bad.byPage[0]).toMatchObject({
-      'widget.0': 'Order has no enum, boolean or relation “total”',
-      'widget.1': 'needs a target',
-      'widget.2': 'the target must be a number above 0',
-      'widget.3': 'comparing needs the period picker and a filterable date',
-      'widget.4': 'Customer has no enum, boolean or relation to rank by',
+      'widget.0.groupBy': 'Order has no enum, boolean or relation “total”',
+      'widget.1.target': 'needs a target',
+      'widget.2.target': 'the target must be a number above 0',
+      'widget.3.compare': 'comparing needs the period picker and a filterable date',
+      'widget.4.groupBy': 'Customer has no enum, boolean or relation to rank by',
     })
   })
 
@@ -370,9 +370,9 @@ describe('list widgets', () => {
   it('takes a list page’s presentation and the pager’s sizes, reported on the widget', () => {
     expect(validatePages([home], entities).count).toBe(0)
     const bad = (w: Partial<FullstackWidgetDef>) => validatePages([{ ...home, widgets: [{ ...home.widgets![0], ...w }] }], entities)
-    expect(bad({ columns: ['nope'] }).byPage[0]?.['widget.0']).toBe('Order has no “nope” column')
-    expect(bad({ sort: { field: 'customer' } }).byPage[0]?.['widget.0']).toBe('Order cannot sort by “customer”')
-    expect(bad({ limit: 15 }).byPage[0]?.['widget.0']).toBe('shows 10 or 20 rows')
+    expect(bad({ columns: ['nope'] }).byPage[0]?.['widget.0.columns']).toBe('Order has no “nope” column')
+    expect(bad({ sort: { field: 'customer' } }).byPage[0]?.['widget.0.sort']).toBe('Order cannot sort by “customer”')
+    expect(bad({ limit: 15 }).byPage[0]?.['widget.0.limit']).toBe('shows 10 or 20 rows')
     expect(bad({ presetFilter: { status: 'NOPE' } }).byPage[0]?.['widget.0.presetFilter.status']).toContain('is not one of the values')
     expect(describePage(home, [home])).toBe('1 embedded list')
   })

@@ -41,14 +41,14 @@ describe('validatePages fixes', () => {
 
   it('removes a widget for a missing entity, or the page when it was the only widget', () => {
     const two: FullstackPageDef[] = [{ id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'kpi', entity: 'Product' }] }]
-    const fix = removalOf(two, 'widget.1')!
+    const fix = removalOf(two, 'widget.1.entity')!
     expect(fix.label).toBe('Remove widget 2')
     expect(fix.apply(two)[0].widgets).toEqual([{ kind: 'kpi', entity: 'Order' }])
     const one: FullstackPageDef[] = [
       { id: 'orders', type: 'entity-list', entity: 'Order' },
       { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Product' }] },
     ]
-    expect(removalOf(one, 'widget.0')!.apply(one).map(p => p.id)).toEqual(['orders'])
+    expect(removalOf(one, 'widget.0.entity')!.apply(one).map(p => p.id)).toEqual(['orders'])
   })
 
   it('offers to switch a stale page or widget to the one entity the layout does not mention yet', () => {
@@ -61,11 +61,11 @@ describe('validatePages fixes', () => {
     expect(page.alsoFix!.label).toBe('Remove the “Client” page')
     const switched = page.fix!.apply(pages)
     expect(switched[1]).toMatchObject({ entity: 'Customer', columns: ['name'], sort: { field: 'name', dir: 'asc' } })
-    const widget = validatePages(switched, entities).issues.find(i => i.field === 'widget.1')!
+    const widget = validatePages(switched, entities).issues.find(i => i.field === 'widget.1.entity')!
     // Customer is mentioned now, so nothing is left to switch to: the widget can only go.
     expect(widget.fix!.label).toBe('Remove widget 2')
     expect(widget.alsoFix).toBeUndefined()
-    expect(validatePages(pages, entities).issues.find(i => i.field === 'widget.1')!.fix!.label).toBe('Switch widget 2 to Customer')
+    expect(validatePages(pages, entities).issues.find(i => i.field === 'widget.1.entity')!.fix!.label).toBe('Switch widget 2 to Customer')
   })
 
   it('picks the first relation for an ambiguous master-detail link', () => {

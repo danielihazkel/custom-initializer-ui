@@ -207,6 +207,15 @@ describe('PagesEditor', () => {
     fireEvent.keyDown(search, { key: 'Escape' })
     expect(visible()).toEqual(['home', 'orders', 'customers'])
 
+    // A page added while a search hides it clears the search, so the new page opens in view.
+    fireEvent.keyDown(section, { key: '/' })
+    fireEvent.change(screen.getByLabelText('Find a page'), { target: { value: 'customer' } })
+    expect(visible()).toEqual(['customers'])
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Report/ }))
+    expect(latest).toHaveLength(4)
+    expect(visible()).toHaveLength(4)
+
     const toggles = [...document.querySelectorAll<HTMLElement>('[data-page-toggle]')]
     toggles[0].focus()
     fireEvent.keyDown(toggles[0], { key: 'ArrowDown' })
