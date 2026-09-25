@@ -24,6 +24,7 @@ import { LayoutPreview, type EditTarget } from './LayoutPreview'
 import { moveItem } from './reorder'
 import { useStableKeys } from './rowKeys'
 import { focusWithoutClipping, scrollToElement } from './scroll'
+import { LAYOUT_TEMPLATES, buildLayoutTemplate, deletePageTemplate, pageFromTemplate, readPageTemplates, savePageTemplate } from './layoutTemplates'
 import { dropIndicatorClass, useDragReorder } from './useDragReorder'
 import {
   DATE_RANGES,
@@ -464,6 +465,24 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     pushUndo('Started a page layout from the entities')
     onChange(seedLayout(entities))
   }
+  const layoutTemplates = useMemo(() => LAYOUT_TEMPLATES.map(t => ({ template: t, result: buildLayoutTemplate(t, entities) })), [entities])
+  function startFromTemplate(label: string, built: FullstackPageDef[]) {
+    pushUndo(`Started a page layout from the “${label}” template`)
+    onChange(built)
+  }
+
+  // Pages saved as templates, in this browser: offered in the "Add page" gallery.
+  const [myTemplates, setMyTemplates] = useState(readPageTemplates)
+  function saveAsTemplate(page: FullstackPageDef) {
+    const name = pageLabel(page)
+    const replaced = myTemplates.some(t => t.name === name)
+    if (!savePageTemplate(name, page)) {
+      setNotice('This browser refused to store the template (storage full or blocked).')
+      return
+    }
+    setMyTemplates(readPageTemplates())
+    setNotice(`${replaced ? 'Updated' : 'Saved'} “${name}” as a page template — add it again from Add page › My templates.`)
+  }
 
   /** Opens a page and focuses one of its controls (or its first invalid one). */
   function reveal(target: EditTarget) {
@@ -781,6 +800,36 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
 
       {addOpen && (
         <div className="space-y-2" data-page-gallery>
+          {myTemplates.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">My templates</p>
+              <ul className="flex flex-wrap gap-2" data-my-templates>
+                {myTemplates.map(t => (
+                  <li key={t.name} className="inline-flex items-center overflow-hidden rounded-lg border border-outline-variant">
+                    <button
+                      type="button"
+                      disabled={atPageCap}
+                      onClick={() => add(pageFromTemplate(t, pages))}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-on-surface hover:bg-primary/5 disabled:opacity-50"
+                      title={`Add a ${PAGE_TYPE_META[t.page.type]?.label.toLowerCase() ?? t.page.type} page like “${t.name}”`}
+                    >
+                      <span className="material-symbols-outlined text-primary" style={{ fontSize: '14px' }} aria-hidden="true">{PAGE_TYPE_META[t.page.type]?.icon ?? 'web_asset'}</span>
+                      {t.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { deletePageTemplate(t.name); setMyTemplates(readPageTemplates()) }}
+                      className="px-1.5 py-1 text-secondary hover:bg-error/5 hover:text-error"
+                      aria-label={`Forget the template “${t.name}”`}
+                      title="Forget this template"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">close</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {suggestions.length > 0 && (
             <div className="space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Suggested for your entities</p>
@@ -1047,6 +1096,35 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>auto_awesome</span>
             Start from my entities
           </button>
+          {named.length > 0 && (
+            <div className="w-full space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Or start from a layout template</p>
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" data-layout-templates>
+                {layoutTemplates.map(({ template, result }) => {
+                  const reason = 'reason' in result ? result.reason : undefined
+                  return (
+                    <li key={template.key}>
+                      <button
+                        type="button"
+                        disabled={Boolean(reason)}
+                        title={reason}
+                        onClick={() => { if ('pages' in result) startFromTemplate(template.label, result.pages) }}
+                        className="h-full w-full rounded-lg border border-outline-variant px-3 py-2 text-start transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-outline-variant disabled:hover:bg-transparent"
+                        data-layout-template={template.key}
+                      >
+                        <span className="flex items-center gap-1.5 text-xs font-semibold text-on-surface">
+                          <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{template.icon}</span>
+                          {template.label}
+                          {'pages' in result && <span className="text-[10px] font-normal text-secondary">· {result.pages.length} pages</span>}
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-secondary">{reason ?? template.blurb}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       ) : (
         <div className={!showPreview ? '' : layout === 'stacked' ? 'space-y-3' : 'grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]'}>
@@ -1284,6 +1362,16 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                   {open && (
                     <div className="mt-2 space-y-3 border-t border-outline-variant pt-2">
                       <div className="flex flex-wrap items-center gap-2" data-control="type">
+                        <button
+                          type="button"
+                          onClick={() => saveAsTemplate(page)}
+                          className={`${SMALL_BUTTON} order-last ms-auto`}
+                          title="Keep this page's settings to add it again later (this browser)"
+                          data-save-template
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">bookmark_add</span>
+                          Save as template
+                        </button>
                         <label className="text-[11px] font-semibold uppercase tracking-wider text-secondary" htmlFor={`page-type-${key}`}>Page type</label>
                         <select
                           id={`page-type-${key}`}

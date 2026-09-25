@@ -241,6 +241,30 @@ describe('PagesEditor', () => {
     expect(preview().querySelector('[data-preview-record-tab="1"]')).toBeTruthy()
   })
 
+  it('starts a layout from a template, and adds a page again from one saved as a template', () => {
+    localStorage.clear()
+    pushUndo.mockClear()
+    render(<Harness initial={[]} />)
+    const browser = document.querySelector('[data-layout-template="browser"]') as HTMLButtonElement
+    expect(browser.disabled).toBe(false)
+    fireEvent.click(browser)
+    expect(pushUndo).toHaveBeenCalledWith('Started a page layout from the “Parent–child browser” template')
+    expect(latest[0]).toMatchObject({ type: 'master-detail', parent: 'Customer', child: 'Order' })
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    openRow(latest[0].id)
+    fireEvent.click(screen.getByRole('button', { name: /Save as template/ }))
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('as a page template')
+    const count = latest.length
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    const mine = document.querySelector('[data-my-templates]') as HTMLElement
+    fireEvent.click(within(mine).getAllByRole('button')[0])
+    expect(latest).toHaveLength(count + 1)
+    expect(latest[count]).toMatchObject({ type: 'master-detail', parent: 'Customer', child: 'Order' })
+    expect(latest[count].id).not.toBe(latest[0].id)
+    localStorage.clear()
+  })
+
   it('picks where a list opens its rows, offering the record page only when the layout has one', () => {
     render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
     openRow('orders')
@@ -485,7 +509,7 @@ describe('PagesEditor', () => {
   it('adds a report page and configures its chart', () => {
     render(<Harness initial={[]} />)
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Report/ }))
+    fireEvent.click(within(document.querySelector('[data-page-gallery]') as HTMLElement).getByRole('button', { name: /^Report/ }))
 
     // Pre-filled with an entity that has something to chart, so it is valid on sight.
     expect(latest).toEqual([{ id: 'order-report', type: 'report', entity: 'Order', chart: {} }])
