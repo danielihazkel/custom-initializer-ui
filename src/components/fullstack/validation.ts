@@ -116,8 +116,10 @@ export interface FieldErrors {
   column?: string
 }
 
-/** Mirrors FullstackRequestValidator.COLUMN_NAME: column names are spliced into native SQL. */
-const COLUMN_RE = /^[A-Za-z_][A-Za-z0-9_$#@]{0,127}$/
+/** Mirrors FullstackRequestValidator.SQL_NAME: column names are spliced into native SQL. A quoted
+ *  name ("OrderDate", `OrderDate`, [OrderDate]) keeps its exact case in the generated entity. */
+const COLUMN_RE = /^(?:[A-Za-z_$#@][A-Za-z0-9_$#@]{0,127}|"[A-Za-z0-9_$#@ .-]{1,128}"|`[A-Za-z0-9_$#@ .-]{1,128}`|\[[A-Za-z0-9_$#@ .-]{1,128}\])$/
+const COLUMN_RULE = 'Letters, digits and _ $ # @, or a quoted name like "OrderDate"'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -335,7 +337,7 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
 
       if (field.column?.trim()) {
         if (entity.viewQuery != null) fErr.column = 'A view maps fields by their names'
-        else if (!COLUMN_RE.test(field.column.trim())) fErr.column = 'Letters, digits and _ $ # @ only'
+        else if (!COLUMN_RE.test(field.column.trim())) fErr.column = COLUMN_RULE
       }
 
       if (Object.keys(fErr).length > 0) {
@@ -414,7 +416,7 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
         else if (viewNames.has(target.toLowerCase())) rErr.targetEntity = "Can't target a view"
       }
       if (rel.joinColumn?.trim() && !COLUMN_RE.test(rel.joinColumn.trim())) {
-        rErr.joinColumn = 'Letters, digits and _ $ # @ only'
+        rErr.joinColumn = COLUMN_RULE
       }
       if (Object.keys(rErr).length > 0) {
         eErr.relations = eErr.relations ?? {}

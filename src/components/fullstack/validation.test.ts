@@ -18,7 +18,9 @@ describe('validateEntities', () => {
       ...over,
     })])
     expect(withColumn('FRF_QOD_MISHLOAH_FUTURE_USE_8').count).toBe(0)
-    expect(withColumn('EMAIL; DROP').entities[0].fields[1].column).toBe('Letters, digits and _ $ # @ only')
+    expect(withColumn('"Email"').count).toBe(0)
+    expect(withColumn('[E-mail Address]').count).toBe(0)
+    expect(withColumn('EMAIL; DROP').entities[0].fields[1].column).toBe('Letters, digits and _ $ # @, or a quoted name like "OrderDate"')
     expect(withColumn('EMAIL', { viewQuery: 'select id, email from users' }).entities[0].fields[1].column)
       .toBe('A view maps fields by their names')
     // An explicit column that another member already derives to.
@@ -31,7 +33,7 @@ describe('validateEntities', () => {
       { name: 'Order', fields: [{ name: 'id', type: 'LONG', primaryKey: true }],
         relations: [{ type: 'MANY_TO_ONE', fieldName: 'user', targetEntity: 'User', joinColumn: 'bad col' }] },
     ])
-    expect(rel.entities[1].relations?.[0].joinColumn).toBe('Letters, digits and _ $ # @ only')
+    expect(rel.entities[1].relations?.[0].joinColumn).toBe('Letters, digits and _ $ # @, or a quoted name like "OrderDate"')
   })
 
   it('accepts a well-formed entity', () => {
