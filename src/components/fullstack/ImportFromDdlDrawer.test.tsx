@@ -63,4 +63,34 @@ describe('ImportFromDdlDrawer — parse, edit, re-parse', () => {
     expect(entities.map((e: { name: string }) => e.name)).toEqual(['Product'])
     expect(mode).toBe('replace')
   })
+
+  it('keeps the DDL column names on the imported fields and relations', async () => {
+    const body = {
+      entities: [
+        { name: 'Customer', tableName: 'CUSTOMERS', fields: [{ name: 'custNo', ...wireField, column: 'CUST_NO' }] },
+        {
+          name: 'Order', tableName: 'ORDERS',
+          fields: [
+            { name: 'ordNo', ...wireField, column: 'ORD_NO' },
+            { ...wireField, name: 'frfQodMishloahFutureUse8', type: 'STRING', primaryKey: false, column: 'FRF_QOD_MISHLOAH_FUTURE_USE_8' },
+          ],
+          relations: [{ type: 'MANY_TO_ONE', fieldName: 'custRef', targetEntity: 'Customer', required: true, joinColumn: 'CUST_REF' }],
+        },
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/metadata/sql-dialects') return { ok: true, json: async () => ({ h2: 'H2' }) }
+      return { ok: true, json: async () => body }
+    }))
+    const onImport = vi.fn()
+    render(<ImportFromDdlDrawer isOpen onClose={vi.fn()} hasExisting={false} onImport={onImport} />)
+    fireEvent.change(screen.getByLabelText('DDL'), { target: { value: 'CREATE TABLE ORDERS (ORD_NO INT PRIMARY KEY);' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Parse' }))
+    await waitFor(() => expect(screen.getByText('Order')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Import 2 entities' }))
+    await waitFor(() => expect(onImport).toHaveBeenCalled())
+    const order = onImport.mock.calls[0][0][1]
+    expect(order.fields.map((f: { column?: string }) => f.column)).toEqual(['ORD_NO', 'FRF_QOD_MISHLOAH_FUTURE_USE_8'])
+    expect(order.relations[0].joinColumn).toBe('CUST_REF')
+  })
 })

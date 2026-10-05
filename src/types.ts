@@ -358,6 +358,10 @@ export interface FullstackFieldDef {
    *  initializer, the generated form's starting value and the demo-data seed. Not allowed on a
    *  generated primary key. */
   defaultValue?: string
+  /** Database column as the schema spells it (`FRF_QOD_MISHLOAH_FUTURE_USE_8`). Set by the DDL
+   *  import, because the camelCase field name can't be turned back into it (`USE_8` and `USE8`
+   *  both become `use8`). Omitted = the snake_case of the name. Not used on a SELECT view. */
+  column?: string
 }
 
 /** Per-entity override of a project-wide scaffold opt (true = force on, false = force off;
@@ -377,6 +381,9 @@ export interface FullstackRelationDef {
   fieldName: string
   targetEntity: string
   required?: boolean
+  /** Foreign-key column as the schema spells it (set by the DDL import). Omitted =
+   *  `<snake fieldName>_id`. */
+  joinColumn?: string
 }
 
 export interface FullstackEntityDef {

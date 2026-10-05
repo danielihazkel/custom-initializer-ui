@@ -12,6 +12,28 @@ const validEntity = (over: Partial<FullstackEntityDef> = {}): FullstackEntityDef
 })
 
 describe('validateEntities', () => {
+  it('checks DB column names: identifier characters only, not on a view, never shared', () => {
+    const withColumn = (column: string, over: Partial<FullstackEntityDef> = {}) => validateEntities([validEntity({
+      fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'email', type: 'STRING', column }],
+      ...over,
+    })])
+    expect(withColumn('FRF_QOD_MISHLOAH_FUTURE_USE_8').count).toBe(0)
+    expect(withColumn('EMAIL; DROP').entities[0].fields[1].column).toBe('Letters, digits and _ $ # @ only')
+    expect(withColumn('EMAIL', { viewQuery: 'select id, email from users' }).entities[0].fields[1].column)
+      .toBe('A view maps fields by their names')
+    // An explicit column that another member already derives to.
+    const clash = withColumn('ID')
+    expect(clash.entities[0].fields[0].column).toBe('Column id is used twice')
+    expect(clash.entities[0].fields[1].column).toBe('Column ID is used twice')
+    // A join column is checked too.
+    const rel = validateEntities([
+      validEntity(),
+      { name: 'Order', fields: [{ name: 'id', type: 'LONG', primaryKey: true }],
+        relations: [{ type: 'MANY_TO_ONE', fieldName: 'user', targetEntity: 'User', joinColumn: 'bad col' }] },
+    ])
+    expect(rel.entities[1].relations?.[0].joinColumn).toBe('Letters, digits and _ $ # @ only')
+  })
+
   it('accepts a well-formed entity', () => {
     const result = validateEntities([validEntity()])
     expect(result.count).toBe(0)

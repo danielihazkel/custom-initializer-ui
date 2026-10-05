@@ -76,12 +76,15 @@ interface WireField {
   unique: boolean
   length: number | null
   enumValues: string[]
+  /** The DDL's own column name (the field name is its camelCase, which can't be reversed). */
+  column?: string | null
 }
 interface WireRelation {
   type: string
   fieldName: string
   targetEntity: string
   required: boolean
+  joinColumn?: string | null
 }
 interface WireEntity {
   name: string
@@ -227,6 +230,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
         unique: f.unique || undefined,
         length: f.length ?? undefined,
         enumValues: f.enumValues.length > 0 ? f.enumValues : undefined,
+        column: f.column ?? undefined,
       })),
       relations: e.relations && e.relations.length > 0
         ? e.relations.map(r => ({
@@ -235,6 +239,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
           fieldName: r.fieldName,
           targetEntity: r.targetEntity,
           required: r.required || undefined,
+          joinColumn: r.joinColumn ?? undefined,
         }))
         : undefined,
     }))

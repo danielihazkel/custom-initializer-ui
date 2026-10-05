@@ -24,6 +24,16 @@ export function toSnakeCase(s: string): string {
   return out
 }
 
+/** The column a field maps to — mirrors `EntityScaffoldContext.columnOf`. */
+export function columnOf(field: { name: string; column?: string }): string {
+  return field.column?.trim() || toSnakeCase(field.name.trim())
+}
+
+/** The foreign-key column of a relation — mirrors `EntityScaffoldContext.joinColumnOf`. */
+export function joinColumnOf(rel: { fieldName: string; joinColumn?: string }): string {
+  return rel.joinColumn?.trim() || `${toSnakeCase(rel.fieldName.trim())}_id`
+}
+
 /** `order_item` / `orderItem` / `order-item` → `OrderItem`. Mirrors `Naming.toPascalCase`: a
  *  separator starts a new word; an uppercase letter following a lowercase letter or digit is kept
  *  (camel hump); every other letter is lower-cased. */
