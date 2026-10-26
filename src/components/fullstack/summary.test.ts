@@ -79,6 +79,14 @@ describe('entityOptApplicability mirrors the *Applicable flags in EntityScaffold
     expect(view.csvExport.applicable).toBe(true)
     expect(view.tests.applicable).toBe(true)
   })
+  it('inline edit needs a writable single-key table with an editable field; locking a writable table', () => {
+    const cards = entityOptApplicability({ name: 'Photo', listViews: ['cards'], fields: [pk, { name: 'title', type: 'STRING' }] })
+    expect(cards.inlineEdit).toEqual({ applicable: false, reason: 'no table view' })
+    expect(cards.optimisticLocking.applicable).toBe(true)
+    const view = entityOptApplicability({ name: 'Stats', viewQuery: 'select 1 as id', fields: [pk] })
+    expect(view.optimisticLocking).toEqual({ applicable: false, reason: 'SELECT-backed view' })
+    expect(view.inlineEdit.applicable).toBe(false)
+  })
   it('bulk edit needs at least one editable non-key field', () => {
     const a = entityOptApplicability({ name: 'Tag', fields: [pk, { name: 'code', type: 'STRING', readOnly: true }] })
     expect(a.bulkUpdate).toEqual({ applicable: false, reason: 'no editable field' })

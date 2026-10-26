@@ -523,7 +523,13 @@ describe('PagesEditor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Add filter/ }))
     expect(latest[0].presetFilter).toEqual({ status: 'OPEN' })
-    fireEvent.change(screen.getByLabelText('Filter value for status'), { target: { value: 'PAID' } })
+    // Any of several values: ticking one adds it (in the enum's order), unticking drops it.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Paid' }))
+    expect(latest[0].presetFilter).toEqual({ status: 'OPEN,PAID' })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Open' }))
+    expect(latest[0].presetFilter).toEqual({ status: 'PAID' })
+    // The last value stays ticked: removing the filter is the way to drop it.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Paid' }))
     expect(latest[0].presetFilter).toEqual({ status: 'PAID' })
     expect(document.querySelector('[data-page-id="orders"]')?.textContent).toContain('filtered on status = PAID')
 
@@ -733,9 +739,9 @@ describe('PagesEditor', () => {
     const field = screen.getByLabelText('Filter field') as HTMLSelectElement
     expect(field.options[0].textContent).toBe('Order state (status)')
     expect(field.value).toBe('status')
-    const value = screen.getByLabelText('Filter value for status') as HTMLSelectElement
-    expect(Array.from(value.options).map(o => o.textContent)).toEqual(['Waiting (OPEN)', 'Paid'])
-    expect(value.value).toBe('OPEN')
+    const values = within(screen.getByRole('group', { name: 'Filter values for status' })).getAllByRole('checkbox') as HTMLInputElement[]
+    expect(values.map(v => v.closest('label')?.textContent)).toEqual(['Waiting (OPEN)', 'Paid'])
+    expect(values.map(v => v.checked)).toEqual([true, false])
     // The id sits behind a disclosure that shows the route.
     expect(screen.getByText('#/open')).toBeTruthy()
     expect(screen.getByLabelText('Page id')).toBeTruthy()
@@ -880,6 +886,29 @@ describe('PagesEditor', () => {
     // Back to one chart: the one-chart spelling again.
     expect(latest[1]).toMatchObject({ chart: {} })
     expect(latest[1].charts).toBeUndefined()
+  })
+
+  it('draws a report chart as a ring, then drops the ring for a date grouping', () => {
+    render(<Harness initial={[{ id: 'r', type: 'report', entity: 'Order', chart: { groupBy: 'status' } }]} />)
+    const report = openRow('r') as HTMLElement
+    const kind = within(report).getByLabelText('Chart 1 kind') as HTMLSelectElement
+    expect(Array.from(kind.options).map(o => o.textContent)).toEqual(['Bars (default)', 'Ring of shares', 'Stacked bars', 'Totals table only'])
+    fireEvent.change(kind, { target: { value: 'donut' } })
+    expect(latest[0].chart).toEqual({ groupBy: 'status', kind: 'donut' })
+
+    // A ring cannot draw a date: the new grouping keeps the chart, not the drawing.
+    fireEvent.change(within(report).getByLabelText('Group by'), { target: { value: 'placedOn' } })
+    expect(latest[0].chart).toEqual({ groupBy: 'placedOn' })
+    expect(Array.from((within(report).getByLabelText('Chart 1 kind') as HTMLSelectElement).options).map(o => o.textContent))
+      .toEqual(['Line (default)', 'Filled area', 'Totals table only'])
+    fireEvent.change(within(report).getByLabelText('Chart 1 kind'), { target: { value: 'table' } })
+    expect((within(report).getByLabelText('Totals table under chart 1') as HTMLInputElement).disabled).toBe(true)
+    expect(validatePages(latest, entities).count).toBe(0)
+
+    // Order has one enum, so a stacked chart has nothing to split by.
+    fireEvent.change(within(report).getByLabelText('Group by'), { target: { value: 'status' } })
+    fireEvent.change(within(report).getByLabelText('Chart 1 kind'), { target: { value: 'stacked' } })
+    expect(validatePages(latest, entities).problems).toEqual(['Page “r” is stacked, but Order has no second enum or boolean field'])
   })
 
   it('adds a wizard with its steps spelled out, and moves a field between steps', () => {
@@ -1376,5 +1405,35 @@ describe('PagesEditor', () => {
     expect(screen.getByText('The start page is open to everyone — make another page the start page to restrict this one')).toBeTruthy()
     openRow('orders')
     expect((screen.getByLabelText('Only ADMIN') as HTMLInputElement).disabled).toBe(false)
+  })
+})
+
+describe('PagesEditor dashboard filters and click targets', () => {
+  it('ticks the dashboard filters and picks the page a widget’s clicks open', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'bar', entity: 'Order' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order', title: 'Orders' },
+      { id: 'revenue', type: 'report', entity: 'Order', title: 'Revenue', chart: {} },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', title: 'Customers' },
+    ]} />)
+    openRow('home')
+    const chips = document.querySelector('[data-dashboard-filters]') as HTMLElement
+    expect(within(chips).getAllByRole('checkbox').map(el => el.getAttribute('aria-label')))
+      .toEqual(['Filter by Status', 'Filter by Customer', 'Filter by Bill to'])
+    fireEvent.click(within(chips).getByLabelText('Filter by Status'))
+    fireEvent.click(within(chips).getByLabelText('Filter by Customer'))
+    expect(latest[0].filters).toEqual(['status', 'customer'])
+    expect(document.querySelector('[data-preview-dashboard-filters]')?.textContent).toContain('Status')
+    fireEvent.click(within(chips).getByLabelText('Filter by Status'))
+    expect(latest[0].filters).toEqual(['customer'])
+
+    // Only the Order pages can take the clicks of an Order widget.
+    const target = screen.getAllByLabelText('Clicks open')[1] as HTMLSelectElement
+    expect([...target.options].map(o => o.textContent)).toEqual(['Automatic (the entity’s list)', 'Orders', 'Revenue (report)'])
+    fireEvent.change(target, { target: { value: 'revenue' } })
+    expect(latest[0].widgets?.[1].drillTo).toBe('revenue')
+    fireEvent.change(target, { target: { value: '' } })
+    expect(latest[0].widgets?.[1].drillTo).toBeUndefined()
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
   })
 })

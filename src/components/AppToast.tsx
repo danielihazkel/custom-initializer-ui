@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Toast } from '../types'
 
@@ -8,11 +8,15 @@ interface Props {
 }
 
 export function AppToast({ toast, onClear }: Props) {
+  // Callers pass an inline arrow; keying the timer on it would restart it on every
+  // parent render, so the toast would outlive its 3 s.
+  const clearRef = useRef(onClear)
+  clearRef.current = onClear
   useEffect(() => {
     if (!toast) return
-    const t = setTimeout(onClear, 3000)
+    const t = setTimeout(() => clearRef.current(), 3000)
     return () => clearTimeout(t)
-  }, [toast, onClear])
+  }, [toast])
 
   return (
     <AnimatePresence>

@@ -264,6 +264,22 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               )}
             </span>
           </div>
+          {screen.filters.length > 0 && (
+            <Editable {...link} control="filters" label="Edit the dashboard filters" className="block w-full">
+              <div className="flex flex-wrap items-center gap-1" data-preview-dashboard-filters>
+                <span className="inline-flex items-center gap-0.5 text-[9px] text-secondary">
+                  <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">filter_alt</span>
+                  {preview.strings.filters}
+                </span>
+                {screen.filters.map((label, i) => (
+                  <span key={`${i}:${label}`} className="inline-flex items-center gap-0.5 rounded border border-outline-variant px-1 py-0.5 text-[9px] text-secondary">
+                    {label}
+                    <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">expand_more</span>
+                  </span>
+                ))}
+              </div>
+            </Editable>
+          )}
           <div ref={gridRef} className="grid grid-cols-4 gap-1.5">
             {screen.widgets.map(w => (
               <Widget
@@ -349,9 +365,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           <Editable {...link} control="chart.groupBy" label="Edit the chart" className="block w-full">
             <div className="rounded border border-outline-variant p-2">
               <p className="mb-1 text-[10px] font-semibold text-on-surface">{screen.chartTitle}</p>
-              {screen.chart.line
-                ? <LineChart points={screen.chart.bars} accent={accent} />
-                : <Bars bars={screen.chart.bars} accent={accent} />}
+              <ReportChartShape kind={screen.chart.kind} line={screen.chart.line} bars={screen.chart.bars} accent={accent} />
             </div>
           </Editable>
           {screen.chartTable && <TotalsTable bars={screen.chart.bars} group={screen.groupLabel} value={screen.valueLabel} total={screen.totalLabel} />}
@@ -361,7 +375,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                 <Editable key={ci} {...link} control={`chart${ci + 2}.groupBy`} label={`Edit chart ${ci + 2}`} className="block min-w-0">
                   <div className="rounded border border-outline-variant p-1.5" data-preview-chart={ci + 1}>
                     <p className="mb-1 truncate text-[9px] font-semibold text-on-surface">{c.title}</p>
-                    {c.line ? <LineChart points={c.bars} accent={accent} /> : <Bars bars={c.bars.slice(0, 4)} accent={accent} />}
+                    <ReportChartShape kind={c.kind} line={c.line} bars={c.line ? c.bars : c.bars.slice(0, 4)} accent={accent} />
                     {c.table && <TotalsTable bars={c.bars} value={screen.valueLabel} total={screen.totalLabel} />}
                   </div>
                 </Editable>
@@ -856,6 +870,35 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
             <p className="truncate text-[8px] text-secondary">{widget.series.join(' · ')}</p>
           </div>
         )}
+        {widget.kind === 'pivot' && (
+          <table className="mt-0.5 w-full text-[8px]" data-preview-pivot>
+            <thead>
+              <tr className="text-secondary">
+                <th />
+                {widget.columns.map(c => <th key={c} className="truncate px-0.5 text-end font-normal">{c}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {widget.rows.map(row => (
+                <tr key={row.label} className="border-t border-outline-variant/60">
+                  <th className="truncate pe-1 text-start font-normal text-secondary">{row.label}</th>
+                  {row.cells.map((v, i) => <td key={i} className="px-0.5 text-end tabular-nums text-on-surface">{Math.round(v)}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {widget.kind === 'activity' && (
+          <ul className="mt-0.5 space-y-0.5" data-preview-activity>
+            {widget.rows.map((row, i) => (
+              <li key={i} className="flex items-center justify-between gap-1 text-[9px]">
+                <span className="min-w-0 truncate"><span style={{ color: accent }}>{row.label}</span><span className="text-secondary"> · {row.what}</span></span>
+                <span className="shrink-0 text-[8px] text-secondary">{row.ago}</span>
+              </li>
+            ))}
+            {widget.rows.length === 0 && <li className="text-[9px] text-secondary">No audited entity</li>}
+          </ul>
+        )}
         {widget.kind === 'text' && (
           <div className="mt-0.5 space-y-0.5" data-preview-text>
             {widget.paragraphs.slice(0, 3).map((p, i) => <p key={i} className="line-clamp-2 text-[9px] text-on-surface">{p}</p>)}
@@ -931,6 +974,13 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
 }
 
 /** A small ring of shares, shaded from the accent. */
+/** A report chart as its kind draws it: a ring, a (filled) line, bars — or nothing over its table. */
+function ReportChartShape({ kind, line, bars, accent }: { kind?: string; line: boolean; bars: PreviewBar[]; accent: string }) {
+  if (kind === 'table') return null
+  if (kind === 'donut') return <Donut bars={bars} accent={accent} />
+  return line ? <LineChart points={bars} accent={accent} /> : <Bars bars={bars} accent={accent} />
+}
+
 function Donut({ bars, accent }: { bars: PreviewBar[]; accent: string }) {
   const total = bars.reduce((a, b) => a + b.value, 0) || 1
   const c = 2 * Math.PI * 14

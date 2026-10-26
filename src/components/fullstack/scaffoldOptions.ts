@@ -36,6 +36,8 @@ export const SCAFFOLD_OPTIONS: ScaffoldOption[] = [
   { value: 'csvImport', label: 'CSV import', hint: 'POST /import (every row checked, all saved or none) + Import button with column matching', entityHint: 'POST /import + Import button', perEntity: true },
   { value: 'bulkDelete', label: 'Bulk delete', hint: 'Select rows, DELETE /bulk across all', entityHint: 'row selection + DELETE /bulk', perEntity: true },
   { value: 'bulkUpdate', label: 'Bulk edit', hint: 'Select rows, set one field, PATCH /bulk across all', entityHint: 'row selection + PATCH /bulk', perEntity: true },
+  { value: 'inlineEdit', label: 'Inline cell edit', hint: 'Edit a table cell in place (a pencil on hover), saved with the row\'s PUT', entityHint: 'table cells edited in place', perEntity: true },
+  { value: 'optimisticLocking', label: 'Optimistic locking', hint: '@Version column: a save over someone else\'s newer change gets a 409, and the form offers to reload or overwrite', entityHint: '@Version + stale-save notice', perEntity: true },
   { value: 'seedData', label: 'Demo data', hint: 'Seeds 8 rows per entity on first start (parents before children); off via app.demo-data.enabled=false', perEntity: false },
   { value: 'rtl', label: 'RTL layout', hint: 'dir="rtl" + Hebrew lang; mirrored right-to-left UI', perEntity: false },
 ]

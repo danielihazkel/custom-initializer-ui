@@ -31,7 +31,7 @@ describe('validating the donut, stacked and text widgets', () => {
     ]), entities)
     expect(v.byPage[0]).toMatchObject({
       'widget.0.series': 'needs a second enum or boolean field to split by',
-      'widget.1.series': 'only a stacked chart takes a series',
+      'widget.1.series': 'only a stacked chart or a pivot takes a series',
       'widget.2.text': 'needs some text',
     })
   })

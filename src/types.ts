@@ -365,10 +365,13 @@ export interface FullstackFieldDef {
 }
 
 /** Per-entity override of a project-wide scaffold opt (true = force on, false = force off;
- *  absent = inherit). Keys: audit, softDelete, csvExport, bulkDelete, bulkUpdate, tests. */
+ *  absent = inherit). Keys: audit, softDelete, csvExport, bulkDelete, bulkUpdate, tests, csvImport,
+ *  optimisticLocking, inlineEdit. */
 export type FullstackEntityOpts = Partial<Record<FullstackEntityOptKey, boolean>>
 export type FullstackEntityOptKey = 'audit' | 'softDelete' | 'csvExport' | 'bulkDelete' | 'bulkUpdate' | 'tests' | 'csvImport'
-export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests', 'csvImport']
+  | 'optimisticLocking' | 'inlineEdit'
+export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests', 'csvImport',
+  'optimisticLocking', 'inlineEdit']
 
 // v1 supports the FK-owning side only (MANY_TO_ONE); the inverse @OneToMany is auto-derived
 // server-side via the inverseCollections opt.
@@ -483,6 +486,9 @@ export interface FullstackStarterRequest {
   entities: FullstackEntityDef[]
   /** Frontend page layout; omitted = the classic shell (a dashboard + one list page per entity). */
   pages?: FullstackPageDef[]
+  /** The editor's own snapshot (its JSON export), written to the zip's menora-model.json so the
+   *  project can be reopened here. Ignored by generation; sent by Generate only. */
+  editorModel?: unknown
 }
 
 export interface AdminDepartment {
@@ -555,8 +561,8 @@ export interface FullstackListSort {
 /** A dashboard widget: one number, a breakdown by an enum/boolean field, a time series over a
  *  date field, the latest rows, the largest groups ranked, or one number against a target. */
 export interface FullstackWidgetDef {
-  kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'line' | 'recent' | 'top' | 'progress' | 'text' | 'links' | 'list'
-  /** The entity the widget reads — empty for a text or links widget. */
+  kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'pivot' | 'line' | 'recent' | 'top' | 'progress' | 'activity' | 'text' | 'links' | 'list'
+  /** The entity the widget reads — empty for a text, links or activity widget. */
   entity: string
   title?: string
   /** bar: the enum/boolean field; line: the date field. Defaults to the entity's first of that kind. */
@@ -581,7 +587,10 @@ export interface FullstackWidgetDef {
   compare?: boolean
   /** progress: the value the bar fills up to (a positive number, as written). */
   target?: string
-  /** stacked: the enum/boolean field each bar is split by (default: the entity's next one). */
+  /** activity: the audited entities whose latest changes it lists (default: every audited one, up to 6). */
+  entities?: string[]
+  /** stacked: the enum/boolean field each bar is split by (default: the entity's next one); pivot:
+   *  the enum, boolean or relation laid out in columns (default: the next one after its rows). */
   series?: string
   /** text: the note itself; a blank line starts a new paragraph. */
   text?: string
@@ -592,7 +601,16 @@ export interface FullstackWidgetDef {
   columns?: string[]
   /** list: the column it opens sorted by. */
   sort?: FullstackListSort
+  /** Any widget with an entity: the page its clicks and "View all" open — a visible entity-list or
+   *  report page of the same entity. Absent: the entity's own list. */
+  drillTo?: string
 }
+
+/** A list action a list page can leave out (FullstackPageValidator.listSpec). */
+export type FullstackListAction = 'new' | 'edit' | 'delete' | 'export' | 'import' | 'bulk'
+
+/** How a report chart is drawn: bar/donut/stacked/table for a group, line/area/table over time. */
+export type FullstackChartKind = 'bar' | 'donut' | 'stacked' | 'line' | 'area' | 'table'
 
 /** A report page's single chart: bars when `groupBy` is an enum/boolean, a line when it is a date. */
 export interface FullstackChartDef {
@@ -602,6 +620,10 @@ export interface FullstackChartDef {
   field?: string
   /** The grouped totals table under the chart. Absent: under a report's first chart only. */
   table?: boolean
+  /** How it is drawn. Absent: bars, or a line over time. */
+  kind?: FullstackChartKind
+  /** A stacked chart: the enum/boolean field that splits each bar. Absent: the next one. */
+  series?: string
 }
 
 /** The generated security's logical roles (its Constants). */
@@ -657,6 +679,8 @@ export interface FullstackPageDef {
   /** entity-list: where a row opens — the quick-look drawer, a pane beside the rows (the open row
    *  in the route) or the entity's record page. Default: the record page when there is one, else the drawer. */
   detail?: FullstackListDetail
+  /** entity-list: the actions its list leaves out — presentation only, the API still answers them. */
+  hideActions?: FullstackListAction[]
   /** dashboard */
   widgets?: FullstackWidgetDef[]
   /** dashboard: a period picker over the widgets' dates, opening on this period. */
@@ -664,6 +688,9 @@ export interface FullstackPageDef {
   /** dashboard: reload the widgets every so many seconds while the page is open (30, 60, 300 or
    *  900). Absent: only the generated Refresh button reloads them. */
   refreshSeconds?: number
+  /** dashboard: up to 4 enum, boolean or relation names its widgets' entities filter by — one
+   *  control each above the widgets, setting every widget whose entity has it. */
+  filters?: string[]
   /** tabs: 2–6 other pages (never a tabs or record page). */
   tabs?: { title?: string; page: string }[]
   /** master-detail: the entity listed on the left. Needs a single primary key. */

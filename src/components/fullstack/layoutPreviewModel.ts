@@ -1,4 +1,4 @@
-import type { FullstackAgg, FullstackBucket, FullstackEntityDef, FullstackFieldDef, FullstackListDetail, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
+import type { FullstackAgg, FullstackBucket, FullstackChartKind, FullstackEntityDef, FullstackFieldDef, FullstackListDetail, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
 import { enumLabel } from './enumLabels'
 import { humanize } from './naming'
 import { describePresetValue, pageLabel as linkLabel } from './pageLayout'
@@ -21,6 +21,10 @@ import {
   childTabEntity,
   childTabVia,
   reloads,
+  activityEntities,
+  defaultPivotColumns,
+  dashboardFilterEntities,
+  dashboardFilterShape,
 } from './pageLayout'
 import { buildUiPreview, fieldLabel } from './uiPreview'
 import { parseContent, type ContentBlock } from './contentMarkdown'
@@ -75,6 +79,8 @@ export type PreviewWidget = WidgetBase & (
   | { kind: 'bar'; bars: PreviewBar[] }
   | { kind: 'donut'; bars: PreviewBar[] }
   | { kind: 'stacked'; rows: { label: string; parts: number[] }[]; series: string[] }
+  | { kind: 'pivot'; columns: string[]; rows: { label: string; cells: number[] }[] }
+  | { kind: 'activity'; rows: { label: string; what: string; ago: string }[] }
   | { kind: 'text'; paragraphs: string[] }
   | { kind: 'links'; tiles: { label: string; icon: string }[] }
   | { kind: 'list'; table: PreviewTable }
@@ -112,6 +118,8 @@ export interface PreviewTable {
 export type PreviewScreen =
   | {
     type: 'dashboard'; title: string; description?: string; widgets: PreviewWidget[]; period: string | null
+    /** The dashboard's filter controls above the widgets, by label (none: no filter row). */
+    filters: string[]
     /** The generated Refresh button, when a widget shows data; with the timer's interval when set. */
     refresh: { label: string; every: string | null } | null
   }
@@ -154,11 +162,11 @@ export type PreviewScreen =
     filters: string[]
     presetChips: string[]
     chartTitle: string
-    chart: { line: boolean; bars: PreviewBar[] }
+    chart: { line: boolean; bars: PreviewBar[]; kind?: FullstackChartKind }
     /** The first chart's totals table is drawn (its `table`, default on). */
     chartTable: boolean
     /** A report's second to fourth charts, drawn under the first; `table` as for the first (default off). */
-    moreCharts: { title: string; line: boolean; bars: PreviewBar[]; table: boolean }[]
+    moreCharts: { title: string; line: boolean; bars: PreviewBar[]; table: boolean; kind?: FullstackChartKind }[]
     groupLabel: string
     valueLabel: string
     totalLabel: string
@@ -210,6 +218,7 @@ const STRINGS = {
     percentOfTarget: '{x}% of target', periodAll: 'All time', period7d: 'Last 7 days',
     period30d: 'Last 30 days', period90d: 'Last 90 days', periodYtd: 'This year', period12m: 'Last 12 months',
     perPage: '{n} per page', opensRecord: 'rows open their page', opensDrawer: 'rows open in a drawer', newestBy: 'Newest by {x}',
+    recentActivity: 'Recent activity', activityCreated: 'created', activityUpdated: 'updated',
   },
   he: {
     dashboard: 'לוח בקרה', xByY: '{x} לפי {y}', xByYAndZ: '{x} לפי {y} ו{z}', recentX: '{x} – אחרונים', xOverTime: '{x} לאורך זמן',
@@ -221,6 +230,7 @@ const STRINGS = {
     period30d: '30 הימים האחרונים', period90d: '90 הימים האחרונים', periodYtd: 'מתחילת השנה',
     period12m: '12 החודשים האחרונים',
     perPage: '{n} בעמוד', opensRecord: 'שורה נפתחת בעמוד שלה', opensDrawer: 'שורה נפתחת במגירה', newestBy: 'החדשים לפי {x}',
+    recentActivity: 'פעילות אחרונה', activityCreated: 'נוצר', activityUpdated: 'עודכן',
   },
 } as const
 
@@ -418,8 +428,11 @@ export function buildLayoutPreview(
   function presetChips(e: FullstackEntityDef, presetFilter?: Record<string, string>): string[] {
     return Object.entries(presetFilter ?? {}).map(([name, value]) => {
       const f = fieldOf(e, name)
-      if (!f) return `${name}: ${value}`
-      const shown = f.type === 'ENUM' ? enumLabel(f, value)
+      if (!f) {
+        const relation = (e.relations ?? []).find(r => `${r.fieldName}Id` === name)
+        return relation ? `${humanize(relation.fieldName)}: ${value.split(',').map(id => `#${id.trim()}`).join(', ')}` : `${name}: ${value}`
+      }
+      const shown = f.type === 'ENUM' ? value.split(',').map(v => enumLabel(f, v.trim())).join(' / ')
         : f.type === 'BOOLEAN' ? (value === 'true' ? t('trueLabel') : t('falseLabel'))
           : describePresetValue(f, value)
       return `${fieldLabel(f)}: ${shown}`
@@ -489,6 +502,28 @@ export function buildLayoutPreview(
               kind: 'text',
               title: w.title ?? '',
               paragraphs: (w.text ?? '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean),
+            }
+          }
+          if (w.kind === 'activity') {
+            // A few made-up changes over the audited entities, newest first.
+            const sources = activityEntities(w, entities, ctx.projectOpts).map(name => entityOf(name)).filter((x): x is FullstackEntityDef => !!x)
+            const limit = Math.min(Math.max(w.limit ?? 10, 1), 20)
+            const rand = seeded(`${seedBase}:${wi}:activity`)
+            return {
+              index: wi,
+              span: Math.min(Math.max(w.span ?? defaultSpan(w.kind), 1), 4),
+              filters: [],
+              kind: 'activity',
+              title: w.title || t('recentActivity'),
+              rows: sources.length === 0 ? [] : Array.from({ length: Math.min(limit, 5) }, (_, i) => {
+                const e = sources[i % sources.length]
+                const { singular } = labels(e)
+                return {
+                  label: rowLabel(e, 30 - i, singular, t),
+                  what: `${singular} ${rand() < 0.4 ? t('activityCreated') : t('activityUpdated')}`,
+                  ago: `${(i + 1) * 7} min`,
+                }
+              }),
             }
           }
           const e = entityOf(w.entity)
@@ -599,6 +634,37 @@ export function buildLayoutPreview(
                 series: seriesLabels,
               }
             }
+            case 'pivot': {
+              const rowsKey = w.groupBy ?? defaultTopGroupBy(e)
+              const columnsKey = w.series ?? defaultPivotColumns(e, rowsKey)
+              // An axis is a field's values, or a relation's first few related records.
+              const axis = (key: string | undefined, salt: string): string[] => {
+                const relation = (e.relations ?? []).find(r => r.type === 'MANY_TO_ONE' && r.fieldName === key)
+                if (relation) {
+                  const target = entityOf(relation.targetEntity)
+                  return Array.from({ length: 3 }, (_, i) => (target ? rowLabel(target, i + 1, labels(target).singular, t) : `#${i + 1}`))
+                }
+                const f = fieldOf(e, key)
+                return f ? breakdown(f, undefined, undefined, `${seed}:${salt}`).map(b => b.label).slice(0, 4) : []
+              }
+              const rowLabels = axis(rowsKey, 'rows')
+              const columns = axis(columnsKey, 'columns')
+              if (!rowsKey || !columnsKey || rowsKey === columnsKey || rowLabels.length === 0 || columns.length === 0) {
+                return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} needs two fields to cross` }
+              }
+              const rand = seeded(seed)
+              const [lo, hi] = magnitude(w.agg, valueField)
+              const nameOf = (key: string) => {
+                const f = fieldOf(e, key)
+                return f ? fieldLabel(f) : humanize(key)
+              }
+              return {
+                ...base, kind: 'pivot',
+                title: w.title || t('xByYAndZ', { x: measured, y: nameOf(rowsKey), z: nameOf(columnsKey) }),
+                columns,
+                rows: rowLabels.map(label => ({ label, cells: columns.map(() => between(rand, lo, hi)) })),
+              }
+            }
             case 'line': {
               const date = fieldOf(e, w.groupBy ?? defaultLineGroupBy(e))
               if (!date) return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} has no date field` }
@@ -625,7 +691,15 @@ export function buildLayoutPreview(
         const every = page.refreshSeconds == null ? null
           : page.refreshSeconds < 60 ? `${page.refreshSeconds}s` : `${Math.round(page.refreshSeconds / 60)}m`
         const refresh = (page.widgets ?? []).some(reloads) ? { label: t('refresh'), every } : null
-        return { type: 'dashboard', title: page.title || t('dashboard'), description, widgets, period, refresh }
+        const reach = dashboardFilterEntities(page, entities)
+        const filters = (page.filters ?? []).filter(name => name.trim()).map(name => {
+          for (const e of reach) {
+            const found = dashboardFilterShape(e, name, entities)
+            if (found) return found.field ? fieldLabel(found.field) : humanize(found.name)
+          }
+          return humanize(name.trim())
+        })
+        return { type: 'dashboard', title: page.title || t('dashboard'), description, widgets, period, refresh, filters }
       }
       case 'entity-list': {
         const e = entityOf(page.entity)
@@ -760,9 +834,9 @@ export function buildLayoutPreview(
           const groupLabel = relation ? humanize(relation.fieldName) : group ? fieldLabel(group) : undefined
           const title = groupLabel ? (line ? t('xOverTime', { x: measured }) : t('xByY', { x: measured, y: groupLabel })) : measured
           // The totals table: the chart's own choice, else the first chart only.
-          return { groupLabel, reduces, measured, line, bars, title, table: chart.table ?? ci === 0 }
+          return { groupLabel, reduces, measured, line, bars, title, table: chart.kind === 'table' || (chart.table ?? ci === 0), kind: chart.kind }
         })
-        const { groupLabel, reduces, measured, line, bars } = drawn[0]
+        const { groupLabel, reduces, measured, line, bars, kind } = drawn[0]
         const csv = (e.opts?.csvExport ?? ctx.projectOpts.includes('csvExport'))
         return {
           type: 'report',
@@ -771,9 +845,9 @@ export function buildLayoutPreview(
           filters: ui.filters,
           presetChips: presetChips(e, page.presetFilter),
           chartTitle: drawn[0].title,
-          chart: { line, bars },
+          chart: { line, bars, kind },
           chartTable: drawn[0].table,
-          moreCharts: drawn.slice(1).map(c => ({ title: c.title, line: c.line, bars: c.bars, table: c.table })),
+          moreCharts: drawn.slice(1).map(c => ({ title: c.title, line: c.line, bars: c.bars, table: c.table, kind: c.kind })),
           groupLabel: groupLabel ?? '—',
           valueLabel: reduces ? measured : t('count'),
           totalLabel: t('total'),

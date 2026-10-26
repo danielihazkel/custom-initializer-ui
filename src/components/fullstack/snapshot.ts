@@ -64,6 +64,9 @@ export interface FullstackSnapshot {
   pages?: FullstackPageDef[]
   /** The generated shell's navigation for the layout. Absent = a sidebar whose sections do not fold. */
   nav?: FullstackNav
+  /** Editor-only: keys of the layout warnings the user dismissed (`LayoutWarning.key`). Never sent
+   *  to the generator; kept in the model so a dismissal travels with exports and team models. */
+  dismissedWarnings?: string[]
 }
 
 /** Builds a detached snapshot (uids stripped, arrays copied) so later edits never mutate it. */
@@ -78,6 +81,7 @@ export function makeSnapshot(s: FullstackSnapshot): FullstackSnapshot {
     ...(s.colorPalette ? { colorPalette: s.colorPalette } : {}),
     ...(s.pages && s.pages.length > 0 ? { pages: JSON.parse(JSON.stringify(s.pages)) as FullstackPageDef[] } : {}),
     ...(s.nav && (s.nav.style || s.nav.collapsibleGroups) ? { nav: { ...s.nav } } : {}),
+    ...(s.dismissedWarnings && s.dismissedWarnings.length > 0 ? { dismissedWarnings: [...s.dismissedWarnings] } : {}),
   }
 }
 
@@ -110,6 +114,9 @@ export function describeSnapshotChange(prev: FullstackSnapshot, next: FullstackS
   if (prev.colorPalette !== next.colorPalette) return 'Changed colour palette'
   if (JSON.stringify(prev.nav ?? {}) !== JSON.stringify(next.nav ?? {})) return 'Changed the navigation'
   if (JSON.stringify(prev.pages ?? []) !== JSON.stringify(next.pages ?? [])) return describePagesChange(prev.pages ?? [], next.pages ?? [])
+  const da = prev.dismissedWarnings ?? []; const db = next.dismissedWarnings ?? []
+  if (db.length > da.length) return db.length - da.length === 1 ? 'Dismissed a warning' : 'Dismissed warnings'
+  if (db.length < da.length) return da.length - db.length === 1 ? 'Restored a warning' : 'Restored warnings'
   return 'Edit'
 }
 
@@ -149,6 +156,7 @@ export function snapshotChangeKey(prev: FullstackSnapshot, next: FullstackSnapsh
   for (let i = 0; i < pb.length; i++) {
     if (JSON.stringify(pa[i]) !== JSON.stringify(pb[i])) return `p${i}`
   }
+  if (JSON.stringify(prev.dismissedWarnings ?? []) !== JSON.stringify(next.dismissedWarnings ?? [])) return 'dismissed'
   return 'none'
 }
 
@@ -173,6 +181,7 @@ export function isSnapshot(v: unknown): v is FullstackSnapshot {
     && (s.colorPalette === undefined || typeof s.colorPalette === 'string')
     && (s.pages === undefined || Array.isArray(s.pages))
     && (s.nav === undefined || (typeof s.nav === 'object' && s.nav !== null))
+    && (s.dismissedWarnings === undefined || (Array.isArray(s.dismissedWarnings) && s.dismissedWarnings.every(k => typeof k === 'string')))
 }
 
 /** Marker written into exported files so a stray JSON document is recognisable as a model. */
@@ -188,14 +197,55 @@ export function toExportedModel(snapshot: FullstackSnapshot): ExportedModel {
   return { format: EXPORT_FORMAT, exportedAt: new Date().toISOString(), ...makeSnapshot(snapshot) }
 }
 
-/** Parses an exported file (or a bare snapshot pasted from elsewhere). Returns a plain snapshot
- *  without the file-level marker fields, or an error message for the user. */
+/** Marker of a generated zip's `menora-model.json` that holds the request itself (it was sent
+ *  without the editor's snapshot — by curl, say): `{ format, request }`. */
+export const REQUEST_MODEL_FORMAT = 'menora-fullstack-request/1'
+
+const META_KEYS: (keyof ProjectMeta)[] = [
+  'groupId', 'artifactId', 'name', 'description', 'version', 'packaging', 'packageName', 'domainPackage',
+  'bootVersion', 'javaVersion', 'dashboardTitle', 'dashboardOverview', 'locale', 'department',
+]
+
+/** The editor model a `/starter-fullstack.zip` request describes: its flat project fields become
+ *  `meta`, `dependencies` / `opts.scaffold` / the template sets the editor's selections. A request
+ *  that named no dependencies leaves the editor with none selected. */
+export function snapshotFromRequest(request: Record<string, unknown>): FullstackSnapshot {
+  const meta: Partial<ProjectMeta> = {}
+  for (const key of META_KEYS) {
+    const value = request[key]
+    if (typeof value === 'string') (meta as Record<string, string>)[key] = value
+  }
+  const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+  const opts = request.opts && typeof request.opts === 'object' ? request.opts as Record<string, unknown> : {}
+  return makeSnapshot({
+    meta: normalizeMeta(meta),
+    entities: Array.isArray(request.entities) ? request.entities as FullstackEntityDef[] : [],
+    selectedDeps: strings(request.dependencies),
+    scaffoldOpts: strings(opts.scaffold),
+    backendSet: typeof request.backendTemplateSet === 'string' ? request.backendTemplateSet : 'spring-jpa-crud',
+    frontendSet: typeof request.frontendTemplateSet === 'string' ? request.frontendTemplateSet : 'react-tailwind-crud',
+    ...(typeof request.colorPalette === 'string' ? { colorPalette: request.colorPalette } : {}),
+    ...(Array.isArray(request.pages) ? { pages: request.pages as FullstackPageDef[] } : {}),
+    ...(request.nav && typeof request.nav === 'object' ? { nav: request.nav as FullstackNav } : {}),
+  })
+}
+
+/** Parses an exported file (or a bare snapshot pasted from elsewhere, or a generated zip's
+ *  `menora-model.json` in either of its shapes). Returns a plain snapshot without the file-level
+ *  marker fields, or an error message for the user. */
 export function parseExportedModel(text: string): { snapshot: FullstackSnapshot } | { error: string } {
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
   } catch {
     return { error: 'Not valid JSON' }
+  }
+  if (parsed && typeof parsed === 'object' && (parsed as { format?: unknown }).format === REQUEST_MODEL_FORMAT) {
+    const request = (parsed as { request?: unknown }).request
+    if (!request || typeof request !== 'object' || !Array.isArray((request as { entities?: unknown }).entities)) {
+      return { error: 'Not a fullstack model file (the request in it has no entities)' }
+    }
+    return { snapshot: snapshotFromRequest(request as Record<string, unknown>) }
   }
   if (!isSnapshot(parsed)) {
     return { error: 'Not a fullstack model file (expected meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet)' }

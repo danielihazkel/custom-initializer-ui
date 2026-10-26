@@ -216,7 +216,9 @@ export interface FullstackErrors {
   count: number
 }
 
-export function validateEntities(entities: FullstackEntityDef[]): FullstackErrors {
+/** `projectOpts` (the project's `opts.scaffold`) is needed for the one rule that depends on an
+ *  option: optimistic locking takes the name `version` for itself. */
+export function validateEntities(entities: FullstackEntityDef[], projectOpts: string[] = []): FullstackErrors {
   const result: FullstackErrors = { entities: {}, count: 0 }
 
   // The backend requires at least one entity (FullstackRequestValidator.java).
@@ -345,6 +347,21 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
         result.count += Object.keys(fErr).length
       }
     })
+
+    // Optimistic locking adds a `version` property and column (FullstackRequestValidator.checkVersionName).
+    const locking = (entity.opts?.optimisticLocking ?? projectOpts.includes('optimisticLocking'))
+      && !entity.readOnly && entity.viewQuery == null
+    if (locking) {
+      entity.fields.forEach((field, fIdx) => {
+        const taken = field.name.trim().toLowerCase() === 'version' || field.column?.trim().toLowerCase() === 'version'
+        const existing = eErr.fields[fIdx] ?? {}
+        if (taken && !existing.name) {
+          existing.name = "'version' is taken by optimistic locking — rename it, or turn locking off for this entity"
+          eErr.fields[fIdx] = existing
+          result.count += 1
+        }
+      })
+    }
 
     // Duplicate field names within the entity
     for (const idxs of seenFieldNames.values()) {
