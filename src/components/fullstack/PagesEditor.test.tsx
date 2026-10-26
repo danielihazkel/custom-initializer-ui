@@ -888,6 +888,29 @@ describe('PagesEditor', () => {
     expect(latest[1].charts).toBeUndefined()
   })
 
+  it('draws a report chart as a ring, then drops the ring for a date grouping', () => {
+    render(<Harness initial={[{ id: 'r', type: 'report', entity: 'Order', chart: { groupBy: 'status' } }]} />)
+    const report = openRow('r') as HTMLElement
+    const kind = within(report).getByLabelText('Chart 1 kind') as HTMLSelectElement
+    expect(Array.from(kind.options).map(o => o.textContent)).toEqual(['Bars (default)', 'Ring of shares', 'Stacked bars', 'Totals table only'])
+    fireEvent.change(kind, { target: { value: 'donut' } })
+    expect(latest[0].chart).toEqual({ groupBy: 'status', kind: 'donut' })
+
+    // A ring cannot draw a date: the new grouping keeps the chart, not the drawing.
+    fireEvent.change(within(report).getByLabelText('Group by'), { target: { value: 'placedOn' } })
+    expect(latest[0].chart).toEqual({ groupBy: 'placedOn' })
+    expect(Array.from((within(report).getByLabelText('Chart 1 kind') as HTMLSelectElement).options).map(o => o.textContent))
+      .toEqual(['Line (default)', 'Filled area', 'Totals table only'])
+    fireEvent.change(within(report).getByLabelText('Chart 1 kind'), { target: { value: 'table' } })
+    expect((within(report).getByLabelText('Totals table under chart 1') as HTMLInputElement).disabled).toBe(true)
+    expect(validatePages(latest, entities).count).toBe(0)
+
+    // Order has one enum, so a stacked chart has nothing to split by.
+    fireEvent.change(within(report).getByLabelText('Group by'), { target: { value: 'status' } })
+    fireEvent.change(within(report).getByLabelText('Chart 1 kind'), { target: { value: 'stacked' } })
+    expect(validatePages(latest, entities).problems).toEqual(['Page “r” is stacked, but Order has no second enum or boolean field'])
+  })
+
   it('adds a wizard with its steps spelled out, and moves a field between steps', () => {
     render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))

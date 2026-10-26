@@ -365,9 +365,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           <Editable {...link} control="chart.groupBy" label="Edit the chart" className="block w-full">
             <div className="rounded border border-outline-variant p-2">
               <p className="mb-1 text-[10px] font-semibold text-on-surface">{screen.chartTitle}</p>
-              {screen.chart.line
-                ? <LineChart points={screen.chart.bars} accent={accent} />
-                : <Bars bars={screen.chart.bars} accent={accent} />}
+              <ReportChartShape kind={screen.chart.kind} line={screen.chart.line} bars={screen.chart.bars} accent={accent} />
             </div>
           </Editable>
           {screen.chartTable && <TotalsTable bars={screen.chart.bars} group={screen.groupLabel} value={screen.valueLabel} total={screen.totalLabel} />}
@@ -377,7 +375,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                 <Editable key={ci} {...link} control={`chart${ci + 2}.groupBy`} label={`Edit chart ${ci + 2}`} className="block min-w-0">
                   <div className="rounded border border-outline-variant p-1.5" data-preview-chart={ci + 1}>
                     <p className="mb-1 truncate text-[9px] font-semibold text-on-surface">{c.title}</p>
-                    {c.line ? <LineChart points={c.bars} accent={accent} /> : <Bars bars={c.bars.slice(0, 4)} accent={accent} />}
+                    <ReportChartShape kind={c.kind} line={c.line} bars={c.line ? c.bars : c.bars.slice(0, 4)} accent={accent} />
                     {c.table && <TotalsTable bars={c.bars} value={screen.valueLabel} total={screen.totalLabel} />}
                   </div>
                 </Editable>
@@ -947,6 +945,13 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
 }
 
 /** A small ring of shares, shaded from the accent. */
+/** A report chart as its kind draws it: a ring, a (filled) line, bars — or nothing over its table. */
+function ReportChartShape({ kind, line, bars, accent }: { kind?: string; line: boolean; bars: PreviewBar[]; accent: string }) {
+  if (kind === 'table') return null
+  if (kind === 'donut') return <Donut bars={bars} accent={accent} />
+  return line ? <LineChart points={bars} accent={accent} /> : <Bars bars={bars} accent={accent} />
+}
+
 function Donut({ bars, accent }: { bars: PreviewBar[]; accent: string }) {
   const total = bars.reduce((a, b) => a + b.value, 0) || 1
   const c = 2 * Math.PI * 14

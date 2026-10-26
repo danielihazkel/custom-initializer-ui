@@ -603,6 +603,9 @@ export interface FullstackWidgetDef {
   drillTo?: string
 }
 
+/** How a report chart is drawn: bar/donut/stacked/table for a group, line/area/table over time. */
+export type FullstackChartKind = 'bar' | 'donut' | 'stacked' | 'line' | 'area' | 'table'
+
 /** A report page's single chart: bars when `groupBy` is an enum/boolean, a line when it is a date. */
 export interface FullstackChartDef {
   groupBy?: string
@@ -611,6 +614,10 @@ export interface FullstackChartDef {
   field?: string
   /** The grouped totals table under the chart. Absent: under a report's first chart only. */
   table?: boolean
+  /** How it is drawn. Absent: bars, or a line over time. */
+  kind?: FullstackChartKind
+  /** A stacked chart: the enum/boolean field that splits each bar. Absent: the next one. */
+  series?: string
 }
 
 /** The generated security's logical roles (its Constants). */

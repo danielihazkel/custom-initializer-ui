@@ -1,6 +1,7 @@
 import type {
   FullstackAgg,
   FullstackChartDef,
+  FullstackChartKind,
   FullstackChildTabDef,
   FullstackDateRange,
   FullstackEntityDef,
@@ -150,7 +151,7 @@ export function reportCharts(page: FullstackPageDef): FullstackChartDef[] {
 }
 
 /** The control key of one chart's setting: `chart.groupBy` for the first, `chart2.groupBy`… after. */
-export function chartControl(index: number, key: 'groupBy' | 'bucket' | 'field'): string {
+export function chartControl(index: number, key: 'groupBy' | 'bucket' | 'field' | 'kind' | 'series'): string {
   return `${index === 0 ? 'chart' : `chart${index + 1}`}.${key}`
 }
 
@@ -321,6 +322,27 @@ export function adoptedGroup(pages: FullstackPageDef[], index: number): string |
 
 /** What a chart can group or split by: any non-key enum/boolean field (the generated `/stats`
  *  groups by every one; only preset filters and drill-downs need the field to be filterable). */
+/** The ways a report chart can be drawn, by whether it groups over a date (`overTime`) or not
+ *  (null: either) — mirrors PageDefinition.ChartKind. */
+export const CHART_KINDS: { value: FullstackChartKind; label: string; overTime: boolean | null }[] = [
+  { value: 'bar', label: 'Bars', overTime: false },
+  { value: 'donut', label: 'Ring of shares', overTime: false },
+  { value: 'stacked', label: 'Stacked bars', overTime: false },
+  { value: 'line', label: 'Line', overTime: true },
+  { value: 'area', label: 'Filled area', overTime: true },
+  { value: 'table', label: 'Totals table only', overTime: null },
+]
+
+/** The kinds a chart grouped this way can take: over a date, by a field, or by a relation (no stacking). */
+export function chartKindsFor(overTime: boolean, byRelation: boolean): typeof CHART_KINDS {
+  return CHART_KINDS.filter(k => (k.overTime == null || k.overTime === overTime) && !(byRelation && k.value === 'stacked'))
+}
+
+/** The series a stacked chart splits by when it names none: the next enum/boolean field. */
+export function defaultChartSeries(entity: FullstackEntityDef | undefined, groupBy: string | undefined): string | undefined {
+  return groupByFields(entity).find(f => f.name !== groupBy)?.name
+}
+
 export function groupByFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
   return (entity?.fields ?? []).filter(f => !f.primaryKey && (f.type === 'ENUM' || f.type === 'BOOLEAN'))
 }
@@ -1408,6 +1430,28 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           }
           for (const issue of aggIssues(chart.agg, chart.field, e, false)) {
             add(chartControl(ci, 'field'), issue.message, `${which} ${issue.summary}`)
+          }
+          const byRelation = !!groupName && relationKeys(e).includes(groupName)
+          if (chart.kind && !chartKindsFor(overTime, byRelation).some(k => k.value === chart.kind)) {
+            add(chartControl(ci, 'kind'), overTime ? `a ${chart.kind} chart cannot draw a date over time`
+              : byRelation && chart.kind === 'stacked' ? 'a stacked chart splits an enum or boolean grouping, not a relation'
+                : `a ${chart.kind} chart draws a date over time`,
+            `${which} is drawn as ${chart.kind}, which does not fit its grouping`)
+          }
+          if (chart.series && chart.kind !== 'stacked') {
+            add(chartControl(ci, 'series'), 'only a stacked chart splits by a series', `${which} splits by “${chart.series}” but is not stacked`)
+          } else if (chart.kind === 'stacked' && !byRelation && !overTime) {
+            const series = chart.series ?? defaultChartSeries(e, groupName)
+            if (!series) {
+              add(chartControl(ci, 'series'), `${e.name} needs a second enum or boolean field to split the bars by`,
+                `${which} is stacked, but ${e.name} has no second enum or boolean field`)
+            } else if (series === groupName || !groupByFields(e).some(f => f.name === series)) {
+              add(chartControl(ci, 'series'), `“${series}” must be an enum or boolean field other than the grouping`,
+                `${which} splits by “${series}”, which is not another enum or boolean field`)
+            }
+          }
+          if (chart.kind === 'table' && chart.table === false) {
+            add(chartControl(ci, 'kind'), 'a table chart is its totals table', `${which} is a table chart without its table`)
           }
         })
         checkPresetFilter(page.presetFilter, e, entityOf, add, where)
@@ -2706,6 +2750,18 @@ export function retargetReport(page: FullstackPageDef, entity: FullstackEntityDe
       delete n.bucket
     }
     if (n.bucket != null && n.groupBy != null && !dateFields(entity).some(f => f.name === n.groupBy)) delete n.bucket
+    const by = n.groupBy ?? defaultReportGroupBy(entity)
+    const overTime = !!by && dateFields(entity).some(f => f.name === by)
+    // Stacking needs a second enum/boolean to split by.
+    if (n.kind && (!chartKindsFor(overTime, !!by && relationKeys(entity).includes(by)).some(k => k.value === n.kind)
+      || (n.kind === 'stacked' && !defaultChartSeries(entity, by)))) {
+      dropped.push('chart kind')
+      delete n.kind
+    }
+    if (n.series != null && (n.kind !== 'stacked' || n.series === by || !groupByFields(entity).some(f => f.name === n.series))) {
+      if (n.kind === 'stacked') dropped.push('series')
+      delete n.series
+    }
     if (n.field != null && !numeric.some(f => f.name === n.field)) {
       dropped.push('aggregate')
       delete n.agg

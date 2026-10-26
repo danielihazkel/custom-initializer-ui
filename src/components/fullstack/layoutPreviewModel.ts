@@ -1,4 +1,4 @@
-import type { FullstackAgg, FullstackBucket, FullstackEntityDef, FullstackFieldDef, FullstackListDetail, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
+import type { FullstackAgg, FullstackBucket, FullstackChartKind, FullstackEntityDef, FullstackFieldDef, FullstackListDetail, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
 import { enumLabel } from './enumLabels'
 import { humanize } from './naming'
 import { describePresetValue, pageLabel as linkLabel } from './pageLayout'
@@ -158,11 +158,11 @@ export type PreviewScreen =
     filters: string[]
     presetChips: string[]
     chartTitle: string
-    chart: { line: boolean; bars: PreviewBar[] }
+    chart: { line: boolean; bars: PreviewBar[]; kind?: FullstackChartKind }
     /** The first chart's totals table is drawn (its `table`, default on). */
     chartTable: boolean
     /** A report's second to fourth charts, drawn under the first; `table` as for the first (default off). */
-    moreCharts: { title: string; line: boolean; bars: PreviewBar[]; table: boolean }[]
+    moreCharts: { title: string; line: boolean; bars: PreviewBar[]; table: boolean; kind?: FullstackChartKind }[]
     groupLabel: string
     valueLabel: string
     totalLabel: string
@@ -775,9 +775,9 @@ export function buildLayoutPreview(
           const groupLabel = relation ? humanize(relation.fieldName) : group ? fieldLabel(group) : undefined
           const title = groupLabel ? (line ? t('xOverTime', { x: measured }) : t('xByY', { x: measured, y: groupLabel })) : measured
           // The totals table: the chart's own choice, else the first chart only.
-          return { groupLabel, reduces, measured, line, bars, title, table: chart.table ?? ci === 0 }
+          return { groupLabel, reduces, measured, line, bars, title, table: chart.kind === 'table' || (chart.table ?? ci === 0), kind: chart.kind }
         })
-        const { groupLabel, reduces, measured, line, bars } = drawn[0]
+        const { groupLabel, reduces, measured, line, bars, kind } = drawn[0]
         const csv = (e.opts?.csvExport ?? ctx.projectOpts.includes('csvExport'))
         return {
           type: 'report',
@@ -786,9 +786,9 @@ export function buildLayoutPreview(
           filters: ui.filters,
           presetChips: presetChips(e, page.presetFilter),
           chartTitle: drawn[0].title,
-          chart: { line, bars },
+          chart: { line, bars, kind },
           chartTable: drawn[0].table,
-          moreCharts: drawn.slice(1).map(c => ({ title: c.title, line: c.line, bars: c.bars, table: c.table })),
+          moreCharts: drawn.slice(1).map(c => ({ title: c.title, line: c.line, bars: c.bars, table: c.table, kind: c.kind })),
           groupLabel: groupLabel ?? '—',
           valueLabel: reduces ? measured : t('count'),
           totalLabel: t('total'),
