@@ -4,7 +4,7 @@ import {
   defaultWizardSteps, renameEntityInPages,
   defaultBarGroupBy, defaultLineGroupBy, defaultOptionLabel, defaultReportGroupBy, describePagesChange,
   adoptedGroup, describePage, describePresetValue, dropTabsTo, duplicatePage, keptPresetFilter, moveNavGroup, navSections, pageFromSuggestion,
-  pagesEmbedding, renameFieldInPages,
+  pagesEmbedding, removePageAt, renameFieldInPages,
   renameGroupInPages, renamePageIdInPages,
   renameEnumValueInPages, renameRelationInPages, reportCharts, suggestPages, validatePages,
 } from './pageLayout'
@@ -485,5 +485,41 @@ describe('related lists that open with their own columns and sort', () => {
     expect(v.byPage[1].sort).toBe('Order cannot sort by “nope”')
     // An entity rename keeps the tab's presentation.
     expect(renameEntityInPages(pages, 'Order', 'Sale')[0].childTabs).toEqual([{ entity: 'Sale', columns: ['status', 'total'], sort: { field: 'placedOn', dir: 'desc' } }])
+  })
+})
+
+describe('dashboard filters and widget click targets follow the layout', () => {
+  const desk: FullstackPageDef = {
+    id: 'desk',
+    type: 'dashboard',
+    filters: ['Status', 'customer'],
+    widgets: [
+      { kind: 'bar', entity: 'Order', drillTo: 'orders' },
+      { kind: 'links', entity: '', pages: ['orders'] },
+    ],
+  }
+  const pages: FullstackPageDef[] = [desk, { id: 'orders', type: 'entity-list', entity: 'Order' }]
+
+  it('follows a page id change into drillTo', () => {
+    const next = renamePageIdInPages(pages, 'orders', 'all-orders')
+    expect(next[0].widgets).toEqual([
+      { kind: 'bar', entity: 'Order', drillTo: 'all-orders' },
+      { kind: 'links', entity: '', pages: ['all-orders'] },
+    ])
+  })
+
+  it('drops drillTo when its page is removed', () => {
+    const next = removePageAt(pages, 1)
+    expect(next[0].widgets).toEqual([{ kind: 'bar', entity: 'Order' }, { kind: 'links', entity: '', pages: [] }])
+    expect(dropTabsTo(pages, 'orders')[0].widgets?.[0]).toEqual({ kind: 'bar', entity: 'Order' })
+    // Nothing points at the dashboard, so the list is untouched.
+    expect(removePageAt(pages, 0)[0]).toBe(pages[1])
+  })
+
+  it('follows a field or relation rename into the filters of a dashboard reading that entity', () => {
+    expect(renameFieldInPages(pages, 'Order', 'status', 'state')[0].filters).toEqual(['state', 'customer'])
+    expect(renameRelationInPages(pages, 'Order', 'customer', 'buyer')[0].filters).toEqual(['Status', 'buyer'])
+    // Another entity's field of the same name leaves them alone.
+    expect(renameFieldInPages(pages, 'Customer', 'status', 'state')[0].filters).toEqual(['Status', 'customer'])
   })
 })

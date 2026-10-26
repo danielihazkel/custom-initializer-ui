@@ -1378,3 +1378,33 @@ describe('PagesEditor', () => {
     expect((screen.getByLabelText('Only ADMIN') as HTMLInputElement).disabled).toBe(false)
   })
 })
+
+describe('PagesEditor dashboard filters and click targets', () => {
+  it('ticks the dashboard filters and picks the page a widget’s clicks open', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'bar', entity: 'Order' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order', title: 'Orders' },
+      { id: 'revenue', type: 'report', entity: 'Order', title: 'Revenue', chart: {} },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', title: 'Customers' },
+    ]} />)
+    openRow('home')
+    const chips = document.querySelector('[data-dashboard-filters]') as HTMLElement
+    expect(within(chips).getAllByRole('checkbox').map(el => el.getAttribute('aria-label')))
+      .toEqual(['Filter by Status', 'Filter by Customer', 'Filter by Bill to'])
+    fireEvent.click(within(chips).getByLabelText('Filter by Status'))
+    fireEvent.click(within(chips).getByLabelText('Filter by Customer'))
+    expect(latest[0].filters).toEqual(['status', 'customer'])
+    expect(document.querySelector('[data-preview-dashboard-filters]')?.textContent).toContain('Status')
+    fireEvent.click(within(chips).getByLabelText('Filter by Status'))
+    expect(latest[0].filters).toEqual(['customer'])
+
+    // Only the Order pages can take the clicks of an Order widget.
+    const target = screen.getAllByLabelText('Clicks open')[1] as HTMLSelectElement
+    expect([...target.options].map(o => o.textContent)).toEqual(['Automatic (the entity’s list)', 'Orders', 'Revenue (report)'])
+    fireEvent.change(target, { target: { value: 'revenue' } })
+    expect(latest[0].widgets?.[1].drillTo).toBe('revenue')
+    fireEvent.change(target, { target: { value: '' } })
+    expect(latest[0].widgets?.[1].drillTo).toBeUndefined()
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+  })
+})

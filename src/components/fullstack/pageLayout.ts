@@ -339,6 +339,93 @@ export function filterableDateFields(entity: FullstackEntityDef | undefined): Fu
   return dateFields(entity).filter(f => f.filterable !== false)
 }
 
+// ── Dashboard filters and widget click targets ──────────────────────────────
+
+/** At most this many dashboard filters (FullstackPageValidator.MAX_DASHBOARD_FILTERS). */
+export const MAX_DASHBOARD_FILTERS = 4
+
+/** The widgets that read an entity — every kind but a note and a launcher. They take the
+ *  dashboard's filters, and their clicks can open a chosen page (`drillTo`). */
+export const readsEntity = (w: FullstackWidgetDef) => w.kind !== 'text' && w.kind !== 'links'
+
+/** The entities a dashboard's filters can reach: those of its entity widgets, once each, in order. */
+export function dashboardFilterEntities(page: FullstackPageDef, entities: FullstackEntityDef[]): FullstackEntityDef[] {
+  const out: FullstackEntityDef[] = []
+  for (const w of page.widgets ?? []) {
+    if (!readsEntity(w) || !w.entity?.trim()) continue
+    const e = entities.find(x => sameName(x.name, w.entity))
+    if (e && !out.includes(e)) out.push(e)
+  }
+  return out
+}
+
+/** How `entity` filters by `name` (ignoring case): its declared spelling and the shape one control
+ *  has to match — the same words FullstackPageValidator.dashboardFilters uses. Undefined when the
+ *  entity has no such non-key, filterable enum/boolean field or MANY_TO_ONE relation. */
+export function dashboardFilterShape(entity: FullstackEntityDef, name: string, entities: FullstackEntityDef[] = []):
+  { name: string; shape: string; field?: FullstackFieldDef } | undefined {
+  const wanted = name.trim().toLowerCase()
+  let found: { name: string; shape: string; field?: FullstackFieldDef } | undefined
+  for (const f of entity.fields) {
+    if (f.name.trim().toLowerCase() === wanted && !f.primaryKey && f.filterable !== false && (f.type === 'ENUM' || f.type === 'BOOLEAN')) {
+      found = { name: f.name, field: f, shape: f.type === 'BOOLEAN' ? 'a yes/no field' : `the values ${(f.enumValues ?? []).join(', ')}` }
+    }
+  }
+  for (const r of entity.relations ?? []) {
+    if (r.type === 'MANY_TO_ONE' && r.fieldName.trim().toLowerCase() === wanted) {
+      const target = entities.find(e => sameName(e.name, r.targetEntity))?.name ?? r.targetEntity.trim()
+      found = { name: r.fieldName, shape: `a link to ${target}` }
+    }
+  }
+  return found
+}
+
+/** One dashboard filter resolved against the widgets' entities: its spelling, or the two entities
+ *  that disagree on what it is, or undefined when none of them has it. */
+export type DashboardFilterResolution =
+  | { name: string; field?: FullstackFieldDef; entities: string[] }
+  | { conflict: { name: string; shape: string; owner: string; otherShape: string; other: string } }
+
+export function resolveDashboardFilter(name: string, reach: FullstackEntityDef[], entities: FullstackEntityDef[] = []): DashboardFilterResolution | undefined {
+  let first: { name: string; shape: string; field?: FullstackFieldDef; owner: string } | undefined
+  const owners: string[] = []
+  for (const e of reach) {
+    const found = dashboardFilterShape(e, name, entities)
+    if (!found) continue
+    if (!first) first = { ...found, owner: e.name }
+    else if (found.shape !== first.shape) {
+      return { conflict: { name: name.trim(), shape: first.shape, owner: first.owner, otherShape: found.shape, other: e.name } }
+    }
+    owners.push(e.name)
+  }
+  return first ? { name: first.name, ...(first.field ? { field: first.field } : {}), entities: owners } : undefined
+}
+
+/** Every filter a dashboard could offer: the enum/boolean fields and relations of its widgets'
+ *  entities that one control can set on all of them, by their first entity's spelling. */
+export function dashboardFilterCandidates(page: FullstackPageDef, entities: FullstackEntityDef[]): { name: string; field?: FullstackFieldDef; entities: string[] }[] {
+  const reach = dashboardFilterEntities(page, entities)
+  const seen = new Set<string>()
+  const out: { name: string; field?: FullstackFieldDef; entities: string[] }[] = []
+  for (const e of reach) {
+    const keys = [...groupableFields(e).map(f => f.name), ...relationKeys(e)]
+    for (const key of keys) {
+      const lower = key.trim().toLowerCase()
+      if (!lower || seen.has(lower)) continue
+      seen.add(lower)
+      const r = resolveDashboardFilter(key, reach, entities)
+      if (r && !('conflict' in r)) out.push(r)
+    }
+  }
+  return out
+}
+
+/** The pages a widget on `entity` can open on click: a visible entity-list or report page of it. */
+export function drillToPages(pages: FullstackPageDef[], entity: string | undefined): FullstackPageDef[] {
+  if (!entity?.trim()) return []
+  return pages.filter(p => (p.type === 'entity-list' || p.type === 'report') && !p.hidden && sameName(p.entity, entity))
+}
+
 // ── Preset filters ──────────────────────────────────────────────────────────
 
 /** The periods a date field can be preset to, ending on the day the app is opened. */
@@ -662,7 +749,8 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
         const e = entityOf(w.entity)
         if (!e || w.kind === 'text' || w.kind === 'links' || w.kind === 'list') return
         const chart = w.kind === 'bar' || w.kind === 'donut' || w.kind === 'stacked' || w.kind === 'top' || w.kind === 'line'
-        if (chart && !visibleList(e.name)) {
+        // A widget with its own click target opens that page instead.
+        if (chart && !w.drillTo?.trim() && !visibleList(e.name)) {
           warn('chart-dead-end', `widget.${wi}`, `${where}: clicking a bar of the ${e.name} chart goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e), e.name)
         }
         if (w.kind === 'recent' && singlePk(e) && !recordPage(e.name)) {
@@ -809,6 +897,38 @@ function checkListPresentation(page: FullstackPageDef, e: FullstackEntityDef, ad
   }
 }
 
+/** A dashboard's filters (FullstackPageValidator.dashboardFilters): at most four, each an
+ *  enum/boolean/relation name one of its widgets' entities filters by, the same kind of filter on
+ *  every entity that has it, none blank or twice. */
+function checkDashboardFilters(page: FullstackPageDef, entities: FullstackEntityDef[], add: AddIssue, where: string,
+                               dropFilter: (index: number, name: string) => PageFix): void {
+  const filters = page.filters ?? []
+  if (filters.length === 0) return
+  if (filters.length > MAX_DASHBOARD_FILTERS) add('filters', `has more than ${MAX_DASHBOARD_FILTERS} filters`)
+  const reach = dashboardFilterEntities(page, entities)
+  const seen: string[] = []
+  filters.forEach((raw, fi) => {
+    const name = (raw ?? '').trim()
+    if (!name) {
+      add('filters', 'a filter name is blank', `${where}: a filter name is blank`, dropFilter(fi, ''))
+      return
+    }
+    const r = resolveDashboardFilter(name, reach, entities)
+    if (!r) {
+      add('filters', `none of the widgets’ entities filters by “${name}”`,
+        `${where}: filter “${name}” is not an enum, boolean or relation filter of any of its widgets’ entities (${reach.map(e => e.name).join(', ')})`,
+        dropFilter(fi, name))
+    } else if ('conflict' in r) {
+      const c = r.conflict
+      add('filters', `“${name}” is ${c.shape} on ${c.owner} but ${c.otherShape} on ${c.other}`,
+        `${where}: filter “${name}” is ${c.shape} on ${c.owner} but ${c.otherShape} on ${c.other} — one control cannot set both`,
+        dropFilter(fi, name))
+    } else if (seen.includes(r.name.toLowerCase())) {
+      add('filters', `“${r.name}” is listed twice`, `${where}: filter “${r.name}” is listed twice`, dropFilter(fi, r.name))
+    } else seen.push(r.name.toLowerCase())
+  })
+}
+
 function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaffoldOpts: string[] = []): Issue[] {
   if (pages.length === 0) return []
   const issues: Issue[] = []
@@ -902,6 +1022,14 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
       if ((page.group ?? '').trim().length > MAX_GROUP) add('group', `is longer than ${MAX_GROUP} characters`)
       if (page.icon && !(page.icon in NAV_ICONS)) add('icon', `“${page.icon}” is not a nav icon`)
     }
+    if (page.type !== 'dashboard' && (page.filters?.length ?? 0) > 0) {
+      add('filters', 'only a dashboard takes filters — a list or report page has its own filter bar',
+        `${where} (${page.type}) does not take filters (only a dashboard does — a list or report page has its own filter bar)`,
+        patchPage(index, `Drop the dashboard filters of “${pageLabel(page)}”`, p => {
+          const { filters: _filters, ...rest } = p
+          return rest
+        }))
+    }
 
     switch (page.type) {
       case 'entity-list': {
@@ -928,7 +1056,40 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         const widgets = page.widgets ?? []
         if (widgets.length === 0) add('widgets', 'needs at least one widget')
         if (widgets.length > MAX_WIDGETS) add('widgets', `has more than ${MAX_WIDGETS} widgets`)
+        const dropDrill = (wi: number, label: string) => patchPage(index, label,
+          p => ({ ...p, widgets: (p.widgets ?? []).map((x, j) => {
+            if (j !== wi) return x
+            const { drillTo: _drillTo, ...kept } = x
+            return kept
+          }) }))
+        // Where a widget's clicks go (FullstackPageValidator.drillTo): a visible list or report
+        // page of the widget's own entity.
+        const checkDrill = (w: FullstackWidgetDef, wi: number, e: FullstackEntityDef) => {
+          const id = w.drillTo?.trim()
+          if (!id) return
+          const control = `widget.${wi}.drillTo`
+          const fix = dropDrill(wi, `Open ${e.name}’s own list from widget ${wi + 1}`)
+          const target = pages.find(p => p.id === id)
+          if (!target) {
+            add(control, `no page “${id}”`, `${where} has a widget whose clicks open the missing page “${id}”`, fix)
+          } else if (target.type !== 'entity-list' && target.type !== 'report') {
+            add(control, `“${pageLabel(target)}” must be an entity-list or report page`,
+              `${where} has a widget whose clicks open “${pageLabel(target)}”, which must be an entity-list or report page`, fix)
+          } else if (target.hidden) {
+            add(control, `“${pageLabel(target)}” is hidden, so it cannot be opened from a widget`,
+              `${where} has a widget whose clicks open “${pageLabel(target)}”, which is hidden, so it cannot be opened from a widget`, fix)
+          } else if (!sameName(target.entity, e.name)) {
+            const shows = entityOf(target.entity)?.name ?? target.entity ?? '?'
+            add(control, `“${pageLabel(target)}” shows ${shows}, not ${e.name}`,
+              `${where} has a widget whose clicks open “${pageLabel(target)}”, which shows ${shows}, not ${e.name}`, fix)
+          }
+        }
         widgets.forEach((w, wi) => {
+          if (!readsEntity(w) && w.drillTo?.trim()) {
+            add(`widget.${wi}.drillTo`, `a ${w.kind} widget opens no page on click`,
+              `${where} gives a ${w.kind} widget a click target, but a ${w.kind} widget takes only ${w.kind === 'text' ? 'text' : 'pages'}, a title and a width`,
+              dropDrill(wi, `Drop the click target of widget ${wi + 1}`))
+          }
           if (w.kind === 'text') {
             if (!w.text?.trim()) add(`widget.${wi}.text`, 'needs some text', `${where} has an empty text widget`)
             else if (w.text.length > MAX_TEXT) add(`widget.${wi}.text`, `is longer than ${MAX_TEXT} characters`, `${where} has a text widget over ${MAX_TEXT} characters`)
@@ -971,8 +1132,10 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
               add(`widget.${wi}.limit`, `shows ${LIST_WIDGET_LIMITS.join(' or ')} rows`, `${where} embeds a list of ${w.limit} rows (${LIST_WIDGET_LIMITS.join(' or ')})`)
             }
             checkPresetFilter(w.presetFilter, e, add, where, field => `widget.${wi}.presetFilter.${field}`)
+            checkDrill(w, wi, e)
             return
           }
+          checkDrill(w, wi, e)
           if (w.series && w.kind !== 'stacked') {
             add(`widget.${wi}.series`, 'only a stacked chart takes a series', `${where} splits a ${w.kind} widget by a series`)
           }
@@ -1095,6 +1258,11 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
               `${where} has a period picker, but none of its widgets has a date for it to limit`)
           }
         }
+        checkDashboardFilters(page, entities, add, where, (fi, name) => patchPage(index, `Drop the “${name}” filter`, p => {
+          const rest = (p.filters ?? []).filter((_, j) => j !== fi)
+          const { filters: _filters, ...kept } = p
+          return rest.length ? { ...kept, filters: rest } : kept
+        }))
         break
       }
       case 'tabs': {
@@ -1373,6 +1541,7 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
         counts.links && `${counts.links} page-links panel${counts.links === 1 ? '' : 's'}`,
         counts.list && `${counts.list} embedded list${counts.list === 1 ? '' : 's'}`,
       ].filter(Boolean)
+      if (page.filters?.length && parts.length) parts.push(`filters: ${page.filters.join(', ')}`)
       const every = REFRESH_CHOICES.find(r => r.value === page.refreshSeconds)
       if (every && parts.length) parts.push(`refreshes ${every.label}`)
       return parts.join(' · ') || 'No widgets'
@@ -1527,6 +1696,10 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
         return patched
       })
     }
+    // A dashboard filter names the field on every widget entity that has it; it follows the rename
+    // when one of the dashboard's widgets reads the renamed entity.
+    const followed = followFilterRename(next, isEntity, from, to)
+    if (followed) next.filters = followed
     const renameChart = (c: FullstackChartDef): FullstackChartDef => ({
       ...c,
       ...(c.groupBy === from ? { groupBy: to } : {}),
@@ -1542,6 +1715,16 @@ export function renameFieldInPages(pages: FullstackPageDef[], entity: string, fr
     if (isEntity(next.entity) && next.charts) next.charts = next.charts.map(renameChart)
     return renameFieldInNewPages(next, entity, from, to)
   })
+}
+
+/** A dashboard's filters with `from` (ignoring case) renamed to `to`, when one of its entity
+ *  widgets reads an entity `isEntity` accepts; undefined when nothing changes. */
+function followFilterRename(page: FullstackPageDef, isEntity: (name: string | undefined) => boolean, from: string, to: string): string[] | undefined {
+  if (page.type !== 'dashboard' || !page.filters?.length) return undefined
+  const lower = from.trim().toLowerCase()
+  if (!page.filters.some(k => k.trim().toLowerCase() === lower)) return undefined
+  if (!(page.widgets ?? []).some(w => readsEntity(w) && isEntity(w.entity))) return undefined
+  return page.filters.map(k => (k.trim().toLowerCase() === lower ? to : k))
 }
 
 /** What each page type is, for the "Add page" gallery. */
@@ -1636,9 +1819,17 @@ export function renamePageIdInPages(pages: FullstackPageDef[], from: string, to:
         page = { ...page, body }
       }
     }
-    if (page.widgets?.some(w => w.pages?.includes(from))) {
+    if (page.widgets?.some(w => w.pages?.includes(from) || w.drillTo === from)) {
       changed = true
-      page = { ...page, widgets: page.widgets.map(w => (w.pages?.includes(from) ? { ...w, pages: w.pages.map(id => (id === from ? to : id)) } : w)) }
+      page = {
+        ...page,
+        widgets: page.widgets.map(w => {
+          let next = w.pages?.includes(from) ? { ...w, pages: w.pages.map(id => (id === from ? to : id)) } : w
+          // A widget whose clicks open the page follows it too.
+          if (next.drillTo === from) next = { ...next, drillTo: to }
+          return next
+        }),
+      }
     }
     if (!page.tabs?.some(t => t.page === from)) return page
     changed = true
@@ -1652,27 +1843,40 @@ export function pagesEmbedding(pages: FullstackPageDef[], id: string): Fullstack
   return pages.filter(p => p.type === 'tabs' && (p.tabs ?? []).some(t => t.page === id))
 }
 
-/** Drops the tabs and links pointing at `id` (the page is being removed). */
-export function dropTabsTo(pages: FullstackPageDef[], id: string): FullstackPageDef[] {
+/** The widgets of every page without their references to page `id`: a links widget stops
+ *  offering it, and a widget whose clicks opened it goes back to its entity's own list. */
+function dropWidgetLinksTo(pages: FullstackPageDef[], id: string): FullstackPageDef[] {
   return pages.map(page => {
-    if (page.widgets?.some(w => w.pages?.includes(id))) {
-      page = { ...page, widgets: page.widgets.map(w => (w.pages?.includes(id) ? { ...w, pages: w.pages.filter(k => k !== id) } : w)) }
+    if (!page.widgets?.some(w => w.pages?.includes(id) || w.drillTo === id)) return page
+    return {
+      ...page,
+      widgets: page.widgets.map(w => {
+        let next = w.pages?.includes(id) ? { ...w, pages: w.pages.filter(k => k !== id) } : w
+        if (next.drillTo === id) {
+          const { drillTo: _drillTo, ...kept } = next
+          next = kept
+        }
+        return next
+      }),
     }
-    return page.tabs?.some(t => t.page === id) ? { ...page, tabs: page.tabs.filter(t => t.page !== id) } : page
   })
 }
 
+/** Drops the tabs, links and click targets pointing at `id` (the page is being removed). */
+export function dropTabsTo(pages: FullstackPageDef[], id: string): FullstackPageDef[] {
+  return dropWidgetLinksTo(pages, id).map(page => (page.tabs?.some(t => t.page === id) ? { ...page, tabs: page.tabs.filter(t => t.page !== id) } : page))
+}
+
 /** The layout without the page at `index`, and without what pointed at it: links widgets stop
- *  offering it and, when it was an entity's only record page, list pages that opened that entity's
- *  rows there fall back to the default. Tabs that embed it go only with `dropTabs` — the editor asks
- *  first, since that changes another page. */
+ *  offering it, widgets whose clicks opened it go back to their entity's own list and, when it was
+ *  an entity's only record page, list pages that opened that entity's rows there fall back to the
+ *  default. Tabs that embed it go only with `dropTabs` — the editor asks first, since that changes
+ *  another page. */
 export function removePageAt(pages: FullstackPageDef[], index: number, dropTabs = true): FullstackPageDef[] {
   const removed = pages[index]
   if (!removed) return pages
   const rest = pages.filter((_, i) => i !== index)
-  let next = rest.map(page => (page.widgets?.some(w => w.pages?.includes(removed.id))
-    ? { ...page, widgets: page.widgets.map(w => (w.pages?.includes(removed.id) ? { ...w, pages: w.pages.filter(k => k !== removed.id) } : w)) }
-    : page))
+  let next = dropWidgetLinksTo(rest, removed.id)
   if (dropTabs) next = next.map(page => (page.tabs?.some(t => t.page === removed.id) ? { ...page, tabs: page.tabs.filter(t => t.page !== removed.id) } : page))
   const entity = removed.entity
   if (removed.type === 'record' && entity && !next.some(p => p.type === 'record' && sameName(p.entity, entity))) {
@@ -1687,7 +1891,7 @@ export function removePageAt(pages: FullstackPageDef[], index: number, dropTabs 
 
 /** Follows a relation rename on `child` (the entity that owns it) into every reference a layout
  *  can hold: list and list-widget columns, wizard steps, report and top-list groupings, record
- *  tabs and tiles, and master-detail links. */
+ *  tabs and tiles, master-detail links and dashboard filters. */
 export function renameRelationInPages(pages: FullstackPageDef[], child: string, from: string, to: string): FullstackPageDef[] {
   if (!child || !from || !to || from === to) return pages
   const isChild = (name: string | undefined) => name != null && name.trim().toLowerCase() === child.trim().toLowerCase()
@@ -1716,6 +1920,8 @@ export function renameRelationInPages(pages: FullstackPageDef[], child: string, 
       out.headerStats = page.headerStats?.map(st => (isChild(st.child) && st.via === from ? { ...st, via: to } : st))
     }
     if (page.type === 'master-detail' && isChild(page.child) && page.via === from) out.via = to
+    const filters = followFilterRename(page, isChild, from, to)
+    if (filters) out.filters = filters
     Object.assign(out, renameRelationInNewPages(out, child, from, to))
     if (page.type === 'master-detail' && isChild(page.child) && page.columns?.includes(from)) out.columns = cols(page.columns)
     if (page.childTabs?.some(t => typeof t !== 'string' && isChild(t.entity) && t.columns?.includes(from))) {
@@ -2182,6 +2388,7 @@ export function retargetPage(page: FullstackPageDef, type: FullstackPageType, en
   lost(page.widgets, next.widgets, 'widgets')
   lost(page.dateRange, next.dateRange, 'period picker')
   lost(page.refreshSeconds, next.refreshSeconds, 'auto-refresh')
+  lost(page.filters, next.filters, 'dashboard filters')
   lost(page.tabs, next.tabs, 'tabs')
   if (page.type === 'master-detail' && type !== 'master-detail') dropped.push('child list')
   lost(page.chart ?? page.charts, next.chart ?? next.charts, 'charts')
@@ -2284,12 +2491,15 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     const lost = (['groupBy', 'agg', 'limit', 'sortBy', 'compare', 'target', 'presetFilter', 'dateField', 'series'] as const)
       .filter(k => next[k] != null)
     const dropped = lost.length ? ['data settings'] : []
+    if (next.drillTo != null) dropped.push('click target')
     if (kind === 'links' && next.text != null) dropped.push('text')
     if (kind === 'text' && next.pages != null) dropped.push('pages')
     return { widget: kept, dropped }
   }
   if (next.text != null) drop(['text'], 'text')
   if (next.pages != null) drop(['pages'], 'pages')
+  // The click target is a page of the old entity.
+  if (next.drillTo != null && patch.entity != null && !sameName(patch.entity, widget.entity ?? '')) drop(['drillTo'], 'click target')
   if (kind === 'list') {
     if (next.columns) {
       const keys = listColumns(entity, scaffoldOpts).map(c => c.key)

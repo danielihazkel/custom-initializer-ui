@@ -595,6 +595,9 @@ export interface FullstackWidgetDef {
   columns?: string[]
   /** list: the column it opens sorted by. */
   sort?: FullstackListSort
+  /** Any widget with an entity: the page its clicks and "View all" open — a visible entity-list or
+   *  report page of the same entity. Absent: the entity's own list. */
+  drillTo?: string
 }
 
 /** A report page's single chart: bars when `groupBy` is an enum/boolean, a line when it is a date. */
@@ -667,6 +670,9 @@ export interface FullstackPageDef {
   /** dashboard: reload the widgets every so many seconds while the page is open (30, 60, 300 or
    *  900). Absent: only the generated Refresh button reloads them. */
   refreshSeconds?: number
+  /** dashboard: up to 4 enum, boolean or relation names its widgets' entities filter by — one
+   *  control each above the widgets, setting every widget whose entity has it. */
+  filters?: string[]
   /** tabs: 2–6 other pages (never a tabs or record page). */
   tabs?: { title?: string; page: string }[]
   /** master-detail: the entity listed on the left. Needs a single primary key. */

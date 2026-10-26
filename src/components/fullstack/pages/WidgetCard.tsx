@@ -4,7 +4,7 @@ import { fieldOption, keyOption } from '../fieldOptions'
 import { pluralize } from '../naming'
 import { dropIndicatorClass, useDragReorder } from '../useDragReorder'
 import {
-  MAX_RECENT_LIMIT, MAX_TEXT, MAX_WIDGETS, dateFields, defaultBarGroupBy, defaultSeries, defaultSpan,
+  MAX_RECENT_LIMIT, MAX_TEXT, MAX_WIDGETS, dateFields, defaultBarGroupBy, defaultSeries, defaultSpan, drillToPages,
   defaultTopGroupBy, defaultLineGroupBy, defaultOptionLabel, linkablePages, LIST_WIDGET_LIMITS, MAX_LINKS,
   MAX_TITLE, filterableDateFields, groupByFields, listColumns, pageLabel, rankableKeys, sortableKeys,
   widgetKindDisabledReason,
@@ -276,6 +276,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
               )}
             </div>
           </MiniField>
+          <DrillToField widget={widget} wi={wi} pages={pages} error={err('drillTo')} onChange={onChange} />
           <PresetFilters
             filter={widget.presetFilter}
             entity={entity}
@@ -516,6 +517,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
             <MiniField label="Width" hint={`Columns of 4 · default ${fallbackSpan}`}>
               <SpanPicker span={span} fallback={fallbackSpan} onChange={s => onChange({ span: s })} />
             </MiniField>
+            <DrillToField widget={widget} wi={wi} pages={pages} error={err('drillTo')} onChange={onChange} />
             {(widget.kind === 'recent' || widget.kind === 'top') && (
               <MiniField label="Rows" hint={`1–${MAX_RECENT_LIMIT}`}>
                 <input
@@ -576,6 +578,39 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
       </div>
       )}
       {messages.map(m => <p key={m} className="text-[11px] text-error">{m}</p>)}
+    </div>
+  )
+}
+
+/** Where a widget's clicks (a bar, a slice, a point, a ranked row, the tile) and its "View all"
+ *  go: by default the entity's own list, or a visible list or report page of the same entity.
+ *  Hidden while the entity has no such page (and none is set). */
+function DrillToField({ widget, wi, pages, error, onChange }: {
+  widget: FullstackWidgetDef
+  wi: number
+  pages: FullstackPageDef[]
+  error?: string
+  onChange: (patch: Partial<FullstackWidgetDef>) => void
+}) {
+  const targets = drillToPages(pages, widget.entity)
+  const current = widget.drillTo
+  if (targets.length === 0 && !current) return null
+  const known = targets.some(p => p.id === current)
+  return (
+    <div data-control={`widget.${wi}.drillTo`}>
+      <MiniField label="Clicks open" hint="Where its clicks and View all go">
+        <select
+          aria-label="Clicks open"
+          aria-invalid={Boolean(error)}
+          value={current ?? ''}
+          onChange={e => onChange({ drillTo: e.target.value || undefined })}
+          className={`${inputClass(error)} max-w-[12rem] py-1 text-xs`}
+        >
+          <option value="">Automatic (the entity’s list)</option>
+          {targets.map(p => <option key={p.id} value={p.id}>{pageLabel(p)}{p.type === 'report' ? ' (report)' : ''}</option>)}
+          {current && !known && <option value={current}>{current} (not available)</option>}
+        </select>
+      </MiniField>
     </div>
   )
 }

@@ -264,6 +264,22 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               )}
             </span>
           </div>
+          {screen.filters.length > 0 && (
+            <Editable {...link} control="filters" label="Edit the dashboard filters" className="block w-full">
+              <div className="flex flex-wrap items-center gap-1" data-preview-dashboard-filters>
+                <span className="inline-flex items-center gap-0.5 text-[9px] text-secondary">
+                  <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">filter_alt</span>
+                  {preview.strings.filters}
+                </span>
+                {screen.filters.map((label, i) => (
+                  <span key={`${i}:${label}`} className="inline-flex items-center gap-0.5 rounded border border-outline-variant px-1 py-0.5 text-[9px] text-secondary">
+                    {label}
+                    <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">expand_more</span>
+                  </span>
+                ))}
+              </div>
+            </Editable>
+          )}
           <div ref={gridRef} className="grid grid-cols-4 gap-1.5">
             {screen.widgets.map(w => (
               <Widget

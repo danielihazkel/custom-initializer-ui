@@ -282,3 +282,30 @@ describe('retargetPage', () => {
     expect(describePagesChange([list], [page])).toBe('Changed “Open orders” to a report page')
   })
 })
+
+describe('retargeting and the click target / dashboard filters', () => {
+  const bar: FullstackWidgetDef = { kind: 'bar', entity: 'Order', groupBy: 'status', drillTo: 'orders' }
+
+  it('keeps drillTo across a kind switch on the same entity', () => {
+    expect(retargetWidget(bar, { kind: 'top' }, order)).toEqual({ widget: { kind: 'top', entity: 'Order', groupBy: 'status', drillTo: 'orders' }, dropped: [] })
+  })
+
+  it('drops it, named, when the entity changes', () => {
+    const { widget, dropped } = retargetWidget(bar, { entity: 'Customer' }, customer)
+    expect(widget.drillTo).toBeUndefined()
+    expect(dropped).toContain('click target')
+  })
+
+  it('drops it, named, on a switch to a note or a launcher', () => {
+    const { widget, dropped } = retargetWidget({ kind: 'kpi', entity: 'Order', drillTo: 'orders' }, { kind: 'text' }, order)
+    expect(widget).toEqual({ kind: 'text', entity: '' })
+    expect(dropped).toEqual(['click target'])
+  })
+
+  it('names the dashboard filters a page-type switch drops', () => {
+    const desk: FullstackPageDef = { id: 'desk', type: 'dashboard', filters: ['status'], widgets: [{ kind: 'kpi', entity: 'Order' }] }
+    const { page, dropped } = retargetPage(desk, 'entity-list', [customer, order], [desk])
+    expect(page.filters).toBeUndefined()
+    expect(dropped).toContain('dashboard filters')
+  })
+})

@@ -21,6 +21,8 @@ import {
   childTabEntity,
   childTabVia,
   reloads,
+  dashboardFilterEntities,
+  dashboardFilterShape,
 } from './pageLayout'
 import { buildUiPreview, fieldLabel } from './uiPreview'
 import { parseContent, type ContentBlock } from './contentMarkdown'
@@ -112,6 +114,8 @@ export interface PreviewTable {
 export type PreviewScreen =
   | {
     type: 'dashboard'; title: string; description?: string; widgets: PreviewWidget[]; period: string | null
+    /** The dashboard's filter controls above the widgets, by label (none: no filter row). */
+    filters: string[]
     /** The generated Refresh button, when a widget shows data; with the timer's interval when set. */
     refresh: { label: string; every: string | null } | null
   }
@@ -625,7 +629,15 @@ export function buildLayoutPreview(
         const every = page.refreshSeconds == null ? null
           : page.refreshSeconds < 60 ? `${page.refreshSeconds}s` : `${Math.round(page.refreshSeconds / 60)}m`
         const refresh = (page.widgets ?? []).some(reloads) ? { label: t('refresh'), every } : null
-        return { type: 'dashboard', title: page.title || t('dashboard'), description, widgets, period, refresh }
+        const reach = dashboardFilterEntities(page, entities)
+        const filters = (page.filters ?? []).filter(name => name.trim()).map(name => {
+          for (const e of reach) {
+            const found = dashboardFilterShape(e, name, entities)
+            if (found) return found.field ? fieldLabel(found.field) : humanize(found.name)
+          }
+          return humanize(name.trim())
+        })
+        return { type: 'dashboard', title: page.title || t('dashboard'), description, widgets, period, refresh, filters }
       }
       case 'entity-list': {
         const e = entityOf(page.entity)
