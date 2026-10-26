@@ -155,7 +155,7 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
           </button>
         )}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 @sm:grid-cols-3 gap-2">
         <Field label="Sort rows by" error={errors.sort} control="sort" hint="How the table opens; the primary key when unset">
           <div className="flex items-center gap-1">
             <select

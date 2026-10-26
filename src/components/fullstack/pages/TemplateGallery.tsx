@@ -8,7 +8,7 @@ export function TemplateGallery({ templates, onPick }: {
   onPick: (label: string, pages: FullstackPageDef[]) => void
 }) {
   return (
-    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" data-layout-templates>
+    <ul className="grid grid-cols-1 gap-2 @sm:grid-cols-2 @3xl:grid-cols-4" data-layout-templates>
       {templates.map(({ template, result }) => {
         const reason = 'reason' in result ? result.reason : undefined
         const built = 'pages' in result ? result.pages : []

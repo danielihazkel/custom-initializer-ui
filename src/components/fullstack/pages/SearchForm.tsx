@@ -26,7 +26,7 @@ export function SearchForm({ page, index, entities, errors, update }: Omit<FormP
           ))}
         </div>
       </Field>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 @sm:grid-cols-2">
         <Field label="Matches per entity" error={errors.perEntity} control="perEntity" hint="“See all” opens the entity’s list with the same words">
           <select
             aria-label="Matches per entity"

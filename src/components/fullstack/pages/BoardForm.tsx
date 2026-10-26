@@ -38,7 +38,7 @@ export function BoardForm({ page, index, entities, errors, update, lossy }: Form
   }
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 @sm:grid-cols-3">
         <Field label="Entity" error={errors.entity} control="entity">
           <EntitySelect
             label="Board entity"

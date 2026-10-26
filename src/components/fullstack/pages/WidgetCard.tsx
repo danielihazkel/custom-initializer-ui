@@ -46,7 +46,7 @@ function widgetSummary(w: FullstackWidgetDef, span: number): string {
  * One dashboard widget as a card: a header (reorder, kind, duplicate, remove), then labelled
  * "Data" (what it measures) and "Display" (how it is shown) columns, then the rows it is limited to.
  */
-export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange, errors, atCap, dnd, list, expanded, onToggle, onChange, onRetarget, onMove, onDuplicate, onRemove }: {
+export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange, errors, atCap, dnd, list, expanded: expandedProp, onToggle, onChange, onRetarget, onMove, onDuplicate, onRemove, bare }: {
   widget: FullstackWidgetDef
   wi: number
   count: number
@@ -67,7 +67,10 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
   onMove: (delta: number) => void
   onDuplicate: () => void
   onRemove: () => void
+  /** Just the settings — the layout designer's inspector, where the canvas moves, copies and removes the widget. */
+  bare?: boolean
 }) {
+  const expanded = bare || expandedProp
   const entity = entities.find(e => e.name === widget.entity)
   const own = `widget.${wi}`
   // Each control is marked by its own messages only; the card lists them all under it.
@@ -90,13 +93,13 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
 
   return (
     <div
-      {...dnd.rowProps(list, wi)}
+      {...(bare ? {} : dnd.rowProps(list, wi))}
       data-widget={wi}
       data-control={`widget.${wi}`}
-      className={`space-y-2 rounded-lg border px-2.5 py-2 ${invalid ? 'border-error/50' : 'border-outline-variant'} ${
+      className={bare ? 'space-y-3' : `space-y-2 rounded-lg border px-2.5 py-2 ${invalid ? 'border-error/50' : 'border-outline-variant'} ${
         dnd.isDragging(list, wi) ? 'opacity-40' : ''} ${dropIndicatorClass(indicator)}`}
     >
-      <div className="flex flex-wrap items-center gap-1.5">
+      {!bare && <div className="flex flex-wrap items-center gap-1.5">
         <span {...dnd.handleProps(list, wi)} className="cursor-grab text-secondary/70" aria-hidden="true" title="Drag to reorder">
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>drag_indicator</span>
         </span>
@@ -131,7 +134,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
         <button type="button" onClick={onRemove} className={ICON_BUTTON} aria-label={`Remove widget ${wi + 1}`} title="Remove this widget">
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
         </button>
-      </div>
+      </div>}
 
       {expanded && (
         <div role="radiogroup" aria-label="Widget kind" className="inline-flex flex-wrap overflow-hidden rounded border border-outline-variant" data-widget-kind>
@@ -162,7 +165,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
       )}
       {!expanded ? null : widget.kind === 'list' ? (
         <div className="space-y-2" data-widget-options>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
+          <div className="grid grid-cols-1 gap-2 @md:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
             <MiniField label="Entity">
               <EntitySelect label="Widget entity" value={widget.entity} options={entities.map(e => e.name)} error={err('entity')} onChange={name => onRetarget({ entity: name })} />
             </MiniField>
@@ -292,7 +295,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
         </div>
       ) : widget.kind === 'links' ? (
         <div className="space-y-2" data-widget-options>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="grid grid-cols-1 gap-2 @md:grid-cols-[minmax(0,1fr)_auto]">
             <MiniField label="Title" grow>
               <input
                 type="text"
@@ -334,7 +337,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
         </div>
       ) : widget.kind === 'activity' ? (
         <div className="space-y-2" data-widget-options>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <div className="grid grid-cols-1 gap-2 @md:grid-cols-[minmax(0,1fr)_auto_auto]">
             <MiniField label="Title" grow>
               <input
                 type="text"
@@ -395,7 +398,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
           </MiniField>
         </div>
       ) : widget.kind === 'text' ? (
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]" data-widget-options>
+        <div className="grid grid-cols-1 gap-2 @md:grid-cols-[minmax(0,1fr)_auto]" data-widget-options>
           <MiniField label="Title" grow>
             <input
               type="text"
@@ -410,7 +413,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
           <MiniField label="Width" hint={`Columns of 4 · default ${fallbackSpan}`}>
             <SpanPicker span={span} fallback={fallbackSpan} onChange={s => onChange({ span: s })} />
           </MiniField>
-          <div className="md:col-span-2">
+          <div className="@md:col-span-2">
             <MiniField label="Text" hint={`Plain text; a blank line starts a new paragraph · ${(widget.text ?? '').length}/${MAX_TEXT}`}>
               <textarea
                 aria-label="Widget text"
@@ -426,7 +429,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
           </div>
         </div>
       ) : (
-      <div className="grid grid-cols-1 gap-x-4 gap-y-2 md:grid-cols-2" data-widget-options>
+      <div className="grid grid-cols-1 gap-x-4 gap-y-2 @md:grid-cols-2" data-widget-options>
         <fieldset className="min-w-0 space-y-1.5">
           <legend className="text-[10px] font-semibold uppercase tracking-wider text-secondary/80">Data</legend>
           <div className="flex flex-wrap items-end gap-2">
@@ -669,7 +672,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
           </div>
         </fieldset>
 
-        <div className="min-w-0 md:col-span-2">
+        <div className="min-w-0 @md:col-span-2">
           <PresetFilters
             filter={widget.presetFilter}
             entity={entity}
