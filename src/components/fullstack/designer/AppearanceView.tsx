@@ -4,7 +4,7 @@ import { buildLayoutPreview } from '../layoutPreviewModel'
 import { LayoutPreview, type EditTarget } from '../LayoutPreview'
 import { seedLayout } from '../pageLayout'
 import { offNavNoteFor, type PagesModel } from '../pages/usePagesModel'
-import { CanvasFrame, DeviceSwitch, type PreviewDevice } from './CanvasFrame'
+import { CanvasFrame, DeviceSwitch, ZoomControl, type PreviewDevice } from './CanvasFrame'
 import { FrontendSettings, type FrontendAppearance } from './FrontendSettings'
 
 /**
@@ -13,7 +13,7 @@ import { FrontendSettings, type FrontendAppearance } from './FrontendSettings'
  * follows every change. Without a page layout the preview is the classic shell those settings
  * dress.
  */
-export function AppearanceView({ pages, entities, model, appearance, nav, selected, onSelectPage, onEdit, device, onDevice, onEditStartDashboard }: {
+export function AppearanceView({ pages, entities, model, appearance, nav, selected, onSelectPage, onEdit, device, onDevice, zoom, onZoom, onEditStartDashboard }: {
   pages: FullstackPageDef[]
   entities: FullstackEntityDef[]
   model: PagesModel
@@ -25,6 +25,9 @@ export function AppearanceView({ pages, entities, model, appearance, nav, select
   onEdit: (target: EditTarget) => void
   device: PreviewDevice
   onDevice: (device: PreviewDevice) => void
+  /** The canvas zoom, shared with the design view. */
+  zoom?: number
+  onZoom?: (zoom: number) => void
   onEditStartDashboard?: () => void
 }) {
   const { settings, preview } = model
@@ -53,9 +56,10 @@ export function AppearanceView({ pages, entities, model, appearance, nav, select
         <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container-lowest px-4 py-1.5 text-[11px] text-secondary">
           <span className="font-semibold text-on-surface" data-appearance-caption>{caption}</span>
           <span className="ms-auto">{hasPages ? 'Click the menu to see another page; click a part to edit it' : 'Classic layout — the app you get without pages'}</span>
+          {zoom != null && onZoom && <ZoomControl zoom={zoom} onChange={onZoom} />}
           <DeviceSwitch device={device} onChange={onDevice} />
         </div>
-        <CanvasFrame device={device}>
+        <CanvasFrame device={device} zoom={zoom}>
           {classic ? (
             <LayoutPreview
               preview={classic}

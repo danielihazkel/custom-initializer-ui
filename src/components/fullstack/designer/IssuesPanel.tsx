@@ -19,6 +19,7 @@ export function IssuesPanel({ pages, model, issues, validation, reveal, onClose,
   dismissedWarnings?: string[]
   onDismissedWarningsChange?: (keys: string[]) => void
 }) {
+  const fixable = issues.filter(i => i.fix).length
   return (
     <section
       className="absolute inset-x-0 bottom-0 z-10 flex max-h-[45%] flex-col rounded-t-2xl border-t border-outline bg-surface-container-lowest shadow-[0_-12px_40px_rgba(0,0,0,0.35)]"
@@ -31,7 +32,18 @@ export function IssuesPanel({ pages, model, issues, validation, reveal, onClose,
           {issues.length === 0 ? 'No problems — the layout is ready to generate.' : `${issues.length} problem${issues.length === 1 ? '' : 's'} stop Generate until fixed.`}
           {validation.warnings.length > 0 && ` ${validation.warnings.length} tip${validation.warnings.length === 1 ? '' : 's'} never do.`}
         </span>
-        <button type="button" onClick={onClose} className={`${ICON_BUTTON} ms-auto`} aria-label="Close the issues">
+        {fixable > 1 && (
+          <button
+            type="button"
+            onClick={model.fixAll}
+            className="ms-auto rounded-md bg-primary px-2.5 py-1 text-[11px] font-semibold text-on-primary"
+            title="Apply each problem's own fix, one after another — one undo step"
+            data-page-fix-all
+          >
+            Fix all ({fixable})
+          </button>
+        )}
+        <button type="button" onClick={onClose} className={`${ICON_BUTTON} ${fixable > 1 ? '' : 'ms-auto'}`} aria-label="Close the issues">
           <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>expand_more</span>
         </button>
       </div>

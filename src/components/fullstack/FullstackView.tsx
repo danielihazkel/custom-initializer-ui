@@ -36,7 +36,7 @@ import { draftHasUnsavedWork } from './shareGuard'
 import { summarizeEntity } from './summary'
 import { frontendSetDefaults } from './frontendSetDefaults'
 import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
-import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
+import { emptyHistory, isTypingTarget, record, redoStep, stepMany, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesSection } from './designer/PagesSection'
 import type { DesignerTarget } from './designer/LayoutDesigner'
@@ -608,6 +608,17 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     setHistory(step.history)
     applySnapshot(step.restore.snapshot, true)
     setToast({ message: `Redid: ${step.restore.label}`, type: 'success' })
+  }, [applySnapshot, flushBurst])
+
+  /** Several undos (negative) or redos (positive) at once — the layout designer's history list. */
+  const jumpHistory = useCallback((steps: number) => {
+    flushBurst()
+    const step = stepMany(historyRef.current, snapshotRef.current, steps)
+    if (!step) return
+    silentFromRef.current = snapshotRef.current
+    setHistory(step.history)
+    applySnapshot(step.restore.snapshot, true)
+    setToast({ message: `${steps < 0 ? 'Undid' : 'Redid'} ${step.labels.length} change${step.labels.length === 1 ? '' : 's'}`, type: 'success' })
   }, [applySnapshot, flushBurst])
 
   function handleImport(imported: FullstackEntityDef[], mode: ImportMode, note?: string) {
@@ -1507,6 +1518,9 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
           redoLabel: nextRedo ? `Redo: ${nextRedo.label}` : null,
           onUndo: undo,
           onRedo: redo,
+          undoEntries: history.past.map(e => e.label),
+          redoEntries: history.future.map(e => e.label),
+          onJump: jumpHistory,
         }}
       />
 

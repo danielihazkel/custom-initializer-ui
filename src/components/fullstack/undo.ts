@@ -53,6 +53,27 @@ export function redoStep<T>(h: History<T>, current: T): { history: History<T>; r
   }
 }
 
+/** Steps `steps` edits back (negative) or forward (positive) in one go — the history list's jump.
+ *  `restore` is the state to apply; `labels` the edits passed over, nearest first. Null when
+ *  there is not that much history. */
+export function stepMany<T>(h: History<T>, current: T, steps: number): { history: History<T>; restore: UndoEntry<T>; labels: string[] } | null {
+  const n = Math.abs(Math.trunc(steps))
+  if (n === 0 || n > (steps < 0 ? h.past.length : h.future.length)) return null
+  let history = h
+  let state = current
+  let restore: UndoEntry<T> | null = null
+  const labels: string[] = []
+  for (let i = 0; i < n; i++) {
+    const step = steps < 0 ? undoStep(history, state) : redoStep(history, state)
+    if (!step) return null
+    history = step.history
+    state = step.restore.snapshot
+    restore = step.restore
+    labels.push(step.restore.label)
+  }
+  return restore ? { history, restore, labels } : null
+}
+
 /** True when a keyboard shortcut should NOT be intercepted because the user is typing. */
 export function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false

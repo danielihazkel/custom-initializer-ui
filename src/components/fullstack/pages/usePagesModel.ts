@@ -10,7 +10,7 @@ import { useDragReorder } from '../useDragReorder'
 import {
   MAX_PAGES, MIN_TABS, PAGE_TYPE_META, defaultSpan, removePageAt, adoptedGroup, blankPage,
   masterDetailPairs, newPageChoices, newPageTypeReason, moveNavGroup, navSections, renameGroupInPages,
-  retargetPage, retargetWidget, tabCandidates, duplicatePage, listColumns, newWidget, pageLabel,
+  fixAllProblems, retargetPage, retargetWidget, tabCandidates, duplicatePage, listColumns, newWidget, pageLabel,
   pagesEmbedding, relationsTo, reportCharts, renamePageIdInPages, seedLayout, slugify, suggestPages,
   uniquePageId, type PageFix, type PageLayoutValidation,
 } from '../pageLayout'
@@ -48,6 +48,8 @@ export interface PagesModelOptions {
   onAdd?: () => void
   /** A page was removed: its row key, so the host can forget it was open. */
   onRemovedKey?: (key: string) => void
+  /** Whether an LDAP auth dependency is selected — "Fix all" validates with it, as the host does. */
+  ldapAuth?: boolean
 }
 
 /** Why a page is not in the navigation, said where its preview is shown; undefined when it is. */
@@ -73,7 +75,7 @@ export interface LayoutIssue {
  * deserves), so the two hosts cannot drift apart. Selection, galleries and other view state stay
  * with each host.
  */
-export function usePagesModel({ pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, onOpenKey, onAdd, onRemovedKey }: PagesModelOptions) {
+export function usePagesModel({ pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, onOpenKey, onAdd, onRemovedKey, ldapAuth }: PagesModelOptions) {
   const keys = useStableKeys(pages, p => p.id)
   const named = entities.filter(e => e.name.trim())
   const settings = previewSettings ?? DEFAULT_PREVIEW_SETTINGS
@@ -188,7 +190,8 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     return reason ? { short: 'no entity fits', reason } : undefined
   }
 
-  function addTabsPage({ picked, title, hide }: { picked: string[]; title: string; hide: boolean }) {
+  /** A tabs page over the `picked` pages, at the end or at `at`; `hide` takes them out of the nav. */
+  function addTabsPage({ picked, title, hide }: { picked: string[]; title: string; hide: boolean }, at = pages.length) {
     const tabsPage: FullstackPageDef = {
       id: uniquePageId(slugify(title) || 'tabs', pages.map(p => p.id)),
       type: 'tabs',
@@ -197,11 +200,11 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     }
     pushUndo(`Added a tabs page over ${picked.length} pages`)
     onAdd?.()
-    onChange([
-      ...(hide ? pages.map(p => (picked.includes(p.id) && !p.hidden ? { ...p, hidden: true, group: undefined, icon: undefined } : p)) : pages),
-      tabsPage,
-    ])
-    pendingOpen.current = pages.length
+    const next = hide ? pages.map(p => (picked.includes(p.id) && !p.hidden ? { ...p, hidden: true, group: undefined, icon: undefined } : p)) : [...pages]
+    const index = Math.max(0, Math.min(at, next.length))
+    next.splice(index, 0, tabsPage)
+    onChange(next)
+    pendingOpen.current = index
   }
 
   // The generated nav's sections, in order — the strip above the list renames and reorders them.
@@ -382,6 +385,14 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     pushUndo(fix.label)
     onChange(fix.apply(pages))
   }
+  /** Every problem's own fix, as one undo step; the notice names how many held. */
+  function fixAll() {
+    const { pages: next, applied } = fixAllProblems(pages, entities, { scaffoldOpts: projectOpts, ldapAuth })
+    if (applied.length === 0) return
+    pushUndo(applied.length === 1 ? applied[0] : `Applied ${applied.length} fixes`)
+    onChange(next)
+    setNotice(`Applied ${applied.length} fix${applied.length === 1 ? '' : 'es'}: ${applied.join('; ')}.`)
+  }
 
   const entityOptions = useMemo(() => new Map(entities.map(e => [e.name, entityOption(e)])), [entities])
   const warnPages = useMemo(() => new Set(validation.warnings.map(w => w.page).filter((p): p is number => p != null)), [validation.warnings])
@@ -405,7 +416,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     reorderWidget, resizeWidget, addWidget, setWidget, retargetWidgetAt, duplicateWidget, removeWidget,
     changeType, removePage, requestRemove, duplicate, move, movePageTo, makeStart, toggleHidden,
     startFromEntities, layoutTemplates, startFromTemplate, myTemplates, saveAsTemplate, forgetTemplate,
-    dnd, applyFix, entityOptions, preview, suggestions, issues,
+    dnd, applyFix, fixAll, entityOptions, preview, suggestions, issues,
     pushUndo, onChange,
     /** The messages on one page's controls, by control key. */
     validationErrors: (index: number): Record<string, string> => validation.byPage[index] ?? {},

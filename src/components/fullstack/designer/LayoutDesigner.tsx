@@ -6,12 +6,14 @@ import { cssEscape } from '../focus'
 import { isTypingTarget } from '../undo'
 import { LayoutPreview, type EditTarget } from '../LayoutPreview'
 import { pageFromTemplate } from '../layoutTemplates'
-import { MIN_TABS, PAGE_TYPE_META, defaultSpan, newPageChoices, pageFromSuggestion, pageLabel, pagesEmbedding } from '../pageLayout'
+import { PAGE_TYPE_META, defaultSpan, newPageChoices, pageFromSuggestion, pageLabel, pagesEmbedding } from '../pageLayout'
 import type { PagesEditorProps } from '../PagesEditor'
 import { handleRadioKeys, syncRadioTabStops } from '../rovingRadios'
 import { focusWithoutClipping } from '../scroll'
 import { ICON_BUTTON, SMALL_BUTTON } from '../pages/constants'
+import { BulkPageBar } from '../pages/BulkPageBar'
 import { EntityOptions } from '../pages/fields'
+import { NewTabsForm, initialTabsForm, type TabsFormState } from '../pages/NewTabsForm'
 import { offNavNoteFor, usePagesModel } from '../pages/usePagesModel'
 import { DesignerInspector, tabOfControl, type InspectorTab } from './DesignerInspector'
 import { DesignerLibrary, type LibraryTab } from './DesignerLibrary'
@@ -20,7 +22,8 @@ import { IssuesPanel } from './IssuesPanel'
 import { PageStrip } from './PageStrip'
 import { SitemapView } from './SitemapView'
 import { AppearanceView } from './AppearanceView'
-import { CanvasFrame, DeviceSwitch, type PreviewDevice } from './CanvasFrame'
+import { CANVAS_ZOOM, CanvasFrame, DeviceSwitch, ZOOM_LEVELS, ZoomControl, type PreviewDevice } from './CanvasFrame'
+import { DesignerMenu, type MenuItem } from './DesignerMenu'
 import type { FrontendAppearance } from './FrontendSettings'
 
 /** Where the designer opens: a page (and control), and which panel is showing. */
@@ -37,6 +40,47 @@ type DesignerProps = Omit<PagesEditorProps, 'revealRequest' | 'addRequest' | 'pr
   onClose: () => void
 }
 
+/** How the designer was last laid out in this browser: the canvas zoom and which side panes show. */
+interface DesignerPrefs {
+  zoom: number
+  library: boolean
+  inspector: boolean
+}
+const PREFS_KEY = 'fullstack:designerView'
+const DEFAULT_PREFS: DesignerPrefs = { zoom: CANVAS_ZOOM, library: true, inspector: true }
+
+function readPrefs(): DesignerPrefs {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null') as Partial<DesignerPrefs> | null
+    if (!raw || typeof raw !== 'object') return DEFAULT_PREFS
+    return {
+      zoom: ZOOM_LEVELS.includes(raw.zoom as number) ? raw.zoom as number : DEFAULT_PREFS.zoom,
+      library: raw.library !== false,
+      inspector: raw.inspector !== false,
+    }
+  } catch {
+    return DEFAULT_PREFS
+  }
+}
+
+/** The history list under the undo button: the edits redo would replay (furthest first), then
+ *  the ones undo would take back (latest first). Picking one jumps there in one step. */
+export function historyMenuItems(undoEntries: string[], redoEntries: string[], onJump: (steps: number) => void): MenuItem[] {
+  const redo = redoEntries.map((label, i): MenuItem => ({
+    key: `redo:${i}`,
+    label: `Redo to: ${label}`,
+    icon: 'redo',
+    tone: 'muted',
+    onSelect: () => onJump(redoEntries.length - i),
+  }))
+  const undo = [...undoEntries].reverse().map((label, i): MenuItem => ({
+    key: `undo:${i}`,
+    label: i === 0 ? `Undo: ${label}` : `Undo ${i + 1} back to before: ${label}`,
+    icon: 'undo',
+    onSelect: () => onJump(-(i + 1)),
+  }))
+  return [...redo, ...undo]
+}
 
 /**
  * The full-screen layout designer: the library of page types, widgets and templates on the left,
@@ -57,14 +101,29 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   const [entityForm, setEntityForm] = useState<{ type: FullstackPageType; pick: string; at?: number } | null>(null)
   const [confirmTemplate, setConfirmTemplate] = useState<{ label: string; built: typeof pages } | null>(null)
   const [findRequest] = useState(target.panel === 'find' ? 1 : 0)
+  // The "which pages become tabs" step of a new tabs page, and where it goes.
+  const [tabsForm, setTabsForm] = useState<(TabsFormState & { at?: number }) | null>(null)
+  // Pages picked in the strip for a bulk action, by id (ids that no longer exist drop out).
+  const [pickedIds, setPickedIds] = useState<string[]>([])
+  const picked = pickedIds.filter(id => pages.some(p => p.id === id))
+  const [bulkRemove, setBulkRemove] = useState<{ count: number; run: () => void } | null>(null)
+  const [prefs, setPrefs] = useState(readPrefs)
+  useEffect(() => {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)) } catch { /* preference only */ }
+  }, [prefs])
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const historyButtonRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const inspectorRef = useRef<HTMLElement>(null)
   const librarySearchRef = useRef<HTMLInputElement>(null)
+  // Bumped to focus the library search once the library is on screen (it may be hidden now).
+  const [searchFocus, setSearchFocus] = useState(target.panel === 'add' ? 1 : 0)
+  useEffect(() => { if (searchFocus) librarySearchRef.current?.focus() }, [searchFocus])
 
   const model = usePagesModel({
-    pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue,
+    pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, ldapAuth,
     onOpenKey: key => { setSelectedKey(key); setSelectedWidget(null); setInspectorTab('basics') },
-    onAdd: () => setEntityForm(null),
+    onAdd: () => { setEntityForm(null); setTabsForm(null) },
     onRemovedKey: key => setSelectedKey(prev => (prev === key ? null : prev)),
   })
   const { keys, preview, settings } = model
@@ -91,6 +150,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     const key = keys[t.page]
     if (!key) return
     setSelectedKey(key)
+    if (!prefs.inspector) setPrefs(p => ({ ...p, inspector: true }))
     const w = t.control ? /^widget\.(\d+)/.exec(t.control) : null
     if (w) setSelectedWidget(Number(w[1]))
     else {
@@ -118,7 +178,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   // Where the designer was asked to open.
   useEffect(() => {
     if (target.page != null) reveal({ page: target.page, control: target.control })
-    if (target.panel === 'add') requestAnimationFrame(() => librarySearchRef.current?.focus())
+    if (target.panel === 'add' || target.panel === 'templates') openLibrary()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on open
   }, [])
 
@@ -145,13 +205,16 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
       if (issuesOpen) setIssuesOpen(false)
       else if (widget != null) setSelectedWidget(null)
       else if (entityForm) setEntityForm(null)
+      else if (tabsForm) setTabsForm(null)
+      else if (picked.length > 0) setPickedIds([])
       else onClose()
       return
     }
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || isTypingTarget(e.target) || view !== 'design') return
     if (e.key === '/' && !e.altKey) {
       e.preventDefault()
-      librarySearchRef.current?.focus()
+      openLibrary()
+      setSearchFocus(n => n + 1)
       return
     }
     if (widget == null) return
@@ -196,13 +259,19 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     if (!e.ctrlKey && !e.metaKey && !e.altKey) handleRadioKeys(e)
   }
 
+  /** Shows the library pane when it was hidden — before a search or a tab in it is focused. */
+  function openLibrary() {
+    if (!prefs.library) setPrefs(p => ({ ...p, library: true }))
+  }
+
   /** A library page type, clicked or dropped at `at`: straight in, or ask which entity first. */
   function chooseType(type: FullstackPageType, at?: number) {
     if (type === 'tabs') {
-      const picked = model.tabsEligible.slice(0, MIN_TABS).map(p => p.id)
-      model.addTabsPage({ picked, title: 'Tabs', hide: true })
+      setEntityForm(null)
+      setTabsForm({ ...initialTabsForm(model.tabsEligible), at })
       return
     }
+    setTabsForm(null)
     const fit = model.fittingChoices(type)
     if (fit.length <= 1) model.addPage(type, fit[0]?.value, at)
     else setEntityForm({ type, pick: fit[0].value, at })
@@ -291,6 +360,34 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
               <button type="button" onClick={history.onRedo} disabled={!history.redoLabel} className={ICON_BUTTON} title={history.redoLabel ? `${history.redoLabel} (Ctrl+Shift+Z)` : 'Nothing to redo'} aria-label={history.redoLabel ?? 'Redo (nothing to redo)'} data-designer-redo>
                 <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>redo</span>
               </button>
+              {history.onJump && (
+                <span className="relative">
+                  <button
+                    ref={historyButtonRef}
+                    type="button"
+                    onClick={() => setHistoryOpen(o => !o)}
+                    disabled={!history.undoEntries?.length && !history.redoEntries?.length}
+                    aria-expanded={historyOpen}
+                    aria-haspopup="menu"
+                    className={ICON_BUTTON}
+                    title="History — jump back several changes"
+                    aria-label="History"
+                    data-designer-history
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>history</span>
+                  </button>
+                  {historyOpen && (
+                    <DesignerMenu
+                      label="History"
+                      heading="History"
+                      items={historyMenuItems(history.undoEntries ?? [], history.redoEntries ?? [], history.onJump)}
+                      returnFocus={historyButtonRef.current}
+                      onClose={() => setHistoryOpen(false)}
+                      className="end-0 top-full mt-1"
+                    />
+                  )}
+                </span>
+              )}
             </span>
           )}
           <button
@@ -338,6 +435,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             onEdit={t => { setView('design'); reveal(t) }}
             device={device}
             onDevice={setDevice}
+            zoom={prefs.zoom}
+            onZoom={zoom => setPrefs(p => ({ ...p, zoom }))}
             onEditStartDashboard={() => {
               const dashboard = pages.findIndex(p => p.type === 'dashboard')
               setView('design')
@@ -348,6 +447,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
           <SitemapView pages={pages} model={model} nav={nav} onNavChange={onNavChange} onOpenPage={i => { selectPage(i); setView('design') }} />
         ) : (
         <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+          {prefs.library && (
           <DesignerLibrary
             pages={pages}
             model={model}
@@ -365,6 +465,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             onDrag={setDrag}
             searchRef={librarySearchRef}
           />
+          )}
 
           <main className="flex min-h-[28rem] min-w-0 flex-1 flex-col" aria-label="Canvas">
             <PageStrip
@@ -373,10 +474,35 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
               validation={validation}
               selected={selectedIndex}
               onSelect={selectPage}
-              onAddPage={() => { setLibraryTab('pages'); requestAnimationFrame(() => librarySearchRef.current?.focus()) }}
+              onAddPage={() => { setLibraryTab('pages'); openLibrary(); setSearchFocus(n => n + 1) }}
               findRequest={findRequest}
               newPageDrop={isPageDrag(drag) ? { onDrop: dropPage } : null}
+              picked={picked}
+              onPick={setPickedIds}
             />
+            {picked.length > 0 && (
+              <div className="border-b border-outline-variant bg-surface-container-lowest px-4 py-2">
+                <BulkPageBar
+                  pages={pages}
+                  picked={picked}
+                  onPick={setPickedIds}
+                  pushUndo={pushUndo}
+                  onChange={onChange}
+                  ldapAuth={ldapAuth}
+                  onRemoveRequest={(count, run) => setBulkRemove({ count, run })}
+                />
+              </div>
+            )}
+            {tabsForm && (
+              <NewTabsForm
+                eligible={model.tabsEligible}
+                form={tabsForm}
+                onChange={form => setTabsForm({ ...form, at: tabsForm.at })}
+                onAdd={() => model.addTabsPage(tabsForm, tabsForm.at)}
+                onCancel={() => setTabsForm(null)}
+                className="border-b border-primary/30 bg-primary/5 px-4 py-2"
+              />
+            )}
             {entityForm && (
               <div className="flex flex-wrap items-center gap-2 border-b border-primary/30 bg-primary/5 px-4 py-2" data-entity-form>
                 <p className="text-xs font-semibold text-on-surface">
@@ -410,12 +536,24 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
               </div>
             )}
             <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container-lowest px-4 py-1.5 text-[11px] text-secondary">
+              <button
+                type="button"
+                onClick={() => setPrefs(p => ({ ...p, library: !p.library }))}
+                aria-pressed={prefs.library}
+                className={`${ICON_BUTTON} hidden lg:inline-flex`}
+                title={prefs.library ? 'Hide the library' : 'Show the library'}
+                aria-label={prefs.library ? 'Hide the library' : 'Show the library'}
+                data-toggle-library
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '17px' }}>{prefs.library ? 'left_panel_close' : 'left_panel_open'}</span>
+              </button>
               {page ? (
                 <>
                   <span className="font-semibold text-on-surface">{pageLabel(page)}</span>
                   <span>{PAGE_TYPE_META[page.type]?.label}</span>
                   <span className="font-mono">#/{page.id || '…'}</span>
                   <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · drag to move · drag its edge to resize' : 'Click a part of the page to edit it'}</span>
+                  <ZoomControl zoom={prefs.zoom} onChange={zoom => setPrefs(p => ({ ...p, zoom }))} />
                   <DeviceSwitch device={device} onChange={setDevice} />
                   <button
                     type="button"
@@ -426,10 +564,21 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     Page settings
                   </button>
                 </>
-              ) : <span>No pages yet</span>}
+              ) : <span className="me-auto">No pages yet</span>}
+              <button
+                type="button"
+                onClick={() => setPrefs(p => ({ ...p, inspector: !p.inspector }))}
+                aria-pressed={prefs.inspector}
+                className={`${ICON_BUTTON} hidden lg:inline-flex`}
+                title={prefs.inspector ? 'Hide the settings pane' : 'Show the settings pane'}
+                aria-label={prefs.inspector ? 'Hide the settings pane' : 'Show the settings pane'}
+                data-toggle-inspector
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '17px' }}>{prefs.inspector ? 'right_panel_close' : 'right_panel_open'}</span>
+              </button>
             </div>
             {page ? (
-                <CanvasFrame device={device}>
+                <CanvasFrame device={device} zoom={prefs.zoom}>
                   <LayoutPreview
                     preview={preview}
                     selected={selectedIndex}
@@ -444,6 +593,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     navStyle={nav?.style}
                     collapsibleGroups={nav?.collapsibleGroups}
                     narrow={device === 'mobile'}
+                    problems={validation.byPage}
                     widgetDrop={widgetDrag ? {
                       span: defaultSpan(widgetDrag.widget),
                       onDrop: (pageIndex, at) => {
@@ -462,13 +612,14 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     <button type="button" onClick={() => model.startFromEntities()} disabled={model.named.length === 0} className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary disabled:opacity-40" data-seed-layout>
                       Start from my entities
                     </button>
-                    <button type="button" onClick={() => setLibraryTab('templates')} className={SMALL_BUTTON}>Browse templates</button>
+                    <button type="button" onClick={() => { setLibraryTab('templates'); openLibrary() }} className={SMALL_BUTTON}>Browse templates</button>
                   </div>
                 </div>
               </div>
             )}
           </main>
 
+          {prefs.inspector && (
           <DesignerInspector
             pages={pages}
             model={model}
@@ -481,6 +632,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             onAddDep={onAddDep}
             rootRef={inspectorRef}
           />
+          )}
 
           {issuesOpen && (
             <IssuesPanel
@@ -507,6 +659,16 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
           tone="danger"
           onConfirm={() => model.removePage(model.confirmRemove!, true)}
           onCancel={() => model.setConfirmRemove(null)}
+        />
+      )}
+      {bulkRemove && (
+        <ConfirmDialog
+          title={`Remove ${bulkRemove.count} page${bulkRemove.count === 1 ? '' : 's'}?`}
+          message="Tabs, links and record openings that point at them go too. Undo brings them back."
+          confirmLabel="Remove pages"
+          tone="danger"
+          onConfirm={() => { bulkRemove.run(); setBulkRemove(null) }}
+          onCancel={() => setBulkRemove(null)}
         />
       )}
       {confirmTemplate && (

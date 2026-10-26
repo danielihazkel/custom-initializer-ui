@@ -9,7 +9,7 @@ import { LayoutPreview, type EditTarget } from './LayoutPreview'
 import { focusWithoutClipping, scrollToElement } from './scroll'
 import { pageFromTemplate } from './layoutTemplates'
 import {
-  MAX_PAGES, MAX_TABS, MIN_TABS, PAGE_TYPE_META, newPageChoices, inNav, pageFromSuggestion, pageLabel,
+  MAX_PAGES, PAGE_TYPE_META, newPageChoices, inNav, pageFromSuggestion, pageLabel,
   pagesEmbedding, seedLayout, type PageLayoutValidation,
 } from './pageLayout'
 import { ICON_BUTTON, SMALL_BUTTON } from './pages/constants'
@@ -18,6 +18,7 @@ import { TemplateGallery } from './pages/TemplateGallery'
 import { PreviewDrawer } from './pages/PreviewDrawer'
 import { LayoutWarnings } from './pages/LayoutWarnings'
 import { BulkPageBar } from './pages/BulkPageBar'
+import { NewTabsForm, initialTabsForm, type TabsFormState } from './pages/NewTabsForm'
 import { PageList } from './pages/PageList'
 import { offNavNoteFor, usePagesModel, type PagesPreviewSettings } from './pages/usePagesModel'
 
@@ -61,6 +62,12 @@ export interface PagesEditorProps {
     redoLabel: string | null
     onUndo: () => void
     onRedo: () => void
+    /** The edits undo walks back through, oldest first, and redo forward through, furthest first
+     *  (the history's own order). With `onJump`, the designer lists them to jump several at once. */
+    undoEntries?: string[]
+    redoEntries?: string[]
+    /** Undoes (negative) or redoes (positive) that many edits in one step. */
+    onJump?: (steps: number) => void
   }
   /** A 400 from Generate that names a page of this layout — listed with the problems and revealed. */
   serverIssue?: { page: number; message: string } | null
@@ -110,7 +117,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   // The "Tabs" gallery card asks which pages to embed before adding anything.
-  const [tabsForm, setTabsForm] = useState<{ picked: string[]; title: string; hide: boolean } | null>(null)
+  const [tabsForm, setTabsForm] = useState<TabsFormState | null>(null)
   // The gallery's "which entity?" step, for a page type more than one entity fits.
   const [entityForm, setEntityForm] = useState<{ type: FullstackPageType; pick: string } | null>(null)
   const [confirmClassic, setConfirmClassic] = useState(false)
@@ -146,7 +153,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const [pageQuery, setPageQuery] = useState('')
 
   const model = usePagesModel({
-    pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue,
+    pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, ldapAuth,
     onOpenKey: key => { setOpenKey(key); setPreviewKey(key) },
     // The new page must be on screen to open: a page search that would hide it is cleared.
     onAdd: () => { setAddOpen(false); setPageQuery('') },
@@ -186,7 +193,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   }
 
   function openTabsForm() {
-    setTabsForm({ picked: tabsEligible.slice(0, 2).map(p => p.id), title: 'Tabs', hide: true })
+    setTabsForm(initialTabsForm(tabsEligible))
   }
   function addTabsPage() {
     if (!tabsForm) return
@@ -644,64 +651,14 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             </div>
           )}
           {tabsForm && (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2" data-tabs-form>
-              <p className="text-xs font-semibold text-on-surface">New tabs page</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-secondary" htmlFor="new-tabs-title">Title</label>
-                <input
-                  id="new-tabs-title"
-                  type="text"
-                  aria-label="Tabs page title"
-                  value={tabsForm.title}
-                  onChange={e => setTabsForm({ ...tabsForm, title: e.target.value })}
-                  className={`${inputClass()} max-w-[14rem] py-1 text-xs`}
-                />
-              </div>
-              <p className="text-[11px] text-secondary">Pages to show as tabs, {MIN_TABS} to {MAX_TABS}, in this order:</p>
-              <ul className="flex flex-wrap gap-2">
-                {tabsEligible.map(p => {
-                  const on = tabsForm.picked.includes(p.id)
-                  return (
-                    <li key={p.id}>
-                      <label className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] ${on ? 'border-primary/50 bg-primary/10 text-primary' : 'border-outline-variant text-on-surface'}`}>
-                        <input
-                          type="checkbox"
-                          className="accent-primary"
-                          checked={on}
-                          aria-label={`Tab: ${pageLabel(p)}`}
-                          onChange={() => setTabsForm({ ...tabsForm, picked: on ? tabsForm.picked.filter(id => id !== p.id) : [...tabsForm.picked, p.id] })}
-                        />
-                        {pageLabel(p)}
-                        <span className="text-[10px] text-secondary">{PAGE_TYPE_META[p.type]?.label ?? p.type}</span>
-                      </label>
-                    </li>
-                  )
-                })}
-              </ul>
-              <label className="inline-flex items-center gap-1.5 text-xs text-on-surface">
-                <input
-                  type="checkbox"
-                  className="accent-primary"
-                  checked={tabsForm.hide}
-                  aria-label="Hide these pages from the navigation"
-                  onChange={e => setTabsForm({ ...tabsForm, hide: e.target.checked })}
-                />
-                Hide these pages from the navigation — they open only as tabs
-              </label>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={addTabsPage}
-                  disabled={tabsForm.picked.length < MIN_TABS || tabsForm.picked.length > MAX_TABS}
-                  className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-on-primary disabled:opacity-50"
-                  title={tabsForm.picked.length < MIN_TABS ? `Pick at least ${MIN_TABS} pages` : tabsForm.picked.length > MAX_TABS ? `At most ${MAX_TABS} tabs` : undefined}
-                >
-                  Add tabs page
-                </button>
-                <button type="button" onClick={() => setTabsForm(null)} className={SMALL_BUTTON}>Cancel</button>
-                <span className="text-[10px] text-secondary">{tabsForm.picked.length} of {MAX_TABS} picked</span>
-              </div>
-            </div>
+            <NewTabsForm
+              eligible={tabsEligible}
+              form={tabsForm}
+              onChange={setTabsForm}
+              onAdd={addTabsPage}
+              onCancel={() => setTabsForm(null)}
+              className="rounded-lg border border-primary/30 bg-primary/5 p-3"
+            />
           )}
         </div>
       )}

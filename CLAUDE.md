@@ -89,8 +89,19 @@ inspector. Designer keys (`/`, Delete, Alt+←/→, Alt+Shift+←/→, Esc) are 
 beside the live preview (the classic `seedLayout` shell when there are no pages). The values stay in
 `FullstackView` (snapshot, undo, share links) and reach the designer as one `FrontendAppearance` bundle via
 `PagesSection`'s `appearance` prop; the Setup panel's `#fs-frontend` is now a one-row summary whose *Edit in
-designer* (and the frontend setup chips) bump `designerRequest` to open Appearance. Pinned by
-`designer/LayoutDesigner.test.tsx`.
+designer* (and the frontend setup chips) bump `designerRequest` to open Appearance. Parity with the
+inline editor and canvas tools: the Tabs card opens the shared `pages/NewTabsForm` (which pages, title,
+hide) instead of picking for the user; Ctrl/⌘-click and Shift-click on strip chips pick pages
+(`pickedAfterClick`) for the shared `BulkPageBar`; a chip's right-click / Shift+F10 opens a
+`DesignerMenu` (open, start page, hide, duplicate, move, pick, delete) and Delete / Alt+←/→ on a focused
+chip remove or move its page. The canvas `LayoutPreview` takes `problems` (`validation.byPage`): every
+`Editable` whose `previewPartOf` matches a control with a problem is ringed and names it. The issues
+sheet's **Fix all** runs `fixAllProblems` (pageLayout.ts — re-validates after each fix, since fixes are
+index-based, and skips one that does not reduce the problems) as one undo step. The header's history
+button lists `history.undoEntries`/`redoEntries` and jumps through `onJump` (`FullstackView.jumpHistory`
+→ `undo.ts` `stepMany`). The canvas has a zoom (`ZoomControl`, `ZOOM_LEVELS`), a Tablet width, and the
+library/inspector panes fold away; zoom and panes persist in `localStorage` `fullstack:designerView`
+(a canvas click or `/` reopens the pane it needs). Pinned by `designer/LayoutDesigner.test.tsx`.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
-import { validatePages } from './pageLayout'
+import { fixAllProblems, validatePages } from './pageLayout'
 
 const entities: FullstackEntityDef[] = [
   { name: 'Customer', fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'name', type: 'STRING' }] },
@@ -105,5 +105,26 @@ describe('validatePages fixes', () => {
   it('offers no fix when a page merely lacks an entity, or when nothing is wrong', () => {
     expect(fixOf([{ id: 'x', type: 'entity-list' }], 'entity')).toBeUndefined()
     expect(fixOf([{ id: 'orders', type: 'entity-list', entity: 'Order' }])).toBeUndefined()
+  })
+})
+
+describe('fixAllProblems', () => {
+  it('applies every fix against the layout the one before it left, so removals do not shift the next', () => {
+    const pages: FullstackPageDef[] = [
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Product' }, { kind: 'kpi', entity: 'Order' }, { kind: 'kpi', entity: 'Invoice' }] },
+      { id: 'customers', type: 'entity-list', entity: 'Customer' },
+    ]
+    expect(validatePages(pages, entities).issues.filter(i => i.fix)).toHaveLength(2)
+    const { pages: next, applied } = fixAllProblems(pages, entities)
+    expect(next[0].widgets).toEqual([{ kind: 'kpi', entity: 'Order' }])
+    expect(applied).toHaveLength(2)
+    expect(validatePages(next, entities).count).toBe(0)
+  })
+
+  it('leaves a layout without fixable problems as it is', () => {
+    const pages: FullstackPageDef[] = [{ id: 'customers', type: 'entity-list', entity: 'Customer' }]
+    const result = fixAllProblems(pages, entities)
+    expect(result.pages).toBe(pages)
+    expect(result.applied).toEqual([])
   })
 })

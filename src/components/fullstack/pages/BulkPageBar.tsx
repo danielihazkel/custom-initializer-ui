@@ -62,7 +62,7 @@ export function BulkPageBar({ pages, picked, onPick, pushUndo, onChange, ldapAut
           }}
         >
           <input
-            className={`${inputClass} !w-36 !py-0.5 text-xs`}
+            className={`${inputClass()} !w-36 !py-0.5 text-xs`}
             list="bulk-page-groups"
             value={group}
             onChange={e => setGroup(e.target.value)}
@@ -78,7 +78,7 @@ export function BulkPageBar({ pages, picked, onPick, pushUndo, onChange, ldapAut
       )}
       {ldapAuth && inNavCount > 0 && (
         <select
-          className={`${inputClass} !w-auto !py-0.5 text-xs`}
+          className={`${inputClass()} !w-auto !py-0.5 text-xs`}
           aria-label="Roles for the picked pages"
           value=""
           onChange={e => { if (e.target.value) roles(e.target.value) }}

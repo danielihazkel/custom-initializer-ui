@@ -1,6 +1,6 @@
-import { Fragment, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
+import { Fragment, createContext, useContext, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import type { ContentBlock, ContentRun } from './contentMarkdown'
-import { highlights, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewScreen, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
+import { highlights, previewPartOf, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewScreen, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
 import { dropIndicatorClass, useDragReorder, type DragReorder } from './useDragReorder'
 
 export type { EditTarget }
@@ -33,6 +33,21 @@ interface Props {
   widgetDrop?: WidgetDrop | null
   /** A phone-width app: the menu as a top bar, dashboard widgets one per row. */
   narrow?: boolean
+  /** Page index → control → message (`validation.byPage`): the parts with a problem are ringed in
+   *  the error colour and name it. Absent: no rings. */
+  problems?: Record<number, Record<string, string>>
+}
+
+/** The layout's problems, read by every clickable part of the mock (see `Editable`). */
+const Problems = createContext<Record<number, Record<string, string>> | undefined>(undefined)
+
+/** The first problem message on the preview part drawn for `control` of `page`, if any. */
+function problemOf(problems: Record<number, Record<string, string>> | undefined, page: number, control: string): string | undefined {
+  const byControl = problems?.[page]
+  if (!byControl) return undefined
+  const part = previewPartOf(control)
+  const key = Object.keys(byControl).find(k => previewPartOf(k) === part)
+  return key == null ? undefined : byControl[key]
 }
 
 export interface WidgetDrop {
@@ -55,7 +70,7 @@ const WIDGET_LIST = 'preview-widgets:'
  * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
-export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups, palette, widgetDrop, narrow }: Props) {
+export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups, palette, widgetDrop, narrow, problems }: Props) {
   const screen = preview.screens[selected]
   const menora = skin === 'menora'
   // The generated tailwind shell: `--color-brand`/`--color-primary` = palette primary,
@@ -146,6 +161,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
   )
 
   return (
+    <Problems.Provider value={problems}>
     <div
       dir={preview.rtl ? 'rtl' : 'ltr'}
       className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest shadow-sm"
@@ -206,6 +222,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         </div>
       )}
     </div>
+    </Problems.Provider>
   )
 }
 
@@ -770,6 +787,8 @@ function WizardScreen({ screen, link, heading, accent, menora }: {
 
 /** The ring on the part whose editor control is hovered (a literal, so Tailwind keeps it). */
 const HIGHLIGHT = 'outline outline-2 outline-primary ring-4 ring-primary/15'
+/** The ring on a part with a problem. */
+const PROBLEM = 'outline outline-2 outline-dashed outline-error/80'
 
 interface LinkProps {
   page: number
@@ -785,14 +804,22 @@ interface LinkProps {
 function Editable({ page, control, onEdit, highlight, label, className, children }: LinkProps & { control: string; label: string; className?: string; children: ReactNode }) {
   const target = { page, control }
   const lit = highlights(highlight, target)
+  const problem = problemOf(useContext(Problems), page, control)
   return (
-    <div className={`relative rounded ${lit ? HIGHLIGHT : ''} ${className ?? ''}`} data-preview-highlight={lit ? '' : undefined}>
+    <div
+      className={`relative rounded ${lit ? HIGHLIGHT : problem ? PROBLEM : ''} ${className ?? ''}`}
+      data-preview-highlight={lit ? '' : undefined}
+      data-preview-problem={problem ? '' : undefined}
+    >
       <div aria-hidden="true">{children}</div>
+      {problem && (
+        <span className="pointer-events-none absolute -end-1 -top-1 z-[1] h-2 w-2 rounded-full bg-error ring-2 ring-surface-container-lowest" aria-hidden="true" />
+      )}
       <button
         type="button"
         onClick={() => onEdit(target)}
-        title={label}
-        aria-label={label}
+        title={problem ? `${label} — ${problem}` : label}
+        aria-label={problem ? `${label} (problem: ${problem})` : label}
         className="absolute inset-0 h-full w-full cursor-pointer rounded outline-offset-2 hover:outline hover:outline-1 hover:outline-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
       />
     </div>

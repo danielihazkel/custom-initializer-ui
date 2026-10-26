@@ -791,6 +791,34 @@ export function validatePages(pages: FullstackPageDef[], entities: FullstackEnti
   }
 }
 
+/**
+ * Applies every problem's own fix, one at a time: a fix is written against the layout it was found
+ * in (it removes page 3, widget 2…), so the layout is validated again after each one instead of
+ * applying them all to the first. A fix that leaves no fewer problems is skipped, so a fix that does
+ * not hold cannot loop. Returns the layout and the labels of the fixes applied, in order.
+ */
+export function fixAllProblems(pages: FullstackPageDef[], entities: FullstackEntityDef[], context: PageLayoutContext = {}): { pages: FullstackPageDef[]; applied: string[] } {
+  let current = pages
+  const applied: string[] = []
+  for (let round = 0; round < 100; round++) {
+    const before = validatePages(current, entities, context)
+    const fixes = before.issues.flatMap(i => (i.fix ? [i.fix] : []))
+    let next: FullstackPageDef[] | null = null
+    for (const fix of fixes) {
+      const after = fix.apply(current)
+      const check = validatePages(after, entities, context)
+      if (check.count < before.count || check.issues.filter(i => i.fix).length < fixes.length) {
+        next = after
+        applied.push(fix.label)
+        break
+      }
+    }
+    if (!next) break
+    current = next
+  }
+  return { pages: current, applied }
+}
+
 /** The dead ends a valid layout can still have — what the generated app silently does nothing
  *  about. Each names the page and, where one repair is obvious, offers it. */
 function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Issue[] {

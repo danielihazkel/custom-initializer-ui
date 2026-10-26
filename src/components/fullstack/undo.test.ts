@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emptyHistory, popUndo, pushUndo, record, redoStep, undoStep } from './undo'
+import { emptyHistory, popUndo, pushUndo, record, redoStep, stepMany, undoStep } from './undo'
 
 describe('undo stack', () => {
   it('pushes newest last and pops it first', () => {
@@ -52,5 +52,27 @@ describe('undo/redo history', () => {
     h = record(h, { label: 'c', snapshot: 0 })
     expect(h.future).toEqual([])
     expect(h.past.map(e => e.label)).toEqual(['c'])
+  })
+})
+
+describe('stepMany', () => {
+  // States 0 → 1 → 2 → 3, each edit labelled by the state it led to.
+  const h = record(record(record(emptyHistory<number>(), { label: 'to 1', snapshot: 0 }), { label: 'to 2', snapshot: 1 }), { label: 'to 3', snapshot: 2 })
+
+  it('steps several edits back at once, and forward again', () => {
+    const back = stepMany(h, 3, -2)!
+    expect(back.restore.snapshot).toBe(1)
+    expect(back.labels).toEqual(['to 3', 'to 2'])
+    expect(back.history.past.map(e => e.label)).toEqual(['to 1'])
+    const forward = stepMany(back.history, 1, 2)!
+    expect(forward.restore.snapshot).toBe(3)
+    expect(forward.history.past.map(e => e.label)).toEqual(['to 1', 'to 2', 'to 3'])
+    expect(forward.history.future).toEqual([])
+  })
+
+  it('refuses a jump past the history it has', () => {
+    expect(stepMany(h, 3, -4)).toBeNull()
+    expect(stepMany(h, 3, 1)).toBeNull()
+    expect(stepMany(h, 3, 0)).toBeNull()
   })
 })

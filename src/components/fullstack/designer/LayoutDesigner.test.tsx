@@ -5,6 +5,8 @@ import type { EntityTemplateSetSummary, FullstackEntityDef, FullstackNav, Fullst
 import type { FeColorPalette } from '../../../hooks/useFrontendMetadata'
 import { validatePages } from '../pageLayout'
 import { PagesSection } from './PagesSection'
+import { pickedAfterClick } from './PageStrip'
+import { nextZoom } from './CanvasFrame'
 
 const entities: FullstackEntityDef[] = [
   { name: 'Customer', fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'name', type: 'STRING' }] },
@@ -31,7 +33,7 @@ let latest: FullstackPageDef[] = []
 let latestNav: FullstackNav | undefined
 
 /** The section is controlled; the harness holds the layout the way FullstackView does. */
-function Harness({ initial }: { initial: FullstackPageDef[] }) {
+function Harness({ initial, history }: { initial: FullstackPageDef[]; history?: Parameters<typeof PagesSection>[0]['history'] }) {
   const [pages, setPages] = useState(initial)
   const [nav, setNav] = useState<FullstackNav | undefined>(undefined)
   latest = pages
@@ -46,6 +48,7 @@ function Harness({ initial }: { initial: FullstackPageDef[] }) {
       onClear={() => setPages([])}
       nav={nav}
       onNavChange={setNav}
+      history={history}
     />
   )
 }
@@ -61,9 +64,12 @@ function openDesigner() {
   return screen.getByRole('dialog', { name: 'Layout designer' })
 }
 const inspector = (designer: HTMLElement) => within(designer).getByRole('complementary', { name: 'Inspector' })
+const chip = (designer: HTMLElement, id: string) =>
+  (designer.querySelector(`[data-strip-page="${id}"]`) as HTMLElement).querySelector('button') as HTMLElement
 
 beforeEach(() => {
   pushUndo.mockClear()
+  localStorage.clear()
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { cb(0); return 0 })
 })
 afterEach(() => vi.unstubAllGlobals())
@@ -329,5 +335,137 @@ describe('Layout designer — Appearance', () => {
     fireEvent.change(document.getElementById('fs-dashboardTitle')!, { target: { value: 'Support desk' } })
     expect(designer.querySelector('[data-layout-preview]')?.textContent).toContain('Support desk')
     expect(within(designer).getByText(/Classic layout — the app you get without pages/)).toBeTruthy()
+  })
+})
+
+describe('Layout designer — pages, problems and the canvas', () => {
+  it('asks which pages a new tabs page holds before adding it', () => {
+    render(<Harness initial={desk} />)
+    const designer = openDesigner()
+    fireEvent.click(within(designer).getByRole('tab', { name: 'pages' }))
+    fireEvent.click(designer.querySelector('[data-library-page-type="tabs"]')!)
+    expect(latest).toHaveLength(3)
+    const form = designer.querySelector('[data-tabs-form]') as HTMLElement
+    // It opens with the first two pages that can be tabs; Desk joins them as the third.
+    expect((within(form).getByLabelText('Tab: Order') as HTMLInputElement).checked).toBe(true)
+    fireEvent.click(within(form).getByLabelText('Tab: Desk'))
+    fireEvent.change(within(form).getByLabelText('Tabs page title'), { target: { value: 'Sales' } })
+    fireEvent.click(within(form).getByLabelText('Hide these pages from the navigation'))
+    fireEvent.click(within(form).getByRole('button', { name: 'Add tabs page' }))
+    expect(latest[3]).toMatchObject({ type: 'tabs', title: 'Sales', tabs: [{ page: 'orders' }, { page: 'customers' }, { page: 'desk' }] })
+    expect(latest.some(p => p.hidden)).toBe(false)
+    expect(designer.querySelector('[data-tabs-form]')).toBeNull()
+  })
+
+  it('picks several pages with Ctrl-click and acts on them at once', () => {
+    render(<Harness initial={desk} />)
+    const designer = openDesigner()
+    fireEvent.click(chip(designer, 'orders'))
+    fireEvent.click(chip(designer, 'customers'), { ctrlKey: true })
+    const bar = designer.querySelector('[data-bulk-pages]') as HTMLElement
+    expect(within(bar).getByText('2 picked')).toBeTruthy()
+    fireEvent.click(within(bar).getByRole('button', { name: 'Hide from nav' }))
+    expect(latest.filter(p => p.hidden).map(p => p.id)).toEqual(['orders', 'customers'])
+    expect(pushUndo).toHaveBeenCalledWith('Hid 2 pages from the navigation')
+    // Escape drops the picks before it closes anything.
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(designer.querySelector('[data-bulk-pages]')).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Layout designer' })).toBeTruthy()
+  })
+
+  it('moves, removes and opens a chip menu for a page from its chip', () => {
+    render(<Harness initial={desk} />)
+    const designer = openDesigner()
+    fireEvent.keyDown(chip(designer, 'orders'), { key: 'ArrowRight', altKey: true })
+    expect(latest.map(p => p.id)).toEqual(['desk', 'customers', 'orders'])
+
+    fireEvent.contextMenu(chip(designer, 'orders'))
+    const menu = within(designer).getByRole('menu', { name: /actions/ })
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Make it the start page' }))
+    expect(latest.map(p => p.id)).toEqual(['orders', 'desk', 'customers'])
+    expect(within(designer).queryByRole('menu')).toBeNull()
+
+    fireEvent.keyDown(chip(designer, 'customers'), { key: 'Delete' })
+    expect(latest.map(p => p.id)).toEqual(['orders', 'desk'])
+    expect(pushUndo).toHaveBeenCalledWith('Removed the “Customer” page')
+  })
+
+  it('rings the parts of the canvas with a problem, and fixes them all in one step', () => {
+    render(<Harness initial={[
+      { id: 'desk', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Product' }, { kind: 'kpi', entity: 'Order' }, { kind: 'kpi', entity: 'Invoice' }] },
+      { id: 'customers', type: 'entity-list', entity: 'Customer' },
+    ]} />)
+    const designer = openDesigner()
+    expect(designer.querySelector('[data-preview-widget-slot="0"] [data-preview-problem]')).toBeTruthy()
+    expect(designer.querySelector('[data-preview-widget-slot="1"] [data-preview-problem]')).toBeNull()
+    expect(within(designer).getByRole('button', { name: /Edit widget 3 \(problem:/ })).toBeTruthy()
+
+    fireEvent.click(designer.querySelector('[data-designer-issues-toggle]')!)
+    fireEvent.click(designer.querySelector('[data-page-fix-all]')!)
+    expect(latest[0].widgets).toEqual([{ kind: 'kpi', entity: 'Order' }])
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(pushUndo).toHaveBeenCalledWith('Applied 2 fixes')
+    expect(designer.querySelector('[data-preview-problem]')).toBeNull()
+  })
+
+  it('jumps several steps back from the history list', () => {
+    const onJump = vi.fn()
+    render(<Harness initial={desk} history={{
+      undoLabel: 'Undo: Renamed', redoLabel: 'Redo: Moved', onUndo: () => {}, onRedo: () => {},
+      undoEntries: ['Added a page', 'Renamed'], redoEntries: ['Moved'], onJump,
+    }} />)
+    const designer = openDesigner()
+    fireEvent.click(designer.querySelector('[data-designer-history]')!)
+    const menu = within(designer).getByRole('menu', { name: 'History' })
+    expect(within(menu).getAllByRole('menuitem').map(i => i.textContent)).toEqual([
+      'redoRedo to: Moved', 'undoUndo: Renamed', 'undoUndo 2 back to before: Added a page',
+    ])
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Undo 2 back/ }))
+    expect(onJump).toHaveBeenCalledWith(-2)
+    expect(within(designer).queryByRole('menu')).toBeNull()
+  })
+
+  it('zooms the canvas, offers a tablet width and hides the side panes, remembering them', () => {
+    render(<Harness initial={desk} />)
+    let designer = openDesigner()
+    const frame = () => designer.querySelector('[data-canvas-device]') as HTMLElement
+    expect(frame().style.zoom).toBe('1.35')
+    fireEvent.click(within(designer).getByRole('button', { name: 'Zoom in' }))
+    expect(frame().style.zoom).toBe('1.6')
+    fireEvent.click(within(designer).getByRole('radio', { name: 'Tablet' }))
+    expect(frame().getAttribute('data-canvas-device')).toBe('tablet')
+
+    fireEvent.click(designer.querySelector('[data-toggle-library]')!)
+    expect(designer.querySelector('[data-designer-library]')).toBeNull()
+    fireEvent.click(designer.querySelector('[data-toggle-inspector]')!)
+    expect(within(designer).queryByRole('complementary', { name: 'Inspector' })).toBeNull()
+    // Clicking a part of the canvas brings the settings back to edit it.
+    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    expect(within(inspector(designer)).getByText('Widget 1')).toBeTruthy()
+
+    // Closed and opened again: the zoom and the hidden library stay; `/` brings the library back.
+    fireEvent.click(within(designer).getByRole('button', { name: 'Done' }))
+    designer = openDesigner()
+    expect(frame().style.zoom).toBe('1.6')
+    expect(designer.querySelector('[data-designer-library]')).toBeNull()
+    fireEvent.keyDown(designer, { key: '/' })
+    expect(document.activeElement).toBe(within(designer).getByLabelText('Search the library'))
+  })
+})
+
+describe('designer helpers', () => {
+  const ids = ['a', 'b', 'c', 'd'].map(id => ({ id, type: 'entity-list' as const, entity: 'Order' }))
+  it('picks with Ctrl (the open page joins the first pick) and with Shift (a run)', () => {
+    expect(pickedAfterClick(ids, [], 0, 2, 'toggle')).toEqual(['a', 'c'])
+    expect(pickedAfterClick(ids, ['a', 'c'], 0, 2, 'toggle')).toEqual(['a'])
+    expect(pickedAfterClick(ids, [], 1, 1, 'toggle')).toEqual(['b'])
+    expect(pickedAfterClick(ids, ['d'], 2, 0, 'range')).toEqual(['d', 'a', 'b', 'c'])
+  })
+  it('steps the zoom through its levels and stops at the ends', () => {
+    expect(nextZoom(1.35, 1)).toBe(1.6)
+    expect(nextZoom(1.35, -1)).toBe(1.15)
+    expect(nextZoom(1.9, 1)).toBe(1.9)
+    expect(nextZoom(0.8, -1)).toBe(0.8)
+    expect(nextZoom(1.25, 1)).toBe(1.35)
   })
 })
