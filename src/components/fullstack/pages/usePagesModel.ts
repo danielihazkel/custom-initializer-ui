@@ -229,10 +229,14 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   /** A new widget of `kind` reading `entity`, at the end or at `at`; returns where it landed. */
   function addWidget(pageIndex: number, kind: FullstackWidgetDef['kind'], entity: string, at?: number): number {
     const page = pages[pageIndex]
-    const widgets = page?.widgets ?? []
+    return addWidgetDef(pageIndex, newWidget(kind, entity, pages.filter(p => p !== page)), at)
+  }
+  /** A widget made elsewhere (a suggestion), at the end or at `at`; returns where it landed. */
+  function addWidgetDef(pageIndex: number, widget: FullstackWidgetDef, at?: number): number {
+    const widgets = pages[pageIndex]?.widgets ?? []
     const index = at == null ? widgets.length : Math.max(0, Math.min(at, widgets.length))
     const next = [...widgets]
-    next.splice(index, 0, newWidget(kind, entity, pages.filter(p => p !== page)))
+    next.splice(index, 0, { ...widget })
     update(pageIndex, { widgets: next })
     return index
   }
@@ -413,7 +417,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     update, retitle, unlockId,
     add, addPage, addTabsPage, newTypeReason, fittingChoices, noFitReason, switchBlocked, hasMdPair, tabsEligible,
     navGroupSections, renameGroup, moveGroup,
-    reorderWidget, resizeWidget, addWidget, setWidget, retargetWidgetAt, duplicateWidget, removeWidget,
+    reorderWidget, resizeWidget, addWidget, addWidgetDef, setWidget, retargetWidgetAt, duplicateWidget, removeWidget,
     changeType, removePage, requestRemove, duplicate, move, movePageTo, makeStart, toggleHidden,
     startFromEntities, layoutTemplates, startFromTemplate, myTemplates, saveAsTemplate, forgetTemplate,
     dnd, applyFix, fixAll, entityOptions, preview, suggestions, issues,

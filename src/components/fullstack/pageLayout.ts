@@ -2418,6 +2418,93 @@ export function suggestPages(entities: FullstackEntityDef[], pages: FullstackPag
   return out.slice(0, limit)
 }
 
+// ── Suggestions for the designer's widget library ───────────────────────────
+
+export interface WidgetSuggestion {
+  key: string
+  icon: string
+  label: string
+  blurb: string
+  /** The widget to add, settings and all. */
+  widget: FullstackWidgetDef
+}
+
+/** What a widget shows, for spotting one the dashboard already has: its kind (a donut is a bar
+ *  drawn round), entity, grouping (defaults resolved), aggregate and field. */
+function widgetShape(w: FullstackWidgetDef, entity: FullstackEntityDef | undefined): string {
+  const kind = w.kind === 'donut' ? 'bar' : w.kind
+  const groupBy = w.groupBy ?? (kind === 'line' ? defaultLineGroupBy(entity) : kind === 'bar' || kind === 'top' ? defaultTopGroupBy(entity) : undefined)
+  const agg = w.agg ?? 'count'
+  return [kind, (w.entity ?? '').trim().toLowerCase(), groupBy ?? '', agg, agg === 'count' ? '' : w.field ?? ''].join('|')
+}
+
+/**
+ * Ready-made widgets for one entity on one dashboard — a count, the total of its money (or other
+ * number) column, a breakdown by its first enum/boolean, a trend over its first date, its top
+ * related records, its latest rows — leaving out what the dashboard already shows. Each one is run
+ * through the validator on the dashboard first, so a suggestion is valid the moment it is added.
+ */
+export function suggestWidgets(entity: FullstackEntityDef | undefined, pages: FullstackPageDef[], pageIndex: number,
+                               context: { entities: FullstackEntityDef[]; scaffoldOpts?: string[] }, limit = 6): WidgetSuggestion[] {
+  const dashboard = pages[pageIndex]
+  if (!entity || !entity.name.trim() || dashboard?.type !== 'dashboard') return []
+  const name = entity.name.trim()
+  const plural = pluralize(name)
+  const labelOf = (f: FullstackFieldDef) => f.label?.trim() || humanize(f.name)
+  const candidates: WidgetSuggestion[] = [{
+    key: 'count', icon: 'counter_1', label: `Number of ${plural}`, blurb: 'A tile counting the rows',
+    widget: { kind: 'kpi', entity: name },
+  }]
+  const numbers = numericFields(entity)
+  const money = numbers.find(f => f.type === 'BIG_DECIMAL') ?? numbers[0]
+  if (money) {
+    candidates.push({
+      key: `sum:${money.name}`, icon: 'functions', label: `Total ${labelOf(money).toLowerCase()}`, blurb: `A tile summing ${labelOf(money)} over every ${name}`,
+      widget: { kind: 'kpi', entity: name, agg: 'sum', field: money.name },
+    })
+  }
+  const group = defaultBarGroupBy(entity)
+  const groupField = entity.fields.find(f => f.name === group)
+  if (groupField) {
+    candidates.push({
+      key: `donut:${groupField.name}`, icon: 'donut_large', label: `${plural} by ${labelOf(groupField).toLowerCase()}`, blurb: 'Shares of each value, as a ring',
+      widget: { kind: 'donut', entity: name, groupBy: groupField.name },
+    })
+  }
+  const date = dateFields(entity)[0]
+  if (date) {
+    candidates.push({
+      key: `line:${date.name}`, icon: 'show_chart', label: `${plural} over time`, blurb: `Counted per month of ${labelOf(date)}`,
+      widget: { kind: 'line', entity: name, groupBy: date.name, bucket: 'month' },
+    })
+  }
+  const relation = (entity.relations ?? []).find(r => r.type === 'MANY_TO_ONE' && r.fieldName.trim())
+  if (relation) {
+    candidates.push({
+      key: `top:${relation.fieldName}`, icon: 'format_list_numbered', label: `Top ${humanize(relation.fieldName).toLowerCase()} by ${plural.toLowerCase()}`,
+      blurb: `The ${relation.targetEntity} records with the most ${plural}`,
+      widget: { kind: 'top', entity: name, groupBy: relation.fieldName, limit: 5 },
+    })
+  }
+  candidates.push({
+    key: 'recent', icon: 'list', label: `Latest ${plural.toLowerCase()}`, blurb: 'The newest rows, each opening its record',
+    widget: { kind: 'recent', entity: name, limit: 5 },
+  })
+
+  const widgets = dashboard.widgets ?? []
+  if (widgets.length >= MAX_WIDGETS) return []
+  const shown = new Set(widgets.map(w => widgetShape(w, context.entities.find(e => e.name.trim().toLowerCase() === (w.entity ?? '').trim().toLowerCase()))))
+  const at = widgets.length
+  return candidates
+    .filter(c => !shown.has(widgetShape(c.widget, entity)))
+    .filter(c => {
+      const trial = pages.map((p, i) => (i === pageIndex ? { ...p, widgets: [...widgets, c.widget] } : p))
+      const errors = validatePages(trial, context.entities, { scaffoldOpts: context.scaffoldOpts }).byPage[pageIndex] ?? {}
+      return !Object.keys(errors).some(k => k === `widget.${at}` || k.startsWith(`widget.${at}.`))
+    })
+    .slice(0, limit)
+}
+
 /** Materializes a suggestion under a free id. */
 export function pageFromSuggestion(s: PageSuggestion, taken: Iterable<string>): FullstackPageDef {
   const { idBase, ...rest } = JSON.parse(JSON.stringify(s.page)) as PageSuggestion['page']

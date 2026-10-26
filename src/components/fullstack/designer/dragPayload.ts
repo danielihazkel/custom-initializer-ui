@@ -3,7 +3,8 @@ import type { FullstackPageType, FullstackWidgetDef } from '../../../types'
 
 /** What the library hands the canvas or the page strip while one of its cards is dragged. */
 export type LibraryDrag =
-  | { kind: 'widget'; widget: FullstackWidgetDef['kind'] }
+  /** A widget kind, or (`def`) a suggested widget with its settings. */
+  | { kind: 'widget'; widget: FullstackWidgetDef['kind']; def?: FullstackWidgetDef }
   | { kind: 'page'; type: FullstackPageType; pick?: string }
   | { kind: 'suggestion'; key: string }
   | { kind: 'my-template'; name: string }

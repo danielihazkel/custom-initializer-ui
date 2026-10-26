@@ -1,7 +1,7 @@
-import { useState, type DragEvent, type Ref } from 'react'
+import { useMemo, useState, type DragEvent, type Ref } from 'react'
 import type { FullstackPageDef, FullstackPageType, FullstackWidgetDef } from '../../../types'
 import { inputClass } from '../controls'
-import { MAX_WIDGETS, PAGE_TYPE_META, pageLabel, widgetKindDisabledReason } from '../pageLayout'
+import { MAX_WIDGETS, PAGE_TYPE_META, pageLabel, suggestWidgets, widgetKindDisabledReason } from '../pageLayout'
 import { WIDGET_KINDS } from '../pages/constants'
 import { EntitySelect } from '../pages/fields'
 import { TemplateGallery } from '../pages/TemplateGallery'
@@ -30,18 +30,22 @@ const matches = (query: string, ...texts: (string | undefined)[]) => {
  * draggable (onto the page strip, or a dashboard on the canvas) and clickable — a click or Enter
  * adds it where a drop at the end would.
  */
-export function DesignerLibrary({ pages, model, tab, onTab, page, entity, onEntity, onSelectPage, onAddWidget, onChooseType, onAddSuggestion, onAddMyTemplate, onTemplate, onDrag, searchRef }: {
+export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, entity, onEntity, onSelectPage, onAddWidget, onAddWidgetDef, onChooseType, onAddSuggestion, onAddMyTemplate, onTemplate, onDrag, searchRef }: {
   pages: FullstackPageDef[]
   model: PagesModel
   tab: LibraryTab
   onTab: (tab: LibraryTab) => void
   /** The page on the canvas — widgets go onto it when it is a dashboard. */
   page: FullstackPageDef | undefined
+  /** Where that page sits in the layout. */
+  pageIndex: number
   /** The entity new widgets read, and how the library's select changes it. */
   entity: string
   onEntity: (name: string) => void
   onSelectPage: (index: number) => void
   onAddWidget: (kind: FullstackWidgetDef['kind']) => void
+  /** Adds a suggested widget, settings and all. */
+  onAddWidgetDef: (widget: FullstackWidgetDef) => void
   onChooseType: (type: FullstackPageType) => void
   onAddSuggestion: (key: string) => void
   onAddMyTemplate: (name: string) => void
@@ -55,6 +59,11 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, entity, onEnti
   const isDashboard = page?.type === 'dashboard'
   const widgetCap = (page?.widgets?.length ?? 0) >= MAX_WIDGETS
   const dashboards = pages.map((p, i) => ({ p, i })).filter(({ p }) => p.type === 'dashboard')
+  // Ready-made widgets for the picked entity that this dashboard does not show yet.
+  const suggested = useMemo(
+    () => (isDashboard ? suggestWidgets(entityDef, pages, pageIndex, { entities: named, scaffoldOpts: projectOpts }) : []),
+    [isDashboard, entityDef, pages, pageIndex, named, projectOpts],
+  ).filter(s => matches(query, s.label, s.blurb))
 
   const dragProps = (payload: LibraryDrag, disabled: boolean) => (disabled ? {} : {
     draggable: true,
@@ -119,6 +128,35 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, entity, onEnti
                 <EntitySelect label="New widget entity" value={entity} options={named.map(e => e.name)} onChange={onEntity} className="w-full" />
               </label>
               {widgetCap && <p className="text-[11px] text-secondary">This dashboard has the most widgets it can have ({MAX_WIDGETS}).</p>}
+              {suggested.length > 0 && (
+                <section className="space-y-1.5" aria-label={`Suggested for ${entity}`}>
+                  <h3 className={HEADING}>Suggested for {entity}</h3>
+                  <ul className="space-y-1.5" data-widget-suggestions>
+                    {suggested.map(s => (
+                      <li key={s.key}>
+                        <button
+                          type="button"
+                          {...dragProps({ kind: 'widget', widget: s.widget.kind, def: s.widget }, false)}
+                          onClick={() => onAddWidgetDef(s.widget)}
+                          title={`${s.blurb} — drag onto the dashboard, or click to add it at the end`}
+                          aria-label={`Add ${s.label}`}
+                          className={`${CARD} cursor-grab border-primary/30 bg-primary/5`}
+                          data-widget-suggestion={s.key}
+                        >
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                            <span className="material-symbols-outlined" style={{ fontSize: '17px' }} aria-hidden="true">{s.icon}</span>
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-semibold text-on-surface">{s.label}</span>
+                            <span className="block text-[11px] text-secondary">{s.blurb}</span>
+                          </span>
+                          <span className="material-symbols-outlined text-secondary/70" style={{ fontSize: '16px' }} aria-hidden="true">drag_indicator</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               {WIDGET_GROUPS.map(group => {
                 const kinds = WIDGET_KINDS.filter(k => group.kinds.includes(k.kind) && matches(query, k.label, k.short, k.hint))
                 if (kinds.length === 0) return null

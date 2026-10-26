@@ -110,7 +110,13 @@ record's Back → its home and related rows → their record page, a wizard's Sa
 report chart → its list, search matches, content page links. `LayoutPreview` takes `play` (a context):
 `Editable` drops its edit overlay and `playLink` makes parts links (`data-play-link`). The designer keeps a
 trail of row keys (Back, crumbs); the page walked to is the selected page, so Esc / `P` resumes editing
-there. Pinned by `designer/LayoutDesigner.test.tsx` and `playLinks.test.ts`.
+there. Pinned by `designer/LayoutDesigner.test.tsx` and `playLinks.test.ts`. The library's Widgets tab
+opens with **Suggested for <entity>** (the "New widgets read" entity): `pageLayout.ts` `suggestWidgets`
+builds a count, a total of the entity's money (else first number) column, a donut by its first
+enum/boolean, a monthly trend over its first date, a top list by its first relation and its latest rows,
+drops any the dashboard already shows (`widgetShape`: kind with bar ≈ donut, entity, resolved grouping,
+aggregate, field) and any the validator rejects on that dashboard. A suggestion drags with its settings
+(`LibraryDrag` `def`) and lands through `usePagesModel.addWidgetDef`. Pinned by `widgetSuggestions.test.ts`.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;

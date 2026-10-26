@@ -453,6 +453,33 @@ describe('Layout designer — pages, problems and the canvas', () => {
   })
 })
 
+describe('Layout designer — widget suggestions', () => {
+  it('suggests ready-made widgets for the picked entity, by click or by drag', () => {
+    render(<Harness initial={desk} />)
+    const designer = openDesigner()
+    const list = () => designer.querySelector('[data-widget-suggestions]') as HTMLElement
+    // Desk already counts orders and breaks them down by status: neither is offered again.
+    const keys = () => Array.from(list().querySelectorAll('[data-widget-suggestion]')).map(b => b.getAttribute('data-widget-suggestion'))
+    expect(keys()).toEqual(['sum:total', 'line:placedOn', 'top:customer', 'recent'])
+
+    fireEvent.click(list().querySelector('[data-widget-suggestion="sum:total"]')!)
+    expect(latest[0].widgets?.[2]).toEqual({ kind: 'kpi', entity: 'Order', agg: 'sum', field: 'total' })
+    expect(within(inspector(designer)).getByText('Widget 3')).toBeTruthy()
+    expect(keys()).not.toContain('sum:total')
+
+    const dt = dataTransfer()
+    fireEvent.dragStart(list().querySelector('[data-widget-suggestion="line:placedOn"]')!, { dataTransfer: dt })
+    const first = designer.querySelector('[data-preview-widget-slot="0"]')!
+    fireEvent.dragOver(first, { dataTransfer: dt })
+    fireEvent.drop(first, { dataTransfer: dt })
+    expect(latest[0].widgets?.[1]).toEqual({ kind: 'line', entity: 'Order', groupBy: 'placedOn', bucket: 'month' })
+
+    // Another entity, other suggestions.
+    fireEvent.change(within(designer).getByLabelText('New widget entity'), { target: { value: 'Customer' } })
+    expect(keys()).toEqual(['count', 'recent'])
+  })
+})
+
 describe('Layout designer — Play mode', () => {
   const walkable: FullstackPageDef[] = [
     ...desk,

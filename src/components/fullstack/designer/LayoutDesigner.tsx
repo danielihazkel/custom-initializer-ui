@@ -329,9 +329,9 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     const t = model.myTemplates.find(x => x.name === name)
     if (t) model.add(pageFromTemplate(t, pages), at)
   }
-  function addWidget(kind: FullstackWidgetDef['kind'], entity: string, at?: number) {
+  function addWidget(kind: FullstackWidgetDef['kind'], entity: string, at?: number, def?: FullstackWidgetDef) {
     if (page?.type !== 'dashboard') return
-    const index = model.addWidget(selectedIndex, kind, entity, at)
+    const index = def ? model.addWidgetDef(selectedIndex, def, at) : model.addWidget(selectedIndex, kind, entity, at)
     setSelectedWidget(index)
   }
   function useTemplate(label: string, built: typeof pages) {
@@ -503,6 +503,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             entity={widgetEntity}
             onEntity={setPickedEntity}
             onAddWidget={kind => addWidget(kind, widgetEntity)}
+            onAddWidgetDef={def => addWidget(def.kind, def.entity, undefined, def)}
+            pageIndex={selectedIndex}
             onChooseType={type => chooseType(type)}
             onAddSuggestion={key => addSuggestion(key)}
             onAddMyTemplate={name => addMyTemplate(name)}
@@ -713,7 +715,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                       span: defaultSpan(widgetDrag.widget),
                       onDrop: (pageIndex, at) => {
                         setDrag(null)
-                        if (pageIndex === selectedIndex) addWidget(widgetDrag.widget, widgetEntity, at)
+                        if (pageIndex === selectedIndex) addWidget(widgetDrag.widget, widgetEntity, at, widgetDrag.def)
                       },
                     } : null}
                   />
