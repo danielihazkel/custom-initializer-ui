@@ -3,7 +3,7 @@ import type { FullstackEntityDef, FullstackListDetail, FullstackPageDef } from '
 import { inputClass } from '../controls'
 import { dropIndicatorClass, useDragReorder } from '../useDragReorder'
 import {
-  DEFAULT_PAGE_SIZE, LIST_PAGE_SIZES, LIST_VIEWS, enabledListViews, groupableFields, listColumns, pageLabel,
+  DEFAULT_PAGE_SIZE, LIST_ACTIONS, LIST_PAGE_SIZES, LIST_VIEWS, enabledListViews, groupableFields, listColumns, pageLabel,
   retargetEntityList, sortableKeys, splitDisabledReason, splitListByField, viewDisabledReason,
 } from '../pageLayout'
 import type { FormProps } from './formTypes'
@@ -265,6 +265,38 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
             {LIST_PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
             {page.pageSize != null && !LIST_PAGE_SIZES.includes(page.pageSize) && <option value={page.pageSize}>{page.pageSize}</option>}
           </select>
+        </Field>
+        <Field
+          label="Hide actions"
+          error={errors.hideActions}
+          control="hideActions"
+          hint="Leave buttons out of this list — presentation only; use roles to restrict who may do it"
+        >
+          <span className="inline-flex flex-wrap gap-1.5" data-hide-actions>
+            {LIST_ACTIONS.map(a => {
+              const hidden = page.hideActions ?? []
+              const on = hidden.includes(a.value)
+              return (
+                <label
+                  key={a.value}
+                  title={a.hint}
+                  className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${on ? 'border-error/50 bg-error/5 text-error line-through' : 'border-outline-variant text-on-surface'}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-primary"
+                    checked={on}
+                    aria-label={`Hide ${a.label}`}
+                    onChange={() => {
+                      const next = on ? hidden.filter(x => x !== a.value) : LIST_ACTIONS.map(x => x.value).filter(x => x === a.value || hidden.includes(x))
+                      update(index, { hideActions: next.length ? next : undefined })
+                    }}
+                  />
+                  {a.label}
+                </label>
+              )
+            })}
+          </span>
         </Field>
       </div>
     </div>

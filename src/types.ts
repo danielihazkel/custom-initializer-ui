@@ -606,6 +606,9 @@ export interface FullstackWidgetDef {
   drillTo?: string
 }
 
+/** A list action a list page can leave out (FullstackPageValidator.listSpec). */
+export type FullstackListAction = 'new' | 'edit' | 'delete' | 'export' | 'import' | 'bulk'
+
 /** How a report chart is drawn: bar/donut/stacked/table for a group, line/area/table over time. */
 export type FullstackChartKind = 'bar' | 'donut' | 'stacked' | 'line' | 'area' | 'table'
 
@@ -676,6 +679,8 @@ export interface FullstackPageDef {
   /** entity-list: where a row opens — the quick-look drawer, a pane beside the rows (the open row
    *  in the route) or the entity's record page. Default: the record page when there is one, else the drawer. */
   detail?: FullstackListDetail
+  /** entity-list: the actions its list leaves out — presentation only, the API still answers them. */
+  hideActions?: FullstackListAction[]
   /** dashboard */
   widgets?: FullstackWidgetDef[]
   /** dashboard: a period picker over the widgets' dates, opening on this period. */

@@ -7,6 +7,7 @@ import type {
   FullstackEntityDef,
   FullstackFieldDef,
   FullstackListSort,
+  FullstackListAction,
   FullstackListView,
   FullstackNavIcon,
   FullstackPageDef,
@@ -465,6 +466,16 @@ export function drillToPages(pages: FullstackPageDef[], entity: string | undefin
 }
 
 // ── Preset filters ──────────────────────────────────────────────────────────
+
+/** The list actions a list page can leave out, in the order the generator keeps them. */
+export const LIST_ACTIONS: { value: FullstackListAction; label: string; hint: string }[] = [
+  { value: 'new', label: 'New', hint: 'The New button, the empty list’s offer and the n shortcut' },
+  { value: 'edit', label: 'Edit', hint: 'Edit on a row, the side pane and the quick look; inline cells and dragging a card' },
+  { value: 'delete', label: 'Delete', hint: 'Delete on a row and in the side pane' },
+  { value: 'export', label: 'Export', hint: 'Export CSV (the csvExport option)' },
+  { value: 'import', label: 'Import', hint: 'Import CSV (the csvImport option)' },
+  { value: 'bulk', label: 'Bulk actions', hint: 'Row checkboxes and the bulk bar (bulkDelete / bulkUpdate)' },
+]
 
 /** The periods a date field can be preset to, ending on the day the app is opened. */
 export const PRESET_PERIODS: { value: string; label: string }[] = [
@@ -1133,6 +1144,17 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         }
         checkPresetFilter(page.presetFilter, e, entityOf, add, where)
         checkListPresentation(page, e, add, where, scaffoldOpts)
+        if (page.hideActions?.length) {
+          const unknown = page.hideActions.find(a => !LIST_ACTIONS.some(x => x.value === a))
+          const exports = e.opts?.csvExport ?? scaffoldOpts.includes('csvExport')
+          if (unknown) add('hideActions', `“${unknown}” is not a list action`, `${where} hides the unknown action “${unknown}”`)
+          else if (new Set(page.hideActions).size < page.hideActions.length) add('hideActions', 'lists an action twice', `${where} hides an action twice`)
+          else if ((e.readOnly || e.viewQuery != null) && !exports) {
+            add('hideActions', `${e.name} is read-only and exports nothing — there is nothing to hide`,
+              `${where} hides actions, but ${e.name} is read-only and exports nothing`,
+              patchPage(index, 'Show every action', p => { const { hideActions: _h, ...rest } = p; return rest }))
+          }
+        }
         if (page.detail === 'record' && !pages.some(p => p.type === 'record' && p.entity?.trim().toLowerCase() === e.name.trim().toLowerCase())) {
           add('detail', `needs a record page for ${e.name}`, `${where} opens rows on a record page, but ${e.name} has none`,
             singlePk(e) && pages.length < MAX_PAGES ? {
@@ -2562,6 +2584,8 @@ export function retargetPage(page: FullstackPageDef, type: FullstackPageType, en
   lost(page.sort, next.sort, 'sort')
   lost(page.view, next.view, 'view')
   lost(page.pageSize, next.pageSize, 'page size')
+  if (type === 'entity-list' && page.hideActions?.length) next.hideActions = page.hideActions
+  lost(page.hideActions, next.hideActions, 'hidden actions')
   lost(page.widgets, next.widgets, 'widgets')
   lost(page.dateRange, next.dateRange, 'period picker')
   lost(page.refreshSeconds, next.refreshSeconds, 'auto-refresh')
