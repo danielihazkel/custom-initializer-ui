@@ -38,7 +38,7 @@ import { frontendSetDefaults } from './frontendSetDefaults'
 import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
-import { PagesEditor } from './PagesEditor'
+import { PagesSection } from './designer/PagesSection'
 import { pageOfServerError, renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
@@ -1464,8 +1464,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         </div>
       </section>
 
-      {/* Pages are built from the entities, so the layout editor follows them. */}
-      <PagesEditor
+      {/* Pages are built from the entities, so the layout designer follows them. */}
+      <PagesSection
         pages={pages}
         entities={entities}
         validation={pageValidation}

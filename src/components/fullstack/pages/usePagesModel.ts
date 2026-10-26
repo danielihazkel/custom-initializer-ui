@@ -50,6 +50,15 @@ export interface PagesModelOptions {
   onRemovedKey?: (key: string) => void
 }
 
+/** Why a page is not in the navigation, said where its preview is shown; undefined when it is. */
+export function offNavNoteFor(page: FullstackPageDef | undefined): string | undefined {
+  if (!page) return undefined
+  if (page.type === 'record') return `Opens from a ${page.entity || 'record'} row — not in the navigation.`
+  if (page.hidden && page.type === 'wizard') return 'Link only — opened from a Page links widget or a list’s New button, not from the navigation.'
+  if (page.hidden) return 'Tab only — reachable inside a tabs page, not from the navigation.'
+  return undefined
+}
+
 export interface LayoutIssue {
   page?: number
   field?: string
@@ -397,6 +406,9 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     changeType, removePage, requestRemove, duplicate, move, movePageTo, makeStart, toggleHidden,
     startFromEntities, layoutTemplates, startFromTemplate, myTemplates, saveAsTemplate, forgetTemplate,
     dnd, applyFix, entityOptions, preview, suggestions, issues,
+    pushUndo, onChange,
+    /** The messages on one page's controls, by control key. */
+    validationErrors: (index: number): Record<string, string> => validation.byPage[index] ?? {},
   }
 }
 

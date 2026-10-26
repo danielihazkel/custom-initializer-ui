@@ -304,6 +304,13 @@ describe('FullstackView — page layouts', () => {
     if (confirm) fireEvent.click(confirm)
     return screen.findByRole('region', { name: 'Frontend page layout' })
   }
+  /** A page's chip on the Pages card: its title says what the page holds. */
+  const chip = (panel: HTMLElement, id: string) => panel.querySelector(`[data-page-id="${id}"]`) as HTMLElement | null
+  const chipText = (panel: HTMLElement, id: string) => chip(panel, id)?.getAttribute('title') ?? ''
+  function openDesigner(): HTMLElement {
+    fireEvent.click(screen.getByRole('button', { name: /Open designer/ }))
+    return screen.getByRole('dialog', { name: 'Layout designer' })
+  }
 
   it('loads an example with its layout and settings, and sends both on Generate', async () => {
     mockServer()
@@ -312,10 +319,11 @@ describe('FullstackView — page layouts', () => {
     expect(document.querySelector('[data-seed-layout]')).toBeTruthy()
     const panel = await loadDesk()
 
-    expect(panel.querySelector('[data-page-id="home"]')?.textContent).toContain('1 number tile · 1 breakdown chart')
-    expect(panel.querySelector('[data-page-id="queue"]')?.textContent).toContain('Open | all')
-    expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('Tab only')
-    expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('filtered on status = OPEN')
+    expect(chipText(panel, 'home')).toContain('1 number tile · 1 breakdown chart')
+    expect(chipText(panel, 'queue')).toContain('Open | all')
+    // Hidden pages sit apart from the navigation on the card.
+    expect(chip(panel, 'open')?.closest('[data-pages-off-nav]')).toBeTruthy()
+    expect(chipText(panel, 'open')).toContain('filtered on status = OPEN')
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate Fullstack ZIP' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/starter-fullstack.zip', expect.objectContaining({ method: 'POST' })))
@@ -347,8 +355,8 @@ describe('FullstackView — page layouts', () => {
     const panel = await loadDesk()
 
     fireEvent.change(screen.getByLabelText('Entity name'), { target: { value: 'Issue' } })
-    expect(panel.querySelector('[data-page-layout-problems]')).toBeNull()
-    expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('Issue list')
+    expect(panel.querySelector('[data-pages-problems]')).toBeNull()
+    expect(chipText(panel, 'open')).toContain('Issue list')
 
     fireEvent.click(screen.getByRole('button', { name: /Use classic layout/ }))
     // The layout is only dropped once the confirmation is accepted.
@@ -363,7 +371,9 @@ describe('FullstackView — page layouts', () => {
     mockServer()
     render(<FullstackView />)
     await loadDesk()
-    const topbar = () => screen.getByRole('radio', { name: 'Top bar' })
+    const designer = openDesigner()
+    fireEvent.click(within(designer).getByRole('radio', { name: 'Sitemap' }))
+    const topbar = () => within(designer).getByRole('radio', { name: 'Top bar' })
     fireEvent.click(topbar())
     expect(topbar().getAttribute('aria-checked')).toBe('true')
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
@@ -379,11 +389,11 @@ describe('FullstackView — page layouts', () => {
     const input = screen.getByLabelText('New name for OPEN')
     fireEvent.change(input, { target: { value: 'NEW' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('filtered on status = NEW')
-    expect(panel.querySelector('[data-page-layout-problems]')).toBeNull()
+    expect(chipText(panel, 'open')).toContain('filtered on status = NEW')
+    expect(panel.querySelector('[data-pages-problems]')).toBeNull()
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    await waitFor(() => expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('filtered on status = OPEN'))
+    await waitFor(() => expect(chipText(panel, 'open')).toContain('filtered on status = OPEN'))
     expect(screen.getAllByRole('button', { name: 'Rename OPEN' }).length).toBeGreaterThan(0)
   })
 
@@ -394,10 +404,11 @@ describe('FullstackView — page layouts', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove entity' }))
 
-    await waitFor(() => {
-      const problems = panel.querySelector('[data-page-layout-problems]')
-      expect(problems?.textContent).toContain('Page “open” lists “Ticket”, which is no longer an entity')
-    })
+    // The card counts the problems; the designer's issues list says what they are.
+    await waitFor(() => expect(panel.querySelector('[data-pages-problems]')).toBeTruthy())
+    fireEvent.click(panel.querySelector('[data-pages-issues]')!)
+    const designer = screen.getByRole('dialog', { name: 'Layout designer' })
+    expect(designer.querySelector('[data-page-layout-problems]')?.textContent).toContain('Page “open” lists “Ticket”, which is no longer an entity')
   })
 
   it('starts a layout from the entities and sends it on Generate', async () => {
@@ -438,10 +449,11 @@ describe('FullstackView — page layouts', () => {
     render(<FullstackView />)
     const panel = await loadDesk()
     // Give the hidden "open" list an id by hand: the lock rides on the page itself.
-    const row = panel.querySelector('[data-page-id="open"]') as HTMLElement
-    fireEvent.click(row.querySelector('button[aria-expanded]')!)
-    fireEvent.change(within(row).getByLabelText('Page id'), { target: { value: 'open-tickets' } })
-    fireEvent.change(within(row).getByLabelText('Page title'), { target: { value: 'Open ones' } })
+    fireEvent.click(chip(panel, 'open')!)
+    const inspector = within(screen.getByRole('dialog', { name: 'Layout designer' })).getByRole('complementary', { name: 'Inspector' })
+    fireEvent.change(within(inspector).getByLabelText('Page id'), { target: { value: 'open-tickets' } })
+    fireEvent.change(within(inspector).getByLabelText('Page title'), { target: { value: 'Open ones' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
 
     fireEvent.click(screen.getByTitle('Preview the generated file tree before downloading'))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/starter-fullstack.preview', expect.objectContaining({ method: 'POST' })))
@@ -462,7 +474,11 @@ describe('FullstackView — page layouts', () => {
     render(<FullstackView />)
     await loadDesk()
     fireEvent.click(screen.getByTitle('Preview the generated file tree before downloading'))
-    await waitFor(() => expect(document.querySelector('[data-page-layout-problems]')?.textContent)
+    await waitFor(() => expect(document.querySelector('[data-pages-server-issue]')?.textContent)
       .toContain("The server rejected “Ticket”: Page 'open': something the server does not like"))
+    // ...and the designer lists it with the layout's own problems.
+    fireEvent.click(screen.getByRole('button', { name: 'Open in designer' }))
+    expect(screen.getByRole('dialog', { name: 'Layout designer' }).querySelector('[data-page-layout-problems]')?.textContent)
+      .toContain("The server rejected “Ticket”")
   })
 })

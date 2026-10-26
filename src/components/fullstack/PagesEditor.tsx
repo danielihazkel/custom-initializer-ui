@@ -19,11 +19,11 @@ import { PreviewDrawer } from './pages/PreviewDrawer'
 import { LayoutWarnings } from './pages/LayoutWarnings'
 import { BulkPageBar } from './pages/BulkPageBar'
 import { PageList } from './pages/PageList'
-import { usePagesModel, type PagesPreviewSettings } from './pages/usePagesModel'
+import { offNavNoteFor, usePagesModel, type PagesPreviewSettings } from './pages/usePagesModel'
 
 export type { PagesPreviewSettings } from './pages/usePagesModel'
 
-interface Props {
+export interface PagesEditorProps {
   pages: FullstackPageDef[]
   entities: FullstackEntityDef[]
   /** Opens the guide on a topic — the header's help button. Absent (the admin form): no button. */
@@ -88,7 +88,7 @@ function readSectionOpen(): boolean {
 }
 
 /** One line for the collapsed section: what the generated app's navigation will hold. */
-function summarizeLayout(pages: FullstackPageDef[]): string {
+export function summarizeLayout(pages: FullstackPageDef[]): string {
   if (pages.length === 0) return 'Classic layout — a dashboard plus one list page per entity.'
   const labels = pages.filter(inNav).map(pageLabel)
   const more = labels.length - SUMMARY_NAMES
@@ -106,7 +106,7 @@ function summarizeLayout(pages: FullstackPageDef[]): string {
  * dashboard plus one list page per entity), which "Start from my entities" materializes as an
  * editable starting point.
  */
-export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, dismissedWarnings, onDismissedWarningsChange }: Props) {
+export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, dismissedWarnings, onDismissedWarningsChange }: PagesEditorProps) {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   // The "Tabs" gallery card asks which pages to embed before adding anything.
@@ -340,11 +340,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     return i >= 0 ? i : preview.nav[0]?.index ?? 0
   })()
   const previewPage = pages[previewIndex]
-  const offNavNote = !previewPage ? undefined
-    : previewPage.type === 'record' ? `Opens from a ${previewPage.entity || 'record'} row — not in the navigation.`
-      : previewPage.hidden && previewPage.type === 'wizard' ? 'Link only — opened from a Page links widget or a list’s New button, not from the navigation.'
-        : previewPage.hidden ? 'Tab only — reachable inside a tabs page, not from the navigation.'
-        : undefined
+  const offNavNote = offNavNoteFor(previewPage)
   const { suggestions, issues } = model
   const showPreview = pages.length > 0 && previewOpen
 
