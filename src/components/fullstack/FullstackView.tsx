@@ -269,7 +269,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
   // Validation — mirrors the backend FullstackRequestValidator so problems surface inline
   // before submit. The server stays the source of truth.
-  const entityErrors = useMemo(() => validateEntities(entities), [entities])
+  const entityErrors = useMemo(() => validateEntities(entities, scaffoldOpts), [entities, scaffoldOpts])
   const metaErrors: MetaErrors = useMemo(
     () => validateMeta(meta, { bootVersions, javaVersions }),
     [meta, bootVersions, javaVersions],

@@ -36,6 +36,21 @@ describe('validateEntities', () => {
     expect(rel.entities[1].relations?.[0].joinColumn).toBe('Letters, digits and _ $ # @, or a quoted name like "OrderDate"')
   })
 
+  it("reserves 'version' for optimistic locking, when locking applies to the entity", () => {
+    const withVersion = (over: Partial<FullstackEntityDef> = {}) => validEntity({
+      fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'version', type: 'INTEGER' }],
+      ...over,
+    })
+    const err = "'version' is taken by optimistic locking — rename it, or turn locking off for this entity"
+    expect(validateEntities([withVersion()]).count).toBe(0)
+    expect(validateEntities([withVersion()], ['optimisticLocking']).entities[0].fields[1].name).toBe(err)
+    expect(validateEntities([withVersion({ opts: { optimisticLocking: true } })]).entities[0].fields[1].name).toBe(err)
+    expect(validateEntities([withVersion({ opts: { optimisticLocking: false } })], ['optimisticLocking']).count).toBe(0)
+    expect(validateEntities([withVersion({ readOnly: true })], ['optimisticLocking']).count).toBe(0)
+    // A column named version clashes too.
+    const byColumn = validEntity({ fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'rev', type: 'INTEGER', column: 'VERSION' }] })
+    expect(validateEntities([byColumn], ['optimisticLocking']).entities[0].fields[1].name).toBe(err)
+  })
   it('accepts a well-formed entity', () => {
     const result = validateEntities([validEntity()])
     expect(result.count).toBe(0)

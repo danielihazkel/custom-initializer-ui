@@ -365,10 +365,13 @@ export interface FullstackFieldDef {
 }
 
 /** Per-entity override of a project-wide scaffold opt (true = force on, false = force off;
- *  absent = inherit). Keys: audit, softDelete, csvExport, bulkDelete, bulkUpdate, tests. */
+ *  absent = inherit). Keys: audit, softDelete, csvExport, bulkDelete, bulkUpdate, tests, csvImport,
+ *  optimisticLocking, inlineEdit. */
 export type FullstackEntityOpts = Partial<Record<FullstackEntityOptKey, boolean>>
 export type FullstackEntityOptKey = 'audit' | 'softDelete' | 'csvExport' | 'bulkDelete' | 'bulkUpdate' | 'tests' | 'csvImport'
-export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests', 'csvImport']
+  | 'optimisticLocking' | 'inlineEdit'
+export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests', 'csvImport',
+  'optimisticLocking', 'inlineEdit']
 
 // v1 supports the FK-owning side only (MANY_TO_ONE); the inverse @OneToMany is auto-derived
 // server-side via the inverseCollections opt.
