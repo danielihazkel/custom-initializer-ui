@@ -324,6 +324,9 @@ describe('FullstackView — page layouts', () => {
     expect(body.pages.map((p: { id: string }) => p.id)).toEqual(['home', 'queue', 'open', 'all'])
     expect(body.opts).toEqual({ scaffold: ['csvExport'] })
     expect(body.dashboardTitle).toBe('Support')
+    // The editor's own model rides along for the zip's menora-model.json — the same export Import JSON reads.
+    expect(body.editorModel.format).toBe('menora-fullstack-model/1')
+    expect(body.editorModel.pages.map((p: { id: string }) => p.id)).toEqual(['home', 'queue', 'open', 'all'])
   })
 
   it('disables the classic dashboard title and overview once a page layout is set', async () => {

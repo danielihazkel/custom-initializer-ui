@@ -143,6 +143,36 @@ describe('snapshot page layout', () => {
   })
 })
 
+describe('a generated zip\'s menora-model.json', () => {
+  it('imports the editor snapshot it carries like any export', () => {
+    const parsed = parseExportedModel(JSON.stringify(toExportedModel(snapshot)))
+    expect('snapshot' in parsed && parsed.snapshot.meta.artifactId).toBe('shop')
+  })
+  it('imports the request it carries when it was generated without one', () => {
+    const file = {
+      format: 'menora-fullstack-request/1',
+      request: {
+        groupId: 'com.acme', artifactId: 'ops', bootVersion: '3.2.1', locale: 'he', unknownField: 1,
+        dependencies: ['data-jpa', 'web'], opts: { scaffold: ['audit'] },
+        frontendTemplateSet: 'react-menora-digital-crud', colorPalette: 'menora-digital',
+        entities: [{ name: 'Task', fields: [{ name: 'id', type: 'LONG', primaryKey: true }] }],
+        pages: [{ id: 'tasks', type: 'entity-list', entity: 'Task' }],
+        nav: { style: 'topbar' },
+      },
+    }
+    const parsed = parseExportedModel(JSON.stringify(file))
+    if (!('snapshot' in parsed)) throw new Error(parsed.error)
+    expect(parsed.snapshot.meta).toMatchObject({ groupId: 'com.acme', artifactId: 'ops', locale: 'he', packaging: 'jar' })
+    expect(parsed.snapshot.selectedDeps).toEqual(['data-jpa', 'web'])
+    expect(parsed.snapshot.scaffoldOpts).toEqual(['audit'])
+    expect(parsed.snapshot.backendSet).toBe('spring-jpa-crud')
+    expect(parsed.snapshot.frontendSet).toBe('react-menora-digital-crud')
+    expect(parsed.snapshot.pages?.[0].id).toBe('tasks')
+    expect(parsed.snapshot.nav).toEqual({ style: 'topbar' })
+    expect(parseExportedModel(JSON.stringify({ format: 'menora-fullstack-request/1', request: {} }))).toHaveProperty('error')
+  })
+})
+
 describe('snapshot dismissed warnings', () => {
   const base: FullstackSnapshot = {
     meta: DEFAULT_PROJECT_META, entities: [], selectedDeps: [], scaffoldOpts: [], backendSet: 'a', frontendSet: 'b',

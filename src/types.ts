@@ -486,6 +486,9 @@ export interface FullstackStarterRequest {
   entities: FullstackEntityDef[]
   /** Frontend page layout; omitted = the classic shell (a dashboard + one list page per entity). */
   pages?: FullstackPageDef[]
+  /** The editor's own snapshot (its JSON export), written to the zip's menora-model.json so the
+   *  project can be reopened here. Ignored by generation; sent by Generate only. */
+  editorModel?: unknown
 }
 
 export interface AdminDepartment {

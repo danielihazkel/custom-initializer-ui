@@ -939,7 +939,9 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       const res = await fetch('/starter-fullstack.zip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        // The editor's own model rides along into the zip (menora-model.json), so Import JSON can
+        // reopen the project as it is here — locked page ids and dismissed warnings included.
+        body: JSON.stringify({ ...body, editorModel: toExportedModel(snapshotRef.current) }),
         signal: controller.signal,
       })
       if (!res.ok) {
