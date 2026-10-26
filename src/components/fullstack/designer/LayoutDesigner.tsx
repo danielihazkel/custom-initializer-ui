@@ -250,7 +250,10 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
         aria-label="Layout designer"
         tabIndex={-1}
         onKeyDown={onDialogKey}
-        className="fixed inset-0 z-[55] flex flex-col bg-background text-on-surface outline-none"
+        // Above the app header (z-50) and every view, below confirms and toasts (z-60/70). Inline, so
+        // it never hangs on Tailwind having generated a class only this file uses.
+        style={{ zIndex: 55 }}
+        className="fixed inset-0 flex flex-col bg-background text-on-surface outline-none"
         data-layout-designer
       >
         <header className="flex flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container-lowest px-4 py-2">
