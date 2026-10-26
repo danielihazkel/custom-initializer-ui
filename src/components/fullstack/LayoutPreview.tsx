@@ -31,6 +31,8 @@ interface Props {
   /** A widget being dragged in from the layout designer's library: the dashboard shows where it
    *  would land, and a drop adds it there (`at` = the index it takes). */
   widgetDrop?: WidgetDrop | null
+  /** A phone-width app: the menu as a top bar, dashboard widgets one per row. */
+  narrow?: boolean
 }
 
 export interface WidgetDrop {
@@ -53,7 +55,7 @@ const WIDGET_LIST = 'preview-widgets:'
  * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
-export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups, palette, widgetDrop }: Props) {
+export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups, palette, widgetDrop, narrow }: Props) {
   const screen = preview.screens[selected]
   const menora = skin === 'menora'
   // The generated tailwind shell: `--color-brand`/`--color-primary` = palette primary,
@@ -65,7 +67,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
     ? `linear-gradient(${direction}, ${brand} 0%, ${brand} 75%, ${gold} 100%)`
     : '#2B2F4C'
   // The tailwind shell's top bar lays the nav out like the Menora one, on the dark shell colour.
-  const topbar = !menora && navStyle === 'topbar'
+  const topbar = !menora && (navStyle === 'topbar' || Boolean(narrow))
   const horizontal = menora || topbar
   // One drag context for every dashboard drawn (a tab may embed another): the list key names the page.
   const dnd = useDragReorder((list, from, to) => onReorderWidget?.(Number(list.slice(WIDGET_LIST.length)), from, to))
@@ -136,7 +138,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         <p className="rounded bg-surface-container px-2 py-1 text-[10px] text-secondary">{offNavNote}</p>
       )}
       {screen ? (
-        <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={onReorderWidget ? dnd : undefined} onResizeWidget={onResizeWidget} widgetDrop={widgetDrop} />
+        <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={onReorderWidget ? dnd : undefined} onResizeWidget={narrow ? undefined : onResizeWidget} widgetDrop={widgetDrop} narrow={narrow} />
       ) : (
         <p className="text-[11px] text-secondary">Nothing to show.</p>
       )}
@@ -223,9 +225,10 @@ interface ScreenProps {
   dnd?: DragReorder
   onResizeWidget?: (page: number, index: number, span: number) => void
   widgetDrop?: WidgetDrop | null
+  narrow?: boolean
 }
 
-function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, embedded, dnd, onResizeWidget, widgetDrop }: ScreenProps) {
+function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, embedded, dnd, onResizeWidget, widgetDrop, narrow }: ScreenProps) {
   // Every part of this screen jumps to its editor control, and lights when that control is hovered.
   const link = { page, onEdit, highlight }
   // The dashboard grid, measured while a widget's edge is dragged to a new width.
@@ -295,7 +298,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               </div>
             </Editable>
           )}
-          <div ref={gridRef} className="grid grid-cols-4 gap-1.5">
+          <div ref={gridRef} className={`grid ${narrow ? 'grid-cols-1' : 'grid-cols-4'} gap-1.5`}>
             {screen.widgets.map(w => (
               <Widget
                 key={w.index}
@@ -310,6 +313,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                 onResize={onResizeWidget ? span => onResizeWidget(page, w.index, span) : undefined}
                 newDrop={newDrop}
                 last={w.index === screen.widgets.length - 1}
+                narrow={narrow}
                 {...link}
               />
             ))}
@@ -318,7 +322,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                 onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (dropAt !== screen.widgets.length) setDropAt(screen.widgets.length) }}
                 onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropAt(null) }}
                 onDrop={e => { e.preventDefault(); newDrop.drop(screen.widgets.length) }}
-                className={`${SPAN[(widgetDrop?.span ?? 2) - 1] ?? 'col-span-2'} flex min-h-12 items-center justify-center rounded border-2 border-dashed px-2 text-center text-[10px] ${
+                className={`${narrow ? 'col-span-1' : SPAN[(widgetDrop?.span ?? 2) - 1] ?? 'col-span-2'} flex min-h-12 items-center justify-center rounded border-2 border-dashed px-2 text-center text-[10px] ${
                   dropAt === screen.widgets.length ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant text-secondary'}`}
                 data-preview-drop-end
               >
@@ -801,7 +805,7 @@ const SPAN = ['col-span-1', 'col-span-2', 'col-span-3', 'col-span-4']
 const MAX_SPAN = SPAN.length
 const TOOL = 'rounded px-1 text-[10px] font-semibold leading-4 text-secondary hover:bg-primary/10 hover:text-primary disabled:opacity-30'
 
-function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, onResize, newDrop, last, ...link }: LinkProps & {
+function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, onResize, newDrop, last, narrow, ...link }: LinkProps & {
   widget: PreviewWidget
   accent: string
   viewAll: string
@@ -816,6 +820,7 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
   /** A library widget being dragged over the dashboard: where it would land, and the drop. */
   newDrop?: { at: number | null; hover: (at: number | null) => void; drop: (at: number) => void }
   last?: boolean
+  narrow?: boolean
 }) {
   // While the end edge is dragged the card follows the pointer; the width is committed on release.
   const [liveSpan, setLiveSpan] = useState<number | null>(null)
@@ -863,7 +868,7 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
   return (
     <div
       {...(newDropProps ?? (dnd ? dnd.rowProps(list, widget.index) : {}))}
-      className={`group relative ${SPAN[span - 1] ?? 'col-span-1'} min-w-0 ${dragging ? 'opacity-40' : ''} ${newDrop ? `rounded border-2 border-transparent ${dropIndicatorClass(indicator, 'x')}` : dropIndicatorClass(indicator)}`}
+      className={`group relative ${narrow ? 'col-span-1' : SPAN[span - 1] ?? 'col-span-1'} min-w-0 ${dragging ? 'opacity-40' : ''} ${newDrop ? `rounded border-2 border-transparent ${dropIndicatorClass(indicator, 'x')}` : dropIndicatorClass(indicator)}`}
       data-preview-widget-slot={widget.index}
     >
     <Editable {...link} control={`widget.${widget.index}`} label={`Edit widget ${widget.index + 1}`} className="block h-full w-full min-w-0 text-start">

@@ -48,6 +48,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   const [libraryTab, setLibraryTab] = useState<LibraryTab>(target.panel === 'templates' ? 'templates' : target.panel === 'add' ? 'pages' : 'widgets')
   const [issuesOpen, setIssuesOpen] = useState(target.panel === 'issues')
   const [view, setView] = useState<'design' | 'sitemap'>('design')
+  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
   const [drag, setDrag] = useState<LibraryDrag | null>(null)
   // A page type more than one entity fits: which one, and where it goes.
   const [entityForm, setEntityForm] = useState<{ type: FullstackPageType; pick: string; at?: number } | null>(null)
@@ -129,19 +130,50 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
       opener?.focus?.()
     }
   }, [])
+  // The designer's keys (listed in FULLSTACK_SHORTCUTS): read through a ref, so the one listener
+  // always sees the current selection.
+  const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {})
+  onKeyRef.current = (e: KeyboardEvent) => {
+    // A confirm opened over the designer owns the keyboard.
+    if (document.querySelectorAll('[role="dialog"][aria-modal="true"]').length > 1) return
+    if (e.key === 'Escape' && !e.defaultPrevented) {
+      if (isTypingTarget(e.target)) return
+      e.preventDefault()
+      if (issuesOpen) setIssuesOpen(false)
+      else if (widget != null) setSelectedWidget(null)
+      else if (entityForm) setEntityForm(null)
+      else onClose()
+      return
+    }
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || isTypingTarget(e.target) || view !== 'design') return
+    if (e.key === '/' && !e.altKey) {
+      e.preventDefault()
+      librarySearchRef.current?.focus()
+      return
+    }
+    if (widget == null) return
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !e.altKey) {
+      e.preventDefault()
+      model.removeWidget(selectedIndex, widget)
+      setSelectedWidget(null)
+      return
+    }
+    if (!e.altKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
+    e.preventDefault()
+    const forward = (e.key === 'ArrowRight') !== Boolean(preview.rtl)
+    const w = page?.widgets?.[widget]
+    if (!w) return
+    if (e.shiftKey) {
+      const span = Math.max(1, Math.min(4, (w.span ?? defaultSpan(w.kind)) + (forward ? 1 : -1)))
+      model.resizeWidget(selectedIndex, widget, span)
+    } else {
+      const to = widget + (forward ? 1 : -1)
+      if (to >= 0 && to < (page?.widgets?.length ?? 0)) reorderWidget(selectedIndex, widget, to)
+    }
+  }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // A confirm opened over the designer owns the keyboard.
-      if (document.querySelectorAll('[role="dialog"][aria-modal="true"]').length > 1) return
-      if (e.key === 'Escape' && !e.defaultPrevented) {
-        if (isTypingTarget(e.target)) return
-        e.preventDefault()
-        if (issuesOpen) setIssuesOpen(false)
-        else if (widget != null) setSelectedWidget(null)
-        else if (entityForm) setEntityForm(null)
-        else onClose()
-        return
-      }
+      onKeyRef.current(e)
       if (e.key === 'Tab' && dialogRef.current) {
         const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), select:not([disabled]), input:not([disabled]), textarea, [tabindex="0"]'))
         if (focusable.length === 0) return
@@ -153,7 +185,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [issuesOpen, widget, entityForm, onClose])
+  }, [])
 
   // Each radio group is one Tab stop, walked with the arrow keys (the forms' own convention).
   useLayoutEffect(() => syncRadioTabStops(dialogRef.current))
@@ -360,6 +392,22 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                   <span>{PAGE_TYPE_META[page.type]?.label}</span>
                   <span className="font-mono">#/{page.id || '…'}</span>
                   <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · drag to move · drag its edge to resize' : 'Click a part of the page to edit it'}</span>
+                  <span role="radiogroup" aria-label="Preview width" className="inline-flex overflow-hidden rounded-md border border-outline-variant">
+                    {([['desktop', 'Desktop', 'computer'], ['mobile', 'Mobile', 'smartphone']] as const).map(([value, label, icon]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={device === value}
+                        aria-label={label}
+                        title={`${label} width`}
+                        onClick={() => setDevice(value)}
+                        className={`px-1.5 py-0.5 ${device === value ? 'bg-primary/15 text-on-surface' : 'text-secondary hover:text-on-surface'}`}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">{icon}</span>
+                      </button>
+                    ))}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setSelectedWidget(null)}
@@ -376,7 +424,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
               data-designer-canvas
             >
               {page ? (
-                <div className="mx-auto max-w-[56rem]" style={{ zoom: CANVAS_ZOOM }}>
+                <div className={`mx-auto ${device === 'mobile' ? 'max-w-[18rem]' : 'max-w-[56rem]'}`} style={{ zoom: CANVAS_ZOOM }}>
                   <LayoutPreview
                     preview={preview}
                     selected={selectedIndex}
@@ -390,6 +438,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     onResizeWidget={model.resizeWidget}
                     navStyle={nav?.style}
                     collapsibleGroups={nav?.collapsibleGroups}
+                    narrow={device === 'mobile'}
                     widgetDrop={widgetDrag ? {
                       span: defaultSpan(widgetDrag.widget),
                       onDrop: (pageIndex, at) => {

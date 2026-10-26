@@ -10,9 +10,11 @@ export const FULLSTACK_SHORTCUTS: { keys: string; action: string }[] = [
   { keys: 'Ctrl+Shift+Z / Ctrl+Y', action: 'Redo' },
   { keys: 'Ctrl+K', action: 'Command palette — every action on this tab' },
   { keys: '↑ / ↓ / Enter', action: 'Move through the entity outline and open a card' },
-  { keys: '/', action: 'Find a page (in the frontend pages section)' },
-  { keys: '↑ / ↓', action: 'Move between page rows (on a page title)' },
-  { keys: 'Esc', action: 'Close a dialog, panel or the import drawer' },
+  { keys: '/', action: 'Search the library (in the layout designer)' },
+  { keys: 'Delete', action: 'Remove the selected widget (layout designer)' },
+  { keys: 'Alt+← / Alt+→', action: 'Move the selected widget (layout designer)' },
+  { keys: 'Alt+Shift+← / →', action: 'Make the selected widget narrower or wider' },
+  { keys: 'Esc', action: 'Close a dialog, panel or the import drawer; in the designer, deselect first' },
   { keys: '?', action: 'Show this list' },
 ]
 

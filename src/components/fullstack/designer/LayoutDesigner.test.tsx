@@ -207,6 +207,33 @@ describe('Layout designer', () => {
     expect(within(inspector(designer)).getByRole('heading', { name: /Order/ })).toBeTruthy()
   })
 
+  it('moves, resizes and removes the selected widget from the keyboard', () => {
+    render(<Harness initial={desk} />)
+    const designer = openDesigner()
+    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    fireEvent.keyDown(designer, { key: 'ArrowRight', altKey: true })
+    expect(latest[0].widgets?.map(w => w.kind)).toEqual(['bar', 'kpi'])
+    // The selection follows the widget.
+    expect(within(inspector(designer)).getByText('Widget 2')).toBeTruthy()
+    fireEvent.keyDown(designer, { key: 'ArrowRight', altKey: true, shiftKey: true })
+    expect(latest[0].widgets?.[1].span).toBe(2)
+    fireEvent.keyDown(designer, { key: 'Delete' })
+    expect(latest[0].widgets?.map(w => w.kind)).toEqual(['bar'])
+    // `/` searches the library.
+    fireEvent.keyDown(designer, { key: '/' })
+    expect(document.activeElement).toBe(within(designer).getByLabelText('Search the library'))
+  })
+
+  it('previews the page at phone width, one widget per row', () => {
+    render(<Harness initial={desk} />)
+    const designer = openDesigner()
+    const grid = () => designer.querySelector('[data-preview-widget-slot="0"]')!.parentElement!
+    expect(grid().className).toContain('grid-cols-4')
+    fireEvent.click(within(designer).getByRole('radio', { name: 'Mobile' }))
+    expect(grid().className).toContain('grid-cols-1')
+    expect(designer.querySelector('[data-preview-topbar]')).toBeTruthy()
+  })
+
   it('starts a layout from the entities on an empty card and opens the designer', () => {
     render(<Harness initial={[]} />)
     fireEvent.click(screen.getByRole('button', { name: /Start from my entities/ }))

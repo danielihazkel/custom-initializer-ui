@@ -25,6 +25,9 @@ All component code uses relative paths — no hardcoded backend URL anywhere.
 
 ## Component Map
 
+The original skeleton, kept for orientation — the app is now TypeScript (`.tsx`) with Tailwind v4; see the
+sections below for what each area holds today.
+
 ```
 src/
 ├── main.jsx                      React root
@@ -66,7 +69,23 @@ a clickable issue count that jumps to the first problem (`#fs-meta`/`[data-entit
 (`shareLink.ts`, base64url JSON, debounced; `writeShareToLocation` returns `too-large` when it can't
 fit, which the sticky bar reports) so the header's Share button reproduces the model; on load `?fs=`
 beats localStorage, `App.tsx` keeps `?tab=fullstack` in step and strips `fs` when leaving the tab.
-**Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`, section `#fs-pages`): the layout the request
+**Layout designer** (`designer/`, the Fullstack tab's `#fs-pages`): `PagesSection` takes `PagesEditor`'s props and
+renders a card (the layout as a sitemap of page chips — each chip's title is `describePage` — its problem count,
+the server issue, Start from my entities / a template, Use classic layout) that opens `LayoutDesigner`, a
+full-screen portal dialog (`role="dialog" aria-modal`, body scroll lock, Tab loop, focus back to the opener):
+`DesignerLibrary` (page types, suggestions, My templates, widgets grouped Numbers/Charts/Lists/Other with the
+`widgetKindDisabledReason` shown, whole-layout templates), `PageStrip` over the canvas (`LayoutPreview` at
+`CANVAS_ZOOM`, `narrow` for the Mobile switch) and `DesignerInspector` (a widget: `WidgetCard bare`; a page:
+Basics `PageBasicsFields` / Layout `PageTypeForm widgetsOnCanvas` / Access `RolesField`), plus `IssuesPanel` and
+`SitemapView` (nav sections via `GroupChip`, page moves via the `pages` drag list, nav style). Library cards drag
+with `dragPayload.ts` (`LibraryDrag`, kept in designer state; the event carries it too): widgets onto
+`LayoutPreview`'s `widgetDrop` (before/after the widget under the pointer, or the end slot), pages into the strip.
+The palette's page actions and Generate's jump to an error open the designer (`DesignerTarget`). Every change goes
+through `pages/usePagesModel.ts`, which `PagesEditor` uses too — the admin examples form keeps the inline editor.
+The page forms use container queries (`@sm:` etc., `@container` on the hosts) so they stack in the 22rem
+inspector. Designer keys (`/`, Delete, Alt+←/→, Alt+Shift+←/→, Esc) are in `FULLSTACK_SHORTCUTS`. Pinned by
+`designer/LayoutDesigner.test.tsx`.
+**Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;
 *Use classic layout* drops it again (undoable). Pages are added from a type gallery (dashboard,
@@ -278,8 +297,10 @@ validated like the server's `canonicalEnumLabels` (key must be a value, non-blan
 
 ## Styling
 
-Plain CSS custom properties — no framework. Key variables in `App.css`:
-- `--menora-navy: #003366` — header, active pills, chips, generate button
-- `--menora-accent: #0066cc` — focus rings, group headers
-- Two-column grid: left = ProjectForm + OptionsPanel, right = DependencySelector (sticky)
-- Sticky bottom bar for the Generate button
+Tailwind v4 (`@import "tailwindcss"` + `@theme` in `src/index.css`) with Material 3 token names
+(`bg-surface-container-lowest`, `text-on-surface`, `border-outline-variant`, `text-primary`…). Dark is the
+`@theme` default; `html.light` overrides it (toggled in `App.tsx`, pre-paint script in `index.html`), and in
+light mode `text-primary` is remapped to the tertiary blue because gold text on white is unreadable. Fonts
+(Geist) and icons (Material Symbols) are bundled from node_modules via `src/fonts.css` — the deployed UI is
+offline, never add a CDN link. Container queries (`@container` / `@sm:`) are used where a form must stack
+by its column's width rather than the window's (the page forms in the layout designer's inspector).
