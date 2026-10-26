@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { Toast } from '../../../types'
 
@@ -12,11 +12,14 @@ const PLAIN_MS = 3000
 const WITH_ACTION_MS = 6000
 
 export function StatusToast({ toast, onClear }: StatusToastProps) {
+  // Keyed on the toast only: an inline onClear would restart the timer on every render.
+  const clearRef = useRef(onClear)
+  clearRef.current = onClear
   useEffect(() => {
     if (!toast) return
-    const t = setTimeout(onClear, toast.action ? WITH_ACTION_MS : PLAIN_MS)
+    const t = setTimeout(() => clearRef.current(), toast.action ? WITH_ACTION_MS : PLAIN_MS)
     return () => clearTimeout(t)
-  }, [toast, onClear])
+  }, [toast])
 
   if (!toast) return null
 
