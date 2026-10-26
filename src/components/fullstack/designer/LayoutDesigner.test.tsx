@@ -453,6 +453,58 @@ describe('Layout designer — pages, problems and the canvas', () => {
   })
 })
 
+describe('Layout designer — Play mode', () => {
+  const walkable: FullstackPageDef[] = [
+    ...desk,
+    { id: 'order', type: 'record', entity: 'Order', hidden: true },
+  ]
+  const screenType = (designer: HTMLElement) => designer.querySelector('[data-preview-screen]')?.getAttribute('data-preview-screen')
+  const trail = (designer: HTMLElement) => (designer.querySelector('[data-play-trail]') as HTMLElement).textContent
+
+  it('walks the app: a chart drills into its list, a row opens its page, Back returns', () => {
+    render(<Harness initial={walkable} />)
+    const designer = openDesigner()
+    fireEvent.click(within(designer).getByRole('radio', { name: 'Play' }))
+    expect(designer.querySelector('[data-play-status]')).toBeTruthy()
+    // Nothing on the canvas opens an editor while playing.
+    expect(within(designer.querySelector('[data-layout-preview]') as HTMLElement).queryByRole('button', { name: /^Edit / })).toBeNull()
+
+    fireEvent.click(designer.querySelector('[data-preview-widget="1"]')!)
+    expect(screenType(designer)).toBe('entity-list')
+    expect(within(inspector(designer)).getByRole('heading', { name: /Order/ })).toBeTruthy()
+
+    fireEvent.click(designer.querySelector('tr[data-play-link]')!)
+    expect(screenType(designer)).toBe('record')
+    expect(trail(designer)).toMatch(/Desk.*Order.*Order/)
+
+    fireEvent.click(designer.querySelector('[data-play-back]')!)
+    expect(screenType(designer)).toBe('entity-list')
+    // A crumb goes back further, dropping what came after it.
+    fireEvent.click(within(designer.querySelector('[data-play-trail]') as HTMLElement).getByRole('button', { name: 'Desk' }))
+    expect(screenType(designer)).toBe('dashboard')
+    expect(designer.querySelector('[data-play-back]')?.hasAttribute('disabled')).toBe(true)
+  })
+
+  it('says where a click lands when it opens no page, and Escape goes back to editing', () => {
+    render(<Harness initial={walkable} />)
+    const designer = openDesigner()
+    fireEvent.keyDown(designer, { key: 'p' })
+    // The menu works as in the app.
+    fireEvent.click(designer.querySelector('[data-preview-nav="2"]')!)
+    expect(trail(designer)).toMatch(/Customer/)
+    fireEvent.click(designer.querySelector('tr[data-play-link]')!)
+    expect(designer.querySelector('[data-play-status]')?.textContent).toMatch(/quick-look drawer/)
+    expect(screenType(designer)).toBe('entity-list')
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(designer.querySelector('[data-play-status]')).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Layout designer' })).toBeTruthy()
+    // Editing picks up on the page the walk ended on.
+    expect(within(inspector(designer)).getByRole('heading', { name: /Customer/ })).toBeTruthy()
+    expect(within(designer).getByRole('button', { name: 'Edit the page title' })).toBeTruthy()
+  })
+})
+
 describe('designer helpers', () => {
   const ids = ['a', 'b', 'c', 'd'].map(id => ({ id, type: 'entity-list' as const, entity: 'Order' }))
   it('picks with Ctrl (the open page joins the first pick) and with Shift (a run)', () => {

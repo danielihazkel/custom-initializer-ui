@@ -15,6 +15,7 @@ export const FULLSTACK_SHORTCUTS: { keys: string; action: string }[] = [
   { keys: 'Alt+← / Alt+→', action: 'Move the selected widget (layout designer)' },
   { keys: 'Alt+Shift+← / →', action: 'Make the selected widget narrower or wider' },
   { keys: 'Delete / Alt+← / →', action: 'On a focused page chip: remove the page, or move it (layout designer)' },
+  { keys: 'P', action: 'Play the layout: click through it as the app would (layout designer)' },
   { keys: 'Shift+F10', action: 'Open a focused page chip’s menu; Ctrl/Shift-click picks several pages (layout designer)' },
   { keys: 'Esc', action: 'Close a dialog, panel or the import drawer; in the designer, deselect first' },
   { keys: '?', action: 'Show this list' },

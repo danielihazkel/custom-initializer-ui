@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { FullstackPageType, FullstackWidgetDef } from '../../../types'
 import { ConfirmDialog } from '../../ConfirmDialog'
@@ -6,6 +6,7 @@ import { cssEscape } from '../focus'
 import { isTypingTarget } from '../undo'
 import { LayoutPreview, type EditTarget } from '../LayoutPreview'
 import { pageFromTemplate } from '../layoutTemplates'
+import { buildPlayLinks } from '../playLinks'
 import { PAGE_TYPE_META, defaultSpan, newPageChoices, pageFromSuggestion, pageLabel, pagesEmbedding } from '../pageLayout'
 import type { PagesEditorProps } from '../PagesEditor'
 import { handleRadioKeys, syncRadioTabStops } from '../rovingRadios'
@@ -97,6 +98,11 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   const [view, setView] = useState<'design' | 'sitemap' | 'appearance'>(target.panel === 'appearance' && appearance ? 'appearance' : 'design')
   const [device, setDevice] = useState<PreviewDevice>('desktop')
   const [drag, setDrag] = useState<LibraryDrag | null>(null)
+  // Play mode: the canvas follows the generated app's links. `trail` is the pages walked through
+  // (row keys, so a reorder does not lose it); `playNote` says why a click opened no page.
+  const [mode, setMode] = useState<'design' | 'play'>('design')
+  const [trail, setTrail] = useState<string[]>([])
+  const [playNote, setPlayNote] = useState<string | null>(null)
   // A page type more than one entity fits: which one, and where it goes.
   const [entityForm, setEntityForm] = useState<{ type: FullstackPageType; pick: string; at?: number } | null>(null)
   const [confirmTemplate, setConfirmTemplate] = useState<{ label: string; built: typeof pages } | null>(null)
@@ -142,6 +148,38 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   function selectPage(index: number) {
     setSelectedKey(keys[index] ?? null)
     setSelectedWidget(null)
+  }
+
+  const playLinks = useMemo(() => buildPlayLinks(pages, entities), [pages, entities])
+  // The walked pages that still exist, as indexes; the last is the one on the canvas.
+  const trailIndexes = trail.map(k => keys.indexOf(k)).filter(i => i >= 0)
+  function startPlay() {
+    if (!page) return
+    setMode('play')
+    setTrail([keys[selectedIndex]])
+    setSelectedWidget(null)
+    setPlayNote(null)
+  }
+  function stopPlay() {
+    setMode('design')
+    setPlayNote(null)
+  }
+  /** Follows a link in Play mode: the page opens on the canvas (and in the inspector). */
+  function playGo(index: number) {
+    const key = keys[index]
+    if (!key) return
+    setTrail(t => (t[t.length - 1] === key ? t : [...t, key].slice(-30)))
+    setSelectedKey(key)
+    setSelectedWidget(null)
+    setPlayNote(null)
+  }
+  /** Back to the `at`-th page of the trail (default: the one before this). */
+  function playBackTo(at = trailIndexes.length - 2) {
+    if (at < 0) return
+    const kept = trail.filter(k => keys.includes(k)).slice(0, at + 1)
+    setTrail(kept)
+    setSelectedKey(kept[kept.length - 1] ?? null)
+    setPlayNote(null)
   }
 
   /** Opens a page in the inspector on one of its controls (or its first invalid one), from the
@@ -203,6 +241,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
       if (isTypingTarget(e.target)) return
       e.preventDefault()
       if (issuesOpen) setIssuesOpen(false)
+      else if (mode === 'play') stopPlay()
       else if (widget != null) setSelectedWidget(null)
       else if (entityForm) setEntityForm(null)
       else if (tabsForm) setTabsForm(null)
@@ -211,6 +250,12 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
       return
     }
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || isTypingTarget(e.target) || view !== 'design') return
+    if ((e.key === 'p' || e.key === 'P') && !e.altKey && !e.shiftKey) {
+      e.preventDefault()
+      if (mode === 'play') stopPlay()
+      else startPlay()
+      return
+    }
     if (e.key === '/' && !e.altKey) {
       e.preventDefault()
       openLibrary()
@@ -547,7 +592,54 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '17px' }}>{prefs.library ? 'left_panel_close' : 'left_panel_open'}</span>
               </button>
-              {page ? (
+              {page && (
+                <span role="radiogroup" aria-label="Canvas mode" className="inline-flex overflow-hidden rounded-md border border-outline-variant" data-canvas-mode>
+                  {([['design', 'Design', 'edit'], ['play', 'Play', 'play_arrow']] as const).map(([value, label, icon]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={mode === value}
+                      onClick={() => (value === 'play' ? (mode === 'play' ? undefined : startPlay()) : stopPlay())}
+                      title={value === 'play' ? 'Click through the app as its users will (P)' : 'Click a part to edit it (P)'}
+                      className={`inline-flex items-center gap-0.5 px-2 py-0.5 font-semibold ${mode === value ? 'bg-primary/15 text-on-surface' : 'text-secondary hover:text-on-surface'}`}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">{icon}</span>
+                      {label}
+                    </button>
+                  ))}
+                </span>
+              )}
+              {page && mode === 'play' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => playBackTo()}
+                    disabled={trailIndexes.length < 2}
+                    className={ICON_BUTTON}
+                    aria-label="Back to the page before"
+                    title="Back"
+                    data-play-back
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '17px' }}>arrow_back</span>
+                  </button>
+                  <nav aria-label="Pages walked through" className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5" data-play-trail>
+                    {trailIndexes.map((index, i) => {
+                      const last = i === trailIndexes.length - 1
+                      return (
+                        <span key={`${i}:${keys[index]}`} className="inline-flex items-center gap-0.5">
+                          {i > 0 && <span className="material-symbols-outlined text-secondary/70" style={{ fontSize: '13px' }} aria-hidden="true">chevron_right</span>}
+                          {last
+                            ? <span className="font-semibold text-on-surface" aria-current="page">{pageLabel(pages[index])}</span>
+                            : <button type="button" onClick={() => playBackTo(i)} className="text-primary hover:underline">{pageLabel(pages[index])}</button>}
+                        </span>
+                      )
+                    })}
+                  </nav>
+                  <ZoomControl zoom={prefs.zoom} onChange={zoom => setPrefs(p => ({ ...p, zoom }))} />
+                  <DeviceSwitch device={device} onChange={setDevice} />
+                </>
+              ) : page ? (
                 <>
                   <span className="font-semibold text-on-surface">{pageLabel(page)}</span>
                   <span>{PAGE_TYPE_META[page.type]?.label}</span>
@@ -577,8 +669,31 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                 <span className="material-symbols-outlined" style={{ fontSize: '17px' }}>{prefs.inspector ? 'right_panel_close' : 'right_panel_open'}</span>
               </button>
             </div>
+            {mode === 'play' && page && (
+              <p className="flex items-center gap-1.5 border-b border-outline-variant bg-primary/5 px-4 py-1 text-[11px] text-secondary" role="status" data-play-status>
+                <span className="material-symbols-outlined text-primary" style={{ fontSize: '14px' }} aria-hidden="true">{playNote ? 'info' : 'touch_app'}</span>
+                {playNote ?? 'Playing: rows, tiles, charts, Back and Save go where the generated app goes. Esc or P to edit again.'}
+              </p>
+            )}
             {page ? (
                 <CanvasFrame device={device} zoom={prefs.zoom}>
+                  {mode === 'play' ? (
+                    <LayoutPreview
+                      // A new page remounts the screen, so tabs and wizard steps start at the first.
+                      key={keys[selectedIndex]}
+                      preview={preview}
+                      selected={selectedIndex}
+                      onSelect={playGo}
+                      onEdit={() => {}}
+                      skin={settings.skin}
+                      palette={settings.palette}
+                      offNavNote={offNavNoteFor(page)}
+                      navStyle={nav?.style}
+                      collapsibleGroups={nav?.collapsibleGroups}
+                      narrow={device === 'mobile'}
+                      play={{ links: playLinks, go: playGo, note: setPlayNote }}
+                    />
+                  ) : (
                   <LayoutPreview
                     preview={preview}
                     selected={selectedIndex}
@@ -602,6 +717,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                       },
                     } : null}
                   />
+                  )}
                 </CanvasFrame>
               ) : (
               <div className="min-h-0 flex-1 overflow-auto bg-background p-6" data-designer-canvas>

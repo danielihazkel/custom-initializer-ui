@@ -2,6 +2,7 @@ import { Fragment, createContext, useContext, useRef, useState, type DragEvent, 
 import type { ContentBlock, ContentRun } from './contentMarkdown'
 import { highlights, previewPartOf, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewScreen, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
 import { dropIndicatorClass, useDragReorder, type DragReorder } from './useDragReorder'
+import type { PagePlayLinks } from './playLinks'
 
 export type { EditTarget }
 
@@ -36,6 +37,48 @@ interface Props {
   /** Page index → control → message (`validation.byPage`): the parts with a problem are ringed in
    *  the error colour and name it. Absent: no rings. */
   problems?: Record<number, Record<string, string>>
+  /** Play mode: the parts follow the generated app's links instead of opening their editor. */
+  play?: PlayNavigation
+}
+
+/** Play mode: where the parts of each page lead (`buildPlayLinks`), and how to go there. */
+export interface PlayNavigation {
+  links: PagePlayLinks[]
+  go: (page: number) => void
+  /** A click that opens no page (a drawer, a side pane): said rather than ignored. */
+  note: (text: string) => void
+}
+
+const Play = createContext<PlayNavigation | undefined>(undefined)
+
+/** What makes an element a link in Play mode: `props` to spread and `cls` to add to its class.
+ *  Nothing outside Play, or with neither a target nor a note. */
+function playLink(play: PlayNavigation | undefined, to: number | null | undefined, label: string, note?: string): {
+  props: Record<string, unknown>
+  cls: string
+} {
+  if (!play || (to == null && !note)) return { props: {}, cls: '' }
+  const follow = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation()
+    if (to != null) play.go(to)
+    else if (note) play.note(note)
+  }
+  return {
+    props: {
+      role: 'link',
+      tabIndex: 0,
+      title: label,
+      'aria-label': label,
+      onClick: follow,
+      onKeyDown: (e: { key: string; preventDefault: () => void; stopPropagation: () => void }) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return
+        e.preventDefault()
+        follow(e)
+      },
+      'data-play-link': to ?? 'note',
+    },
+    cls: 'cursor-pointer rounded-sm hover:outline hover:outline-1 hover:outline-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary',
+  }
 }
 
 /** The layout's problems, read by every clickable part of the mock (see `Editable`). */
@@ -70,7 +113,7 @@ const WIDGET_LIST = 'preview-widgets:'
  * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
-export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups, palette, widgetDrop, narrow, problems }: Props) {
+export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups, palette, widgetDrop, narrow, problems, play }: Props) {
   const screen = preview.screens[selected]
   const menora = skin === 'menora'
   // The generated tailwind shell: `--color-brand`/`--color-primary` = palette primary,
@@ -161,6 +204,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
   )
 
   return (
+    <Play.Provider value={play}>
     <Problems.Provider value={problems}>
     <div
       dir={preview.rtl ? 'rtl' : 'ltr'}
@@ -223,6 +267,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
       )}
     </div>
     </Problems.Provider>
+    </Play.Provider>
   )
 }
 
@@ -248,6 +293,9 @@ interface ScreenProps {
 function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, embedded, dnd, onResizeWidget, widgetDrop, narrow }: ScreenProps) {
   // Every part of this screen jumps to its editor control, and lights when that control is hovered.
   const link = { page, onEdit, highlight }
+  // In Play mode, where this screen's parts lead instead.
+  const play = useContext(Play)
+  const here = play?.links[page]
   // The dashboard grid, measured while a widget's edge is dragged to a new width.
   const gridRef = useRef<HTMLDivElement>(null)
   // A library widget hovering the grid: the index it would take.
@@ -358,7 +406,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
       return (
         <div className="space-y-2">
           {heading}
-          <MiniTable table={screen.table} preview={preview} accent={accent} menora={menora} link={link} />
+          <MiniTable table={screen.table} preview={preview} accent={accent} menora={menora} link={link} rowTo={here?.row} rowNote={here?.rowNote} newTo={here?.create} />
         </div>
       )
     case 'tabs':
@@ -394,7 +442,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                 </Editable>
               )}
               <Editable {...link} control="child" label="Edit the child entity" className="block w-full">
-                <MiniTable table={screen.child} preview={preview} accent={accent} menora={menora} compact />
+                <MiniTable table={screen.child} preview={preview} accent={accent} menora={menora} compact rowTo={here?.childRows[0]} newTo={here?.create} />
               </Editable>
             </div>
           </div>
@@ -413,7 +461,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           </div>
           <FilterRow filters={screen.filters} chips={screen.presetChips} label={preview.strings.filters} />
           <Editable {...link} control="chart.groupBy" label="Edit the chart" className="block w-full">
-            <div className="rounded border border-outline-variant p-2">
+            <div {...playLink(play, here?.drill, `Open the ${screen.chartTitle} rows`).props} className={`rounded border border-outline-variant p-2 ${playLink(play, here?.drill, '').cls}`}>
               <p className="mb-1 text-[10px] font-semibold text-on-surface">{screen.chartTitle}</p>
               <ReportChartShape kind={screen.chart.kind} line={screen.chart.line} bars={screen.chart.bars} accent={accent} />
             </div>
@@ -454,9 +502,10 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               {screen.days.map((d, i) => (
                 <div key={i} className="min-h-9 border-b border-e border-outline-variant/60 p-0.5">
                   <span className="block text-end text-[8px] text-secondary">{d.day}</span>
-                  {d.events.slice(0, 2).map((ev, j) => (
-                    <span key={j} className="mt-0.5 block truncate rounded px-0.5 text-[8px]" style={{ background: `color-mix(in srgb, ${accent} 13%, transparent)`, color: accent }}>{ev}</span>
-                  ))}
+                  {d.events.slice(0, 2).map((ev, j) => {
+                    const go = playLink(play, here?.row, `Open ${ev}`, here?.rowNote)
+                    return <span key={j} {...go.props} className={`mt-0.5 block truncate rounded px-0.5 text-[8px] ${go.cls}`} style={{ background: `color-mix(in srgb, ${accent} 13%, transparent)`, color: accent }}>{ev}</span>
+                  })}
                 </div>
               ))}
             </div>
@@ -478,12 +527,15 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                       <span className="truncate">{lane.label}</span>
                       <span className={`tabular-nums ${over ? 'text-error' : 'text-secondary'}`}>{lane.limit != null ? `${lane.count}/${lane.limit}` : lane.count}</span>
                     </div>
-                    {lane.cards.map((card, j) => (
-                      <div key={j} className="rounded border border-outline-variant bg-surface p-1">
-                        <p className="truncate text-[9px] font-semibold text-on-surface">{card.heading}</p>
-                        {card.details.map((d, k) => <p key={k} className="truncate text-[8px] text-secondary">{d}</p>)}
-                      </div>
-                    ))}
+                    {lane.cards.map((card, j) => {
+                      const go = playLink(play, here?.row, `Open ${card.heading}`, here?.rowNote)
+                      return (
+                        <div key={j} {...go.props} className={`rounded border border-outline-variant bg-surface p-1 ${go.cls}`}>
+                          <p className="truncate text-[9px] font-semibold text-on-surface">{card.heading}</p>
+                          {card.details.map((d, k) => <p key={k} className="truncate text-[8px] text-secondary">{d}</p>)}
+                        </div>
+                      )
+                    })}
                   </div>
                 )
               })}
@@ -498,7 +550,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           <Editable {...link} control="body" label="Edit the text" className="block w-full text-start">
             <div className="space-y-1.5 rounded border border-outline-variant p-2">
               {screen.blocks.length === 0 && <p className="text-[10px] text-secondary">No text yet</p>}
-              {screen.blocks.map((b, i) => <ContentBlockView key={i} block={b} accent={accent} />)}
+              {screen.blocks.map((b, i) => <ContentBlockView key={i} block={b} accent={accent} page={page} />)}
             </div>
           </Editable>
         </div>
@@ -536,7 +588,10 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                   <p className="border-b border-outline-variant px-1.5 py-0.5 text-[9px] font-semibold text-on-surface">
                     {g.title} <span className="font-normal text-secondary">{g.total}</span>
                   </p>
-                  {g.rows.map((r, j) => <p key={j} className="truncate px-1.5 py-0.5 text-[9px] text-on-surface">{r}</p>)}
+                  {g.rows.map((r, j) => {
+                    const go = playLink(play, here?.groups[i], `Open ${r}`)
+                    return <p key={j} {...go.props} className={`truncate px-1.5 py-0.5 text-[9px] text-on-surface ${go.cls}`}>{r}</p>
+                  })}
                 </div>
               ))}
             </div>
@@ -548,13 +603,17 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
 }
 
 /** One block of a content page, drawn from the same parse the generator makes. */
-function ContentBlockView({ block, accent }: { block: ContentBlock; accent: string }) {
+function ContentBlockView({ block, accent, page }: { block: ContentBlock; accent: string; page: number }) {
+  const play = useContext(Play)
   const runs = (items: ContentRun[]) => items.map((r, i) => {
     switch (r.kind) {
       case 'bold': return <strong key={i}>{r.text}</strong>
       case 'em': return <em key={i}>{r.text}</em>
       case 'code': return <code key={i} className="rounded bg-surface-container-high px-0.5">{r.text}</code>
-      case 'page-link':
+      case 'page-link': {
+        const go = playLink(play, play?.links[page]?.pageIds.get(r.target ?? ''), `Open ${r.text}`)
+        return <span key={i} {...go.props} className={`font-semibold underline ${go.cls}`} style={{ color: accent }}>{r.text}</span>
+      }
       case 'link': return <span key={i} className="font-semibold underline" style={{ color: accent }}>{r.text}</span>
       default: return <span key={i}>{r.text}</span>
     }
@@ -657,9 +716,12 @@ function RecordScreen({ screen, link, preview, accent, menora }: {
   const [active, setActive] = useState(0)
   const current = Math.min(active, screen.tabs.length - 1)
   const tabTable = current > 0 ? screen.tabTables[current - 1] : undefined
+  const play = useContext(Play)
+  const here = play?.links[link.page]
+  const back = playLink(play, here?.back, 'Back')
   return (
     <div className="space-y-2">
-      {screen.back && <p className="text-[10px] text-secondary">{preview.rtl ? '→' : '←'} {screen.back}</p>}
+      {screen.back && <p {...back.props} className={`w-fit text-[10px] text-secondary ${back.cls}`}>{preview.rtl ? '→' : '←'} {screen.back}</p>}
       <Editable {...link} control="entity" label="Edit the record entity" className="block text-start">
         <h3 className="text-[13px] font-bold text-on-surface">{screen.heading}</h3>
       </Editable>
@@ -709,7 +771,7 @@ function RecordScreen({ screen, link, preview, accent, menora }: {
         </dl>
       ) : tabTable ? (
         <div data-preview-record-tab={current}>
-          <MiniTable table={tabTable} preview={preview} accent={accent} menora={menora} />
+          <MiniTable table={tabTable} preview={preview} accent={accent} menora={menora} rowTo={here?.childRows[current - 1]} />
         </div>
       ) : (
         <p className="text-[10px] text-error">This tab lists no entity.</p>
@@ -731,6 +793,9 @@ function WizardScreen({ screen, link, heading, accent, menora }: {
   const step = Math.min(active, last)
   const reviewing = step === last
   const primary = menora ? { background: MENORA.yellow, color: MENORA.ink } : { background: accent, color: 'white' }
+  // In Play mode Save lands where the generated wizard does: the new row's page, else its list.
+  const play = useContext(Play)
+  const saveTo = play?.links[link.page]?.afterSave
   return (
     <div className="space-y-2">
       {heading}
@@ -774,7 +839,13 @@ function WizardScreen({ screen, link, heading, accent, menora }: {
           <button type="button" onClick={() => setActive(Math.max(0, step - 1))} disabled={step === 0} className="disabled:opacity-40" aria-label="Previous step">
             <FakeButton outline>{screen.back}</FakeButton>
           </button>
-          <button type="button" onClick={() => setActive(Math.min(last, step + 1))} disabled={reviewing} aria-label={reviewing ? screen.save : 'Next step'}>
+          <button
+            type="button"
+            onClick={() => (reviewing ? (saveTo != null ? play?.go(saveTo) : play?.note('Save starts a fresh wizard — there is no record or list page to land on')) : setActive(Math.min(last, step + 1)))}
+            disabled={reviewing && !play}
+            aria-label={reviewing ? screen.save : 'Next step'}
+            data-play-link={reviewing && play ? saveTo ?? 'note' : undefined}
+          >
             <FakeButton style={primary}>{reviewing ? screen.save : screen.next}</FakeButton>
           </button>
         </div>
@@ -805,6 +876,8 @@ function Editable({ page, control, onEdit, highlight, label, className, children
   const target = { page, control }
   const lit = highlights(highlight, target)
   const problem = problemOf(useContext(Problems), page, control)
+  // Play mode: the part is the app's own, its links are live; nothing opens an editor.
+  if (useContext(Play)) return <div className={`relative rounded ${className ?? ''}`}>{children}</div>
   return (
     <div
       className={`relative rounded ${lit ? HIGHLIGHT : problem ? PROBLEM : ''} ${className ?? ''}`}
@@ -830,6 +903,8 @@ function Editable({ page, control, onEdit, highlight, label, className, children
 const SPAN = ['col-span-1', 'col-span-2', 'col-span-3', 'col-span-4']
 
 const MAX_SPAN = SPAN.length
+/** The widgets whose whole card drills into the rows behind it. */
+const DRILLS = new Set<PreviewWidget['kind']>(['kpi', 'progress', 'bar', 'donut', 'stacked', 'pivot', 'line', 'top'])
 const TOOL = 'rounded px-1 text-[10px] font-semibold leading-4 text-secondary hover:bg-primary/10 hover:text-primary disabled:opacity-30'
 
 function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, onResize, newDrop, last, narrow, ...link }: LinkProps & {
@@ -851,6 +926,10 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
 }) {
   // While the end edge is dragged the card follows the pointer; the width is committed on release.
   const [liveSpan, setLiveSpan] = useState<number | null>(null)
+  const play = useContext(Play)
+  const goes = play?.links[link.page]?.widgets[widget.index]
+  // A chart, number or ranked list drills into its rows; lists, notes and link tiles link part by part.
+  const card = DRILLS.has(widget.kind) ? playLink(play, goes?.open, `Open the rows behind ${widget.title}`) : { props: {}, cls: '' }
   const span = liveSpan ?? widget.span
   const indicator = newDrop
     ? (newDrop.at === widget.index ? 'before' : last && newDrop.at === widget.index + 1 ? 'after' : null)
@@ -900,7 +979,8 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
     >
     <Editable {...link} control={`widget.${widget.index}`} label={`Edit widget ${widget.index + 1}`} className="block h-full w-full min-w-0 text-start">
       <div
-        className={`h-full rounded border p-1.5 ${widget.kind === 'broken' ? 'border-error/50 bg-error/5' : 'border-outline-variant bg-surface-container-lowest'}`}
+        {...card.props}
+        className={`h-full rounded border p-1.5 ${widget.kind === 'broken' ? 'border-error/50 bg-error/5' : 'border-outline-variant bg-surface-container-lowest'} ${card.cls}`}
         data-preview-widget={widget.index}
       >
         <p className="truncate text-[9px] font-semibold text-secondary">{widget.title}</p>
@@ -988,26 +1068,32 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
         )}
         {widget.kind === 'links' && (
           <div className="mt-0.5 grid grid-cols-3 gap-1" data-preview-links>
-            {widget.tiles.slice(0, 6).map((tile, i) => (
-              <span key={i} className="flex min-w-0 flex-col items-center gap-0.5 rounded border border-outline-variant px-1 py-1 text-[8px] text-on-surface">
-                <span className="material-symbols-outlined" style={{ fontSize: '12px', color: accent }}>{tile.icon}</span>
-                <span className="w-full truncate text-center">{tile.label}</span>
-              </span>
-            ))}
+            {widget.tiles.slice(0, 6).map((tile, i) => {
+              const go = playLink(play, goes?.tiles[i], `Open ${tile.label}`)
+              return (
+                <span key={i} {...go.props} className={`flex min-w-0 flex-col items-center gap-0.5 rounded border border-outline-variant px-1 py-1 text-[8px] text-on-surface ${go.cls}`}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '12px', color: accent }}>{tile.icon}</span>
+                  <span className="w-full truncate text-center">{tile.label}</span>
+                </span>
+              )
+            })}
             {widget.tiles.length === 0 && <span className="col-span-3 text-[9px] text-secondary">No pages picked</span>}
           </div>
         )}
         {widget.kind === 'list' && (
           <div className="mt-0.5" data-preview-list>
-            <MiniTable table={widget.table} preview={preview} accent={accent} menora={menora} compact />
+            <MiniTable table={widget.table} preview={preview} accent={accent} menora={menora} compact rowTo={goes?.rows} rowNote="Rows open in a quick-look drawer" />
           </div>
         )}
         {widget.kind === 'line' && <LineChart points={widget.points} accent={accent} />}
         {widget.kind === 'recent' && (
           <ul className="mt-0.5 space-y-0.5">
             <li className="truncate text-[8px] text-secondary" data-preview-newest>{widget.by}</li>
-            {widget.rows.slice(0, 4).map((r, i) => <li key={i} className="truncate text-[10px] text-on-surface">{r}</li>)}
-            <li className="text-[9px] font-semibold" style={{ color: accent }}>{viewAll}</li>
+            {widget.rows.slice(0, 4).map((r, i) => {
+              const go = playLink(play, goes?.rows, `Open ${r}`, 'Rows open in a quick-look drawer')
+              return <li key={i} {...go.props} className={`truncate text-[10px] text-on-surface ${go.cls}`}>{r}</li>
+            })}
+            <li {...playLink(play, goes?.open, viewAll).props} className={`w-fit text-[9px] font-semibold ${playLink(play, goes?.open, viewAll).cls}`} style={{ color: accent }}>{viewAll}</li>
           </ul>
         )}
         {widget.kind === 'broken' && <p className="text-[10px] text-error">{widget.message}</p>}
@@ -1151,12 +1237,17 @@ function FakeButton({ children, outline, style }: { children: ReactNode; outline
   )
 }
 
-function MiniTable({ table, preview, accent, menora, compact, link }: {
+function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNote, newTo }: {
   table: PreviewTable
   preview: LayoutPreviewModel
   accent: string
   menora: boolean
   compact?: boolean
+  /** Play mode: the page a row opens (its record page), else why it opens none. */
+  rowTo?: number | null
+  rowNote?: string
+  /** Play mode: the page New opens (the entity's wizard); else New opens the form drawer. */
+  newTo?: number | null
   /** A list page's own table: the column headings, the sort and the side pane jump to their own
    *  controls, the rows to the entity. Without it the table is drawn as one inert block. */
   link?: LinkProps
@@ -1164,6 +1255,9 @@ function MiniTable({ table, preview, accent, menora, compact, link }: {
   const primary = menora ? { background: MENORA.yellow, color: MENORA.ink } : { background: accent, color: 'white' }
   const part = (control: string, label: string, children: ReactNode, className = 'block w-full') =>
     link ? <Editable {...link} control={control} label={label} className={className}>{children}</Editable> : children
+  const play = useContext(Play)
+  const rowLink = (row: string[]) => playLink(play, rowTo, `Open ${row[0] ?? 'the row'}`, rowNote)
+  const create = playLink(play, newTo, table.newLabel ?? 'New', 'New opens the form in a drawer')
   return (
     <div className="space-y-1 text-start">
       <div className="flex items-center gap-1">
@@ -1175,7 +1269,7 @@ function MiniTable({ table, preview, accent, menora, compact, link }: {
         )}
         {!table.showSearch && <span className="flex-1" />}
         {table.hasExport && <FakeButton outline>CSV</FakeButton>}
-        {table.newLabel && <FakeButton style={primary}>{table.newLabel}</FakeButton>}
+        {table.newLabel && <span {...create.props} className={`inline-flex rounded-full ${create.cls}`}><FakeButton style={primary}>{table.newLabel}</FakeButton></span>}
       </div>
       {link ? (
         <div className="flex flex-wrap items-center gap-1">
@@ -1201,7 +1295,7 @@ function MiniTable({ table, preview, accent, menora, compact, link }: {
       {table.view === 'cards' ? (
         <div className="grid grid-cols-3 gap-1" data-preview-view="cards">
           {table.rows.map((row, i) => (
-            <div key={i} className="rounded border border-outline-variant/60 px-1.5 py-1 text-[9px]">
+            <div key={i} {...rowLink(row).props} className={`rounded border border-outline-variant/60 px-1.5 py-1 text-[9px] ${rowLink(row).cls}`}>
               <p className="truncate font-semibold text-on-surface">{row[0]}</p>
               {row.slice(1, 3).map((cell, j) => (
                 <p key={j} className="truncate text-secondary"><span className="text-secondary/70">{table.columns[j + 1]}:</span> {cell}</p>
@@ -1215,7 +1309,7 @@ function MiniTable({ table, preview, accent, menora, compact, link }: {
             <div key={lane} className="rounded bg-surface-container px-1 py-1">
               <p className="mb-1 truncate font-semibold text-secondary">{lane}</p>
               {table.rows.filter((_, i) => (table.rowLanes.length ? table.rowLanes[i] === li : i % table.lanes.length === li)).map((row, i) => (
-                <div key={i} className="mb-1 truncate rounded border border-outline-variant/60 bg-surface-container-lowest px-1 py-0.5 text-on-surface">{row[0]}</div>
+                <div key={i} {...rowLink(row).props} className={`mb-1 truncate rounded border border-outline-variant/60 bg-surface-container-lowest px-1 py-0.5 text-on-surface ${rowLink(row).cls}`}>{row[0]}</div>
               ))}
             </div>
           ))}
@@ -1240,7 +1334,7 @@ function MiniTable({ table, preview, accent, menora, compact, link }: {
           )}
           <tbody>
             {table.rows.map((row, i) => (
-              <tr key={i} className={`border-t border-outline-variant/60 ${table.sidePane && i === 0 ? 'bg-primary/5' : ''}`}>
+              <tr key={i} {...rowLink(row).props} className={`border-t border-outline-variant/60 ${table.sidePane && i === 0 ? 'bg-primary/5' : ''} ${rowLink(row).cls}`}>
                 {row.map((cell, j) => <td key={j} className="truncate py-0.5 text-on-surface">{cell}</td>)}
               </tr>
             ))}

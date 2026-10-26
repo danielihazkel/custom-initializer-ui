@@ -101,7 +101,16 @@ index-based, and skips one that does not reduce the problems) as one undo step. 
 button lists `history.undoEntries`/`redoEntries` and jumps through `onJump` (`FullstackView.jumpHistory`
 → `undo.ts` `stepMany`). The canvas has a zoom (`ZoomControl`, `ZOOM_LEVELS`), a Tablet width, and the
 library/inspector panes fold away; zoom and panes persist in `localStorage` `fullstack:designerView`
-(a canvas click or `/` reopens the pane it needs). Pinned by `designer/LayoutDesigner.test.tsx`.
+(a canvas click or `/` reopens the pane it needs). **Play mode** (the canvas bar's Design/Play switch, or `P`)
+walks the layout as the generated app would: `playLinks.ts` `buildPlayLinks` resolves each page's click
+targets with the generator's own lookups (`pageLinks` mirrors `EntityScaffoldContext.PageLinks`: record
+page, first visible list, home, wizard) — list/calendar/board rows → the record page (or a note: drawer,
+side pane), New → the wizard, dashboard cards → `drillTo` else the list, link tiles, recent rows, a
+record's Back → its home and related rows → their record page, a wizard's Save → the new row's page, a
+report chart → its list, search matches, content page links. `LayoutPreview` takes `play` (a context):
+`Editable` drops its edit overlay and `playLink` makes parts links (`data-play-link`). The designer keeps a
+trail of row keys (Back, crumbs); the page walked to is the selected page, so Esc / `P` resumes editing
+there. Pinned by `designer/LayoutDesigner.test.tsx` and `playLinks.test.ts`.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;
