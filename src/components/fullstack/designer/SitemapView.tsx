@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import type { FullstackNav, FullstackPageDef } from '../../../types'
 import { LayoutPreview } from '../LayoutPreview'
 import { PAGE_TYPE_META, inNav, pageLabel } from '../pageLayout'
 import { dropIndicatorClass } from '../useDragReorder'
 import { GroupChip, MoveButtons } from '../pages/fields'
 import type { PagesModel } from '../pages/usePagesModel'
+import { PageFlowMap } from './PageFlowMap'
 
 /**
  * The layout as the generated navigation sees it: one column per nav section, its pages in order
@@ -20,6 +22,8 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
 }) {
   const { dnd, keys, preview, settings, navGroupSections } = model
   const startIndex = preview.nav[0]?.index
+  // The menu as sections, or the map of where each page leads.
+  const [show, setShow] = useState<'menu' | 'flow'>('menu')
   const card = (index: number) => {
     const page = pages[index]
     const meta = PAGE_TYPE_META[page.type]
@@ -51,12 +55,34 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden" data-designer-sitemap>
       <main className="min-w-0 flex-1 space-y-4 overflow-y-auto p-5" aria-label="Sitemap">
-        <div>
-          <h2 className="text-sm font-semibold text-on-surface">Navigation</h2>
-          <p className="text-[11px] text-secondary">
-            The generated menu, section by section. Drag a page into another section to move it there; rename a section in place, or move it past its neighbour. A page joins a new section from its Basics in the design view.
-          </p>
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-on-surface">{show === 'menu' ? 'Navigation' : 'Page flow'}</h2>
+            <p className="text-[11px] text-secondary">
+              {show === 'menu'
+                ? 'The generated menu, section by section. Drag a page into another section to move it there; rename a section in place, or move it past its neighbour. A page joins a new section from its Basics in the design view.'
+                : 'Where each page leads in the generated app: columns are clicks from the menu. Point at a page to light its links; click it to edit it.'}
+            </p>
+          </div>
+          <div role="radiogroup" aria-label="Sitemap view" className="flex gap-0.5 rounded-lg border border-outline-variant bg-surface-container p-0.5">
+            {([['menu', 'Menu'], ['flow', 'Page flow']] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={show === value}
+                onClick={() => setShow(value)}
+                className={`rounded-md px-3 py-1 text-xs ${show === value ? 'bg-surface-container-high font-semibold text-on-surface' : 'text-secondary hover:text-on-surface'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
+        {show === 'flow' ? (
+          <PageFlowMap pages={pages} entities={model.named} startIndex={startIndex} onOpenPage={onOpenPage} />
+        ) : (
+        <>
         <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-4" data-nav-groups>
           {navGroupSections.map((section, si) => (
             <section key={section.group ?? `loose-${si}`} className="space-y-2 rounded-xl border border-outline-variant bg-surface-container-lowest p-3" aria-label={section.group ?? 'Ungrouped pages'}>
@@ -89,6 +115,8 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
             </div>
             <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-4">{offNav.map(card)}</ul>
           </section>
+        )}
+        </>
         )}
       </main>
       <aside className="space-y-4 border-outline-variant bg-surface-container-lowest p-5 lg:w-[22rem] lg:shrink-0 lg:overflow-y-auto lg:border-s" aria-label="Navigation style">

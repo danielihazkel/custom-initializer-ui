@@ -480,6 +480,37 @@ describe('Layout designer — widget suggestions', () => {
   })
 })
 
+describe('Layout designer — page flow', () => {
+  it('maps where each page leads, flags what nothing reaches, and opens a page to edit it', () => {
+    render(<Harness initial={[
+      ...desk,
+      { id: 'order', type: 'record', entity: 'Order', hidden: true },
+      { id: 'help', type: 'content', title: 'Help', body: 'Hi', hidden: true },
+    ]} />)
+    const designer = openDesigner()
+    fireEvent.click(within(designer).getByRole('radio', { name: 'Sitemap' }))
+    fireEvent.click(within(designer).getByRole('radio', { name: 'Page flow' }))
+    const map = designer.querySelector('[data-page-flow]') as HTMLElement
+    expect(map.querySelector('[data-flow-node="order"]')?.getAttribute('data-flow-depth')).toBe('2')
+    expect(map.querySelector('[data-flow-edge="1>3"]')?.getAttribute('data-flow-kinds')).toBe('row')
+    expect(map.querySelector('[data-flow-edge="3>1"]')?.getAttribute('data-flow-kinds')).toBe('back')
+    expect(map.querySelector('[data-flow-unreachable]')?.textContent).toContain('Help')
+    expect(map.querySelector('[data-flow-node="help"]')?.getAttribute('data-flow-depth')).toBe('none')
+
+    // Pointing at a page lights its links and dims the rest.
+    fireEvent.mouseEnter(map.querySelector('[data-flow-node="orders"]')!)
+    expect(map.querySelector('[data-flow-edge="1>3"]')?.getAttribute('opacity')).toBe('0.9')
+    expect(map.querySelector('[data-flow-edge="-1>2"]')?.getAttribute('opacity')).toBe('0.08')
+    // The menu links can be hidden.
+    fireEvent.click(within(map).getByLabelText('Menu links'))
+    expect(map.querySelector('[data-flow-edge="-1>0"]')).toBeNull()
+
+    fireEvent.click(map.querySelector('[data-flow-node="order"]')!)
+    expect(designer.querySelector('[data-designer-sitemap]')).toBeNull()
+    expect(within(inspector(designer)).getByRole('heading', { name: /Order/ })).toBeTruthy()
+  })
+})
+
 describe('Layout designer — Play mode', () => {
   const walkable: FullstackPageDef[] = [
     ...desk,

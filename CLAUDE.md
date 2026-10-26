@@ -116,7 +116,13 @@ builds a count, a total of the entity's money (else first number) column, a donu
 enum/boolean, a monthly trend over its first date, a top list by its first relation and its latest rows,
 drops any the dashboard already shows (`widgetShape`: kind with bar ≈ donut, entity, resolved grouping,
 aggregate, field) and any the validator rejects on that dashboard. A suggestion drags with its settings
-(`LibraryDrag` `def`) and lands through `usePagesModel.addWidgetDef`. Pinned by `widgetSuggestions.test.ts`.
+(`LibraryDrag` `def`) and lands through `usePagesModel.addWidgetDef`. Pinned by `widgetSuggestions.test.ts`. The Sitemap view's
+**Page flow** switch draws `PageFlowMap`: `pageFlow.ts` `buildPageFlow` turns the menu, header search,
+tabs and every Play-mode link (`buildPlayLinks`, plus content page links) into one edge per page pair with
+its kinds, lays pages out in columns by clicks from the menu (breadth first) and puts the pages nothing
+leads to in a last, red-dashed column. Edges are SVG under absolutely placed page buttons; hovering or
+focusing a page lights its edges, a click opens it in Design, and the menu edges can be hidden. Pinned by
+`pageFlow.test.ts`.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;
