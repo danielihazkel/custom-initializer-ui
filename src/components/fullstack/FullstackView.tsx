@@ -1505,6 +1505,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         addRequest={pagesAdd}
         findRequest={pagesFind}
         previewRequest={pagesPreview}
+        codeRequest={buildBody}
         serverIssue={pageServerIssue}
         ldapAuth={ldapAuth}
         onAddDep={dep => setSelectedDeps(prev => (prev.includes(dep) ? prev : [...prev, dep]))}

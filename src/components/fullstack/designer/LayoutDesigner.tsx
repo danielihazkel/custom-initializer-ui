@@ -90,7 +90,7 @@ export function historyMenuItems(undoEntries: string[], redoEntries: string[], o
  * or widget's settings on the right. Every change goes through the shared page model, so undo,
  * validation and the request are the inline editor's.
  */
-export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo, previewSettings, history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, appearance, dismissedWarnings, onDismissedWarningsChange, target, onClose }: DesignerProps) {
+export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo, previewSettings, history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, appearance, dismissedWarnings, onDismissedWarningsChange, codeRequest, target, onClose }: DesignerProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [selectedWidget, setSelectedWidget] = useState<number | null>(null)
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('basics')
@@ -771,6 +771,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             ldapAuth={ldapAuth}
             onAddDep={onAddDep}
             rootRef={inspectorRef}
+            codeRequest={codeRequest}
+            problems={validation.issues.length}
           />
           )}
 

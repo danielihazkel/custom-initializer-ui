@@ -1,13 +1,14 @@
 import type { Ref } from 'react'
-import type { FullstackPageDef } from '../../../types'
+import type { FullstackPageDef, FullstackStarterRequest } from '../../../types'
 import { MAX_PAGES, MAX_WIDGETS, PAGE_TYPE_META, canDuplicate, inNav, pageLabel } from '../pageLayout'
 import { ICON_BUTTON, SMALL_BUTTON, WIDGET_KINDS } from '../pages/constants'
 import { RolesField } from '../pages/fields'
 import { PageBasicsFields, PageTypeForm } from '../pages/PageSettings'
 import type { PagesModel } from '../pages/usePagesModel'
 import { WidgetCard } from '../pages/WidgetCard'
+import { PageCode } from './PageCode'
 
-export type InspectorTab = 'basics' | 'layout' | 'access'
+export type InspectorTab = 'basics' | 'layout' | 'access' | 'code'
 
 /** Which inspector tab holds a page control (the keys the validator and the canvas use). */
 export function tabOfControl(control: string | undefined): InspectorTab {
@@ -19,9 +20,10 @@ export function tabOfControl(control: string | undefined): InspectorTab {
 
 /**
  * The right-hand pane: the selected widget's settings, or else the selected page's — its basics
- * (type, title, route, place in the navigation), its type's own layout and who may open it.
+ * (type, title, route, place in the navigation), its type's own layout, who may open it and —
+ * given the request to preview — the code it generates.
  */
-export function DesignerInspector({ pages, model, index, widget, tab, onTab, onDeselectWidget, ldapAuth, onAddDep, rootRef }: {
+export function DesignerInspector({ pages, model, index, widget, tab, onTab, onDeselectWidget, ldapAuth, onAddDep, rootRef, codeRequest, problems = 0 }: {
   pages: FullstackPageDef[]
   model: PagesModel
   index: number
@@ -33,6 +35,10 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
   ldapAuth?: boolean
   onAddDep?: (dep: string) => void
   rootRef?: Ref<HTMLElement>
+  /** Builds the request for the model as it stands; present, the page gets a Code tab. */
+  codeRequest?: () => FullstackStarterRequest
+  /** The layout's problems — the Code tab waits for them to be fixed. */
+  problems?: number
 }) {
   const page = pages[index]
   const key = model.keys[index] ?? ''
@@ -111,9 +117,11 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
     { key: 'basics', label: 'Basics' },
     { key: 'layout', label: 'Layout' },
     { key: 'access', label: 'Access' },
+    ...(codeRequest ? [{ key: 'code' as const, label: 'Code' }] : []),
   ]
+  const showCode = tab === 'code' && codeRequest != null
   return (
-    <aside ref={rootRef} className="@container flex min-h-0 flex-col border-outline-variant bg-surface-container-lowest lg:w-[22rem] lg:shrink-0 lg:border-s" aria-label="Inspector" data-page-key={key} data-inspector="page">
+    <aside ref={rootRef} className={`@container flex min-h-0 flex-col border-outline-variant bg-surface-container-lowest lg:shrink-0 lg:border-s ${showCode ? 'lg:w-[34rem]' : 'lg:w-[22rem]'}`} aria-label="Inspector" data-page-key={key} data-inspector="page">
       <div className="space-y-1 border-b border-outline-variant px-4 py-3">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-secondary">Page</p>
         <div className="flex items-center gap-2">
@@ -204,6 +212,7 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
         {tab === 'access' && (
           <RolesField page={page} index={index} errors={errors} update={model.update} ldapAuth={ldapAuth} onAddDep={onAddDep} isStart={isStart} />
         )}
+        {showCode && <PageCode page={page} pages={pages} request={codeRequest()} problems={problems} />}
       </div>
       <div className="flex gap-2 border-t border-outline-variant px-4 py-3">
         {canDuplicate(page) && (

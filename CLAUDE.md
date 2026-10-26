@@ -130,7 +130,13 @@ number row, onto a wizard step or a "New step" slot) or clicks in at the end; a 
 strip drops onto a tabs page too (`PageStrip` `onChipDrag`). `placePart` applies the inspector's rules
 (caps, nothing twice, the record's default tabs/tiles written out first, a step a field leaves empty
 dropped) and `usePagesModel.placePart` files it as one labelled undo step; a refusal shows in the notice.
-Pinned by `pageParts.test.ts`.
+Pinned by `pageParts.test.ts`. The page inspector's **Code** tab (`designer/PageCode.tsx`, only when the
+host passes `codeRequest` — `FullstackView` hands its `buildBody`; the admin form does not) posts the request
+to `/starter-fullstack.preview` on opening and again `PAGE_CODE_DEBOUNCE_MS` after each edit (not while the
+layout has problems), keeps the last answer dimmed meanwhile and shows `pageCode.ts` `pageCodeFiles`: the
+page's `src/app/screens/<PascalId>Screen.tsx` (the backend's `Naming.toPascalCase`, mirrored by
+`naming.ts`), the screens a tabs page embeds, the entity pages it draws, then `App.tsx`/`route.ts`. Its own
+fetch, not the Explore preview — Explore opens the file-tree modal. Pinned by `pageCode.test.ts`.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;

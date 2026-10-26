@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { handleRadioKeys, syncRadioTabStops } from './rovingRadios'
-import type { FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackPageType } from '../../types'
+import type { FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackPageType, FullstackStarterRequest } from '../../types'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { inputClass } from './controls'
 import { cssEscape } from './focus'
@@ -56,6 +56,9 @@ export interface PagesEditorProps {
   /** `stacked` puts the preview under the page list at every width — for narrow hosts (the
    *  admin drawer), where the viewport-wide split would squeeze both. */
   layout?: 'split' | 'stacked'
+  /** Builds the generate request for the model as it stands. Present, the designer's inspector
+   *  has a Code tab with the selected page's generated screen; absent (the admin form): none. */
+  codeRequest?: () => FullstackStarterRequest
   /** The editor's undo/redo, offered in the header too (the entities toolbar is far below). */
   history?: {
     undoLabel: string | null

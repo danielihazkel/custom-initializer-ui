@@ -1,12 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useState } from 'react'
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import type { EntityTemplateSetSummary, FullstackEntityDef, FullstackNav, FullstackPageDef } from '../../../types'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { EntityTemplateSetSummary, FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackStarterRequest } from '../../../types'
 import type { FeColorPalette } from '../../../hooks/useFrontendMetadata'
 import { validatePages } from '../pageLayout'
 import { PagesSection } from './PagesSection'
 import { pickedAfterClick } from './PageStrip'
 import { nextZoom } from './CanvasFrame'
+
+// CodeMirror does not run in jsdom; the Code tab's viewer is a plain block here.
+vi.mock('../../ReadOnlyCodeViewer', () => ({ ReadOnlyCodeViewer: ({ code }: { code: string }) => <pre data-code-viewer>{code}</pre> }))
 
 const entities: FullstackEntityDef[] = [
   { name: 'Customer', fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'name', type: 'STRING' }] },
@@ -33,7 +36,7 @@ let latest: FullstackPageDef[] = []
 let latestNav: FullstackNav | undefined
 
 /** The section is controlled; the harness holds the layout the way FullstackView does. */
-function Harness({ initial, history }: { initial: FullstackPageDef[]; history?: Parameters<typeof PagesSection>[0]['history'] }) {
+function Harness({ initial, history, code }: { initial: FullstackPageDef[]; history?: Parameters<typeof PagesSection>[0]['history']; code?: boolean }) {
   const [pages, setPages] = useState(initial)
   const [nav, setNav] = useState<FullstackNav | undefined>(undefined)
   latest = pages
@@ -49,6 +52,7 @@ function Harness({ initial, history }: { initial: FullstackPageDef[]; history?: 
       nav={nav}
       onNavChange={setNav}
       history={history}
+      codeRequest={code ? () => ({ entities, pages } as FullstackStarterRequest) : undefined}
     />
   )
 }
@@ -508,6 +512,91 @@ describe('Layout designer — page flow', () => {
     fireEvent.click(map.querySelector('[data-flow-node="order"]')!)
     expect(designer.querySelector('[data-designer-sitemap]')).toBeNull()
     expect(within(inspector(designer)).getByRole('heading', { name: /Order/ })).toBeTruthy()
+  })
+})
+
+describe('Layout designer — Code tab', () => {
+  const coded: FullstackPageDef[] = [...desk, { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ page: 'orders' }, { page: 'customers' }] }]
+  const previewOf = (paths: string[]) => ({ files: paths.map(path => ({ path, content: `// generated ${path}` })), tree: [] })
+  const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  const files = previewOf([
+    'frontend/src/app/App.tsx',
+    'frontend/src/app/route.ts',
+    'frontend/src/app/screens/DeskScreen.tsx',
+    'frontend/src/app/screens/OrdersScreen.tsx',
+    'frontend/src/app/screens/CustomersScreen.tsx',
+    'frontend/src/app/screens/QueueScreen.tsx',
+    'frontend/src/pages/order/ui/OrderPage.tsx',
+  ])
+  const openCode = (designer: HTMLElement) => fireEvent.click(within(inspector(designer)).getByRole('tab', { name: 'Code' }))
+
+  it('is offered only when the editor can build a request', () => {
+    render(<Harness initial={coded} />)
+    expect(within(inspector(openDesigner())).queryByRole('tab', { name: 'Code' })).toBeNull()
+  })
+
+  it('shows the selected page’s generated screen, then what it embeds and the shell', async () => {
+    const fetchMock = vi.fn(async () => ok(files))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<Harness initial={coded} code />)
+    const designer = openDesigner()
+    fireEvent.click(chip(designer, 'queue'))
+    openCode(designer)
+    const viewer = await waitFor(() => {
+      const el = designer.querySelector('[data-page-code-path]')
+      if (!el) throw new Error('no code yet')
+      return el as HTMLElement
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('/starter-fullstack.preview')
+    expect(JSON.parse(init.body as string).pages[3].id).toBe('queue')
+    expect(viewer.getAttribute('data-page-code-path')).toBe('frontend/src/app/screens/QueueScreen.tsx')
+    expect(viewer.textContent).toContain('// generated frontend/src/app/screens/QueueScreen.tsx')
+    const tabs = within(within(designer).getByRole('tablist', { name: 'Generated files' })).getAllByRole('tab')
+    expect(tabs.map(t => t.textContent)).toEqual(['QueueScreen.tsx', 'OrdersScreen.tsx', 'CustomersScreen.tsx', 'App.tsx', 'route.ts'])
+
+    // Another file; then another page — its own screen opens, from the same answer.
+    fireEvent.click(tabs[3])
+    expect(designer.querySelector('[data-page-code-path]')?.getAttribute('data-page-code-path')).toBe('frontend/src/app/App.tsx')
+    fireEvent.click(chip(designer, 'orders'))
+    expect(designer.querySelector('[data-page-code-path]')?.getAttribute('data-page-code-path')).toBe('frontend/src/app/screens/OrdersScreen.tsx')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // An edit asks again once the typing stops.
+    fireEvent.click(within(inspector(designer)).getByRole('tab', { name: 'Basics' }))
+    fireEvent.change(within(inspector(designer)).getByLabelText('Page title'), { target: { value: 'All orders' } })
+    openCode(designer)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2), { timeout: 2000 })
+  })
+
+  it('says what the generator turned down, and tries again on request', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: 'Bad request', detail: 'Page “desk”: no widgets' }), { status: 400, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<Harness initial={coded} code />)
+    const designer = openDesigner()
+    openCode(designer)
+    const alert = await waitFor(() => {
+      const el = designer.querySelector('[data-page-code-error]')
+      if (!el) throw new Error('no error yet')
+      return el as HTMLElement
+    })
+    expect(alert.textContent).toContain('Page “desk”: no widgets')
+    fetchMock.mockImplementation(async () => ok(files))
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(designer.querySelector('[data-page-code-path]')?.getAttribute('data-page-code-path')).toBe('frontend/src/app/screens/DeskScreen.tsx'))
+    expect(designer.querySelector('[data-page-code-error]')).toBeNull()
+  })
+
+  it('waits for the layout’s problems to be fixed before asking', async () => {
+    const fetchMock = vi.fn(async () => ok(files))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<Harness initial={[...coded, { id: 'empty', type: 'dashboard', widgets: [] }]} code />)
+    const designer = openDesigner()
+    openCode(designer)
+    expect(designer.querySelector('[data-page-code-status]')?.textContent).toMatch(/Fix the \d+ problems? first/)
+    await new Promise(r => setTimeout(r, 20))
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 
