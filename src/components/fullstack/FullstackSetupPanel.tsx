@@ -7,14 +7,13 @@ import { canonicalVersion } from './validation'
 import { Labeled, SectionHeading, SetDescription, SetLabel, inputClass } from './controls'
 import { FullstackDepPicker } from './FullstackDepPicker'
 import { OptionCoverage } from './OptionCoverage'
-import { PalettePicker } from '../shared/PalettePicker'
 import { DepartmentSelect } from '../shared/DepartmentSelect'
 import { OPTIONS_SECTION, RTL_OPTION, isEntityOptKey } from './scaffoldOptions'
 
 /**
  * Everything that configures the *project* rather than the *model*: Maven coordinates and
- * versions, the two template sets, the generated SPA's palette/dashboard/language, the opt-in
- * scaffolding extras, and the dependency catalog.
+ * versions, the backend template set, a summary of the frontend look (edited in the layout
+ * designer), the opt-in scaffolding extras, and the dependency catalog.
  *
  * It is one panel because it is one job, done once per project and then left alone — which is why
  * FullstackView collapses it behind a summary bar and gives the vertical space to the entity
@@ -33,11 +32,9 @@ export interface FullstackSetupPanelProps {
   packagings: string[]
 
   backendSets: EntityTemplateSetSummary[]
-  frontendSets: EntityTemplateSetSummary[]
   backendSet: string
   frontendSet: string
   setBackendSet: (setKey: string) => void
-  setFrontendSet: (setKey: string) => void
   currentBackendSet?: EntityTemplateSetSummary
   currentFrontendSet?: EntityTemplateSetSummary
   setsLoading: boolean
@@ -45,13 +42,12 @@ export interface FullstackSetupPanelProps {
   loadTemplateSets: () => void
 
   palettes: FeColorPalette[]
-  feError: string | null
-  reloadFe: () => void
   /** The palette actually in force — the explicit choice, else the set's default. */
   effectivePalette: string
-  setDefaultPalette: string
+  /** The explicit choice ('' = the set's default). */
   colorPalette: string
-  setColorPalette: (id: string) => void
+  /** Opens the layout designer's Appearance view, where the frontend look is edited. */
+  onEditFrontend: () => void
 
   scaffoldOpts: string[]
   toggleOpt: (value: string) => void
@@ -67,23 +63,24 @@ export interface FullstackSetupPanelProps {
 
   /** The section-jump pills, rendered above the grid so they sit inside the panel they target. */
   nav?: ReactNode
-  /** A page layout is set: the classic dashboard's title and overview then have no effect (each
-   *  dashboard page carries its own), so those two inputs are disabled with a note. */
+  /** A page layout is set: the classic dashboard's heading then has no effect (each dashboard
+   *  page carries its own), so the summary does not mention it. */
   hasPages?: boolean
 }
 
 export function FullstackSetupPanel({
   meta, metaErrors, updateMeta,
   javaVersions, bootVersions, packagings,
-  backendSets, frontendSets, backendSet, frontendSet, setBackendSet, setFrontendSet,
+  backendSets, backendSet, frontendSet, setBackendSet,
   currentBackendSet, currentFrontendSet, setsLoading, setsError, loadTemplateSets,
-  palettes, feError, reloadFe, effectivePalette, setDefaultPalette, colorPalette, setColorPalette,
+  palettes, effectivePalette, colorPalette, onEditFrontend,
   scaffoldOpts, toggleOpt,
   selectedDeps, setSelectedDeps, currentDefaults, compatibilityRules,
   entities, revealRow,
   nav,
   hasPages = false,
 }: FullstackSetupPanelProps) {
+  const palette = palettes.find(p => p.id === effectivePalette)
   return (
     <div className="space-y-5">
       {nav}
@@ -177,8 +174,8 @@ export function FullstackSetupPanel({
             </div>
           </section>
 
-          {/* Backend: which template set renders the Spring side. Frontend (below): the React set plus
-              everything that only affects the generated SPA — palette, dashboard header, RTL. */}
+          {/* Backend: which template set renders the Spring side. Frontend (below): a summary of the
+              generated SPA's look, which the layout designer edits. */}
           <section id="fs-backend" className="space-y-3">
             <SectionHeading icon="dns" title="Backend" />
             <p className="text-[11px] text-on-surface-variant">
@@ -217,108 +214,39 @@ export function FullstackSetupPanel({
             )}
           </section>
 
+          {/* The generated app's look is edited in the layout designer, beside its preview; here
+              it is one line that says what is chosen and opens the designer there. */}
           <section id="fs-frontend" className="space-y-3">
             <SectionHeading icon="web" title="Frontend" />
-            <p className="text-[11px] text-on-surface-variant">
-              Only affects the generated React app: its template set, colours, dashboard header and text direction.
-            </p>
-            {setsLoading ? (
-              <div className="h-[58px] rounded bg-surface-container-low animate-pulse" aria-hidden="true" />
-            ) : (
-              <Labeled label="Template set" htmlFor="fs-frontendSet">
-                {frontendSets.length > 1 ? (
-                  <select id="fs-frontendSet" className={inputClass()} value={frontendSet} onChange={e => setFrontendSet(e.target.value)}>
-                    {frontendSets.map(s => <option key={s.setKey} value={s.setKey}>{s.name} ({s.setKey})</option>)}
-                  </select>
-                ) : (
-                  <SetLabel name={currentFrontendSet?.name} setKey={frontendSet} />
-                )}
-                <SetDescription set={currentFrontendSet} />
-              </Labeled>
-            )}
-            {feError && palettes.length === 0 && (
-              <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-on-surface" data-palette-error>
-                <span>Couldn't load the colour palettes ({feError}); the generated app uses the set's default palette.</span>
-                <button
-                  type="button"
-                  onClick={reloadFe}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-error/40 text-error hover:bg-error/10 transition-colors"
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>refresh</span>
-                  Retry
-                </button>
-              </div>
-            )}
-            {palettes.length > 0 && (
-              <div className="pt-1 space-y-1.5">
-                <PalettePicker
-                  label="Frontend colour palette"
-                  palettes={palettes}
-                  selectedId={effectivePalette}
-                  onChange={id => setColorPalette(id === setDefaultPalette ? '' : id)}
-                  caption={colorPalette
-                    ? (
-                      <button type="button" onClick={() => setColorPalette('')} className="underline hover:no-underline">
-                        use the set's default
-                      </button>
-                    )
-                    : '(set default)'}
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-outline-variant px-3 py-2.5" data-frontend-summary>
+              {palette && (
+                <span
+                  className="h-6 w-6 shrink-0 rounded-full border border-outline-variant"
+                  style={{ background: `linear-gradient(135deg, ${palette.primary} 0%, ${palette.primary} 50%, ${palette.secondary} 50%, ${palette.secondary} 100%)` }}
+                  aria-hidden="true"
                 />
-                {currentFrontendSet?.designSystem === 'MENORA_DIGITAL' && (
-                  <p className="text-[11px] text-on-surface-variant">
-                    The Menora Digital set uses the fixed brand tokens for its colours; the palette only feeds
-                    the success/danger accents.
-                  </p>
-                )}
-              </div>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Labeled label="Dashboard Title" htmlFor="fs-dashboardTitle">
-                <input id="fs-dashboardTitle" className={inputClass()} value={meta.dashboardTitle}
-                       placeholder={`Welcome to ${meta.artifactId || 'demo'}`}
-                       title={hasPages ? 'Not used with a page layout — set each dashboard page’s title in Frontend pages' : 'Heading of the generated dashboard (home) page'}
-                       disabled={hasPages}
-                       onChange={e => updateMeta({ dashboardTitle: e.target.value })} />
-              </Labeled>
-              <Labeled label="Dashboard Overview" htmlFor="fs-dashboardOverview">
-                <input id="fs-dashboardOverview" className={inputClass()} value={meta.dashboardOverview}
-                       placeholder="Manage your data below…"
-                       title={hasPages ? 'Not used with a page layout — set each dashboard page’s description in Frontend pages' : 'Blurb under the dashboard heading'}
-                       disabled={hasPages}
-                       onChange={e => updateMeta({ dashboardOverview: e.target.value })} />
-              </Labeled>
-              {hasPages && (
-                <p className="sm:col-span-2 text-[11px] text-on-surface-variant" data-dashboard-meta-note>
-                  Your page layout is in charge: each dashboard page has its own title and description (Frontend pages below).
-                  These two only apply to the classic layout.
-                </p>
               )}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
-              <Labeled label="Language" htmlFor="fs-locale">
-                <select id="fs-locale" className={inputClass()} value={meta.locale}
-                        onChange={e => updateMeta({ locale: e.target.value === 'he' ? 'he' : 'en' })}>
-                  <option value="en">English</option>
-                  <option value="he">עברית (Hebrew)</option>
-                </select>
-                <p className="text-[11px] text-on-surface-variant">
-                  The generated app's own words — nav, buttons, dialogs, empty states. Your entity and
-                  field labels are used exactly as typed.
-                </p>
-              </Labeled>
-              <label className="flex items-start gap-2.5 p-3 rounded-lg border border-outline-variant hover:border-primary/50 cursor-pointer transition-colors sm:mt-5">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-4 w-4 accent-primary"
-                  checked={scaffoldOpts.includes(RTL_OPTION.value)}
-                  onChange={() => toggleOpt(RTL_OPTION.value)}
-                />
-                <span className="flex flex-col">
-                  <span className="text-sm text-on-surface">{RTL_OPTION.label}</span>
-                  <span className="text-[11px] text-secondary">{RTL_OPTION.hint}</span>
+              <span className="min-w-0 flex-1 text-sm text-on-surface">
+                {currentFrontendSet?.name ?? frontendSet}
+                <span className="text-[11px] text-secondary">
+                  {palette && ` · ${palette.name}${colorPalette ? '' : ' (set default)'}`}
+                  {` · ${meta.locale === 'he' ? 'עברית' : 'English'} · ${scaffoldOpts.includes(RTL_OPTION.value) ? 'right-to-left' : 'left-to-right'}`}
                 </span>
-              </label>
+              </span>
+              <button
+                type="button"
+                onClick={onEditFrontend}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-primary/40 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+                data-edit-frontend
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">palette</span>
+                Edit in designer
+              </button>
             </div>
+            <p className="text-[11px] text-on-surface-variant">
+              Template set, colours, language and direction{hasPages ? '' : ', and the dashboard heading'} are set in the layout designer’s
+              Appearance view, beside a live preview of the app.
+            </p>
           </section>
 
           <section id="fs-options" className="space-y-3">

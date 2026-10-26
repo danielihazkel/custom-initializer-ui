@@ -39,6 +39,8 @@ import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writ
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesSection } from './designer/PagesSection'
+import type { DesignerTarget } from './designer/LayoutDesigner'
+import type { FrontendAppearance } from './designer/FrontendSettings'
 import { pageOfServerError, renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
@@ -183,6 +185,9 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const [pagesAdd, setPagesAdd] = useState(0)
   const [pagesFind, setPagesFind] = useState(0)
   const [pagesPreview, setPagesPreview] = useState(0)
+  // Opens the layout designer on a target — the Setup panel's frontend row lands on Appearance.
+  const [designerRequest, setDesignerRequest] = useState<{ n: number; target: DesignerTarget } | null>(null)
+  const openAppearance = () => setDesignerRequest(prev => ({ n: (prev?.n ?? 0) + 1, target: { panel: 'appearance' } }))
   // Collapsed cards survive a refresh: entities persist with their uids, so the uid set stays valid.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(shared ? [] : loadJson<string[]>(LS.collapsed, [])))
   const [history, setHistory] = useState<History<FullstackSnapshot>>(() => emptyHistory())
@@ -1118,6 +1123,16 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     onExplore: explore,
   }), [preview, previewLoading, currentSnapshot, explore])
 
+  // Everything that decides the generated app's look, for the layout designer's Appearance view.
+  const frontendAppearance: FrontendAppearance = {
+    frontendSets, frontendSet, setFrontendSet, currentFrontendSet,
+    setsLoading, setsError, loadTemplateSets,
+    palettes, feError, reloadFe, effectivePalette, setDefaultPalette, colorPalette, setColorPalette,
+    locale: meta.locale, dashboardTitle: meta.dashboardTitle, dashboardOverview: meta.dashboardOverview,
+    artifactId: meta.artifactId, updateMeta: updates => updateMeta(updates),
+    rtl: scaffoldOpts.includes('rtl'), toggleRtl: () => toggleOpt('rtl'),
+  }
+
   const sections = [
     { id: 'fs-meta', label: 'Project', errors: countMetaErrors(metaErrors) },
     { id: 'fs-backend', label: 'Backend' },
@@ -1341,7 +1356,12 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
           onToggle={() => setSetupOpen(o => !o)}
           chips={setupChips}
           errorCount={countMetaErrors(metaErrors)}
-          onChipJump={id => { setSetupOpen(true); requestAnimationFrame(() => scrollToElement(document.getElementById(id), 'start')) }}
+          onChipJump={id => {
+            // The frontend look lives in the designer's Appearance view now.
+            if (id === 'fs-frontend') { openAppearance(); return }
+            setSetupOpen(true)
+            requestAnimationFrame(() => scrollToElement(document.getElementById(id), 'start'))
+          }}
         />
         {setupVisible && (
         <div id="fs-setup-body" className="border-t border-outline-variant px-5 pb-5 pt-4">
@@ -1354,23 +1374,18 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         bootVersions={bootVersions}
         packagings={packagings}
         backendSets={backendSets}
-        frontendSets={frontendSets}
         backendSet={backendSet}
         frontendSet={frontendSet}
         setBackendSet={setBackendSet}
-        setFrontendSet={setFrontendSet}
         currentBackendSet={currentBackendSet}
         currentFrontendSet={currentFrontendSet}
         setsLoading={setsLoading}
         setsError={setsError}
         loadTemplateSets={loadTemplateSets}
         palettes={palettes}
-        feError={feError}
-        reloadFe={reloadFe}
         effectivePalette={effectivePalette}
-        setDefaultPalette={setDefaultPalette}
         colorPalette={colorPalette}
-        setColorPalette={setColorPalette}
+        onEditFrontend={openAppearance}
         scaffoldOpts={scaffoldOpts}
         toggleOpt={toggleOpt}
         selectedDeps={selectedDeps}
@@ -1466,6 +1481,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
       {/* Pages are built from the entities, so the layout designer follows them. */}
       <PagesSection
+        appearance={frontendAppearance}
+        designerRequest={designerRequest}
         pages={pages}
         entities={entities}
         validation={pageValidation}

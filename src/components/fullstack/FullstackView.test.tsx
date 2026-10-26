@@ -337,16 +337,29 @@ describe('FullstackView — page layouts', () => {
     expect(body.editorModel.pages.map((p: { id: string }) => p.id)).toEqual(['home', 'queue', 'open', 'all'])
   })
 
-  it('disables the classic dashboard title and overview once a page layout is set', async () => {
+  it('edits the frontend look in the designer beside its preview, and drops the classic heading once a page layout is set', async () => {
     mockServer()
     render(<FullstackView />)
-    const title = () => document.getElementById('fs-dashboardTitle') as HTMLInputElement
-    expect(title().disabled).toBe(false)
-    expect(document.querySelector('[data-dashboard-meta-note]')).toBeNull()
+    // Setup only sums the frontend up; its button opens the designer's Appearance view.
+    expect(document.querySelector('[data-frontend-summary]')?.textContent).toContain('left-to-right')
+    fireEvent.click(document.querySelector('[data-edit-frontend]')!)
+    let designer = screen.getByRole('dialog', { name: 'Layout designer' })
+    expect(designer.querySelector('[data-designer-appearance]')).toBeTruthy()
+    // Without pages the preview is the classic shell, with the heading as it is typed.
+    fireEvent.change(document.getElementById('fs-dashboardTitle')!, { target: { value: 'Support desk' } })
+    expect(designer.querySelector('[data-layout-preview]')?.textContent).toContain('Support desk')
+    // The language is one undo step.
+    fireEvent.click(within(designer).getByRole('radio', { name: 'עברית' }))
+    expect(designer.querySelector('[data-appearance-caption]')?.textContent).toContain('עברית')
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(designer.querySelector('[data-appearance-caption]')?.textContent).toContain('English'))
+    fireEvent.click(within(designer).getByRole('button', { name: 'Done' }))
+
     await loadDesk()
-    expect(title().disabled).toBe(true)
-    expect((document.getElementById('fs-dashboardOverview') as HTMLInputElement).disabled).toBe(true)
-    expect(document.querySelector('[data-dashboard-meta-note]')?.textContent).toContain('Your page layout is in charge')
+    fireEvent.click(document.querySelector('[data-edit-frontend]')!)
+    designer = screen.getByRole('dialog', { name: 'Layout designer' })
+    expect(document.getElementById('fs-dashboardTitle')).toBeNull()
+    expect(designer.querySelector('[data-dashboard-meta-note]')?.textContent).toContain('only apply to the classic layout')
   })
 
   it('follows an entity rename into the layout, and drops the layout on request (undoably)', async () => {

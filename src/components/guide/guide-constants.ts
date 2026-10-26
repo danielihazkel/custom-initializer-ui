@@ -332,6 +332,7 @@ The section is a card: the layout as a small sitemap, its problems, and **Open d
 - **Library** (left) — page types, suggestions for your entities, your saved page templates, widgets and whole-layout templates. Drag a card where it should go, or click it to add it at the end.
 - **Canvas** (middle) — the page strip (the navigation's sections, then the pages off it) over a live preview of the selected page. Click a widget to edit it; drag it to move it, drag its edge to resize it. **Mobile** shows the page at phone width.
 - **Inspector** (right) — the selected widget's settings, or the page's **Basics** (type, title, route, group, icon), **Layout** (what the type is made of) and **Access** (roles).
+- **Appearance** sets the app's look beside its preview: the frontend template set, colour palette, language, right-to-left, and (without pages) the classic dashboard's heading. Setup's Frontend row opens it.
 - **Sitemap** renames and reorders the navigation's sections, moves pages between them and sets the menu style. The **issues** button lists problems and tips with their fixes.
 - Keys: \`/\` searches the library, Delete removes the selected widget, Alt+←/→ moves it, Alt+Shift+←/→ makes it narrower or wider, Esc deselects and then closes.
 

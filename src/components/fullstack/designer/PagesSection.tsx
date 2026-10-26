@@ -7,14 +7,22 @@ import { scrollToElement } from '../scroll'
 import { ICON_BUTTON, SMALL_BUTTON } from '../pages/constants'
 import { TemplateGallery } from '../pages/TemplateGallery'
 import { LayoutDesigner, type DesignerTarget } from './LayoutDesigner'
+import type { FrontendAppearance } from './FrontendSettings'
+
+export interface PagesSectionProps extends PagesEditorProps {
+  /** The generated app's look — edited in the designer's Appearance view. */
+  appearance?: FrontendAppearance
+  /** Bumped (a new `n`) to open the designer on `target` — the Setup panel's "Edit in designer". */
+  designerRequest?: { n: number; target: DesignerTarget } | null
+}
 
 /**
  * The Fullstack tab's page layout: a card summing the layout up — its navigation as a small
  * sitemap, its problems, the ways to start one — that opens the full-screen layout designer.
  * Takes the inline editor's props, so the tab hands either the same state.
  */
-export function PagesSection(props: PagesEditorProps) {
-  const { pages, entities, validation, pushUndo, onChange, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, serverIssue, onOpenGuide } = props
+export function PagesSection(props: PagesSectionProps) {
+  const { pages, entities, validation, pushUndo, onChange, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, serverIssue, onOpenGuide, appearance, designerRequest } = props
   const [open, setOpen] = useState<DesignerTarget | null>(null)
   const [confirmClassic, setConfirmClassic] = useState(false)
   const sectionRef = useRef<HTMLElement>(null)
@@ -32,6 +40,7 @@ export function PagesSection(props: PagesEditorProps) {
   useEffect(() => { if (addRequest) setOpen({ panel: 'add' }) }, [addRequest])
   useEffect(() => { if (findRequest) setOpen({ panel: 'find' }) }, [findRequest])
   useEffect(() => { if (previewRequest) setOpen({}) }, [previewRequest])
+  useEffect(() => { if (designerRequest) setOpen(designerRequest.target) }, [designerRequest?.n])
 
   const issues = validation.issues.length + (serverIssue ? 1 : 0)
   const tips = validation.warnings.length
@@ -158,6 +167,12 @@ export function PagesSection(props: PagesEditorProps) {
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">open_in_full</span>
           {pages.length > 0 ? 'Open designer' : 'Design pages'}
         </button>
+        {appearance && (
+          <button type="button" onClick={() => setOpen({ panel: 'appearance' })} className={SMALL_BUTTON} title="Template set, colours, language and direction — beside a live preview" data-open-appearance>
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">palette</span>
+            Appearance
+          </button>
+        )}
         {pages.length === 0 ? (
           <button type="button" onClick={startFromEntities} disabled={named.length === 0} className={SMALL_BUTTON} data-seed-layout>
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">auto_awesome</span>

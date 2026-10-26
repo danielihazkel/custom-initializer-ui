@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useState } from 'react'
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import type { FullstackEntityDef, FullstackNav, FullstackPageDef } from '../../../types'
+import type { EntityTemplateSetSummary, FullstackEntityDef, FullstackNav, FullstackPageDef } from '../../../types'
+import type { FeColorPalette } from '../../../hooks/useFrontendMetadata'
 import { validatePages } from '../pageLayout'
 import { PagesSection } from './PagesSection'
 
@@ -239,5 +240,94 @@ describe('Layout designer', () => {
     fireEvent.click(screen.getByRole('button', { name: /Start from my entities/ }))
     expect(latest.length).toBeGreaterThan(0)
     expect(screen.getByRole('dialog', { name: 'Layout designer' })).toBeTruthy()
+  })
+})
+
+describe('Layout designer — Appearance', () => {
+  const sets: EntityTemplateSetSummary[] = [
+    { setKey: 'react-tailwind-crud', name: 'React + Tailwind', description: 'The default shell', kind: 'FRONTEND_REACT', defaultDeps: [], designSystem: null, bootVersion: null, javaVersion: null, defaultPaletteId: 'ocean' },
+    { setKey: 'react-menora-digital-crud', name: 'Menora Digital', description: 'The brand shell', kind: 'FRONTEND_REACT', defaultDeps: [], designSystem: 'MENORA_DIGITAL', bootVersion: null, javaVersion: null, defaultPaletteId: 'ocean' },
+  ]
+  const palettes: FeColorPalette[] = [
+    { id: 'ocean', name: 'Ocean', primary: '#0055aa', secondary: '#ffcc00', isDefault: true, sortOrder: 0 },
+    { id: 'forest', name: 'Forest', primary: '#226633', secondary: '#eedd88', isDefault: false, sortOrder: 1 },
+  ]
+
+  /** FullstackView's part: it owns the look and derives the preview settings from it. */
+  function AppearanceHarness({ initial }: { initial: FullstackPageDef[] }) {
+    const [pages, setPages] = useState(initial)
+    const [frontendSet, setFrontendSet] = useState('react-tailwind-crud')
+    const [colorPalette, setColorPalette] = useState('')
+    const [meta, setMeta] = useState({ locale: 'en' as 'en' | 'he', dashboardTitle: '', dashboardOverview: '' })
+    const [rtl, setRtl] = useState(false)
+    const current = sets.find(s => s.setKey === frontendSet)
+    const effective = colorPalette || 'ocean'
+    latest = pages
+    return (
+      <PagesSection
+        pages={pages}
+        entities={entities}
+        validation={validatePages(pages, entities)}
+        onChange={setPages}
+        pushUndo={pushUndo}
+        onClear={() => setPages([])}
+        previewSettings={{
+          locale: meta.locale,
+          projectOpts: rtl ? ['rtl'] : [],
+          skin: current?.designSystem === 'MENORA_DIGITAL' ? 'menora' : 'tailwind',
+          palette: palettes.find(p => p.id === effective),
+          dashboardTitle: meta.dashboardTitle,
+          dashboardOverview: meta.dashboardOverview,
+        }}
+        appearance={{
+          frontendSets: sets, frontendSet, setFrontendSet, currentFrontendSet: current,
+          setsLoading: false, setsError: null, loadTemplateSets: () => {},
+          palettes, feError: null, reloadFe: () => {},
+          effectivePalette: effective, setDefaultPalette: 'ocean', colorPalette, setColorPalette,
+          locale: meta.locale, dashboardTitle: meta.dashboardTitle, dashboardOverview: meta.dashboardOverview,
+          artifactId: 'demo', updateMeta: u => setMeta(m => ({ ...m, ...u })),
+          rtl, toggleRtl: () => setRtl(r => !r),
+        }}
+      />
+    )
+  }
+
+  function openAppearance() {
+    fireEvent.click(screen.getByRole('button', { name: /Appearance/ }))
+    const designer = screen.getByRole('dialog', { name: 'Layout designer' })
+    expect(designer.querySelector('[data-designer-appearance]')).toBeTruthy()
+    return designer
+  }
+
+  it('switches the shell, colours, language and direction, with the preview following', () => {
+    render(<AppearanceHarness initial={desk} />)
+    const designer = openAppearance()
+    const preview = () => designer.querySelector('[data-layout-preview]') as HTMLElement
+    expect(preview().querySelector('[data-preview-shell]')).toBeTruthy()
+
+    fireEvent.click(within(designer).getByRole('radio', { name: /Menora Digital/ }))
+    expect(preview().querySelector('[data-preview-shell]')).toBeNull()
+    expect(designer.querySelector('[data-appearance-caption]')?.textContent).toContain('Menora Digital')
+
+    fireEvent.click(within(designer).getByRole('radio', { name: 'Forest' }))
+    expect(designer.querySelector('[data-appearance-caption]')?.textContent).toContain('Forest palette')
+
+    fireEvent.click(within(designer).getByLabelText(/right-to-left/i))
+    expect(preview().getAttribute('dir')).toBe('rtl')
+    // A page with a layout has no classic heading to set.
+    expect(document.getElementById('fs-dashboardTitle')).toBeNull()
+    expect(designer.querySelector('[data-dashboard-meta-note]')).toBeTruthy()
+    // Clicking a part of the preview goes to the design view to edit it.
+    fireEvent.click(within(preview()).getByRole('button', { name: 'Edit widget 1' }))
+    expect(designer.querySelector('[data-designer-appearance]')).toBeNull()
+    expect(within(inspector(designer)).getByText('Widget 1')).toBeTruthy()
+  })
+
+  it('previews the classic shell without pages, with the heading as it is typed', () => {
+    render(<AppearanceHarness initial={[]} />)
+    const designer = openAppearance()
+    fireEvent.change(document.getElementById('fs-dashboardTitle')!, { target: { value: 'Support desk' } })
+    expect(designer.querySelector('[data-layout-preview]')?.textContent).toContain('Support desk')
+    expect(within(designer).getByText(/Classic layout — the app you get without pages/)).toBeTruthy()
   })
 })

@@ -83,7 +83,13 @@ with `dragPayload.ts` (`LibraryDrag`, kept in designer state; the event carries 
 The palette's page actions and Generate's jump to an error open the designer (`DesignerTarget`). Every change goes
 through `pages/usePagesModel.ts`, which `PagesEditor` uses too — the admin examples form keeps the inline editor.
 The page forms use container queries (`@sm:` etc., `@container` on the hosts) so they stack in the 22rem
-inspector. Designer keys (`/`, Delete, Alt+←/→, Alt+Shift+←/→, Esc) are in `FULLSTACK_SHORTCUTS`. Pinned by
+inspector. Designer keys (`/`, Delete, Alt+←/→, Alt+Shift+←/→, Esc) are in `FULLSTACK_SHORTCUTS`. A third view,
+**Appearance** (`AppearanceView` + `FrontendSettings`), holds the generated app's look — frontend template set
+(radio cards with a shell sketch), palette (`PalettePicker`), language, RTL and the classic dashboard heading —
+beside the live preview (the classic `seedLayout` shell when there are no pages). The values stay in
+`FullstackView` (snapshot, undo, share links) and reach the designer as one `FrontendAppearance` bundle via
+`PagesSection`'s `appearance` prop; the Setup panel's `#fs-frontend` is now a one-row summary whose *Edit in
+designer* (and the frontend setup chips) bump `designerRequest` to open Appearance. Pinned by
 `designer/LayoutDesigner.test.tsx`.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and

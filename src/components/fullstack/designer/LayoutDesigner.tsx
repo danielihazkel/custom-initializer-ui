@@ -19,21 +19,24 @@ import { isPageDrag, type LibraryDrag } from './dragPayload'
 import { IssuesPanel } from './IssuesPanel'
 import { PageStrip } from './PageStrip'
 import { SitemapView } from './SitemapView'
+import { AppearanceView } from './AppearanceView'
+import { CanvasFrame, DeviceSwitch, type PreviewDevice } from './CanvasFrame'
+import type { FrontendAppearance } from './FrontendSettings'
 
 /** Where the designer opens: a page (and control), and which panel is showing. */
 export interface DesignerTarget {
   page?: number
   control?: string
-  panel?: 'add' | 'issues' | 'find' | 'templates' | 'widgets'
+  panel?: 'add' | 'issues' | 'find' | 'templates' | 'widgets' | 'appearance'
 }
 
 type DesignerProps = Omit<PagesEditorProps, 'revealRequest' | 'addRequest' | 'previewRequest' | 'findRequest' | 'layout'> & {
+  /** The generated app's look, edited in the Appearance view. Absent: no Appearance view. */
+  appearance?: FrontendAppearance
   target: DesignerTarget
   onClose: () => void
 }
 
-/** How much larger the canvas draws the preview than the editor's side panel does. */
-const CANVAS_ZOOM = 1.35
 
 /**
  * The full-screen layout designer: the library of page types, widgets and templates on the left,
@@ -41,14 +44,14 @@ const CANVAS_ZOOM = 1.35
  * or widget's settings on the right. Every change goes through the shared page model, so undo,
  * validation and the request are the inline editor's.
  */
-export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo, previewSettings, history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, dismissedWarnings, onDismissedWarningsChange, target, onClose }: DesignerProps) {
+export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo, previewSettings, history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, appearance, dismissedWarnings, onDismissedWarningsChange, target, onClose }: DesignerProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [selectedWidget, setSelectedWidget] = useState<number | null>(null)
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('basics')
   const [libraryTab, setLibraryTab] = useState<LibraryTab>(target.panel === 'templates' ? 'templates' : target.panel === 'add' ? 'pages' : 'widgets')
   const [issuesOpen, setIssuesOpen] = useState(target.panel === 'issues')
-  const [view, setView] = useState<'design' | 'sitemap'>('design')
-  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
+  const [view, setView] = useState<'design' | 'sitemap' | 'appearance'>(target.panel === 'appearance' && appearance ? 'appearance' : 'design')
+  const [device, setDevice] = useState<PreviewDevice>('desktop')
   const [drag, setDrag] = useState<LibraryDrag | null>(null)
   // A page type more than one entity fits: which one, and where it goes.
   const [entityForm, setEntityForm] = useState<{ type: FullstackPageType; pick: string; at?: number } | null>(null)
@@ -267,7 +270,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             </p>
           </div>
           <div role="radiogroup" aria-label="View" className="flex gap-0.5 rounded-lg border border-outline-variant bg-surface-container p-0.5">
-            {([['design', 'Design'], ['sitemap', 'Sitemap']] as const).map(([value, label]) => (
+            {([['design', 'Design'], ['sitemap', 'Sitemap'], ...(appearance ? [['appearance', 'Appearance'] as const] : [])] as const).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
@@ -323,7 +326,25 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
           </div>
         )}
 
-        {view === 'sitemap' ? (
+        {view === 'appearance' && appearance ? (
+          <AppearanceView
+            pages={pages}
+            entities={entities}
+            model={model}
+            appearance={appearance}
+            nav={nav}
+            selected={selectedIndex}
+            onSelectPage={selectPage}
+            onEdit={t => { setView('design'); reveal(t) }}
+            device={device}
+            onDevice={setDevice}
+            onEditStartDashboard={() => {
+              const dashboard = pages.findIndex(p => p.type === 'dashboard')
+              setView('design')
+              reveal({ page: dashboard >= 0 ? dashboard : selectedIndex, control: 'title' })
+            }}
+          />
+        ) : view === 'sitemap' ? (
           <SitemapView pages={pages} model={model} nav={nav} onNavChange={onNavChange} onOpenPage={i => { selectPage(i); setView('design') }} />
         ) : (
         <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
@@ -395,22 +416,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                   <span>{PAGE_TYPE_META[page.type]?.label}</span>
                   <span className="font-mono">#/{page.id || '…'}</span>
                   <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · drag to move · drag its edge to resize' : 'Click a part of the page to edit it'}</span>
-                  <span role="radiogroup" aria-label="Preview width" className="inline-flex overflow-hidden rounded-md border border-outline-variant">
-                    {([['desktop', 'Desktop', 'computer'], ['mobile', 'Mobile', 'smartphone']] as const).map(([value, label, icon]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        role="radio"
-                        aria-checked={device === value}
-                        aria-label={label}
-                        title={`${label} width`}
-                        onClick={() => setDevice(value)}
-                        className={`px-1.5 py-0.5 ${device === value ? 'bg-primary/15 text-on-surface' : 'text-secondary hover:text-on-surface'}`}
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">{icon}</span>
-                      </button>
-                    ))}
-                  </span>
+                  <DeviceSwitch device={device} onChange={setDevice} />
                   <button
                     type="button"
                     onClick={() => setSelectedWidget(null)}
@@ -422,12 +428,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                 </>
               ) : <span>No pages yet</span>}
             </div>
-            <div
-              className="min-h-0 flex-1 overflow-auto bg-background p-6 [background-image:radial-gradient(var(--color-outline-variant)_1px,transparent_1px)] [background-size:16px_16px]"
-              data-designer-canvas
-            >
-              {page ? (
-                <div className={`mx-auto ${device === 'mobile' ? 'max-w-[18rem]' : 'max-w-[56rem]'}`} style={{ zoom: CANVAS_ZOOM }}>
+            {page ? (
+                <CanvasFrame device={device}>
                   <LayoutPreview
                     preview={preview}
                     selected={selectedIndex}
@@ -450,8 +452,9 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                       },
                     } : null}
                   />
-                </div>
+                </CanvasFrame>
               ) : (
+              <div className="min-h-0 flex-1 overflow-auto bg-background p-6" data-designer-canvas>
                 <div className="mx-auto flex max-w-xl flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-outline px-8 py-14 text-center" data-designer-empty>
                   <h2 className="text-lg font-semibold">Start your layout</h2>
                   <p className="text-xs text-secondary">Pick a whole layout from Templates, start from your entities, or add pages one at a time from the library.</p>
@@ -462,8 +465,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     <button type="button" onClick={() => setLibraryTab('templates')} className={SMALL_BUTTON}>Browse templates</button>
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </main>
 
           <DesignerInspector
