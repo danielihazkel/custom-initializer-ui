@@ -28,6 +28,9 @@ import { SearchForm } from './SearchForm'
 interface PageListProps {
   pages: FullstackPageDef[]
   keys: string[]
+  /** Page ids picked for a bulk action, and how a row's checkbox toggles one. */
+  picked: string[]
+  onTogglePick: (id: string) => void
   validation: PageLayoutValidation
   openKey: string | null
   dnd: ReturnType<typeof useDragReorder>
@@ -61,7 +64,7 @@ interface PageListProps {
 }
 
 /** The layout's pages, in nav order: one row each, opening to its title, route, nav and per-type form. */
-export function PageList({ pages, keys, validation, openKey, dnd, preview, previewIndex, showPreview, matchesQuery, setHoverTo, targetOf, hoverFocused, move, openPage, pushUndo, onChange, update, atPageCap, duplicate, requestRemove, saveAsTemplate, changeType, switchBlocked, retitle, unlockId, ldapAuth, onAddDep, named, lossy, removed, projectOpts, expandRequest }: PageListProps) {
+export function PageList({ pages, keys, picked, onTogglePick, validation, openKey, dnd, preview, previewIndex, showPreview, matchesQuery, setHoverTo, targetOf, hoverFocused, move, openPage, pushUndo, onChange, update, atPageCap, duplicate, requestRemove, saveAsTemplate, changeType, switchBlocked, retitle, unlockId, ldapAuth, onAddDep, named, lossy, removed, projectOpts, expandRequest }: PageListProps) {
   return (
     <ol
       className="min-w-0 space-y-2"
@@ -91,6 +94,15 @@ export function PageList({ pages, keys, validation, openKey, dnd, preview, previ
             } ${indicator === 'before' ? 'border-t-2 border-t-primary' : ''} ${indicator === 'after' ? 'border-b-2 border-b-primary' : ''}`}
           >
             <div className="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={picked.includes(page.id)}
+                onChange={() => onTogglePick(page.id)}
+                aria-label={`Pick “${pageLabel(page)}” for a bulk action`}
+                title="Pick for a bulk action (hide, group, roles, duplicate, delete)"
+                className="h-3.5 w-3.5 accent-primary"
+                data-page-pick
+              />
               <span
                 {...dnd.handleProps('pages', index)}
                 className="cursor-grab select-none text-secondary/70 hover:text-secondary"

@@ -25,6 +25,7 @@ import { EntityOptions, GroupChip, MoveButtons } from './pages/fields'
 import { TemplateGallery } from './pages/TemplateGallery'
 import { PreviewDrawer } from './pages/PreviewDrawer'
 import { LayoutWarnings } from './pages/LayoutWarnings'
+import { BulkPageBar } from './pages/BulkPageBar'
 import { PageList } from './pages/PageList'
 
 /** What the layout preview needs beyond the layout: the chrome language, the project-wide
@@ -67,6 +68,10 @@ interface Props {
   previewRequest?: number
   /** Bumped by the caller (the command palette's "Find page…") to focus the page search. */
   findRequest?: number
+  /** Keys of the dismissed layout warnings, and how to change them. Omitted (the admin example
+   *  form): warnings cannot be dismissed. */
+  dismissedWarnings?: string[]
+  onDismissedWarningsChange?: (keys: string[]) => void
   /** `stacked` puts the preview under the page list at every width — for narrow hosts (the
    *  admin drawer), where the viewport-wide split would squeeze both. */
   layout?: 'split' | 'stacked'
@@ -121,7 +126,7 @@ function summarizeLayout(pages: FullstackPageDef[]): string {
  * dashboard plus one list page per entity), which "Start from my entities" materializes as an
  * editable starting point.
  */
-export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange }: Props) {
+export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, dismissedWarnings, onDismissedWarningsChange }: Props) {
   const keys = useStableKeys(pages, p => p.id)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -143,6 +148,19 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const [templatesOpen, setTemplatesOpen] = useState(false)
   // "Changed widget 2 — dropped: target" after a switch that could not keep everything.
   const [notice, setNotice] = useState<string | null>(null)
+  // Pages picked for a bulk action, by id (ids that no longer exist drop out on their own).
+  const [pickedIds, setPickedIds] = useState<string[]>([])
+  const picked = pickedIds.filter(id => pages.some(p => p.id === id))
+  const togglePick = (id: string) => setPickedIds(prev => (prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id]))
+  const [bulkRemove, setBulkRemove] = useState<{ count: number; run: () => void } | null>(null)
+  useEffect(() => {
+    if (picked.length === 0) return
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('[role="dialog"]')) setPickedIds([])
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [picked.length])
   // A problem click about a widget: the dashboard form opens that card before the control is focused.
   const [expandRequest, setExpandRequest] = useState<{ page: number; widget: number; n: number } | null>(null)
   // The editor part under the pointer or keyboard focus — the preview rings its counterpart.
@@ -992,8 +1010,17 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           ))}
         </ul>
       )}
-      {sectionOpen && validation.warnings.length > 0 && (
-        <LayoutWarnings warnings={validation.warnings} pages={pages} reveal={reveal} pushUndo={pushUndo} onChange={onChange} />
+      {sectionOpen && (validation.warnings.length > 0 || (onDismissedWarningsChange && validation.dismissedWarnings.length > 0)) && (
+        <LayoutWarnings
+          warnings={validation.warnings}
+          dismissed={validation.dismissedWarnings}
+          pages={pages}
+          reveal={reveal}
+          pushUndo={pushUndo}
+          onChange={onChange}
+          onDismiss={onDismissedWarningsChange ? key => onDismissedWarningsChange([...(dismissedWarnings ?? []), key]) : undefined}
+          onRestore={onDismissedWarningsChange ? keys => onDismissedWarningsChange((dismissedWarnings ?? []).filter(k => !keys.includes(k))) : undefined}
+        />
       )}
 
       {pages.length === 0 ? (
@@ -1150,9 +1177,22 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           {pageQuery.trim() && matchCount === 0 && (
             <p className="text-[11px] text-secondary" data-page-search-empty>No page matches “{pageQuery.trim()}”.</p>
           )}
+          {picked.length > 0 && (
+            <BulkPageBar
+              pages={pages}
+              picked={picked}
+              onPick={setPickedIds}
+              pushUndo={pushUndo}
+              onChange={onChange}
+              ldapAuth={ldapAuth}
+              onRemoveRequest={(count, run) => setBulkRemove({ count, run })}
+            />
+          )}
           <PageList
             pages={pages}
             keys={keys}
+            picked={picked}
+            onTogglePick={togglePick}
             validation={validation}
             openKey={openKey}
             dnd={dnd}
@@ -1239,6 +1279,16 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           tone="danger"
           onConfirm={() => removePage(confirmRemove, true)}
           onCancel={() => setConfirmRemove(null)}
+        />
+      )}
+      {bulkRemove && (
+        <ConfirmDialog
+          title={`Remove ${bulkRemove.count} page${bulkRemove.count === 1 ? '' : 's'}?`}
+          message="Tabs, links and record openings that point at them go too. Undo brings them back."
+          confirmLabel="Remove pages"
+          tone="danger"
+          onConfirm={() => { bulkRemove.run(); setBulkRemove(null) }}
+          onCancel={() => setBulkRemove(null)}
         />
       )}
       {confirmClassic && (

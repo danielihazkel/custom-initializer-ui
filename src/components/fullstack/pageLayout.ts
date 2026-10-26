@@ -530,13 +530,27 @@ export interface PageLayoutValidation {
   count: number
   /** Advice, not errors: the layout generates, but with a dead end the user probably did not mean
    *  (a hidden page nothing opens, a chart nothing drills from, a default that was capped). Never
-   *  counted, never blocks Generate. */
-  warnings: { page?: number; field?: string; summary: string; fix?: PageFix }[]
-  /** Page index → how many of the warnings are about it. */
+   *  counted, never blocks Generate. Each has a stable `key` (kind + page id + detail) by which it
+   *  can be dismissed; dismissed ones are in `dismissedWarnings` instead. */
+  warnings: LayoutWarning[]
+  /** The warnings the user dismissed (`PageLayoutContext.dismissed`) — kept so they can be restored. */
+  dismissedWarnings: LayoutWarning[]
+  /** Page index → how many of the (not dismissed) warnings are about it. */
   warningsByPage: Record<number, number>
 }
 
+export interface LayoutWarning {
+  /** Stable across edits that leave the warning standing: `<kind>:<page id>[:<detail>]`. */
+  key: string
+  page?: number
+  field?: string
+  summary: string
+  fix?: PageFix
+}
+
 interface Issue {
+  /** Warnings only: the dismissal key. */
+  key?: string
   page?: number
   field?: string
   /** Shown on the control. */
@@ -557,6 +571,8 @@ export interface PageLayoutContext {
   /** The project-wide scaffold opts: a list page may show or sort by the audit columns only with
    *  `audit` among them (or overridden on the entity). Omitted: no audit columns. */
   scaffoldOpts?: string[]
+  /** Keys of the warnings the user dismissed (they move to `dismissedWarnings`). */
+  dismissed?: string[]
 }
 
 export const PAGE_ROLES: FullstackPageRole[] = ['ADMIN', 'USER']
@@ -574,7 +590,10 @@ export function validatePages(pages: FullstackPageDef[], entities: FullstackEnti
       fields[issue.field ?? 'page'] ??= issue.message
     }
   }
-  const warnings = collectWarnings(pages, entities)
+  const dismissed = new Set(context.dismissed ?? [])
+  const all = collectWarnings(pages, entities).map(({ key, page, field, summary, fix }): LayoutWarning =>
+    ({ key: key ?? summary, page, field, summary, ...(fix ? { fix } : {}) }))
+  const warnings = all.filter(w => !dismissed.has(w.key))
   const warningsByPage: Record<number, number> = {}
   for (const w of warnings) if (w.page != null) warningsByPage[w.page] = (warningsByPage[w.page] ?? 0) + 1
   return {
@@ -583,7 +602,8 @@ export function validatePages(pages: FullstackPageDef[], entities: FullstackEnti
     problems: issues.map(i => i.summary),
     issues: issues.map(({ page, field, summary, fix, alsoFix }) => ({ page, field, summary, ...(fix ? { fix } : {}), ...(alsoFix ? { alsoFix } : {}) })),
     count: issues.length,
-    warnings: warnings.map(({ page, field, summary, fix }) => ({ page, field, summary, ...(fix ? { fix } : {}) })),
+    warnings,
+    dismissedWarnings: all.filter(w => dismissed.has(w.key)),
     warningsByPage,
   }
 }
@@ -618,19 +638,22 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
   pages.forEach((page, index) => {
     const label = pageLabel(page)
     const where = `Page “${label}”`
-    const warn = (field: string, summary: string, fix?: PageFix) => {
+    // `kind` + the page id (+ a detail) is the warning's dismissal key: it survives a reorder and
+    // any edit that leaves the warning standing.
+    const warn = (kind: string, field: string, summary: string, fix?: PageFix, detail?: string) => {
       // One chart dead end per page and entity, not one per widget.
       if (seen.has(summary)) return
       seen.add(summary)
-      out.push({ page: index, field, message: '', summary, ...(fix ? { fix } : {}) })
+      const key = `${kind}:${page.id}${detail ? `:${detail.toLowerCase()}` : ''}`
+      out.push({ key, page: index, field, message: '', summary, ...(fix ? { fix } : {}) })
     }
 
     if (page.hidden && page.type !== 'record' && page.type !== 'wizard' && pagesEmbedding(pages, page.id).length === 0) {
-      warn('page', `${where} is hidden but no tabs page embeds it, so nothing opens it`,
+      warn('unreachable', 'page', `${where} is hidden but no tabs page embeds it, so nothing opens it`,
         patchPage(index, `Show “${label}” in the navigation`, p => ({ ...p, hidden: false })))
     }
     if ((page.roles?.length ?? 0) > 0 && page.hidden && page.type !== 'wizard') {
-      warn('roles', `${where} is restricted to roles, but it is out of the navigation, so the roles never apply`,
+      warn('hidden-roles', 'roles', `${where} is restricted to roles, but it is out of the navigation, so the roles never apply`,
         patchPage(index, `Drop the roles of “${label}”`, p => ({ ...p, roles: undefined })))
     }
     if (page.type === 'dashboard') {
@@ -640,21 +663,21 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
         if (!e || w.kind === 'text' || w.kind === 'links' || w.kind === 'list') return
         const chart = w.kind === 'bar' || w.kind === 'donut' || w.kind === 'stacked' || w.kind === 'top' || w.kind === 'line'
         if (chart && !visibleList(e.name)) {
-          warn(`widget.${wi}`, `${where}: clicking a bar of the ${e.name} chart goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e))
+          warn('chart-dead-end', `widget.${wi}`, `${where}: clicking a bar of the ${e.name} chart goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e), e.name)
         }
         if (w.kind === 'recent' && singlePk(e) && !recordPage(e.name)) {
-          warn(`widget.${wi}`, `${where}: the recent ${e.name} rows open nothing — ${e.name} has no record page`, addRecordPage(e))
+          warn('recent-dead-end', `widget.${wi}`, `${where}: the recent ${e.name} rows open nothing — ${e.name} has no record page`, addRecordPage(e), e.name)
         }
         if (page.dateRange && !widgetDateField(w, e)) dateless.push(wi)
       })
       if (page.dateRange && dateless.length > 0) {
-        warn(`widget.${dateless[0]}`, `${where}: ${dateless.length === 1 ? 'one widget has' : `${dateless.length} widgets have`} no date, so the period picker does not limit ${dateless.length === 1 ? 'it' : 'them'}`)
+        warn('dateless', `widget.${dateless[0]}`, `${where}: ${dateless.length === 1 ? 'one widget has' : `${dateless.length} widgets have`} no date, so the period picker does not limit ${dateless.length === 1 ? 'it' : 'them'}`)
       }
     }
     if (page.type === 'report') {
       const e = entityOf(page.entity)
       if (e && !visibleList(e.name)) {
-        warn('entity', `${where}: clicking a bar of the chart goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e))
+        warn('chart-dead-end', 'entity', `${where}: clicking a bar of the chart goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e), e.name)
       }
     }
     if (page.type === 'record') {
@@ -662,12 +685,12 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       if (!e) return
       const related = entities.filter(o => o.name.trim() && relationsTo(o, e.name).length > 0)
       if (page.childTabs == null && related.length > MAX_CHILD_TABS) {
-        warn('childTabs', `${where} shows only the first ${MAX_CHILD_TABS} of its ${related.length} related lists`,
+        warn('child-tabs-cap', 'childTabs', `${where} shows only the first ${MAX_CHILD_TABS} of its ${related.length} related lists`,
           patchPage(index, `Choose the first ${MAX_CHILD_TABS} related lists`, p => ({ ...p, childTabs: related.slice(0, MAX_CHILD_TABS).map(o => o.name) })))
       }
       const tabs = page.childTabs ? page.childTabs.map(childTabEntity) : related.map(o => o.name)
       if (page.headerStats == null && tabs.length > MAX_HEADER_STATS) {
-        warn('headerStats', `${where} shows only the first ${MAX_HEADER_STATS} of its ${tabs.length} header numbers`,
+        warn('header-stats-cap', 'headerStats', `${where} shows only the first ${MAX_HEADER_STATS} of its ${tabs.length} header numbers`,
           patchPage(index, `Choose the first ${MAX_HEADER_STATS} header numbers`, p => ({ ...p, headerStats: tabs.slice(0, MAX_HEADER_STATS).map(child => ({ child })) })))
       }
     }

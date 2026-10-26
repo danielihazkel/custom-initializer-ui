@@ -74,6 +74,7 @@ const DEFAULT_ENTITIES: FullstackEntityDef[] = [
 const LS = {
   meta: 'fullstack:meta',
   nav: 'fullstack:nav',
+  dismissed: 'fullstack:dismissedWarnings',
   entities: 'fullstack:entities',
   deps: 'fullstack:deps',
   backendSet: 'fullstack:backendSet',
@@ -131,6 +132,7 @@ function readStoredSnapshot(): FullstackSnapshot {
     colorPalette: item(LS.palette) ?? '',
     pages: loadJson<FullstackPageDef[]>(LS.pages, []),
     nav: loadJson<FullstackNav | null>(LS.nav, null) ?? undefined,
+    dismissedWarnings: loadJson<string[]>(LS.dismissed, []),
   })
 }
 
@@ -171,6 +173,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const [pages, setPages] = useState<FullstackPageDef[]>(() => shared ? (shared.pages ?? []) : loadJson<FullstackPageDef[]>(LS.pages, []))
   // The generated shell's navigation for the layout (sidebar/top bar, folding sections).
   const [nav, setNav] = useState<FullstackNav | undefined>(() => shared ? shared.nav : (loadJson<FullstackNav | null>(LS.nav, null) ?? undefined))
+  const [dismissedWarnings, setDismissedWarnings] = useState<string[]>(() => shared ? (shared.dismissedWarnings ?? []) : loadJson<string[]>(LS.dismissed, []))
   // A Generate 400 that names a page: shown on that page until the layout changes.
   const [pageServerIssue, setPageServerIssue] = useState<{ page: number; message: string } | null>(null)
   useEffect(() => { setPageServerIssue(null) }, [pages])
@@ -277,7 +280,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // A layout outlives the entities it names (rename / delete) — flagged here, not as a 400 later.
   // Page roles are enforced by the generated backend's LDAP groups, so they need an LDAP auth variant (ldap-auth-rest, the sets' default, or ldap-auth).
   const ldapAuth = selectedDeps.some(d => d === 'ldap-auth' || d === 'ldap-auth-rest')
-  const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth, scaffoldOpts }), [pages, entities, ldapAuth, scaffoldOpts])
+  const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth, scaffoldOpts, dismissed: dismissedWarnings }),
+    [pages, entities, ldapAuth, scaffoldOpts, dismissedWarnings])
   const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageValidation.count
   const hasErrors = errorCount > 0
 
@@ -314,6 +318,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   useEffect(() => { persist(LS.palette, colorPalette) }, [colorPalette])
   useEffect(() => { persist(LS.pages, JSON.stringify(pages)) }, [pages])
   useEffect(() => { persist(LS.nav, JSON.stringify(nav ?? null)) }, [nav])
+  useEffect(() => { persist(LS.dismissed, JSON.stringify(dismissedWarnings)) }, [dismissedWarnings])
   useEffect(() => { persist(LS.collapsed, JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { persist(LS.graph, JSON.stringify(showGraph)) }, [showGraph])
   useEffect(() => { persist(LS.setup, setupOpen ? 'open' : 'closed') }, [setupOpen])
@@ -321,8 +326,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
   const currentSnapshot = useMemo(
-    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages, nav }),
-    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages, nav],
+    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages, nav, dismissedWarnings }),
+    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages, nav, dismissedWarnings],
   )
   const snapshotRef = useRef(currentSnapshot)
   snapshotRef.current = currentSnapshot
@@ -570,6 +575,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     setColorPalette(s.colorPalette ?? '')
     setPages(s.pages ? JSON.parse(JSON.stringify(s.pages)) as FullstackPageDef[] : [])
     setNav(s.nav ? { ...s.nav } : undefined)
+    setDismissedWarnings(s.dismissedWarnings ? [...s.dismissedWarnings] : [])
     if (keepView) {
       const alive = new Set(next.map(e => e.uid))
       setCollapsed(prev => new Set([...prev].filter(uid => alive.has(uid))))
@@ -627,6 +633,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   function applyExampleSettings(settings: ExampleSettings | null | undefined) {
     // An example replaces the navigation too: one without says the default sidebar.
     setNav(settings?.nav ? { ...settings.nav } : undefined)
+    setDismissedWarnings([])
     if (!settings) return
     const metaPatch: Partial<ProjectMeta> = {}
     if (settings.locale) metaPatch.locale = settings.locale
@@ -1474,6 +1481,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         onOpenGuide={onOpenGuide}
         nav={nav}
         onNavChange={setNav}
+        dismissedWarnings={dismissedWarnings}
+        onDismissedWarningsChange={setDismissedWarnings}
         history={{
           undoLabel: lastUndo ? `Undo: ${lastUndo.label}` : null,
           redoLabel: nextRedo ? `Redo: ${nextRedo.label}` : null,

@@ -142,3 +142,21 @@ describe('snapshot page layout', () => {
     expect(snapshotChangeKey(makeSnapshot(snapshot), next)).toBe('pages')
   })
 })
+
+describe('snapshot dismissed warnings', () => {
+  const base: FullstackSnapshot = {
+    meta: DEFAULT_PROJECT_META, entities: [], selectedDeps: [], scaffoldOpts: [], backendSet: 'a', frontendSet: 'b',
+  }
+  it('keeps the dismissed keys through export and import, and omits an empty list', () => {
+    expect(makeSnapshot({ ...base, dismissedWarnings: [] })).not.toHaveProperty('dismissedWarnings')
+    const parsed = parseExportedModel(JSON.stringify(toExportedModel({ ...base, dismissedWarnings: ['unreachable:orders'] })))
+    expect('snapshot' in parsed && parsed.snapshot.dismissedWarnings).toEqual(['unreachable:orders'])
+    expect(isSnapshot({ ...base, dismissedWarnings: [3] })).toBe(false)
+  })
+  it('names a dismissal in the undo history and keys it apart from the layout', () => {
+    const next = { ...base, dismissedWarnings: ['unreachable:orders'] }
+    expect(describeSnapshotChange(base, next)).toBe('Dismissed a warning')
+    expect(describeSnapshotChange(next, base)).toBe('Restored a warning')
+    expect(snapshotChangeKey(base, next)).toBe('dismissed')
+  })
+})

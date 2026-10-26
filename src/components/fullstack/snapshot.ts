@@ -64,6 +64,9 @@ export interface FullstackSnapshot {
   pages?: FullstackPageDef[]
   /** The generated shell's navigation for the layout. Absent = a sidebar whose sections do not fold. */
   nav?: FullstackNav
+  /** Editor-only: keys of the layout warnings the user dismissed (`LayoutWarning.key`). Never sent
+   *  to the generator; kept in the model so a dismissal travels with exports and team models. */
+  dismissedWarnings?: string[]
 }
 
 /** Builds a detached snapshot (uids stripped, arrays copied) so later edits never mutate it. */
@@ -78,6 +81,7 @@ export function makeSnapshot(s: FullstackSnapshot): FullstackSnapshot {
     ...(s.colorPalette ? { colorPalette: s.colorPalette } : {}),
     ...(s.pages && s.pages.length > 0 ? { pages: JSON.parse(JSON.stringify(s.pages)) as FullstackPageDef[] } : {}),
     ...(s.nav && (s.nav.style || s.nav.collapsibleGroups) ? { nav: { ...s.nav } } : {}),
+    ...(s.dismissedWarnings && s.dismissedWarnings.length > 0 ? { dismissedWarnings: [...s.dismissedWarnings] } : {}),
   }
 }
 
@@ -110,6 +114,9 @@ export function describeSnapshotChange(prev: FullstackSnapshot, next: FullstackS
   if (prev.colorPalette !== next.colorPalette) return 'Changed colour palette'
   if (JSON.stringify(prev.nav ?? {}) !== JSON.stringify(next.nav ?? {})) return 'Changed the navigation'
   if (JSON.stringify(prev.pages ?? []) !== JSON.stringify(next.pages ?? [])) return describePagesChange(prev.pages ?? [], next.pages ?? [])
+  const da = prev.dismissedWarnings ?? []; const db = next.dismissedWarnings ?? []
+  if (db.length > da.length) return db.length - da.length === 1 ? 'Dismissed a warning' : 'Dismissed warnings'
+  if (db.length < da.length) return da.length - db.length === 1 ? 'Restored a warning' : 'Restored warnings'
   return 'Edit'
 }
 
@@ -149,6 +156,7 @@ export function snapshotChangeKey(prev: FullstackSnapshot, next: FullstackSnapsh
   for (let i = 0; i < pb.length; i++) {
     if (JSON.stringify(pa[i]) !== JSON.stringify(pb[i])) return `p${i}`
   }
+  if (JSON.stringify(prev.dismissedWarnings ?? []) !== JSON.stringify(next.dismissedWarnings ?? [])) return 'dismissed'
   return 'none'
 }
 
@@ -173,6 +181,7 @@ export function isSnapshot(v: unknown): v is FullstackSnapshot {
     && (s.colorPalette === undefined || typeof s.colorPalette === 'string')
     && (s.pages === undefined || Array.isArray(s.pages))
     && (s.nav === undefined || (typeof s.nav === 'object' && s.nav !== null))
+    && (s.dismissedWarnings === undefined || (Array.isArray(s.dismissedWarnings) && s.dismissedWarnings.every(k => typeof k === 'string')))
 }
 
 /** Marker written into exported files so a stray JSON document is recognisable as a model. */
