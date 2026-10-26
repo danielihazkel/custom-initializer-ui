@@ -422,8 +422,11 @@ export function buildLayoutPreview(
   function presetChips(e: FullstackEntityDef, presetFilter?: Record<string, string>): string[] {
     return Object.entries(presetFilter ?? {}).map(([name, value]) => {
       const f = fieldOf(e, name)
-      if (!f) return `${name}: ${value}`
-      const shown = f.type === 'ENUM' ? enumLabel(f, value)
+      if (!f) {
+        const relation = (e.relations ?? []).find(r => `${r.fieldName}Id` === name)
+        return relation ? `${humanize(relation.fieldName)}: ${value.split(',').map(id => `#${id.trim()}`).join(', ')}` : `${name}: ${value}`
+      }
+      const shown = f.type === 'ENUM' ? value.split(',').map(v => enumLabel(f, v.trim())).join(' / ')
         : f.type === 'BOOLEAN' ? (value === 'true' ? t('trueLabel') : t('falseLabel'))
           : describePresetValue(f, value)
       return `${fieldLabel(f)}: ${shown}`

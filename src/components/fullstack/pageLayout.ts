@@ -11,6 +11,7 @@ import type {
   FullstackPageDef,
   FullstackPageRole,
   FullstackPageType,
+  FullstackRelationDef,
   FullstackWidgetDef,
 } from '../../types'
 import {
@@ -452,6 +453,49 @@ export function presettableFields(entity: FullstackEntityDef | undefined): Fulls
     && (f.type === 'ENUM' || f.type === 'BOOLEAN' || presetKind(f) !== 'choice'))
 }
 
+/** The relations a list, report or widget can be preset on: every MANY_TO_ONE, keyed by its
+ *  `<field>Id` filter param (the backend accepts the bare field name too, and keeps this). */
+export function presettableRelations(entity: FullstackEntityDef | undefined): FullstackRelationDef[] {
+  return (entity?.relations ?? []).filter(r => r.type === 'MANY_TO_ONE' && r.fieldName.trim() !== '')
+}
+
+/** The preset key of a relation: its filter param, `customerId`. */
+export function relationPresetKey(r: Pick<FullstackRelationDef, 'fieldName'>): string {
+  return `${r.fieldName}Id`
+}
+
+/** The relation a preset key names (`customerId`, or the bare `customer`), if any. */
+export function relationOfPresetKey(entity: FullstackEntityDef | undefined, key: string): FullstackRelationDef | undefined {
+  const k = key.trim().toLowerCase()
+  return presettableRelations(entity).find(r => r.fieldName.toLowerCase() === k || relationPresetKey(r).toLowerCase() === k)
+}
+
+const UUID_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const TEXT_ID = /^[A-Za-z0-9._~-]+$/
+
+/** Why `value` is not a list of ids of `target` (mirrors FullstackPageValidator.relationIds), or undefined. */
+export function relationPresetProblem(value: string, target: FullstackEntityDef | undefined): string | undefined {
+  if (!value.trim()) return 'needs an id'
+  const keyType = target?.fields.find(f => f.primaryKey)?.type
+  for (const raw of value.split(',')) {
+    const id = raw.trim()
+    if (!id) return 'has an empty id'
+    if (keyType === 'LONG' || keyType === 'INTEGER') {
+      if (!/^-?\d+$/.test(id)) return `“${id}” is not a whole number`
+    } else if (keyType === 'UUID') {
+      if (!UUID_ID.test(id)) return `“${id}” is not a UUID`
+    } else if (!TEXT_ID.test(id)) {
+      return `“${id}” may hold only letters, digits and . _ ~ -`
+    }
+  }
+  return undefined
+}
+
+/** The values of a multi-value preset (`OPEN,PAID` → both). */
+export function presetValues(value: string): string[] {
+  return value.split(',').map(v => v.trim()).filter(v => v !== '')
+}
+
 /** The two halves of a range value `a..b` (either blank), or null when it is not a range. */
 export function parsePresetRange(value: string): { from: string; to: string } | null {
   const at = value.indexOf('..')
@@ -469,7 +513,11 @@ export function presetValueProblem(f: FullstackFieldDef, value: string): string 
   switch (presetKind(f)) {
     case 'choice':
       if (f.type === 'BOOLEAN') return v === 'true' || v === 'false' ? undefined : 'expected true or false'
-      return (f.enumValues ?? []).includes(v) ? undefined : `“${v}” is not one of the values of ${f.name}`
+      if (v.split(',').some(part => part.trim() === '')) return 'has an empty value'
+      for (const one of presetValues(v)) {
+        if (!(f.enumValues ?? []).includes(one)) return `“${one}” is not one of the values of ${f.name}`
+      }
+      return undefined
     case 'date': {
       if (PRESET_PERIODS.some(p => p.value === v.toLowerCase())) return undefined
       const range = parsePresetRange(v)
@@ -509,7 +557,7 @@ export function describePresetValue(f: FullstackFieldDef, value: string): string
     if (range.from && range.to) return `${range.from} – ${range.to}`
     return range.from ? `≥ ${range.from}` : `≤ ${range.to}`
   }
-  return value
+  return presetValues(value).join(' or ')
 }
 
 /** The date a widget's period applies to: its own, else the entity's first filterable one. */
@@ -813,12 +861,17 @@ type AddIssue = (field: string, message: string, summary?: string, fix?: PageFix
 
 /** The opening filters of a list, report or widget: a value of a filterable enum/boolean column, a
  *  period or date range on a date column, a number range on a number column. */
-function checkPresetFilter(filter: Record<string, string> | undefined, e: FullstackEntityDef, add: AddIssue, where: string,
+function checkPresetFilter(filter: Record<string, string> | undefined, e: FullstackEntityDef,
+                           entityOf: (name: string | undefined) => FullstackEntityDef | undefined, add: AddIssue, where: string,
                            control: (field: string) => string = field => `presetFilter.${field}`): void {
   const presettable = presettableFields(e)
   for (const [field, value] of Object.entries(filter ?? {})) {
     const f = e.fields.find(x => x.name === field)
-    if (!f) {
+    const relation = f ? undefined : relationOfPresetKey(e, field)
+    if (relation) {
+      const problem = relationPresetProblem(value, entityOf(relation.targetEntity))
+      if (problem) add(control(field), problem, `${where} filters ${relation.fieldName} on “${value}”, which ${problem}`)
+    } else if (!f) {
       add(control(field), `${e.name} no longer has “${field}”`,
         `${where} filters on “${field}”, which ${e.name} no longer has`)
     } else if (!presettable.includes(f)) {
@@ -1041,7 +1094,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
             page.entity && switchPage(index) ? removePage(index) : undefined)
           break
         }
-        checkPresetFilter(page.presetFilter, e, add, where)
+        checkPresetFilter(page.presetFilter, e, entityOf, add, where)
         checkListPresentation(page, e, add, where, scaffoldOpts)
         if (page.detail === 'record' && !pages.some(p => p.type === 'record' && p.entity?.trim().toLowerCase() === e.name.trim().toLowerCase())) {
           add('detail', `needs a record page for ${e.name}`, `${where} opens rows on a record page, but ${e.name} has none`,
@@ -1131,7 +1184,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
             if (w.limit != null && !LIST_WIDGET_LIMITS.includes(w.limit)) {
               add(`widget.${wi}.limit`, `shows ${LIST_WIDGET_LIMITS.join(' or ')} rows`, `${where} embeds a list of ${w.limit} rows (${LIST_WIDGET_LIMITS.join(' or ')})`)
             }
-            checkPresetFilter(w.presetFilter, e, add, where, field => `widget.${wi}.presetFilter.${field}`)
+            checkPresetFilter(w.presetFilter, e, entityOf, add, where, field => `widget.${wi}.presetFilter.${field}`)
             checkDrill(w, wi, e)
             return
           }
@@ -1231,7 +1284,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
                 `${where} sorts ${e.name} by “${w.sortBy}”, which it no longer has`)
             }
           }
-          checkPresetFilter(w.presetFilter, e, add, `${where} has a widget that`, field => `widget.${wi}.presetFilter.${field}`)
+          checkPresetFilter(w.presetFilter, e, entityOf, add, `${where} has a widget that`, field => `widget.${wi}.presetFilter.${field}`)
           if (w.dateField) {
             if (!page.dateRange) {
               add(`widget.${wi}.dateField`, 'a date field needs the dashboard’s period picker',
@@ -1357,7 +1410,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
             add(chartControl(ci, 'field'), issue.message, `${which} ${issue.summary}`)
           }
         })
-        checkPresetFilter(page.presetFilter, e, add, where)
+        checkPresetFilter(page.presetFilter, e, entityOf, add, where)
         break
       }
       case 'record': {
@@ -1485,10 +1538,10 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           break
         }
         if (page.type === 'calendar') {
-          checkPresetFilter(page.presetFilter, e, add, where)
+          checkPresetFilter(page.presetFilter, e, entityOf, add, where)
           checkCalendar(page, e, add, where)
         } else if (page.type === 'board') {
-          checkPresetFilter(page.presetFilter, e, add, where)
+          checkPresetFilter(page.presetFilter, e, entityOf, add, where)
           checkBoard(page, e, add, where)
           if (page.sort) checkListPresentation({ id: page.id, type: 'entity-list', entity: e.name, sort: page.sort }, e, add, where, scaffoldOpts)
         } else {
@@ -1920,6 +1973,14 @@ export function renameRelationInPages(pages: FullstackPageDef[], child: string, 
       out.headerStats = page.headerStats?.map(st => (isChild(st.child) && st.via === from ? { ...st, via: to } : st))
     }
     if (page.type === 'master-detail' && isChild(page.child) && page.via === from) out.via = to
+    // A preset on the relation is keyed by its filter param, which follows the rename.
+    const presetFrom = `${from}Id`
+    const followPreset = (filter: Record<string, string> | undefined) => (filter && presetFrom in filter
+      ? Object.fromEntries(Object.entries(filter).map(([k, v]) => [k === presetFrom ? `${to}Id` : k, v])) : filter)
+    if (isChild(page.entity) && page.presetFilter && presetFrom in page.presetFilter) out.presetFilter = followPreset(page.presetFilter)
+    if (page.widgets?.some(w => isChild(w.entity) && w.presetFilter && presetFrom in w.presetFilter)) {
+      out.widgets = (out.widgets ?? page.widgets).map(w => (isChild(w.entity) ? { ...w, presetFilter: followPreset(w.presetFilter) } : w))
+    }
     const filters = followFilterRename(page, isChild, from, to)
     if (filters) out.filters = filters
     Object.assign(out, renameRelationInNewPages(out, child, from, to))
@@ -2465,7 +2526,7 @@ export function keptPresetFilter(filter: Record<string, string> | undefined, ent
   const kept: Record<string, string> = {}
   for (const [k, v] of Object.entries(filter)) {
     const f = presettable.find(x => x.name === k)
-    if (f && !presetValueProblem(f, v)) kept[k] = v
+    if (f ? !presetValueProblem(f, v) : relationOfPresetKey(entity, k) != null) kept[k] = v
   }
   return Object.keys(kept).length ? kept : undefined
 }

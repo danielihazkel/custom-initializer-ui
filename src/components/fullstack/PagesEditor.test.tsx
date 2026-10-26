@@ -523,7 +523,13 @@ describe('PagesEditor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Add filter/ }))
     expect(latest[0].presetFilter).toEqual({ status: 'OPEN' })
-    fireEvent.change(screen.getByLabelText('Filter value for status'), { target: { value: 'PAID' } })
+    // Any of several values: ticking one adds it (in the enum's order), unticking drops it.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Paid' }))
+    expect(latest[0].presetFilter).toEqual({ status: 'OPEN,PAID' })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Open' }))
+    expect(latest[0].presetFilter).toEqual({ status: 'PAID' })
+    // The last value stays ticked: removing the filter is the way to drop it.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Paid' }))
     expect(latest[0].presetFilter).toEqual({ status: 'PAID' })
     expect(document.querySelector('[data-page-id="orders"]')?.textContent).toContain('filtered on status = PAID')
 
@@ -733,9 +739,9 @@ describe('PagesEditor', () => {
     const field = screen.getByLabelText('Filter field') as HTMLSelectElement
     expect(field.options[0].textContent).toBe('Order state (status)')
     expect(field.value).toBe('status')
-    const value = screen.getByLabelText('Filter value for status') as HTMLSelectElement
-    expect(Array.from(value.options).map(o => o.textContent)).toEqual(['Waiting (OPEN)', 'Paid'])
-    expect(value.value).toBe('OPEN')
+    const values = within(screen.getByRole('group', { name: 'Filter values for status' })).getAllByRole('checkbox') as HTMLInputElement[]
+    expect(values.map(v => v.closest('label')?.textContent)).toEqual(['Waiting (OPEN)', 'Paid'])
+    expect(values.map(v => v.checked)).toEqual([true, false])
     // The id sits behind a disclosure that shows the route.
     expect(screen.getByText('#/open')).toBeTruthy()
     expect(screen.getByLabelText('Page id')).toBeTruthy()

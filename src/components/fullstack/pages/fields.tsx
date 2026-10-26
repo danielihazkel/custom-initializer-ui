@@ -6,7 +6,7 @@ import { moveItem } from '../reorder'
 import { useDragReorder } from '../useDragReorder'
 import {
   MAX_GROUP, MAX_SPAN, PAGE_ROLES, defaultPresetValue, parsePresetRange, PRESET_PERIODS, presetKind,
-  presettableFields, listColumns, numericFields, sortableKeys, valuesOf,
+  presettableFields, presettableRelations, presetValues, relationPresetKey, listColumns, numericFields, sortableKeys, valuesOf,
 } from '../pageLayout'
 import type { FormProps } from './formTypes'
 import { ICON_BUTTON, SMALL_BUTTON } from './constants'
@@ -127,8 +127,9 @@ export function MoveButtons({ label, canUp, canDown, onMove }: { label: string; 
   )
 }
 
-/** The "opens filtered on" rows of a list, report or widget: a value of a filterable enum/boolean
- *  column, or a period/range on a date or number column — what the backend accepts as a preset. */
+/** The "opens filtered on" rows of a list, report or widget: values of a filterable enum column (any
+ *  of several), a boolean, a period/range on a date or number column, or the ids a relation points
+ *  at — what the backend accepts as a preset. */
 export function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filtered on', controlPrefix = 'presetFilter.' }: {
   filter: Record<string, string> | undefined
   entity: FullstackEntityDef | undefined
@@ -140,8 +141,10 @@ export function PresetFilters({ filter, entity, errors, onChange, heading = 'Ope
   controlPrefix?: string
 }) {
   const filterable = presettableFields(entity)
+  const relations = presettableRelations(entity)
   const filters = Object.entries(filter ?? {})
   const unused = filterable.filter(f => !(f.name in (filter ?? {})))
+  const unusedRelations = relations.filter(r => !(relationPresetKey(r) in (filter ?? {})))
 
   function setFilter(field: string, value: string | null, rename?: string) {
     const next: Record<string, string> = {}
@@ -158,13 +161,14 @@ export function PresetFilters({ filter, entity, errors, onChange, heading = 'Ope
       <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{heading}</p>
       {filters.length === 0 && (
         <p className="text-[11px] text-secondary">
-          {filterable.length === 0
-            ? `Every row — ${entity?.name ?? 'this entity'} has no filterable enum, boolean, date or number field to preset.`
+          {filterable.length === 0 && relations.length === 0
+            ? `Every row — ${entity?.name ?? 'this entity'} has no filterable enum, boolean, date or number field or relation to preset.`
             : 'Every row (no preset filter).'}
         </p>
       )}
       {filters.map(([field, value]) => {
         const f = filterable.find(x => x.name === field)
+        const relation = f ? undefined : relations.find(r => relationPresetKey(r) === field)
         const error = errors[`presetFilter.${field}`]
         return (
           <div key={field} className="flex items-center gap-2" data-preset-filter={field} data-control={`${controlPrefix}${field}`}>
@@ -175,11 +179,25 @@ export function PresetFilters({ filter, entity, errors, onChange, heading = 'Ope
               onChange={e => setFilter(field, value, e.target.value)}
               className={`${inputClass(error)} max-w-[12rem] py-1 text-xs`}
             >
-              <option value={field}>{f ? fieldOption(f) : field}</option>
+              <option value={field}>{f ? fieldOption(f) : relation ? relationOption(relation.fieldName) : field}</option>
               {unused.map(o => <option key={o.name} value={o.name}>{fieldOption(o)}</option>)}
+              {unusedRelations.map(r => <option key={r.fieldName} value={relationPresetKey(r)}>{relationOption(r.fieldName)}</option>)}
             </select>
-            {f && presetKind(f) !== 'choice' ? (
+            {relation ? (
+              <input
+                type="text"
+                aria-label={`${relation.targetEntity} ids for ${relation.fieldName}`}
+                aria-invalid={Boolean(error)}
+                value={value}
+                placeholder="ids, e.g. 3, 7"
+                title={`The ${relation.targetEntity} rows to show, by id — any of them`}
+                onChange={e => setFilter(field, e.target.value)}
+                className={`${inputClass(error)} w-[9rem] py-1 text-xs`}
+              />
+            ) : f && presetKind(f) !== 'choice' ? (
               <PresetRangeInput field={f} value={value} error={error} onChange={v => setFilter(field, v)} />
+            ) : f?.type === 'ENUM' ? (
+              <PresetValuesInput field={f} value={value} error={error} onChange={v => setFilter(field, v)} />
             ) : (
               <select
                 aria-label={`Filter value for ${field}`}
@@ -203,10 +221,12 @@ export function PresetFilters({ filter, entity, errors, onChange, heading = 'Ope
           </div>
         )
       })}
-      {unused.length > 0 && (
+      {(unused.length > 0 || unusedRelations.length > 0) && (
         <button
           type="button"
-          onClick={() => setFilter(unused[0].name, defaultPresetValue(unused[0]))}
+          onClick={() => (unused.length > 0
+            ? setFilter(unused[0].name, defaultPresetValue(unused[0]))
+            : setFilter(relationPresetKey(unusedRelations[0]), '1'))}
           className={SMALL_BUTTON}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>filter_alt</span>
@@ -214,6 +234,45 @@ export function PresetFilters({ filter, entity, errors, onChange, heading = 'Ope
         </button>
       )}
     </div>
+  )
+}
+
+/** An enum field's preset: any of its values, ticked — stored as `OPEN,PAID` in the enum's order. */
+function PresetValuesInput({ field, value, error, onChange }: {
+  field: FullstackFieldDef
+  value: string
+  error?: string
+  onChange: (value: string) => void
+}) {
+  const picked = presetValues(value)
+  const all = valuesOf(field)
+  const toggle = (v: string) => {
+    const next = picked.includes(v) ? picked.filter(p => p !== v) : [...picked, v]
+    // Never empty: unticking the last value keeps it (remove the filter to drop it).
+    if (next.length > 0) onChange(all.filter(o => next.includes(o)).join(','))
+  }
+  return (
+    <span
+      role="group"
+      aria-label={`Filter values for ${field.name}`}
+      aria-invalid={Boolean(error)}
+      className="inline-flex flex-wrap items-center gap-1"
+      data-preset-values={field.name}
+    >
+      {all.map(v => (
+        <label
+          key={v}
+          className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${picked.includes(v)
+            ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant text-secondary hover:text-primary'}`}
+        >
+          <input type="checkbox" className="sr-only" checked={picked.includes(v)} onChange={() => toggle(v)} />
+          {enumValueOption(field, v)}
+        </label>
+      ))}
+      {picked.filter(v => !all.includes(v)).map(v => (
+        <span key={v} className="rounded-full border border-error px-2 py-0.5 text-[11px] text-error">{v}</span>
+      ))}
+    </span>
   )
 }
 
