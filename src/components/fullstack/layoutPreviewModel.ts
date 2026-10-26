@@ -21,6 +21,8 @@ import {
   childTabEntity,
   childTabVia,
   reloads,
+  activityEntities,
+  defaultPivotColumns,
   dashboardFilterEntities,
   dashboardFilterShape,
 } from './pageLayout'
@@ -77,6 +79,8 @@ export type PreviewWidget = WidgetBase & (
   | { kind: 'bar'; bars: PreviewBar[] }
   | { kind: 'donut'; bars: PreviewBar[] }
   | { kind: 'stacked'; rows: { label: string; parts: number[] }[]; series: string[] }
+  | { kind: 'pivot'; columns: string[]; rows: { label: string; cells: number[] }[] }
+  | { kind: 'activity'; rows: { label: string; what: string; ago: string }[] }
   | { kind: 'text'; paragraphs: string[] }
   | { kind: 'links'; tiles: { label: string; icon: string }[] }
   | { kind: 'list'; table: PreviewTable }
@@ -214,6 +218,7 @@ const STRINGS = {
     percentOfTarget: '{x}% of target', periodAll: 'All time', period7d: 'Last 7 days',
     period30d: 'Last 30 days', period90d: 'Last 90 days', periodYtd: 'This year', period12m: 'Last 12 months',
     perPage: '{n} per page', opensRecord: 'rows open their page', opensDrawer: 'rows open in a drawer', newestBy: 'Newest by {x}',
+    recentActivity: 'Recent activity', activityCreated: 'created', activityUpdated: 'updated',
   },
   he: {
     dashboard: 'לוח בקרה', xByY: '{x} לפי {y}', xByYAndZ: '{x} לפי {y} ו{z}', recentX: '{x} – אחרונים', xOverTime: '{x} לאורך זמן',
@@ -225,6 +230,7 @@ const STRINGS = {
     period30d: '30 הימים האחרונים', period90d: '90 הימים האחרונים', periodYtd: 'מתחילת השנה',
     period12m: '12 החודשים האחרונים',
     perPage: '{n} בעמוד', opensRecord: 'שורה נפתחת בעמוד שלה', opensDrawer: 'שורה נפתחת במגירה', newestBy: 'החדשים לפי {x}',
+    recentActivity: 'פעילות אחרונה', activityCreated: 'נוצר', activityUpdated: 'עודכן',
   },
 } as const
 
@@ -498,6 +504,28 @@ export function buildLayoutPreview(
               paragraphs: (w.text ?? '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean),
             }
           }
+          if (w.kind === 'activity') {
+            // A few made-up changes over the audited entities, newest first.
+            const sources = activityEntities(w, entities, ctx.projectOpts).map(name => entityOf(name)).filter((x): x is FullstackEntityDef => !!x)
+            const limit = Math.min(Math.max(w.limit ?? 10, 1), 20)
+            const rand = seeded(`${seedBase}:${wi}:activity`)
+            return {
+              index: wi,
+              span: Math.min(Math.max(w.span ?? defaultSpan(w.kind), 1), 4),
+              filters: [],
+              kind: 'activity',
+              title: w.title || t('recentActivity'),
+              rows: sources.length === 0 ? [] : Array.from({ length: Math.min(limit, 5) }, (_, i) => {
+                const e = sources[i % sources.length]
+                const { singular } = labels(e)
+                return {
+                  label: rowLabel(e, 30 - i, singular, t),
+                  what: `${singular} ${rand() < 0.4 ? t('activityCreated') : t('activityUpdated')}`,
+                  ago: `${(i + 1) * 7} min`,
+                }
+              }),
+            }
+          }
           const e = entityOf(w.entity)
           const seed = `${seedBase}:${wi}:${w.kind}:${w.entity}:${w.groupBy ?? ''}:${w.agg ?? ''}:${w.field ?? ''}`
           const base = {
@@ -604,6 +632,37 @@ export function buildLayoutPreview(
                 title: w.title || t('xByYAndZ', { x: measured, y: fieldLabel(group), z: fieldLabel(split) }),
                 rows,
                 series: seriesLabels,
+              }
+            }
+            case 'pivot': {
+              const rowsKey = w.groupBy ?? defaultTopGroupBy(e)
+              const columnsKey = w.series ?? defaultPivotColumns(e, rowsKey)
+              // An axis is a field's values, or a relation's first few related records.
+              const axis = (key: string | undefined, salt: string): string[] => {
+                const relation = (e.relations ?? []).find(r => r.type === 'MANY_TO_ONE' && r.fieldName === key)
+                if (relation) {
+                  const target = entityOf(relation.targetEntity)
+                  return Array.from({ length: 3 }, (_, i) => (target ? rowLabel(target, i + 1, labels(target).singular, t) : `#${i + 1}`))
+                }
+                const f = fieldOf(e, key)
+                return f ? breakdown(f, undefined, undefined, `${seed}:${salt}`).map(b => b.label).slice(0, 4) : []
+              }
+              const rowLabels = axis(rowsKey, 'rows')
+              const columns = axis(columnsKey, 'columns')
+              if (!rowsKey || !columnsKey || rowsKey === columnsKey || rowLabels.length === 0 || columns.length === 0) {
+                return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} needs two fields to cross` }
+              }
+              const rand = seeded(seed)
+              const [lo, hi] = magnitude(w.agg, valueField)
+              const nameOf = (key: string) => {
+                const f = fieldOf(e, key)
+                return f ? fieldLabel(f) : humanize(key)
+              }
+              return {
+                ...base, kind: 'pivot',
+                title: w.title || t('xByYAndZ', { x: measured, y: nameOf(rowsKey), z: nameOf(columnsKey) }),
+                columns,
+                rows: rowLabels.map(label => ({ label, cells: columns.map(() => between(rand, lo, hi)) })),
               }
             }
             case 'line': {

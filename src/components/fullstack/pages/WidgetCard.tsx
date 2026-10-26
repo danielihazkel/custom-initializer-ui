@@ -7,7 +7,7 @@ import {
   MAX_RECENT_LIMIT, MAX_TEXT, MAX_WIDGETS, dateFields, defaultBarGroupBy, defaultSeries, defaultSpan, drillToPages,
   defaultTopGroupBy, defaultLineGroupBy, defaultOptionLabel, linkablePages, LIST_WIDGET_LIMITS, MAX_LINKS,
   MAX_TITLE, filterableDateFields, groupByFields, listColumns, pageLabel, rankableKeys, sortableKeys,
-  widgetKindDisabledReason,
+  widgetKindDisabledReason, activityEntities, auditOn, defaultPivotColumns, MAX_ACTIVITY_ENTITIES, MIN_ACTIVITY_LIMIT,
 } from '../pageLayout'
 import { AGG_HINT, ICON_BUTTON, SMALL_BUTTON, WIDGET_KINDS } from './constants'
 import { AggFields, BucketSelect, DragGrip, EntitySelect, MiniField, MoveButtons, PresetFilters, SpanPicker } from './fields'
@@ -26,6 +26,10 @@ function widgetSummary(w: FullstackWidgetDef, span: number): string {
     if (w.title) parts.push(`“${w.title}”`)
     parts.push(`width ${span}`)
     return parts.join(' · ')
+  }
+  if (w.kind === 'activity') {
+    const n = w.entities?.length
+    return `${kind} · ${w.title ? `“${w.title}” · ` : ''}${n ? `${n} entit${n === 1 ? 'y' : 'ies'}` : 'every audited entity'} · width ${span}`
   }
   if (w.kind === 'text') {
     const text = (w.text ?? '').split('\n').find(line => line.trim()) ?? ''
@@ -135,7 +139,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
             const on = widget.kind === k.kind
             // A kind that cannot read this widget's entity (or, for a text widget, the first
             // entity it would fall back to) says why instead of producing a problem.
-            const reason = on ? undefined : widgetKindDisabledReason(k.kind, entity ?? (widget.entity ? undefined : entities[0]))
+            const reason = on ? undefined : widgetKindDisabledReason(k.kind, entity ?? (widget.entity ? undefined : entities[0]), { entities, scaffoldOpts: projectOpts })
             return (
               <button
                 key={k.kind}
@@ -146,7 +150,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
                 aria-disabled={Boolean(reason)}
                 disabled={Boolean(reason)}
                 title={reason ?? k.hint}
-                onClick={() => onRetarget(k.kind !== 'text' && !widget.entity ? { kind: k.kind, entity: entities[0]?.name ?? '' } : { kind: k.kind })}
+                onClick={() => onRetarget(k.kind !== 'text' && k.kind !== 'activity' && !widget.entity ? { kind: k.kind, entity: entities[0]?.name ?? '' } : { kind: k.kind })}
                 className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] disabled:opacity-40 ${on ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5 hover:text-primary'}`}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">{k.icon}</span>
@@ -328,6 +332,68 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
             </ul>
           </MiniField>
         </div>
+      ) : widget.kind === 'activity' ? (
+        <div className="space-y-2" data-widget-options>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <MiniField label="Title" grow>
+              <input
+                type="text"
+                aria-label="Widget title"
+                value={widget.title ?? ''}
+                maxLength={MAX_TITLE}
+                placeholder="Recent activity"
+                onChange={e => onChange({ title: e.target.value || undefined })}
+                className={`${inputClass()} w-full py-1 text-xs`}
+              />
+            </MiniField>
+            <MiniField label="Changes" hint={`${MIN_ACTIVITY_LIMIT}–${MAX_RECENT_LIMIT}`}>
+              <input
+                type="number"
+                min={MIN_ACTIVITY_LIMIT}
+                max={MAX_RECENT_LIMIT}
+                aria-label="How many changes"
+                value={widget.limit ?? ''}
+                placeholder="10"
+                onChange={e => onChange({ limit: e.target.value === '' ? undefined : Number(e.target.value) })}
+                className={`${inputClass(err('limit'))} w-[4.5rem] py-1 text-xs`}
+              />
+            </MiniField>
+            <MiniField label="Width" hint={`Columns of 4 · default ${fallbackSpan}`}>
+              <SpanPicker span={span} fallback={fallbackSpan} onChange={s => onChange({ span: s })} />
+            </MiniField>
+          </div>
+          <MiniField label="Entities it follows" hint={`Audited entities only · none ticked: every one (up to ${MAX_ACTIVITY_ENTITIES})`}>
+            <ul className="flex flex-wrap gap-1.5" data-widget-activity data-control={`widget.${wi}.entities`}>
+              {entities.map(e => {
+                const audited = auditOn(e, projectOpts)
+                const named = widget.entities ?? []
+                const on = named.includes(e.name)
+                const implied = named.length === 0 && activityEntities(widget, entities, projectOpts).includes(e.name)
+                return (
+                  <li key={e.name}>
+                    <label
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] ${on ? 'border-primary/50 bg-primary/10 text-primary' : implied ? 'border-dashed border-primary/40 text-primary/80' : 'border-outline-variant text-on-surface'} ${audited ? '' : 'opacity-50'}`}
+                      title={audited ? undefined : `${e.name} does not record when it changed — turn the audit option on for it`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="accent-primary"
+                        checked={on}
+                        disabled={!audited && !on}
+                        aria-label={`Follow ${e.name}`}
+                        onChange={() => {
+                          const next = on ? named.filter(n => n !== e.name) : [...named, e.name]
+                          onChange({ entities: next.length ? next : undefined })
+                        }}
+                      />
+                      {e.name}
+                    </label>
+                  </li>
+                )
+              })}
+            </ul>
+          </MiniField>
+        </div>
       ) : widget.kind === 'text' ? (
         <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]" data-widget-options>
           <MiniField label="Title" grow>
@@ -423,6 +489,38 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
                   )}
                 </select>
               </MiniField>
+            )}
+            {widget.kind === 'pivot' && (
+              <>
+                <MiniField label="Rows" hint="One row per value (or related record)">
+                  <select
+                    aria-label="Pivot rows"
+                    value={widget.groupBy ?? ''}
+                    onChange={e => onChange({ groupBy: e.target.value || undefined, ...(widget.series === e.target.value ? { series: undefined } : {}) })}
+                    className={`${inputClass(err('groupBy'))} max-w-[11rem] py-1 text-xs`}
+                  >
+                    <option value="">{defaultOptionLabel(defaultTopGroupBy(entity), 'enum, boolean or relation', labelOf)}</option>
+                    {rankableKeys(entity).map(k => <option key={k} value={k}>{labelOf(k)}</option>)}
+                    {widget.groupBy && !rankableKeys(entity).includes(widget.groupBy) && (
+                      <option value={widget.groupBy}>{widget.groupBy}</option>
+                    )}
+                  </select>
+                </MiniField>
+                <MiniField label="Columns" hint="One column per value (or related record)">
+                  <select
+                    aria-label="Pivot columns"
+                    value={widget.series ?? ''}
+                    onChange={e => onChange({ series: e.target.value || undefined })}
+                    className={`${inputClass(err('series'))} max-w-[11rem] py-1 text-xs`}
+                  >
+                    <option value="">{defaultOptionLabel(defaultPivotColumns(entity, widget.groupBy ?? defaultTopGroupBy(entity)), 'second enum, boolean or relation', labelOf)}</option>
+                    {rankableKeys(entity).filter(k => k !== (widget.groupBy ?? defaultTopGroupBy(entity))).map(k => <option key={k} value={k}>{labelOf(k)}</option>)}
+                    {widget.series && !rankableKeys(entity).includes(widget.series) && (
+                      <option value={widget.series}>{widget.series}</option>
+                    )}
+                  </select>
+                </MiniField>
+              </>
             )}
             {widget.kind === 'line' && (
               <>
@@ -542,6 +640,12 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
                 >
                   <option value="">{defaultOptionLabel(pk, 'key', labelOf)}</option>
                   {(entity?.fields ?? []).filter(f => !f.primaryKey).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
+                  {auditOn(entity, projectOpts) && (
+                    <>
+                      <option value="createdAt">Created at (createdAt)</option>
+                      <option value="updatedAt">Last changed (updatedAt)</option>
+                    </>
+                  )}
                 </select>
               </MiniField>
             )}

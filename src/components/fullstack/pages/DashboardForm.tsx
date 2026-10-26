@@ -196,7 +196,7 @@ export function DashboardForm({ page, index, pages, projectOpts, entities, error
             </MiniField>
             <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
               {WIDGET_KINDS.map(k => {
-                const reason = widgetKindDisabledReason(k.kind, galleryPick)
+                const reason = widgetKindDisabledReason(k.kind, galleryPick, { entities, scaffoldOpts: projectOpts })
                 return (
                   <li key={k.kind}>
                     <button

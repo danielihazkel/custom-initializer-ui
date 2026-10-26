@@ -870,6 +870,35 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
             <p className="truncate text-[8px] text-secondary">{widget.series.join(' · ')}</p>
           </div>
         )}
+        {widget.kind === 'pivot' && (
+          <table className="mt-0.5 w-full text-[8px]" data-preview-pivot>
+            <thead>
+              <tr className="text-secondary">
+                <th />
+                {widget.columns.map(c => <th key={c} className="truncate px-0.5 text-end font-normal">{c}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {widget.rows.map(row => (
+                <tr key={row.label} className="border-t border-outline-variant/60">
+                  <th className="truncate pe-1 text-start font-normal text-secondary">{row.label}</th>
+                  {row.cells.map((v, i) => <td key={i} className="px-0.5 text-end tabular-nums text-on-surface">{Math.round(v)}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {widget.kind === 'activity' && (
+          <ul className="mt-0.5 space-y-0.5" data-preview-activity>
+            {widget.rows.map((row, i) => (
+              <li key={i} className="flex items-center justify-between gap-1 text-[9px]">
+                <span className="min-w-0 truncate"><span style={{ color: accent }}>{row.label}</span><span className="text-secondary"> · {row.what}</span></span>
+                <span className="shrink-0 text-[8px] text-secondary">{row.ago}</span>
+              </li>
+            ))}
+            {widget.rows.length === 0 && <li className="text-[9px] text-secondary">No audited entity</li>}
+          </ul>
+        )}
         {widget.kind === 'text' && (
           <div className="mt-0.5 space-y-0.5" data-preview-text>
             {widget.paragraphs.slice(0, 3).map((p, i) => <p key={i} className="line-clamp-2 text-[9px] text-on-surface">{p}</p>)}

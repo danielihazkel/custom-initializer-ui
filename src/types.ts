@@ -561,8 +561,8 @@ export interface FullstackListSort {
 /** A dashboard widget: one number, a breakdown by an enum/boolean field, a time series over a
  *  date field, the latest rows, the largest groups ranked, or one number against a target. */
 export interface FullstackWidgetDef {
-  kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'line' | 'recent' | 'top' | 'progress' | 'text' | 'links' | 'list'
-  /** The entity the widget reads — empty for a text or links widget. */
+  kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'pivot' | 'line' | 'recent' | 'top' | 'progress' | 'activity' | 'text' | 'links' | 'list'
+  /** The entity the widget reads — empty for a text, links or activity widget. */
   entity: string
   title?: string
   /** bar: the enum/boolean field; line: the date field. Defaults to the entity's first of that kind. */
@@ -587,7 +587,10 @@ export interface FullstackWidgetDef {
   compare?: boolean
   /** progress: the value the bar fills up to (a positive number, as written). */
   target?: string
-  /** stacked: the enum/boolean field each bar is split by (default: the entity's next one). */
+  /** activity: the audited entities whose latest changes it lists (default: every audited one, up to 6). */
+  entities?: string[]
+  /** stacked: the enum/boolean field each bar is split by (default: the entity's next one); pivot:
+   *  the enum, boolean or relation laid out in columns (default: the next one after its rows). */
   series?: string
   /** text: the note itself; a blank line starts a new paragraph. */
   text?: string

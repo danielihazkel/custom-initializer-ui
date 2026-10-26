@@ -191,7 +191,7 @@ export const reloads = (w: FullstackWidgetDef) => w.kind !== 'text' && w.kind !=
 
 /** Grid columns a widget takes when it names none: a tile one, a chart or list two, a launcher the row. */
 export function defaultSpan(kind: FullstackWidgetDef['kind']): number {
-  return kind === 'kpi' || kind === 'progress' ? 1 : kind === 'links' || kind === 'list' ? 4 : 2
+  return kind === 'kpi' || kind === 'progress' ? 1 : kind === 'links' || kind === 'list' || kind === 'pivot' ? 4 : 2
 }
 
 /** What a stacked chart splits by when no series is named: the next enum/boolean after `groupBy`. */
@@ -369,7 +369,22 @@ export const MAX_DASHBOARD_FILTERS = 4
 
 /** The widgets that read an entity — every kind but a note and a launcher. They take the
  *  dashboard's filters, and their clicks can open a chosen page (`drillTo`). */
-export const readsEntity = (w: FullstackWidgetDef) => w.kind !== 'text' && w.kind !== 'links'
+export const readsEntity = (w: FullstackWidgetDef) => w.kind !== 'text' && w.kind !== 'links' && w.kind !== 'activity'
+
+/** The most entities an activity feed reads, and how many changes it lists (FullstackPageValidator). */
+export const MAX_ACTIVITY_ENTITIES = 6
+export const MIN_ACTIVITY_LIMIT = 5
+
+/** The entities an activity feed reads: the ones it names, else every one the audit opt applies to. */
+export function activityEntities(w: FullstackWidgetDef, entities: FullstackEntityDef[], scaffoldOpts: string[] = []): string[] {
+  if (w.entities?.length) return w.entities
+  return entities.filter(e => auditOn(e, scaffoldOpts)).slice(0, MAX_ACTIVITY_ENTITIES).map(e => e.name)
+}
+
+/** A pivot's columns when none is named: the next enum, boolean or relation after its rows. */
+export function defaultPivotColumns(entity: FullstackEntityDef | undefined, rows: string | undefined): string | undefined {
+  return rankableKeys(entity).find(k => k !== rows)
+}
 
 /** The entities a dashboard's filters can reach: those of its entity widgets, once each, in order. */
 export function dashboardFilterEntities(page: FullstackPageDef, entities: FullstackEntityDef[]): FullstackEntityDef[] {
@@ -1170,6 +1185,32 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
             else if (w.text.length > MAX_TEXT) add(`widget.${wi}.text`, `is longer than ${MAX_TEXT} characters`, `${where} has a text widget over ${MAX_TEXT} characters`)
             return
           }
+          if (w.kind === 'activity') {
+            const named = w.entities ?? []
+            if (named.length === 0 && activityEntities(w, entities, scaffoldOpts).length === 0) {
+              add(`widget.${wi}.entities`, 'needs the audit option — no entity records when it changed',
+                `${where} has an activity feed, but the audit option is off for every entity`)
+            }
+            if (named.length > MAX_ACTIVITY_ENTITIES) {
+              add(`widget.${wi}.entities`, `reads at most ${MAX_ACTIVITY_ENTITIES} entities`, `${where} has an activity feed over more than ${MAX_ACTIVITY_ENTITIES} entities`)
+            }
+            named.forEach((name, ni) => {
+              const e = entityOf(name)
+              if (!e) add(`widget.${wi}.entities`, `“${name}” is no longer an entity`, `${where} has an activity feed over “${name}”, which is no longer an entity`)
+              else if (!auditOn(e, scaffoldOpts)) {
+                add(`widget.${wi}.entities`, `${e.name} does not record when it changed (audit is off)`,
+                  `${where} has an activity feed over ${e.name}, which does not record when it changed`)
+              } else if (named.findIndex(n => sameName(n, name)) !== ni) add(`widget.${wi}.entities`, `lists ${e.name} twice`, `${where} lists ${e.name} twice in its activity feed`)
+            })
+            if (w.limit != null && (w.limit < MIN_ACTIVITY_LIMIT || w.limit > MAX_RECENT_LIMIT)) {
+              add(`widget.${wi}.limit`, `between ${MIN_ACTIVITY_LIMIT} and ${MAX_RECENT_LIMIT} changes`,
+                `${where} shows an activity feed of ${w.limit} changes (${MIN_ACTIVITY_LIMIT}–${MAX_RECENT_LIMIT})`)
+            }
+            if (w.span != null && (!Number.isInteger(w.span) || w.span < 1 || w.span > MAX_SPAN)) {
+              add(`widget.${wi}.span`, `spans 1 to ${MAX_SPAN} columns`, `${where} has a widget ${w.span} columns wide (1–${MAX_SPAN})`)
+            }
+            return
+          }
           if (w.kind === 'links') {
             const ids = w.pages ?? []
             const dropLink = (id: string) => patchPage(index, `Drop the link to “${id}”`,
@@ -1211,8 +1252,23 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
             return
           }
           checkDrill(w, wi, e)
-          if (w.series && w.kind !== 'stacked') {
-            add(`widget.${wi}.series`, 'only a stacked chart takes a series', `${where} splits a ${w.kind} widget by a series`)
+          if (w.series && w.kind !== 'stacked' && w.kind !== 'pivot') {
+            add(`widget.${wi}.series`, 'only a stacked chart or a pivot takes a series', `${where} splits a ${w.kind} widget by a series`)
+          }
+          if (w.kind === 'pivot') {
+            const keys = rankableKeys(e)
+            const rows = w.groupBy ?? keys[0]
+            const columns = w.series ?? defaultPivotColumns(e, rows)
+            if (w.groupBy && !keys.some(k => k.toLowerCase() === w.groupBy!.toLowerCase())) {
+              add(`widget.${wi}.groupBy`, `${e.name} has no enum, boolean or relation “${w.groupBy}”`,
+                `${where} lays ${e.name} out by “${w.groupBy}”, which it no longer has`)
+            } else if (w.series && !keys.some(k => k.toLowerCase() === w.series!.toLowerCase())) {
+              add(`widget.${wi}.series`, `${e.name} has no enum, boolean or relation “${w.series}”`,
+                `${where} lays ${e.name} out in columns by “${w.series}”, which it no longer has`)
+            } else if (!columns || columns === rows) {
+              add(`widget.${wi}.series`, 'needs a second enum, boolean or relation for the columns',
+                `${where} has a pivot of ${e.name}, which has no second enum, boolean or relation for its columns`)
+            }
           }
           if (w.kind === 'stacked') {
             const by = w.groupBy ?? defaultBarGroupBy(e)
@@ -1301,7 +1357,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           if (w.sortBy) {
             if (w.kind !== 'recent') {
               add(`widget.${wi}.sortBy`, 'only a recent list takes a sort', `${where} sorts a ${w.kind} widget`)
-            } else if (!e.fields.some(f => f.name === w.sortBy)) {
+            } else if (!e.fields.some(f => f.name === w.sortBy)
+              && !(auditOn(e, scaffoldOpts) && (w.sortBy === 'createdAt' || w.sortBy === 'updatedAt'))) {
               add(`widget.${wi}.sortBy`, `${e.name} has no field “${w.sortBy}”`,
                 `${where} sorts ${e.name} by “${w.sortBy}”, which it no longer has`)
             }
@@ -1623,7 +1680,7 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       return parts.join(' · ')
     }
     case 'dashboard': {
-      const counts = { kpi: 0, bar: 0, donut: 0, stacked: 0, line: 0, recent: 0, top: 0, progress: 0, text: 0, links: 0, list: 0 }
+      const counts = { kpi: 0, bar: 0, donut: 0, stacked: 0, pivot: 0, line: 0, recent: 0, top: 0, progress: 0, activity: 0, text: 0, links: 0, list: 0 }
       for (const w of page.widgets ?? []) if (w.kind in counts) counts[w.kind]++
       const parts = [
         counts.kpi && `${counts.kpi} number tile${counts.kpi === 1 ? '' : 's'}`,
@@ -1631,9 +1688,11 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
         counts.bar && `${counts.bar} breakdown chart${counts.bar === 1 ? '' : 's'}`,
         counts.donut && `${counts.donut} donut chart${counts.donut === 1 ? '' : 's'}`,
         counts.stacked && `${counts.stacked} stacked chart${counts.stacked === 1 ? '' : 's'}`,
+        counts.pivot && `${counts.pivot} pivot table${counts.pivot === 1 ? '' : 's'}`,
         counts.line && `${counts.line} trend${counts.line === 1 ? '' : 's'}`,
         counts.top && `${counts.top} top list${counts.top === 1 ? '' : 's'}`,
         counts.recent && `${counts.recent} recent-rows list${counts.recent === 1 ? '' : 's'}`,
+        counts.activity && `${counts.activity} activity feed${counts.activity === 1 ? '' : 's'}`,
         counts.text && `${counts.text} text note${counts.text === 1 ? '' : 's'}`,
         counts.links && `${counts.links} page-links panel${counts.links === 1 ? '' : 's'}`,
         counts.list && `${counts.list} embedded list${counts.list === 1 ? '' : 's'}`,
@@ -1739,7 +1798,12 @@ export function renameEntityInPages(pages: FullstackPageDef[], from: string, to:
     if (same(next.entity)) next.entity = to
     if (same(next.parent)) next.parent = to
     if (same(next.child)) next.child = to
-    if (next.widgets) next.widgets = next.widgets.map(w => (same(w.entity) ? { ...w, entity: to } : w))
+    if (next.widgets) {
+      next.widgets = next.widgets.map(w => {
+        const out = same(w.entity) ? { ...w, entity: to } : w
+        return out.entities?.some(same) ? { ...out, entities: out.entities.map(n => (same(n) ? to : n)) } : out
+      })
+    }
     if (next.childTabs) next.childTabs = next.childTabs.map(tab => (same(childTabEntity(tab)) ? withChildTab(tab, { entity: to }) : tab))
     if (next.headerStats) next.headerStats = next.headerStats.map(s => (same(s.child) ? { ...s, child: to } : s))
     return renameEntityInNewPages(next, from, to)
@@ -1859,8 +1923,13 @@ export function defaultLineGroupBy(entity: FullstackEntityDef | undefined): stri
 
 /** Why a widget of `kind` cannot read `entity`, or undefined when it can — the validator's own
  *  rules, told before the widget exists (the Add-widget gallery, the kind switcher). */
-export function widgetKindDisabledReason(kind: FullstackWidgetDef['kind'], entity: FullstackEntityDef | undefined): string | undefined {
+export function widgetKindDisabledReason(kind: FullstackWidgetDef['kind'], entity: FullstackEntityDef | undefined,
+                                          audit?: { entities: FullstackEntityDef[]; scaffoldOpts: string[] }): string | undefined {
   if (kind === 'text' || kind === 'links') return undefined
+  if (kind === 'activity') {
+    return !audit || audit.entities.some(e => auditOn(e, audit.scaffoldOpts)) ? undefined
+      : 'Turn the audit option on first — the feed reads when rows changed'
+  }
   if (!entity) return 'Pick an entity first'
   const name = entity.name.trim() || 'This entity'
   switch (kind) {
@@ -1869,6 +1938,8 @@ export function widgetKindDisabledReason(kind: FullstackWidgetDef['kind'], entit
       return rankableKeys(entity).length > 0 ? undefined : `${name} has no enum, boolean or relation to break down by`
     case 'stacked':
       return groupByFields(entity).length > 1 ? undefined : `${name} needs two enum or boolean fields to stack`
+    case 'pivot':
+      return rankableKeys(entity).length > 1 ? undefined : `${name} needs two enum, boolean or relation fields to cross`
     case 'line':
       return dateFields(entity).length > 0 ? undefined : `${name} has no date field to plot over`
     case 'top':
@@ -1883,6 +1954,7 @@ export function widgetKindDisabledReason(kind: FullstackWidgetDef['kind'], entit
 export function newWidget(kind: FullstackWidgetDef['kind'], entity: string, pages: FullstackPageDef[] = []): FullstackWidgetDef {
   switch (kind) {
     case 'text': return { kind, entity: '', text: 'Note' }
+    case 'activity': return { kind, entity: '' }
     case 'links': return { kind, entity: '', pages: linkablePages(pages).slice(0, 4).map(p => p.id) }
     case 'progress': return { kind, entity, target: '100' }
     default: return { kind, entity }
@@ -2588,6 +2660,18 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     if (keys.some(k => next[k] != null)) dropped.push(label)
     for (const k of keys) delete next[k]
   }
+  if (kind === 'activity') {
+    const kept: FullstackWidgetDef = { kind, entity: '', ...(next.title ? { title: next.title } : {}) }
+    if (next.entities?.length) kept.entities = next.entities
+    if (next.limit != null && next.limit >= MIN_ACTIVITY_LIMIT && next.limit <= MAX_RECENT_LIMIT) kept.limit = next.limit
+    if (next.span != null && next.span !== defaultSpan(kind)) kept.span = next.span
+    const lost = (['groupBy', 'agg', 'sortBy', 'compare', 'target', 'presetFilter', 'dateField', 'series', 'columns', 'sort'] as const)
+      .filter(k => next[k] != null)
+    const dropped = lost.length ? ['data settings'] : []
+    if (next.drillTo != null) dropped.push('click target')
+    return { widget: kept, dropped }
+  }
+  if (next.entities != null) drop(['entities'], 'entities')
   if (kind === 'text' || kind === 'links') {
     const kept: FullstackWidgetDef = { kind, entity: '', ...(next.title ? { title: next.title } : {}) }
     if (kind === 'text' && next.text) kept.text = next.text
@@ -2620,7 +2704,7 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     if (next.sort != null) drop(['sort'], 'sort')
   }
   if (next.groupBy != null) {
-    const fits = kind === 'bar' || kind === 'donut' ? rankableKeys(entity).includes(next.groupBy)
+    const fits = kind === 'bar' || kind === 'donut' || kind === 'pivot' ? rankableKeys(entity).includes(next.groupBy)
       : kind === 'stacked' ? groupByFields(entity).some(f => f.name === next.groupBy)
       : kind === 'line' ? dateFields(entity).some(f => f.name === next.groupBy)
         : kind === 'top' ? rankableKeys(entity).includes(next.groupBy)
@@ -2628,11 +2712,14 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     if (!fits) drop(['groupBy'], 'group by')
   }
   if (kind !== 'line') drop(['bucket'], 'bucket')
-  if (next.series != null && (kind !== 'stacked' || !groupByFields(entity).some(f => f.name === next.series))) drop(['series'], 'split by')
+  if (next.series != null && (kind === 'pivot'
+    ? !rankableKeys(entity).includes(next.series) || next.series === next.groupBy
+    : kind !== 'stacked' || !groupByFields(entity).some(f => f.name === next.series))) drop(['series'], 'split by')
   if (kind === 'recent' || kind === 'list') drop(['agg', 'field'], 'aggregate')
   else if (next.field != null && !numericFields(entity).some(f => f.name === next.field)) drop(['agg', 'field'], 'aggregate')
   if (kind !== 'recent' && kind !== 'top' && kind !== 'list') drop(['limit'], 'row limit')
-  if (next.sortBy != null && (kind !== 'recent' || !(entity?.fields ?? []).some(f => !f.primaryKey && f.name === next.sortBy))) {
+  if (next.sortBy != null && (kind !== 'recent' || !((entity?.fields ?? []).some(f => !f.primaryKey && f.name === next.sortBy)
+    || (auditOn(entity, scaffoldOpts) && (next.sortBy === 'createdAt' || next.sortBy === 'updatedAt'))))) {
     drop(['sortBy'], 'sort')
   }
   if (kind !== 'kpi') drop(['compare'], 'period comparison')
