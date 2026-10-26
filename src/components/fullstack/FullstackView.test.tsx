@@ -312,7 +312,7 @@ describe('FullstackView — page layouts', () => {
     expect(document.querySelector('[data-seed-layout]')).toBeTruthy()
     const panel = await loadDesk()
 
-    expect(panel.querySelector('[data-page-id="home"]')?.textContent).toContain('1 tile · 1 breakdown chart')
+    expect(panel.querySelector('[data-page-id="home"]')?.textContent).toContain('1 number tile · 1 breakdown chart')
     expect(panel.querySelector('[data-page-id="queue"]')?.textContent).toContain('Open | all')
     expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('Tab only')
     expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('filtered on status = OPEN')
@@ -324,6 +324,18 @@ describe('FullstackView — page layouts', () => {
     expect(body.pages.map((p: { id: string }) => p.id)).toEqual(['home', 'queue', 'open', 'all'])
     expect(body.opts).toEqual({ scaffold: ['csvExport'] })
     expect(body.dashboardTitle).toBe('Support')
+  })
+
+  it('disables the classic dashboard title and overview once a page layout is set', async () => {
+    mockServer()
+    render(<FullstackView />)
+    const title = () => document.getElementById('fs-dashboardTitle') as HTMLInputElement
+    expect(title().disabled).toBe(false)
+    expect(document.querySelector('[data-dashboard-meta-note]')).toBeNull()
+    await loadDesk()
+    expect(title().disabled).toBe(true)
+    expect((document.getElementById('fs-dashboardOverview') as HTMLInputElement).disabled).toBe(true)
+    expect(document.querySelector('[data-dashboard-meta-note]')?.textContent).toContain('Your page layout is in charge')
   })
 
   it('follows an entity rename into the layout, and drops the layout on request (undoably)', async () => {
@@ -342,6 +354,34 @@ describe('FullstackView — page layouts', () => {
     expect(document.querySelector('[data-page-id="open"]')).toBeNull()
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(document.querySelector('[data-page-id="open"]')).toBeTruthy())
+  })
+
+  it('records a navigation-only change for undo', async () => {
+    mockServer()
+    render(<FullstackView />)
+    await loadDesk()
+    const topbar = () => screen.getByRole('radio', { name: 'Top bar' })
+    fireEvent.click(topbar())
+    expect(topbar().getAttribute('aria-checked')).toBe('true')
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(topbar().getAttribute('aria-checked')).toBe('false'))
+  })
+
+  it('follows an enum value renamed in place into the presets, as one undo step with it', async () => {
+    mockServer()
+    render(<FullstackView />)
+    const panel = await loadDesk()
+    for (const b of screen.getAllByRole('button', { name: 'Edit field details' })) fireEvent.click(b)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Rename OPEN' })[0])
+    const input = screen.getByLabelText('New name for OPEN')
+    fireEvent.change(input, { target: { value: 'NEW' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('filtered on status = NEW')
+    expect(panel.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(panel.querySelector('[data-page-id="open"]')?.textContent).toContain('filtered on status = OPEN'))
+    expect(screen.getAllByRole('button', { name: 'Rename OPEN' }).length).toBeGreaterThan(0)
   })
 
   it('flags a page whose entity was deleted, rather than dropping the page', async () => {
@@ -372,5 +412,54 @@ describe('FullstackView — page layouts', () => {
     const post = fetchMock.mock.calls.find(([url, init]) => url === '/starter-fullstack.zip' && (init as RequestInit | undefined)?.method === 'POST')!
     const body = JSON.parse((post[1] as RequestInit).body as string)
     expect(body.pages.map((p: { id: string }) => p.id)).toEqual(['dashboard', 'invoice'])
+  })
+
+  it('lists the pages after the entities they are built from, and both in the section nav', () => {
+    storeDraft(draftEntities)
+    localStorage.setItem('fullstack:setup', 'open')
+    render(<FullstackView />)
+    const entitiesSection = document.getElementById('fs-entities')!
+    const pagesSection = document.getElementById('fs-pages')!
+    expect(Boolean(entitiesSection.compareDocumentPosition(pagesSection) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+    const nav = document.querySelector('[data-section-nav]')!
+    expect([...nav.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Project', 'Backend', 'Frontend', 'Options', 'Dependencies', 'Entities', 'Pages'])
+  })
+
+  it('sends the pages without the editor-only id lock, and shows a preview 400 on the page it names', async () => {
+    mockServer()
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/metadata/fullstack/examples') return Promise.resolve(response(200, [example]))
+      if (url === '/starter-fullstack.preview' && init?.method === 'POST') return Promise.resolve(response(400, { error: 'Bad Request', detail: "Page 'open': something the server does not like" }))
+      return Promise.resolve(response(404, {}))
+    })
+    render(<FullstackView />)
+    const panel = await loadDesk()
+    // Give the hidden "open" list an id by hand: the lock rides on the page itself.
+    const row = panel.querySelector('[data-page-id="open"]') as HTMLElement
+    fireEvent.click(row.querySelector('button[aria-expanded]')!)
+    fireEvent.change(within(row).getByLabelText('Page id'), { target: { value: 'open-tickets' } })
+    fireEvent.change(within(row).getByLabelText('Page title'), { target: { value: 'Open ones' } })
+
+    fireEvent.click(screen.getByTitle('Preview the generated file tree before downloading'))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/starter-fullstack.preview', expect.objectContaining({ method: 'POST' })))
+    const post = fetchMock.mock.calls.find(([url, init]) => url === '/starter-fullstack.preview' && (init as RequestInit | undefined)?.method === 'POST')!
+    const body = JSON.parse((post[1] as RequestInit).body as string)
+    const sent = body.pages.find((p: { id: string }) => p.id === 'open-tickets')
+    expect(sent).toMatchObject({ title: 'Open ones' })
+    expect('idLocked' in sent).toBe(false)
+  })
+
+  it('maps a preview 400 that names a page onto that page', async () => {
+    mockServer()
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/metadata/fullstack/examples') return Promise.resolve(response(200, [example]))
+      if (url === '/starter-fullstack.preview' && init?.method === 'POST') return Promise.resolve(response(400, { error: 'Bad Request', detail: "Page 'open': something the server does not like" }))
+      return Promise.resolve(response(404, {}))
+    })
+    render(<FullstackView />)
+    await loadDesk()
+    fireEvent.click(screen.getByTitle('Preview the generated file tree before downloading'))
+    await waitFor(() => expect(document.querySelector('[data-page-layout-problems]')?.textContent)
+      .toContain("The server rejected “Ticket”: Page 'open': something the server does not like"))
   })
 })

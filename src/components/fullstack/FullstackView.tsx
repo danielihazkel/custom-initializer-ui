@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { FullstackNav } from '../../types'
 import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
@@ -38,7 +39,7 @@ import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writ
 import { emptyHistory, isTypingTarget, record, redoStep, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesEditor } from './PagesEditor'
-import { pageOfServerError, renameEntityInPages, renameFieldInPages, renameRelationInPages, validatePages } from './pageLayout'
+import { pageOfServerError, renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
@@ -72,6 +73,7 @@ const DEFAULT_ENTITIES: FullstackEntityDef[] = [
 // localStorage keys — namespaced so they don't collide with the Backend/Frontend tabs.
 const LS = {
   meta: 'fullstack:meta',
+  nav: 'fullstack:nav',
   entities: 'fullstack:entities',
   deps: 'fullstack:deps',
   backendSet: 'fullstack:backendSet',
@@ -128,6 +130,7 @@ function readStoredSnapshot(): FullstackSnapshot {
     frontendSet: item(LS.frontendSet) ?? 'react-tailwind-crud',
     colorPalette: item(LS.palette) ?? '',
     pages: loadJson<FullstackPageDef[]>(LS.pages, []),
+    nav: loadJson<FullstackNav | null>(LS.nav, null) ?? undefined,
   })
 }
 
@@ -144,7 +147,7 @@ function resolveInitialModel(): { shared: FullstackSnapshot | null; pendingShare
   return { shared: null, pendingShared: linked }
 }
 
-export function FullstackView() {
+export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string) => void } = {}) {
   const initRef = useRef<ReturnType<typeof resolveInitialModel> | undefined>(undefined)
   if (initRef.current === undefined) initRef.current = resolveInitialModel()
   const { shared, pendingShared } = initRef.current
@@ -166,11 +169,17 @@ export function FullstackView() {
   const [colorPalette, setColorPalette] = useState<string>(() => shared ? (shared.colorPalette ?? '') : (localStorage.getItem(LS.palette) ?? ''))
   // The frontend page layout — empty = the classic shell. Arrives with an example / preset / link.
   const [pages, setPages] = useState<FullstackPageDef[]>(() => shared ? (shared.pages ?? []) : loadJson<FullstackPageDef[]>(LS.pages, []))
+  // The generated shell's navigation for the layout (sidebar/top bar, folding sections).
+  const [nav, setNav] = useState<FullstackNav | undefined>(() => shared ? shared.nav : (loadJson<FullstackNav | null>(LS.nav, null) ?? undefined))
   // A Generate 400 that names a page: shown on that page until the layout changes.
   const [pageServerIssue, setPageServerIssue] = useState<{ page: number; message: string } | null>(null)
   useEffect(() => { setPageServerIssue(null) }, [pages])
   // Bumped to make the page editor open its first problem (the sticky bar's "jump to error").
   const [pagesReveal, setPagesReveal] = useState(0)
+  // Bumped by the command palette: open the "Add page" gallery / the layout preview.
+  const [pagesAdd, setPagesAdd] = useState(0)
+  const [pagesFind, setPagesFind] = useState(0)
+  const [pagesPreview, setPagesPreview] = useState(0)
   // Collapsed cards survive a refresh: entities persist with their uids, so the uid set stays valid.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(shared ? [] : loadJson<string[]>(LS.collapsed, [])))
   const [history, setHistory] = useState<History<FullstackSnapshot>>(() => emptyHistory())
@@ -218,6 +227,12 @@ export function FullstackView() {
     preview, previousPreview, loading: previewLoading, error: previewError,
     fetchPreview, clearPreview, clearError, cancel: cancelPreview,
   } = useFullstackPreview()
+  // A preview (Explore) 400 that names a page is shown on that page, like a Generate one is.
+  useEffect(() => {
+    if (!previewError) return
+    const page = pageOfServerError(previewError.message, pages)
+    if (page != null) setPageServerIssue({ page, message: previewError.message })
+  }, [previewError, pages])
   const { presets, recents, persistFailed: presetsPersistFailed, savePreset, deletePreset, restorePreset, deleteRecent, restoreRecent, pushRecent } = useFullstackPresets()
   const team = useTeamModels()
   const exampleModels = useFullstackExamples()
@@ -233,12 +248,6 @@ export function FullstackView() {
   const { rules: compatibilityRules } = useCompatibility('BACKEND')
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
   const currentFrontendSet = availableSets.find(s => s.setKey === frontendSet)
-  // The layout preview draws the shell of the chosen frontend set, in the chosen chrome language.
-  const pagesPreviewSettings = useMemo(() => ({
-    locale: meta.locale,
-    projectOpts: scaffoldOpts,
-    skin: (currentFrontendSet?.designSystem === 'MENORA_DIGITAL' || frontendSet.includes('menora') ? 'menora' : 'tailwind') as 'menora' | 'tailwind',
-  }), [meta.locale, scaffoldOpts, currentFrontendSet, frontendSet])
   const currentDefaults = currentBackendSet?.defaultDeps ?? []
   const palettes = feMetadata?.colorPalettes ?? []
   // What the generator will actually use: the explicit pick, else the set's default, else the
@@ -246,6 +255,17 @@ export function FullstackView() {
   const setDefaultPalette = currentFrontendSet?.defaultPaletteId
     ?? palettes.find(p => p.isDefault)?.id ?? palettes[0]?.id ?? ''
   const effectivePalette = colorPalette || setDefaultPalette
+  const previewPalette = palettes.find(p => p.id === effectivePalette)
+  // The layout preview draws the shell of the chosen frontend set, in the chosen chrome language
+  // and colour palette.
+  const pagesPreviewSettings = useMemo(() => ({
+    locale: meta.locale,
+    projectOpts: scaffoldOpts,
+    skin: (currentFrontendSet?.designSystem === 'MENORA_DIGITAL' || frontendSet.includes('menora') ? 'menora' : 'tailwind') as 'menora' | 'tailwind',
+    palette: previewPalette,
+    dashboardTitle: meta.dashboardTitle,
+    dashboardOverview: meta.dashboardOverview,
+  }), [meta.locale, meta.dashboardTitle, meta.dashboardOverview, scaffoldOpts, currentFrontendSet, frontendSet, previewPalette])
 
   // Validation — mirrors the backend FullstackRequestValidator so problems surface inline
   // before submit. The server stays the source of truth.
@@ -257,7 +277,7 @@ export function FullstackView() {
   // A layout outlives the entities it names (rename / delete) — flagged here, not as a 400 later.
   // Page roles are enforced by the generated backend's LDAP groups, so they need an LDAP auth variant (ldap-auth-rest, the sets' default, or ldap-auth).
   const ldapAuth = selectedDeps.some(d => d === 'ldap-auth' || d === 'ldap-auth-rest')
-  const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth }), [pages, entities, ldapAuth])
+  const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth, scaffoldOpts }), [pages, entities, ldapAuth, scaffoldOpts])
   const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageValidation.count
   const hasErrors = errorCount > 0
 
@@ -293,6 +313,7 @@ export function FullstackView() {
   useEffect(() => { persist(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
   useEffect(() => { persist(LS.palette, colorPalette) }, [colorPalette])
   useEffect(() => { persist(LS.pages, JSON.stringify(pages)) }, [pages])
+  useEffect(() => { persist(LS.nav, JSON.stringify(nav ?? null)) }, [nav])
   useEffect(() => { persist(LS.collapsed, JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { persist(LS.graph, JSON.stringify(showGraph)) }, [showGraph])
   useEffect(() => { persist(LS.setup, setupOpen ? 'open' : 'closed') }, [setupOpen])
@@ -300,8 +321,8 @@ export function FullstackView() {
 
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
   const currentSnapshot = useMemo(
-    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages }),
-    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages],
+    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages, nav }),
+    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages, nav],
   )
   const snapshotRef = useRef(currentSnapshot)
   snapshotRef.current = currentSnapshot
@@ -313,14 +334,35 @@ export function FullstackView() {
   // follow instead of breaking. (A *deleted* entity is left in place and flagged — silently
   // dropping the page that shows it would lose more than it saves.)
   const namesByUidRef = useRef<Map<string, string>>(new Map())
+  // Set when the layout is rewritten to follow a rename, so undo files both as one step.
+  const followsModelRef = useRef(false)
+  const enumValuesByUidRef = useRef<Map<string, string[]>>(new Map())
   useEffect(() => {
     const before = namesByUidRef.current
     const now = new Map<string, string>()
+    const enumsBefore = enumValuesByUidRef.current
+    const enumsNow = new Map<string, string[]>()
+    let follow: ((ps: FullstackPageDef[]) => FullstackPageDef[])[] = []
+    const followPages = (fn: (ps: FullstackPageDef[]) => FullstackPageDef[]) => { follow = [...follow, fn] }
     for (const e of entities) {
       if (e.uid) now.set(e.uid, e.name)
-      for (const f of e.fields) if (f.uid) now.set(f.uid, `${e.name}.${f.name}`)
+      for (const f of e.fields) {
+        if (!f.uid) continue
+        now.set(f.uid, `${e.name}.${f.name}`)
+        if (f.type !== 'ENUM' || !f.enumValues) continue
+        enumsNow.set(f.uid, f.enumValues)
+        // A value renamed in place: same list length, exactly one position changed.
+        const was = enumsBefore.get(f.uid)
+        if (!was || was === f.enumValues || was.length !== f.enumValues.length) continue
+        const diff = f.enumValues.flatMap((v, i) => (v !== was[i] ? [i] : []))
+        if (diff.length === 1) {
+          const [i] = diff
+          followPages(ps => renameEnumValueInPages(ps, e.name, f.name, was[i], f.enumValues![i]))
+        }
+      }
       for (const r of e.relations ?? []) if (r.uid) now.set(r.uid, `${e.name}#${r.fieldName}`)
     }
+    enumValuesByUidRef.current = enumsNow
     if (before.size > 0) {
       for (const [uid, name] of now) {
         const was = before.get(uid)
@@ -328,18 +370,26 @@ export function FullstackView() {
         if (was.includes('#')) {
           const [, wasRelation] = was.split('#')
           const [nowEntity, nowRelation] = name.split('#')
-          if (nowRelation?.trim()) setPages(ps => renameRelationInPages(ps, nowEntity, wasRelation, nowRelation))
+          if (nowRelation?.trim()) followPages(ps => renameRelationInPages(ps, nowEntity, wasRelation, nowRelation))
           continue
         }
         const [wasEntity, wasField] = was.split('.')
         const [nowEntity, nowField] = name.split('.')
-        if (wasField == null && nowEntity.trim()) setPages(ps => renameEntityInPages(ps, wasEntity, nowEntity))
+        if (wasField == null && nowEntity.trim()) followPages(ps => renameEntityInPages(ps, wasEntity, nowEntity))
         else if (wasField != null && nowField?.trim() && wasField !== nowField) {
-          setPages(ps => renameFieldInPages(ps, nowEntity, wasField, nowField))
+          followPages(ps => renameFieldInPages(ps, nowEntity, wasField, nowField))
         }
       }
     }
     namesByUidRef.current = now
+    if (follow.length > 0) {
+      // The layout follows the model edit that caused it: one undo step for both.
+      setPages(ps => {
+        const next = follow.reduce((acc, fn) => fn(acc), ps)
+        if (next !== ps) followsModelRef.current = true
+        return next
+      })
+    }
   }, [entities])
 
   // Keep the URL in step (debounced) so the header's Share button copies a link that reproduces
@@ -475,6 +525,16 @@ export function FullstackView() {
     if (prev === currentSnapshot) return
     lastSnapshotRef.current = currentSnapshot
     if (silentFromRef.current === prev) { silentFromRef.current = null; return }
+    if (followsModelRef.current) {
+      // The layout following a model edit belongs to that edit's undo step (or to none, when
+      // the edit itself was recorded explicitly): keep the open burst, start no new one.
+      followsModelRef.current = false
+      if (burstRef.current) {
+        if (burstTimerRef.current) clearTimeout(burstTimerRef.current)
+        burstTimerRef.current = setTimeout(flushBurst, BURST_IDLE_MS)
+      }
+      return
+    }
     if (snapshotsEqual(prev, currentSnapshot)) return
     const key = snapshotChangeKey(prev, currentSnapshot)
     if (burstRef.current && burstRef.current.key !== key) flushBurst()
@@ -509,6 +569,7 @@ export function FullstackView() {
     setFrontendSet(s.frontendSet)
     setColorPalette(s.colorPalette ?? '')
     setPages(s.pages ? JSON.parse(JSON.stringify(s.pages)) as FullstackPageDef[] : [])
+    setNav(s.nav ? { ...s.nav } : undefined)
     if (keepView) {
       const alive = new Set(next.map(e => e.uid))
       setCollapsed(prev => new Set([...prev].filter(uid => alive.has(uid))))
@@ -564,6 +625,8 @@ export function FullstackView() {
   /** The editor settings an example carries. Only the keys present change; a template set or
    *  palette this installation doesn't have is skipped rather than selected blind. */
   function applyExampleSettings(settings: ExampleSettings | null | undefined) {
+    // An example replaces the navigation too: one without says the default sidebar.
+    setNav(settings?.nav ? { ...settings.nav } : undefined)
     if (!settings) return
     const metaPatch: Partial<ProjectMeta> = {}
     if (settings.locale) metaPatch.locale = settings.locale
@@ -788,7 +851,8 @@ export function FullstackView() {
       opts: scaffoldOpts.length ? { scaffold: scaffoldOpts } : undefined,
       colorPalette: colorPalette || undefined,
       entities: stripUids(entities),
-      pages: pages.length ? pages : undefined,
+      pages: pages.length ? requestPages(pages) : undefined,
+      nav: pages.length && nav && (nav.style || nav.collapsibleGroups) ? nav : undefined,
     }
   }
 
@@ -1051,6 +1115,8 @@ export function FullstackView() {
     { id: 'fs-frontend', label: 'Frontend' },
     { id: 'fs-options', label: 'Options' },
     { id: 'fs-deps', label: 'Dependencies' },
+    { id: 'fs-entities', label: 'Entities', errors: entityErrors.count },
+    { id: 'fs-pages', label: 'Pages', errors: pageValidation.count },
   ]
   // A metadata error must never hide inside a collapsed panel — same rule the entity cards use
   // for a blocked Settings panel, and it keeps `jumpToFirstError`'s `#fs-meta` query answerable.
@@ -1103,6 +1169,49 @@ export function FullstackView() {
     toggleDensity: () => setDensity(d => (d === 'compact' ? 'comfortable' : 'compact')),
     savePreset: (target: SaveTarget = 'browser') => requestSave(target),
     toggleShortcuts: () => setShortcutsOpen(v => !v),
+    // The page layout — the same actions as the section's own buttons, reachable from ⌘K.
+    findPage: () => {
+      if (pages.length === 0) {
+        setToast({ message: 'No pages yet — the layout is the classic one', type: 'error' })
+        return
+      }
+      setPagesFind(n => n + 1)
+    },
+    addPage: () => {
+      if (!entities.some(e => e.name.trim())) {
+        setToast({ message: 'Name an entity first — pages are built from your entities', type: 'error' })
+        return
+      }
+      setPagesAdd(n => n + 1)
+    },
+    seedPages: () => {
+      if (!entities.some(e => e.name.trim())) {
+        setToast({ message: 'Name an entity first — pages are built from your entities', type: 'error' })
+        return
+      }
+      if (pages.length > 0) {
+        setToast({ message: 'There is already a page layout — switch to the classic layout first to start over', type: 'error' })
+        return
+      }
+      pushUndoEntry('Started a page layout from the entities')
+      setPages(seedLayout(entities, { title: meta.dashboardTitle, description: meta.dashboardOverview }))
+      requestAnimationFrame(() => scrollToElement(document.getElementById('fs-pages'), 'start'))
+    },
+    classicLayout: () => {
+      if (pages.length === 0) {
+        setToast({ message: 'The layout is already the classic one', type: 'success' })
+        return
+      }
+      clearPageLayout()
+      setToast({ message: 'Switched to the classic layout — undo with Ctrl+Z', type: 'success' })
+    },
+    layoutPreview: () => {
+      if (pages.length === 0) {
+        setToast({ message: 'Nothing to preview yet — add a page, or start a layout from your entities', type: 'error' })
+        return
+      }
+      setPagesPreview(n => n + 1)
+    },
   }
   const commandRef = useRef(commandHandlers)
   commandRef.current = commandHandlers
@@ -1143,6 +1252,11 @@ export function FullstackView() {
     { id: 'fs-redo', title: 'Redo', icon: 'redo', group: 'Fullstack', shortcut: 'Ctrl+Shift+Z', run: () => commandRef.current.redo() },
     { id: 'fs-collapse', title: 'Collapse / expand all entities', icon: 'unfold_less', group: 'Fullstack', run: () => commandRef.current.toggleCollapse() },
     { id: 'fs-find', title: 'Find entity…', description: 'Filter the entity list by name, label, table or field', icon: 'search', group: 'Fullstack', run: () => commandRef.current.findEntity() },
+    { id: 'fs-find-page', title: 'Find page…', description: 'Filter the frontend pages by title, route, entity or type', icon: 'find_in_page', group: 'Fullstack', shortcut: '/', run: () => commandRef.current.findPage() },
+    { id: 'fs-add-page', title: 'Add a page to the layout', description: 'Opens the page gallery of the frontend page layout', icon: 'web', group: 'Fullstack', run: () => commandRef.current.addPage() },
+    { id: 'fs-seed-pages', title: 'Start a page layout from my entities', description: 'A dashboard plus one list page per entity, ready to edit', icon: 'auto_awesome', group: 'Fullstack', run: () => commandRef.current.seedPages() },
+    { id: 'fs-classic-layout', title: 'Use the classic page layout', description: 'Drops the page layout (undoable)', icon: 'restart_alt', group: 'Fullstack', run: () => commandRef.current.classicLayout() },
+    { id: 'fs-layout-preview', title: 'Open the layout preview', description: 'A mock of the generated app with sample data', icon: 'preview', group: 'Fullstack', run: () => commandRef.current.layoutPreview() },
     { id: 'fs-density', title: 'Toggle compact field tables', icon: 'density_small', group: 'Fullstack', run: () => commandRef.current.toggleDensity() },
     { id: 'fs-reset', title: 'Reset the fullstack generator', icon: 'restart_alt', group: 'Fullstack', run: () => commandRef.current.reset() },
     { id: 'fs-shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', group: 'Fullstack', shortcut: '?', run: () => commandRef.current.toggleShortcuts() },
@@ -1256,29 +1370,11 @@ export function FullstackView() {
         compatibilityRules={compatibilityRules}
         entities={entities}
         revealRow={revealRow}
+        hasPages={pages.length > 0}
       />
         </div>
         )}
       </section>
-
-      <PagesEditor
-        pages={pages}
-        entities={entities}
-        validation={pageValidation}
-        onChange={setPages}
-        pushUndo={pushUndoEntry}
-        onClear={clearPageLayout}
-        previewSettings={pagesPreviewSettings}
-        revealRequest={pagesReveal}
-        serverIssue={pageServerIssue}
-        ldapAuth={ldapAuth}
-        history={{
-          undoLabel: lastUndo ? `Undo: ${lastUndo.label}` : null,
-          redoLabel: nextRedo ? `Redo: ${nextRedo.label}` : null,
-          onUndo: undo,
-          onRedo: redo,
-        }}
-      />
 
       <section id="fs-entities" className="space-y-4">
         <EntitiesToolbar
@@ -1358,6 +1454,33 @@ export function FullstackView() {
           </div>
         </div>
       </section>
+
+      {/* Pages are built from the entities, so the layout editor follows them. */}
+      <PagesEditor
+        pages={pages}
+        entities={entities}
+        validation={pageValidation}
+        onChange={setPages}
+        pushUndo={pushUndoEntry}
+        onClear={clearPageLayout}
+        previewSettings={pagesPreviewSettings}
+        revealRequest={pagesReveal}
+        addRequest={pagesAdd}
+        findRequest={pagesFind}
+        previewRequest={pagesPreview}
+        serverIssue={pageServerIssue}
+        ldapAuth={ldapAuth}
+        onAddDep={dep => setSelectedDeps(prev => (prev.includes(dep) ? prev : [...prev, dep]))}
+        onOpenGuide={onOpenGuide}
+        nav={nav}
+        onNavChange={setNav}
+        history={{
+          undoLabel: lastUndo ? `Undo: ${lastUndo.label}` : null,
+          redoLabel: nextRedo ? `Redo: ${nextRedo.label}` : null,
+          onUndo: undo,
+          onRedo: redo,
+        }}
+      />
 
       {lastGenerated && (
         <NextStepsPanel

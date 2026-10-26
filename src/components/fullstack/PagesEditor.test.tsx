@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { useState } from 'react'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { createEvent, fireEvent, render, screen, within } from '@testing-library/react'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import { PagesEditor } from './PagesEditor'
 import { validatePages } from './pageLayout'
@@ -26,14 +26,14 @@ const pushUndo = vi.fn()
 let latest: FullstackPageDef[] = []
 
 /** The editor is controlled; the harness holds the layout the way FullstackView does. */
-function Harness({ initial, onClear = () => {} }: { initial: FullstackPageDef[]; onClear?: () => void }) {
+function Harness({ initial, onClear = () => {}, entities: model = entities }: { initial: FullstackPageDef[]; onClear?: () => void; entities?: FullstackEntityDef[] }) {
   const [pages, setPages] = useState(initial)
   latest = pages
   return (
     <PagesEditor
       pages={pages}
-      entities={entities}
-      validation={validatePages(pages, entities)}
+      entities={model}
+      validation={validatePages(pages, model)}
       onChange={setPages}
       pushUndo={pushUndo}
       onClear={onClear}
@@ -48,6 +48,35 @@ const openRow = (id: string) => {
 }
 
 describe('PagesEditor', () => {
+  it('adds a board, a content page and a search page, each valid on sight', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Board/ }))
+    expect(latest[1]).toMatchObject({ type: 'board', entity: 'Order', laneField: 'status' })
+    // The card picker: the default cards are the heading and the next fields; a pick replaces them.
+    fireEvent.click(screen.getByRole('button', { name: /^2Total/ }))
+    expect(latest[1].cardFields).toEqual(['id', 'placedOn', 'customer'])
+    fireEvent.change(screen.getByLabelText('Most cards in PAID'), { target: { value: '3' } })
+    expect(latest[1].wipLimits).toEqual({ PAID: 3 })
+
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Content/ }))
+    expect(latest[2]).toMatchObject({ type: 'content', title: 'Help' })
+    fireEvent.change(screen.getByLabelText('Page text'), { target: { value: 'See [the orders](#/nowhere).' } })
+    expect(document.querySelector('[data-page-layout-problems]')?.textContent).toContain('links to the missing page “nowhere”')
+    fireEvent.change(screen.getByLabelText('Page text'), { target: { value: 'See ' } })
+    fireEvent.change(screen.getByLabelText('Insert a link to'), { target: { value: 'orders' } })
+    expect(latest[2].body).toBe('See [Order](#/orders)')
+
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Search/ }))
+    expect(latest[3]).toMatchObject({ type: 'search', shellSearch: true })
+    // One search page per layout: the card says so.
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    expect((screen.getByRole('button', { name: /^Search.*already has a search page/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect(validatePages(latest, entities).count).toBe(0)
+  })
+
   it('adds a page of the chosen type, pre-filled so it is valid on sight', () => {
     render(<Harness initial={[]} />)
     expect(screen.getByText('Classic layout')).toBeTruthy()
@@ -55,15 +84,411 @@ describe('PagesEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
     fireEvent.click(screen.getByRole('button', { name: /Master–detail/ }))
 
-    expect(latest).toEqual([{ id: 'customer', type: 'master-detail', parent: 'Customer', child: 'Order' }])
-    // Two relations point at Customer, so the page must say which one it links through.
-    expect(screen.getByLabelText('Relation to link through')).toBeTruthy()
-    expect(document.querySelector('[data-page-layout-problems]')?.textContent)
-      .toContain('must say which of the relations of Order to Customer it links through')
+    // Two relations point at Customer, so the page says which one it links through from the start.
+    expect(latest).toEqual([{ id: 'customer', type: 'master-detail', parent: 'Customer', child: 'Order', via: 'customer', showParent: true }])
+    expect(document.querySelector('[data-preview-parent-card]')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText("Show the selected parent's details"))
+    expect(latest[0].showParent).toBeUndefined()
+    expect(document.querySelector('[data-preview-parent-card]')).toBeNull()
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
 
     fireEvent.change(screen.getByLabelText('Relation to link through'), { target: { value: 'billTo' } })
     expect(latest[0].via).toBe('billTo')
     expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+  })
+
+  it('renames and reorders navigation groups from the strip, and moves a page between groups', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order', group: 'Sales' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', group: 'People' },
+    ]} />)
+    const strip = document.querySelector('[data-nav-groups]') as HTMLElement
+    expect(strip).toBeTruthy()
+    const rename = within(strip).getByLabelText('Rename the Sales group') as HTMLInputElement
+    fireEvent.change(rename, { target: { value: 'Orders' } })
+    expect(latest[1].group).toBe('Sales')
+    fireEvent.blur(rename)
+    expect(latest[1].group).toBe('Orders')
+    expect(pushUndo).toHaveBeenCalledWith('Renamed the “Sales” group to “Orders”')
+
+    fireEvent.click(within(strip).getByRole('button', { name: 'Move the People group up' }))
+    expect(latest.map(p => p.id)).toEqual(['home', 'customers', 'orders'])
+    expect(pushUndo).toHaveBeenCalledWith('Reordered the navigation sections')
+
+    openRow('home')
+    fireEvent.change(screen.getByLabelText('Move to group'), { target: { value: 'People' } })
+    expect(latest[0].group).toBe('People')
+  })
+
+  it('opens the guide on the page-layout topic from the header, when a guide is reachable', () => {
+    const onOpenGuide = vi.fn()
+    const { unmount } = render(
+      <PagesEditor pages={[]} entities={entities} validation={validatePages([], entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onOpenGuide={onOpenGuide} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open the guide on frontend pages' }))
+    expect(onOpenGuide).toHaveBeenCalledWith('fs-pages')
+    unmount()
+    render(<Harness initial={[]} />)
+    expect(screen.queryByRole('button', { name: 'Open the guide on frontend pages' })).toBeNull()
+  })
+
+  it('offers the tailwind shell’s navigation variants and previews them', () => {
+    const onNavChange = vi.fn()
+    const pages: FullstackPageDef[] = [
+      { id: 'orders', type: 'entity-list', entity: 'Order', group: 'Sales' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', group: 'People' },
+    ]
+    const { rerender } = render(
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} />,
+    )
+    expect(document.querySelector('[data-preview-topbar]')).toBeNull()
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Navigation style' })).getByRole('radio', { name: 'Top bar' }))
+    expect(onNavChange).toHaveBeenCalledWith({ style: 'topbar' })
+    fireEvent.click(screen.getByLabelText('Collapsible groups'))
+    expect(onNavChange).toHaveBeenCalledWith({ collapsibleGroups: true })
+
+    rerender(
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} nav={{ style: 'topbar' }} />,
+    )
+    expect(document.querySelector('[data-preview-topbar]')).toBeTruthy()
+    rerender(
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} nav={{ collapsibleGroups: true }} />,
+    )
+    expect(document.querySelectorAll('[data-preview-fold]')).toHaveLength(2)
+    // The Menora shell is a top bar already: no row.
+    rerender(
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} previewSettings={{ locale: 'en', projectOpts: [], skin: 'menora' }} />,
+    )
+    expect(document.querySelector('[data-nav-options]')).toBeNull()
+  })
+
+  it('draws the tailwind preview in the chosen colour palette, and the Menora one in its own', () => {
+    const pages: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }]
+    const palette = { primary: '#123456', secondary: '#abcdef' }
+    const props = { pages, entities, validation: validatePages(pages, entities), onChange: () => {}, pushUndo, onClear: () => {} }
+    const { rerender } = render(<PagesEditor {...props} previewSettings={{ locale: 'en', projectOpts: [], skin: 'tailwind', palette }} />)
+    const shell = document.querySelector<HTMLElement>('[data-layout-preview] [data-preview-shell]')!
+    expect(shell.style.background).toContain('rgb(18, 52, 86)')
+    expect(shell.style.background).toContain('rgb(171, 205, 239)')
+    const active = document.querySelector<HTMLElement>('[data-layout-preview] [aria-current="page"]')!
+    expect(active.style.borderColor).toBe('rgb(171, 205, 239)')
+    const accented = Array.from(document.querySelectorAll<HTMLElement>('[data-layout-preview] [style]'))
+      .filter(el => el.style.background === 'rgb(18, 52, 86)' || el.style.backgroundColor === 'rgb(18, 52, 86)')
+    expect(accented.length).toBeGreaterThan(0)
+
+    rerender(<PagesEditor {...props} previewSettings={{ locale: 'en', projectOpts: [], skin: 'menora', palette }} />)
+    expect(document.querySelector('[data-layout-preview]')!.innerHTML).not.toContain('rgb(18, 52, 86)')
+  })
+
+  it('reorders and resizes widgets from the preview', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'kpi', entity: 'Order', title: 'A' }, { kind: 'kpi', entity: 'Customer', title: 'B' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+    ]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wider: widget 1' }))
+    expect(latest[0].widgets?.[0].span).toBe(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Narrower: widget 1' }))
+    expect(latest[0].widgets?.[0].span).toBeUndefined()
+    expect((screen.getByRole('button', { name: 'Narrower: widget 1' }) as HTMLButtonElement).disabled).toBe(true)
+
+    // Widget 2 dragged onto the upper half of widget 1's slot lands first. jsdom has no DragEvent,
+    // so the pointer position (above a zero-height rect) is set on the event by hand.
+    fireEvent.dragStart(screen.getByLabelText('Drag widget 2'), { dataTransfer: { setData: vi.fn(), effectAllowed: '' } })
+    const first = document.querySelector('[data-preview-widget-slot="0"]') as HTMLElement
+    const above = (type: 'dragOver' | 'drop') => {
+      const event = createEvent[type](first, { dataTransfer: { dropEffect: '' } })
+      Object.defineProperty(event, 'clientY', { value: -1 })
+      return event
+    }
+    fireEvent(first, above('dragOver'))
+    fireEvent(first, above('drop'))
+    expect(latest[0].widgets?.map(w => w.title)).toEqual(['B', 'A'])
+  })
+
+  it('reorders a list widget’s columns by drag, and says so with an undo when a widget is removed', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'list', entity: 'Order', columns: ['id', 'status', 'total'] }, { kind: 'kpi', entity: 'Order' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+    ]} />)
+    openRow('home')
+    const grip = document.querySelector('[data-widget-column="total"] [draggable]') as HTMLElement
+    fireEvent.dragStart(grip, { dataTransfer: { setData: vi.fn(), effectAllowed: '' } })
+    const first = document.querySelector('[data-widget-column="id"]') as HTMLElement
+    const above = (type: 'dragOver' | 'drop') => {
+      const event = createEvent[type](first, { dataTransfer: { dropEffect: '' } })
+      Object.defineProperty(event, 'clientX', { value: -1 })
+      Object.defineProperty(event, 'clientY', { value: -1 })
+      return event
+    }
+    fireEvent(first, above('dragOver'))
+    fireEvent(first, above('drop'))
+    expect(latest[0].widgets?.[0].columns).toEqual(['total', 'id', 'status'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove widget 2' }))
+    expect(latest[0].widgets).toHaveLength(1)
+    expect(pushUndo).toHaveBeenCalledWith('Removed widget 2 (Number tile) from “Home”')
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('Removed widget 2 (Number tile) from “Home”')
+  })
+
+  it('finds a page by title, entity or type, and moves between page rows with the arrow keys', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer' },
+    ]} />)
+    // Three pages: no search box until asked for with `/`.
+    expect(document.querySelector('[data-page-search]')).toBeNull()
+    const section = screen.getByRole('region', { name: 'Frontend page layout' })
+    fireEvent.keyDown(section, { key: '/' })
+    const search = screen.getByLabelText('Find a page')
+    fireEvent.change(search, { target: { value: 'customer' } })
+    const visible = () => [...document.querySelectorAll('[data-page-id]')].map(el => el.getAttribute('data-page-id'))
+    expect(visible()).toEqual(['customers'])
+    expect(document.querySelector('[data-page-search-count]')?.textContent).toBe('1 of 3')
+    fireEvent.change(search, { target: { value: 'dashboard' } })
+    expect(visible()).toEqual(['home'])
+    fireEvent.change(search, { target: { value: 'nothing' } })
+    expect(document.querySelector('[data-page-search-empty]')).toBeTruthy()
+    fireEvent.keyDown(search, { key: 'Escape' })
+    expect(visible()).toEqual(['home', 'orders', 'customers'])
+
+    // A page added while a search hides it clears the search, so the new page opens in view.
+    fireEvent.keyDown(section, { key: '/' })
+    fireEvent.change(screen.getByLabelText('Find a page'), { target: { value: 'customer' } })
+    expect(visible()).toEqual(['customers'])
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Report/ }))
+    expect(latest).toHaveLength(4)
+    expect(visible()).toHaveLength(4)
+
+    const toggles = [...document.querySelectorAll<HTMLElement>('[data-page-toggle]')]
+    toggles[0].focus()
+    fireEvent.keyDown(toggles[0], { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(toggles[1])
+    fireEvent.keyDown(toggles[1], { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(toggles[0])
+  })
+
+  it('steps through a wizard and a record page’s tabs in the preview, and jumps from a list’s headings to its columns', () => {
+    render(<Harness initial={[
+      { id: 'orders', type: 'entity-list', entity: 'Order', sort: { field: 'total' } },
+      { id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ fields: ['status'] }, { fields: ['customer', 'billTo', 'id'] }] },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, childTabs: [{ entity: 'Order', via: 'customer' }] },
+    ]} />)
+    const preview = () => document.querySelector('[data-layout-preview]') as HTMLElement
+
+    // The headings and the sort chip are parts of their own: a click opens the page at them.
+    expect(document.querySelector('[data-page-id="orders"] [data-control="columns"]')).toBeNull()
+    fireEvent.click(within(preview()).getByRole('button', { name: 'Edit the columns' }))
+    expect(document.querySelector('[data-page-id="orders"] [data-control="columns"]')).toBeTruthy()
+    expect(within(preview()).getByRole('button', { name: 'Edit the sort' }).parentElement!.textContent).toContain('Total ↑')
+
+    openRow('new-order')
+    expect(preview().querySelector('[data-preview-step]')?.getAttribute('data-preview-step')).toBe('0')
+    fireEvent.click(within(preview()).getByRole('button', { name: 'Next step' }))
+    expect(preview().querySelector('[data-preview-step]')?.getAttribute('data-preview-step')).toBe('1')
+    fireEvent.click(within(preview()).getByRole('button', { name: 'Next step' }))
+    expect(preview().querySelector('[data-preview-step]')?.getAttribute('data-preview-step')).toBe('review')
+
+    openRow('customer')
+    fireEvent.click(within(preview()).getByRole('tab', { name: 'Orders' }))
+    expect(preview().querySelector('[data-preview-record-tab="1"]')).toBeTruthy()
+  })
+
+  it('starts a layout from a template, and adds a page again from one saved as a template', () => {
+    localStorage.clear()
+    pushUndo.mockClear()
+    render(<Harness initial={[]} />)
+    const browser = document.querySelector('[data-layout-template="browser"]') as HTMLButtonElement
+    expect(browser.disabled).toBe(false)
+    fireEvent.click(browser)
+    expect(pushUndo).toHaveBeenCalledWith('Started a page layout from the “Parent–child browser” template')
+    expect(latest[0]).toMatchObject({ type: 'master-detail', parent: 'Customer', child: 'Order' })
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    openRow(latest[0].id)
+    fireEvent.click(screen.getByRole('button', { name: /Save as template/ }))
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('as a page template')
+    const count = latest.length
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    const mine = document.querySelector('[data-my-templates]') as HTMLElement
+    fireEvent.click(within(mine).getAllByRole('button')[0])
+    expect(latest).toHaveLength(count + 1)
+    expect(latest[count]).toMatchObject({ type: 'master-detail', parent: 'Customer', child: 'Order' })
+    expect(latest[count].id).not.toBe(latest[0].id)
+    localStorage.clear()
+  })
+
+  it('picks where a list opens its rows, offering the record page only when the layout has one', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
+    openRow('orders')
+    const group = screen.getByRole('radiogroup', { name: 'Row detail opens in' })
+    expect((within(group).getByRole('radio', { name: 'Drawer' }) as HTMLButtonElement).getAttribute('aria-checked')).toBe('true')
+    expect((within(group).getByRole('radio', { name: 'Record page' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(within(group).getByRole('radio', { name: 'Side pane' }))
+    expect(latest[0].detail).toBe('side')
+    expect(document.querySelector('[data-preview-side-pane]')).toBeTruthy()
+    fireEvent.click(within(group).getByRole('radio', { name: 'Drawer' }))
+    expect(latest[0].detail).toBeUndefined()
+  })
+
+  it('presets a date field to a period or two dates, and a number field to a range', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order', presetFilter: { placedOn: 'last:30d', total: '100..' } }]} />)
+    openRow('orders')
+    const period = screen.getByLabelText('Filter period for placedOn') as HTMLSelectElement
+    expect(period.value).toBe('last:30d')
+    fireEvent.change(period, { target: { value: 'custom' } })
+    fireEvent.change(screen.getByLabelText('From date for placedOn'), { target: { value: '2026-01-01' } })
+    fireEvent.change(screen.getByLabelText('To date for placedOn'), { target: { value: '2026-03-31' } })
+    expect(latest[0].presetFilter?.placedOn).toBe('2026-01-01..2026-03-31')
+    fireEvent.change(screen.getByLabelText('Max for total'), { target: { value: '500' } })
+    expect(latest[0].presetFilter?.total).toBe('100..500')
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Min for total'), { target: { value: '900' } })
+    expect(document.querySelector('[data-page-layout-problems]')?.textContent).toContain('min is above max')
+  })
+
+  it('edits a list widget: columns as toggles, a sort, the pager’s sizes', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'list', entity: 'Order', title: 'Open orders' }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+    ]} />)
+    openRow('home')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hide the Placed on column' }))
+    expect(latest[0].widgets?.[0].columns).toEqual(['id', 'status', 'total', 'customer', 'billTo'])
+    fireEvent.change(screen.getByLabelText('Widget sort'), { target: { value: 'total' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sort descending' }))
+    expect(latest[0].widgets?.[0].sort).toEqual({ field: 'total', dir: 'desc' })
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Rows per page' })).getByRole('radio', { name: '20' }))
+    expect(latest[0].widgets?.[0].limit).toBe(20)
+    expect(document.querySelector('[data-preview-list]')).toBeTruthy()
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+  })
+
+  it('edits a links widget as a pick of the pages it opens', () => {
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'links', entity: '', title: 'Go to', pages: ['orders'] }] },
+      { id: 'orders', type: 'entity-list', entity: 'Order', title: 'Orders' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', title: 'Customers' },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true },
+    ]} />)
+    openRow('home')
+    const links = document.querySelector('[data-widget-links]') as HTMLElement
+    expect(within(links).getAllByRole('checkbox').map(el => el.getAttribute('aria-label'))).toEqual(['Link to Orders', 'Link to Customers'])
+    fireEvent.click(within(links).getByLabelText('Link to Customers'))
+    expect(latest[0].widgets?.[0].pages).toEqual(['orders', 'customers'])
+    expect(document.querySelector('[data-preview-links]')?.textContent).toContain('Customers')
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+  })
+
+  it('asks which entity a new page is about when more than one fits, and says why the others do not', () => {
+    const three: FullstackEntityDef[] = [
+      ...entities,
+      { name: 'Line', fields: [{ name: 'order', type: 'LONG', primaryKey: true }, { name: 'no', type: 'INTEGER', primaryKey: true }] },
+    ]
+    render(<Harness initial={[{ id: 'customer', type: 'record', entity: 'Customer', hidden: true }]} entities={three} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Record/ }))
+    // Only Order fits (Customer has one, Line has a composite key), so it is added straight away.
+    expect(latest.map(p => p.entity)).toEqual(['Customer', 'Order'])
+
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Entity list/ }))
+    const chooser = document.querySelector('[data-entity-form]') as HTMLElement
+    expect(within(chooser).getAllByRole('radio').map(r => r.textContent)).toEqual(['Customer', 'Order', 'Line'])
+    fireEvent.click(within(chooser).getByRole('radio', { name: 'Line' }))
+    fireEvent.click(within(chooser).getByRole('button', { name: 'Add entity list page' }))
+    expect(latest[2]).toEqual({ id: 'line', type: 'entity-list', entity: 'Line' })
+
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Record/ }))
+    expect((screen.getByRole('button', { name: /^Record/ }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('will not offer a master-detail page without a relation to build it from', () => {
+    render(<Harness initial={[]} entities={[entities[0]]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    const card = screen.getByRole('button', { name: /Master–detail/ }) as HTMLButtonElement
+    expect(card.disabled).toBe(true)
+    expect(card.textContent).toContain('Add a many-to-one relation between two entities first')
+  })
+
+  it('changes a page to another type, keeping what fits and saying what was dropped', () => {
+    render(<Harness initial={[
+      { id: 'open', type: 'entity-list', entity: 'Order', title: 'Open orders', group: 'Sales', presetFilter: { status: 'OPEN' }, columns: ['status', 'total'], pageSize: 50 },
+    ]} />)
+    openRow('open')
+    fireEvent.change(screen.getByLabelText('Page type'), { target: { value: 'report' } })
+    expect(latest[0]).toEqual({ id: 'open', type: 'report', entity: 'Order', title: 'Open orders', group: 'Sales', presetFilter: { status: 'OPEN' }, chart: {} })
+    expect(pushUndo).toHaveBeenCalledWith('Changed “Open orders” to a report page')
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the columns, page size settings')
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    // A record page is never in the nav, so the group goes; the entity stays.
+    fireEvent.change(screen.getByLabelText('Page type'), { target: { value: 'record' } })
+    expect(latest[0]).toEqual({ id: 'open', type: 'record', entity: 'Order', title: 'Open orders', hidden: true })
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the filter, charts, nav place settings')
+  })
+
+  it('offers only the page types the page can become', () => {
+    render(<Harness initial={[{ id: 'customers', type: 'entity-list', entity: 'Customer' }]} entities={[entities[0]]} />)
+    openRow('customers')
+    const option = (value: string) => screen.getByLabelText('Page type').querySelector(`option[value="${value}"]`) as HTMLOptionElement
+    expect(option('entity-list').disabled).toBe(false)
+    expect(option('dashboard').disabled).toBe(false)
+    // Nothing on Customer to chart.
+    expect(option('report').disabled).toBe(true)
+    expect(option('master-detail').disabled).toBe(true)
+    // No other page to hold, so it cannot become a tabs page.
+    expect(option('tabs').disabled).toBe(true)
+    expect(option('tabs').textContent).toContain('needs two other pages')
+  })
+
+  it('opens the columns of a related list when set, and moves a column earlier', () => {
+    render(<Harness initial={[
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, childTabs: [{ entity: 'Order', via: 'customer', columns: ['total', 'status'] }] },
+    ]} />)
+    openRow('customer')
+    const fold = document.querySelector('[data-list-options]') as HTMLDetailsElement
+    expect(fold.open).toBe(true)
+    fireEvent.click(screen.getByLabelText('Move the Status column earlier in the Order tab'))
+    expect(latest[0].childTabs).toEqual([{ entity: 'Order', via: 'customer', columns: ['status', 'total'] }])
+    // A column switched on joins the end.
+    fireEvent.click(screen.getByLabelText('Placed on column of the Order tab'))
+    expect(latest[0].childTabs).toEqual([{ entity: 'Order', via: 'customer', columns: ['status', 'total', 'placedOn'] }])
+  })
+
+  it('previews the classic layout before there is one, and lists what a template builds', () => {
+    render(<Harness initial={[]} />)
+    expect(screen.queryByRole('region', { name: 'Classic layout preview' })).toBeNull()
+    fireEvent.click(document.querySelector('[data-classic-preview]')!)
+    expect(screen.getByRole('region', { name: 'Classic layout preview' })).toBeTruthy()
+    const card = document.querySelector('[data-layout-template]:not([disabled])') as HTMLButtonElement
+    expect(card.querySelector('[data-template-pages]')?.textContent).toBeTruthy()
+    expect(latest).toEqual([])
+  })
+
+  it('replaces a layout from a template in one undo step', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
+    fireEvent.click(document.querySelector('[data-open-templates]')!)
+    const card = document.querySelector('[data-replace-templates] [data-layout-template]:not([disabled])') as HTMLButtonElement
+    fireEvent.click(card)
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(pushUndo.mock.calls[0][0]).toMatch(/^Replaced the page layout with the “.+” template$/)
+    expect(latest.map(p => p.id)).not.toEqual(['orders'])
+    expect(document.querySelector('[data-replace-templates]')).toBeNull()
+  })
+
+  it('names entities by their labels in the pickers', () => {
+    const labelled = [{ ...entities[0], label: 'Client' }, entities[1]]
+    render(<Harness initial={[{ id: 'customers', type: 'entity-list', entity: 'Customer' }]} entities={labelled} />)
+    openRow('customers')
+    const options = [...(screen.getByLabelText('List entity') as HTMLSelectElement).options].map(o => o.textContent)
+    expect(options).toContain('Client (Customer)')
+    expect(options).toContain('Order')
   })
 
   it('derives the id from the title until the id is edited by hand', () => {
@@ -75,7 +500,21 @@ describe('PagesEditor', () => {
 
     fireEvent.change(screen.getByLabelText('Page id'), { target: { value: 'queue' } })
     fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Order queue' } })
-    expect(latest[0]).toMatchObject({ id: 'queue', title: 'Order queue' })
+    expect(latest[0]).toMatchObject({ id: 'queue', title: 'Order queue', idLocked: true })
+  })
+
+  it('keeps a hand-edited id that came stored with the page, and can follow the title again', () => {
+    // The lock lives on the page (it is what a reload or an example load restores), not in the editor.
+    render(<Harness initial={[{ id: 'queue', idLocked: true, type: 'entity-list', entity: 'Order', title: 'Order queue' }]} />)
+    openRow('queue')
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Open orders' } })
+    expect(latest[0]).toMatchObject({ id: 'queue', title: 'Open orders' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Follow the title again' }))
+    expect(latest[0]).toMatchObject({ id: 'open-orders', title: 'Open orders' })
+    expect(latest[0].idLocked).toBeUndefined()
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Orders' } })
+    expect(latest[0].id).toBe('orders')
   })
 
   it('edits a list page: entity and preset filter, with the filter values of that field', () => {
@@ -100,6 +539,7 @@ describe('PagesEditor', () => {
     openRow('home')
 
     fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add number tile' }))
     expect(latest[0].widgets).toHaveLength(2)
 
     const kinds = screen.getAllByRole('radiogroup', { name: 'Widget kind' })
@@ -184,7 +624,7 @@ describe('PagesEditor', () => {
   it('adds a report page and configures its chart', () => {
     render(<Harness initial={[]} />)
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Report/ }))
+    fireEvent.click(within(document.querySelector('[data-page-gallery]') as HTMLElement).getByRole('button', { name: /^Report/ }))
 
     // Pre-filled with an entity that has something to chart, so it is valid on sight.
     expect(latest).toEqual([{ id: 'order-report', type: 'report', entity: 'Order', chart: {} }])
@@ -276,7 +716,29 @@ describe('PagesEditor', () => {
     render(<Harness initial={[{ id: 'home', type: 'dashboard', widgets: [{ kind: 'bar', entity: 'Order' }] }]} />)
     openRow('home')
     const groupBy = screen.getByLabelText('Group by') as HTMLSelectElement
-    expect(groupBy.options[0].textContent).toBe('Default (status)')
+    expect(groupBy.options[0].textContent).toBe('Default (Status)')
+  })
+
+  it('names fields and values as the generated UI labels them, keeping the raw name when it differs', () => {
+    const model: FullstackEntityDef[] = [{
+      name: 'Order',
+      fields: [
+        { name: 'id', type: 'LONG', primaryKey: true },
+        { name: 'status', type: 'ENUM', enumValues: ['OPEN', 'PAID'], label: 'Order state', enumLabels: { OPEN: 'Waiting' } },
+        { name: 'placedOn', type: 'LOCAL_DATE' },
+      ],
+    }]
+    render(<Harness entities={model} initial={[{ id: 'open', type: 'entity-list', entity: 'Order', presetFilter: { status: 'OPEN' } }]} />)
+    openRow('open')
+    const field = screen.getByLabelText('Filter field') as HTMLSelectElement
+    expect(field.options[0].textContent).toBe('Order state (status)')
+    expect(field.value).toBe('status')
+    const value = screen.getByLabelText('Filter value for status') as HTMLSelectElement
+    expect(Array.from(value.options).map(o => o.textContent)).toEqual(['Waiting (OPEN)', 'Paid'])
+    expect(value.value).toBe('OPEN')
+    // The id sits behind a disclosure that shows the route.
+    expect(screen.getByText('#/open')).toBeTruthy()
+    expect(screen.getByLabelText('Page id')).toBeTruthy()
   })
 
   it('starts a tabs page from two existing pages, so it is valid on sight', () => {
@@ -286,10 +748,28 @@ describe('PagesEditor', () => {
     ]} />)
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
     fireEvent.click(screen.getByRole('button', { name: /^Tabs/ }))
-    expect(latest[2]).toMatchObject({ type: 'tabs', tabs: [{ page: 'orders' }, { page: 'customers' }] })
+    // The picker starts from the two lists, ticked, and hides them from the nav once added.
+    const form = document.querySelector('[data-tabs-form]') as HTMLElement
+    expect(form).toBeTruthy()
+    expect((within(form).getByLabelText('Tab: Order') as HTMLInputElement).checked).toBe(true)
+    expect((within(form).getByLabelText('Tab: Customer') as HTMLInputElement).checked).toBe(true)
+    expect(latest).toHaveLength(2)
+
+    fireEvent.change(within(form).getByLabelText('Tabs page title'), { target: { value: 'Work' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Add tabs page' }))
+    expect(latest[2]).toMatchObject({ id: 'work', type: 'tabs', title: 'Work', tabs: [{ page: 'orders' }, { page: 'customers' }] })
+    expect(latest.slice(0, 2).map(p => p.hidden)).toEqual([true, true])
+    expect(pushUndo).toHaveBeenCalledWith('Added a tabs page over 2 pages')
     expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+    expect(document.querySelector('[data-page-layout-warnings]')).toBeNull()
     // Every candidate is already a tab.
     expect((screen.getByRole('button', { name: /Add tab/ }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('needs two pages that can be tabs before offering a tabs page, and can leave them in the nav', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    expect((screen.getByRole('button', { name: /^Tabs/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('offers pages the model is shaped for', () => {
@@ -306,7 +786,8 @@ describe('PagesEditor', () => {
       { id: 'desk', type: 'master-detail', parent: 'Customer', child: 'Order' },
     ]} />)
     expect(screen.queryByLabelText('Relation to link through')).toBeNull()
-    fireEvent.click(within(document.querySelector('[data-page-layout-problems]') as HTMLElement).getByRole('button'))
+    // The problem itself opens the page; the "Fix" beside it is a separate button.
+    fireEvent.click(within(document.querySelector('[data-page-layout-problems]') as HTMLElement).getByRole('button', { name: /must say which/ }))
     expect(screen.getByLabelText('Relation to link through')).toBeTruthy()
   })
 
@@ -389,7 +870,7 @@ describe('PagesEditor', () => {
     expect(latest[0].widgets?.[0].groupBy).toBeUndefined()
     // Comparing needs the period picker first.
     fireEvent.click(within(desk).getByRole('radio', { name: 'Number tile' }))
-    expect((within(desk).getByRole('checkbox') as HTMLInputElement).disabled).toBe(true)
+    expect((within(desk).getByRole('checkbox', { name: 'vs previous period' }) as HTMLInputElement).disabled).toBe(true)
 
     const report = openRow('r') as HTMLElement
     fireEvent.click(within(report).getByRole('button', { name: /Add chart/ }))
@@ -405,6 +886,8 @@ describe('PagesEditor', () => {
     render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
     fireEvent.click(screen.getByRole('button', { name: /Add page/ }))
     fireEvent.click(screen.getByRole('button', { name: /^Wizard/ }))
+    // Both entities can have a wizard, so the gallery asks; the first is picked to start with.
+    fireEvent.click(screen.getByRole('button', { name: 'Add wizard page' }))
     const wizard = latest[1]
     expect(wizard).toMatchObject({ type: 'wizard', entity: 'Customer', steps: [{ fields: ['id', 'name'] }] })
 
@@ -447,6 +930,258 @@ describe('PagesEditor', () => {
     expect(pushUndo).toHaveBeenCalledTimes(1)
   })
 
+  it('configures how a list page opens: columns, sort, view and rows per page', () => {
+    const board: FullstackEntityDef[] = [entities[0], { ...entities[1], listViews: ['table', 'kanban'] }]
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} entities={board} />)
+    const row = openRow('orders') as HTMLElement
+
+    // Every column is shown by default; hiding one writes the rest, in order; showing it again appends it.
+    fireEvent.click(within(row).getByRole('button', { name: 'Hide the Id column' }))
+    expect(latest[0].columns).toEqual(['status', 'total', 'placedOn', 'customer', 'billTo'])
+    fireEvent.click(within(row).getByRole('button', { name: 'Show the Id column' }))
+    expect(latest[0].columns).toEqual(['status', 'total', 'placedOn', 'customer', 'billTo', 'id'])
+    fireEvent.click(within(row).getByRole('button', { name: 'All columns (default)' }))
+    expect(latest[0].columns).toBeUndefined()
+
+    // Sort: a sortable column (relations are not offered) and a direction.
+    const sort = within(row).getByLabelText('Sort rows by') as HTMLSelectElement
+    expect(Array.from(sort.options).map(o => o.value)).toEqual(['', 'id', 'status', 'total', 'placedOn'])
+    fireEvent.change(sort, { target: { value: 'placedOn' } })
+    expect(latest[0].sort).toEqual({ field: 'placedOn' })
+    fireEvent.click(within(row).getByRole('radio', { name: 'Descending' }))
+    expect(latest[0].sort).toEqual({ field: 'placedOn', dir: 'desc' })
+
+    // Views: only the ones the entity offers can be picked; the others say why not.
+    const views = within(row.querySelector('[data-control="view"]') as HTMLElement)
+    const calendar = views.getByRole('radio', { name: 'Calendar' }) as HTMLButtonElement
+    expect(calendar.disabled).toBe(true)
+    expect(calendar.title).toBe('Not ticked in the list views of Order')
+    fireEvent.click(views.getByRole('radio', { name: 'Board' }))
+    expect(latest[0].view).toBe('kanban')
+    expect(row.textContent).toContain('Order list · board · by placedOn ↓')
+    fireEvent.click(views.getByRole('radio', { name: 'Table' }))
+    expect(latest[0].view).toBeUndefined()
+
+    fireEvent.change(within(row).getByLabelText('Rows per page'), { target: { value: '50' } })
+    expect(latest[0].pageSize).toBe(50)
+    expect(validatePages(latest, board).count).toBe(0)
+  })
+
+  it('keeps a list page’s presentation across an entity switch and names what it dropped', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order', columns: ['status', 'id'], sort: { field: 'total' } }]} />)
+    const row = openRow('orders') as HTMLElement
+    fireEvent.change(within(row).getByLabelText('List entity'), { target: { value: 'Customer' } })
+    expect(latest[0]).toMatchObject({ entity: 'Customer', columns: ['id'] })
+    expect(latest[0].sort).toBeUndefined()
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the columns, sort settings')
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+  })
+
+  it('says what a record entity switch and a period-picker switch-off drop', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[
+      { id: 'desk', type: 'dashboard', dateRange: '30d', widgets: [{ kind: 'kpi', entity: 'Order', dateField: 'placedOn', compare: true }] },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, headerStats: [{ child: 'Order', title: 'Orders' }] },
+    ]} />)
+    const record = openRow('customer') as HTMLElement
+    fireEvent.change(within(record).getByLabelText('Record entity'), { target: { value: 'Order' } })
+    expect(latest[1].entity).toBe('Order')
+    expect(latest[1].headerStats).toBeUndefined()
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the header numbers setting')
+
+    const desk = openRow('desk') as HTMLElement
+    fireEvent.change(within(desk).getByLabelText('Period picker'), { target: { value: '' } })
+    expect(latest[0].dateRange).toBeUndefined()
+    expect(latest[0].widgets?.[0]).toEqual({ kind: 'kpi', entity: 'Order', dateField: undefined, compare: undefined })
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the period date, period comparison settings')
+    expect(pushUndo).toHaveBeenCalledTimes(2)
+  })
+
+  it('adds a widget of a chosen kind for a chosen entity from the gallery, and says why a kind does not fit', () => {
+    render(<Harness initial={[{ id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] }]} />)
+    openRow('home')
+    fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
+    const gallery = document.querySelector('[data-widget-gallery]') as HTMLElement
+    expect(gallery).toBeTruthy()
+    // Starts from the last widget's entity (Order), where every kind fits.
+    expect((within(gallery).getByLabelText('New widget entity') as HTMLSelectElement).value).toBe('Order')
+    expect((within(gallery).getByRole('button', { name: 'Add trend over time' }) as HTMLButtonElement).disabled).toBe(false)
+
+    // Customer has no enum, boolean or date: the chart kinds say so and cannot be picked.
+    fireEvent.change(within(gallery).getByLabelText('New widget entity'), { target: { value: 'Customer' } })
+    const trend = within(gallery).getByRole('button', { name: 'Add trend over time' }) as HTMLButtonElement
+    expect(trend.disabled).toBe(true)
+    expect(trend.title).toBe('Customer has no date field to plot over')
+    expect((within(gallery).getByRole('button', { name: 'Add breakdown chart' }) as HTMLButtonElement).title).toBe('Customer has no enum, boolean or relation to break down by')
+    expect((within(gallery).getByRole('button', { name: 'Add number tile' }) as HTMLButtonElement).disabled).toBe(false)
+
+    fireEvent.change(within(gallery).getByLabelText('New widget entity'), { target: { value: 'Order' } })
+    fireEvent.click(within(gallery).getByRole('button', { name: 'Add progress to target' }))
+    expect(latest[0].widgets).toEqual([{ kind: 'kpi', entity: 'Order' }, { kind: 'progress', entity: 'Order', target: '100' }])
+    expect(document.querySelector('[data-widget-gallery]')).toBeNull()
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    // The kind switcher on a card says the same thing for a Customer widget.
+    fireEvent.click(screen.getByRole('button', { name: /Add widget/ }))
+    fireEvent.change(screen.getByLabelText('New widget entity'), { target: { value: 'Customer' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add number tile' }))
+    const kinds = screen.getAllByRole('radiogroup', { name: 'Widget kind' })
+    const radio = within(kinds[2]).getByRole('radio', { name: 'Trend over time' }) as HTMLButtonElement
+    expect(radio.disabled).toBe(true)
+    expect(radio.title).toBe('Customer has no date field to plot over')
+  })
+
+  it('splits a list page by an enum into hidden preset lists under a tabs page, as one undo step', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order', columns: ['status', 'total'] }]} />)
+    openRow('orders')
+    fireEvent.click(screen.getByRole('button', { name: /Split into tabs/ }))
+
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(pushUndo).toHaveBeenCalledWith('Split “Order” by status')
+    expect(latest.map(p => p.id)).toEqual(['orders', 'orders-by-status', 'order-open', 'order-paid'])
+    expect(latest[1]).toEqual({ id: 'orders-by-status', type: 'tabs', title: 'Orders by status', tabs: [{ page: 'order-open', title: 'Open' }, { page: 'order-paid', title: 'Paid' }] })
+    expect(latest[2]).toEqual({ id: 'order-open', type: 'entity-list', entity: 'Order', hidden: true, presetFilter: { status: 'OPEN' }, columns: ['status', 'total'] })
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+
+    // The split lists are already filtered on status, so they cannot be split by it again.
+    openRow('order-open')
+    const row = document.querySelector('[data-page-id="order-open"]') as HTMLElement
+    const again = within(row).getByRole('button', { name: /Split into tabs/ }) as HTMLButtonElement
+    expect(again.disabled).toBe(true)
+    expect(again.title).toBe('This list is already filtered on status')
+  })
+
+  it('opens the gallery and the preview on request (the command palette)', () => {
+    const initial: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }]
+    const props = { entities, validation: validatePages(initial, entities), onChange: () => {}, pushUndo, onClear: () => {} }
+    const { rerender } = render(<PagesEditor pages={initial} {...props} />)
+    expect(document.querySelector('[data-page-gallery]')).toBeNull()
+
+    rerender(<PagesEditor pages={initial} {...props} addRequest={1} />)
+    expect(document.querySelector('[data-page-gallery]')).toBeTruthy()
+
+    // No matchMedia here (jsdom), so the preview opens as the slide-over.
+    rerender(<PagesEditor pages={initial} {...props} addRequest={1} previewRequest={1} />)
+    expect(document.querySelector('[data-preview-drawer]')).toBeTruthy()
+  })
+
+  it('says when a wizard entity switch starts the steps over, with an undo', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[{ id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ title: 'Basics', fields: ['status', 'total', 'placedOn', 'customer'] }] }]} />)
+    const row = openRow('new-order') as HTMLElement
+    fireEvent.change(within(row).getByLabelText('Wizard entity'), { target: { value: 'Customer' } })
+    expect(latest[0].entity).toBe('Customer')
+    expect(latest[0].steps).toEqual([{ fields: ['id', 'name'] }])
+    expect(document.querySelector('[data-pages-notice]')?.textContent).toContain('dropped the step layout setting')
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+  })
+
+  it('always offers page roles — disabled, with a shortcut, when no LDAP auth dependency is selected', () => {
+    const onAddDep = vi.fn()
+    const pages: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }, { id: 'customers', type: 'entity-list', entity: 'Customer' }]
+    render(
+      <PagesEditor
+        pages={pages}
+        entities={entities}
+        validation={validatePages(pages, entities)}
+        onChange={() => {}}
+        pushUndo={pushUndo}
+        onClear={() => {}}
+        ldapAuth={false}
+        onAddDep={onAddDep}
+      />,
+    )
+    const row = openRow('customers') as HTMLElement
+    expect((within(row).getByLabelText('Only ADMIN') as HTMLInputElement).disabled).toBe(true)
+    expect(row.textContent).toContain('Restricting pages needs ldap-auth-rest')
+    fireEvent.click(within(row).getByRole('button', { name: /Add ldap-auth-rest/ }))
+    expect(onAddDep).toHaveBeenCalledWith('ldap-auth-rest')
+  })
+
+  it('leaves the role boxes enabled when the dependency list is unknown', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }, { id: 'customers', type: 'entity-list', entity: 'Customer' }]} />)
+    const row = openRow('customers') as HTMLElement
+    fireEvent.click(within(row).getByLabelText('Only USER'))
+    expect(latest[1].roles).toEqual(['USER'])
+    expect(row.querySelector('[data-add-ldap-auth]')).toBeNull()
+  })
+
+  it('offers the bucket when a report groups over a date by default', () => {
+    const events: FullstackEntityDef[] = [{ name: 'Event', fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'on', type: 'LOCAL_DATE' }] }]
+    render(<Harness initial={[{ id: 'r', type: 'report', entity: 'Event', chart: {} }]} entities={events} />)
+    const row = openRow('r') as HTMLElement
+    fireEvent.change(within(row).getByLabelText('Bucket'), { target: { value: 'year' } })
+    expect(latest[0].chart).toEqual({ bucket: 'year' })
+    expect(validatePages(latest, events).count).toBe(0)
+  })
+
+  it('resets wizard steps and record tabs to the generator defaults', () => {
+    render(<Harness initial={[
+      { id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ fields: ['id', 'status', 'total', 'placedOn', 'customer', 'billTo'] }] },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, childTabs: [] },
+    ]} />)
+    let row = openRow('new-order') as HTMLElement
+    fireEvent.click(within(row).getByRole('button', { name: 'Reset to default steps' }))
+    expect(latest[0].steps).toBeUndefined()
+    expect(within(row).queryByRole('button', { name: 'Reset to default steps' })).toBeNull()
+    row = openRow('customer') as HTMLElement
+    fireEvent.click(within(row).getByRole('button', { name: 'All related lists (default)' }))
+    expect(latest[1].childTabs).toBeUndefined()
+    expect(within(row).queryByRole('button', { name: 'All related lists (default)' })).toBeNull()
+  })
+
+  it('collapses the widgets of a busy dashboard to one line each, and opens the one a problem points at', () => {
+    const widgets: NonNullable<FullstackPageDef['widgets']> = [
+      { kind: 'kpi', entity: 'Order' },
+      { kind: 'bar', entity: 'Order', groupBy: 'status', agg: 'sum', field: 'total' },
+      { kind: 'recent', entity: 'Customer' },
+      { kind: 'kpi', entity: 'Product', title: 'Products' },
+    ]
+    render(<Harness initial={[{ id: 'desk', type: 'dashboard', widgets }]} />)
+    const row = openRow('desk') as HTMLElement
+    expect(row.querySelectorAll('[data-widget-options]')).toHaveLength(0)
+    const summaries = Array.from(row.querySelectorAll('[data-widget-summary]')).map(el => el.textContent)
+    expect(summaries).toEqual([
+      'Number · Order · width 1',
+      'Breakdown · Order by status · sum of total · width 2',
+      'Recent · Customer · width 2',
+      'Number · Product · “Products” · width 1',
+    ])
+    fireEvent.click(within(row).getByRole('button', { name: 'Expand widget 2' }))
+    expect(row.querySelectorAll('[data-widget-options]')).toHaveLength(1)
+    expect(within(row).getByLabelText('Group by')).toBeTruthy()
+    fireEvent.click(within(row).getByRole('button', { name: 'Collapse widget 2' }))
+    fireEvent.click(within(row).getByRole('button', { name: 'Expand all' }))
+    expect(row.querySelectorAll('[data-widget-options]')).toHaveLength(4)
+    fireEvent.click(within(row).getByRole('button', { name: 'Collapse all' }))
+    expect(row.querySelectorAll('[data-widget-options]')).toHaveLength(0)
+    // A problem click opens the card it is about (widget 4 names a missing entity).
+    const problems = within(document.querySelector('[data-page-layout-problems]') as HTMLElement)
+    fireEvent.click(problems.getByRole('button', { name: /widget for “Product”/ }))
+    expect(row.querySelector('[data-widget="3"] [data-widget-options]')).toBeTruthy()
+    expect(row.querySelectorAll('[data-widget-options]')).toHaveLength(1)
+    // A new widget opens expanded; a short dashboard opens every card.
+    fireEvent.click(within(row).getByRole('button', { name: /Add widget/ }))
+    fireEvent.click(within(row).getByRole('button', { name: 'Add number tile' }))
+    expect(row.querySelector('[data-widget="4"] [data-widget-options]')).toBeTruthy()
+  })
+
+  it('applies a one-click fix from the problems list, undoably', () => {
+    pushUndo.mockClear()
+    render(<Harness initial={[
+      { id: 'desk', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'kpi', entity: 'Product' }] },
+      { id: 'c', type: 'master-detail', parent: 'Customer', child: 'Order' },
+    ]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Fix: Remove widget 2' }))
+    expect(latest[0].widgets).toEqual([{ kind: 'kpi', entity: 'Order' }])
+    expect(pushUndo).toHaveBeenCalledWith('Remove widget 2')
+    fireEvent.click(screen.getByRole('button', { name: 'Fix: Link through “customer”' }))
+    expect(latest[1].via).toBe('customer')
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+  })
+
   it('lists a server rejection on the page it names', () => {
     const pages: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }]
     render(
@@ -487,5 +1222,159 @@ describe('PagesEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo: Added a page' }))
     expect(onUndo).toHaveBeenCalled()
     expect((screen.getByRole('button', { name: 'Redo (nothing to redo)' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  describe('collapsible section', () => {
+    /** Like the Harness, plus the caller's "jump to the first error" bump. */
+    function RevealHarness({ initial }: { initial: FullstackPageDef[] }) {
+      const [pages, setPages] = useState(initial)
+      const [reveal, setReveal] = useState(0)
+      return (
+        <>
+          <button type="button" onClick={() => setReveal(n => n + 1)}>Jump to error</button>
+          <PagesEditor
+            pages={pages}
+            entities={entities}
+            validation={validatePages(pages, entities)}
+            onChange={setPages}
+            pushUndo={pushUndo}
+            onClear={() => {}}
+            revealRequest={reveal}
+          />
+        </>
+      )
+    }
+
+    it('folds to its header and a summary, remembers the choice, and shows the problem count while folded', () => {
+      const { unmount } = render(
+        <RevealHarness
+          initial={[
+            { id: 'orders', type: 'entity-list', entity: 'Order' },
+            { id: 'order', type: 'record', entity: 'Order', hidden: true },
+            { id: 'customer', type: 'master-detail', parent: 'Customer', child: 'Order' }, // ambiguous relation → a problem
+          ]}
+        />,
+      )
+      expect(document.getElementById('fs-pages-body')).toBeTruthy()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse frontend pages' }))
+      expect(document.getElementById('fs-pages-body')).toBeNull()
+      expect(screen.queryByRole('button', { name: /Add page/ })).toBeNull()
+      expect(document.querySelector('[data-pages-summary]')?.textContent).toContain('1 off the navigation')
+      expect(screen.getByRole('status').textContent).toContain('1 problem here')
+      expect(localStorage.getItem('fullstack:pagesSection')).toBe('closed')
+
+      // The choice survives a remount.
+      unmount()
+      render(<RevealHarness initial={[{ id: 'orders', type: 'entity-list', entity: 'Order' }]} />)
+      expect(document.getElementById('fs-pages-body')).toBeNull()
+      expect(document.querySelector('[data-pages-summary]')?.textContent).not.toContain('off the navigation')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Expand frontend pages' }))
+      expect(document.getElementById('fs-pages-body')).toBeTruthy()
+      expect(localStorage.getItem('fullstack:pagesSection')).toBe('open')
+    })
+
+    it('summarizes the classic layout when there are no pages', () => {
+      render(<Harness initial={[]} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse frontend pages' }))
+      expect(document.querySelector('[data-pages-summary]')?.textContent).toContain('Classic layout')
+      expect(screen.queryByRole('button', { name: /Start from my entities/ })).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Expand frontend pages' }))
+      expect(screen.getByRole('button', { name: /Start from my entities/ })).toBeTruthy()
+    })
+
+    it('opens itself again when the caller jumps to a page problem', () => {
+      render(
+        <RevealHarness initial={[{ id: 'customer', type: 'master-detail', parent: 'Customer', child: 'Order' }]} />,
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse frontend pages' }))
+      expect(document.getElementById('fs-pages-body')).toBeNull()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Jump to error' }))
+      expect(document.getElementById('fs-pages-body')).toBeTruthy()
+      // The page with the problem is open, not just the section.
+      expect(screen.getByLabelText('Relation to link through')).toBeTruthy()
+    })
+  })
+  it('rings the previewed part while its editor control is hovered or focused', () => {
+    localStorage.setItem('fullstack:layoutPreview', 'open') // an earlier test hid it
+    render(<Harness initial={[
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'bar', entity: 'Order' }] },
+      { id: 'customer', type: 'record', entity: 'Customer', headerStats: [{ child: 'Order' }] },
+    ]} />)
+    const preview = document.querySelector('[data-layout-preview]') as HTMLElement
+    const lit = () => [...preview.querySelectorAll('[data-preview-highlight]')]
+    expect(lit()).toHaveLength(0)
+
+    const home = openRow('home') as HTMLElement
+    const list = home.parentElement!
+    fireEvent.mouseOver(home.querySelector('[data-widget="1"]')!)
+    expect(lit()).toHaveLength(1)
+    expect(lit()[0].querySelector('[data-preview-widget="1"]')).toBeTruthy()
+    // Any control on the page maps onto a drawn part — the title field onto the heading.
+    const title = within(home).getByLabelText('Page title')
+    fireEvent.mouseOver(title)
+    expect(lit().map(el => el.querySelector(':scope > button')?.getAttribute('aria-label'))).toEqual(['Edit the page title'])
+    // The row itself, outside any control, is the page: its nav entry.
+    fireEvent.mouseOver(home.querySelector('button[aria-expanded]')!)
+    expect(lit().map(el => el.getAttribute('data-preview-nav'))).toEqual(['0'])
+    fireEvent.mouseLeave(list)
+    expect(lit()).toHaveLength(0)
+
+    // Keyboard focus lights a part too, and the mouse passing over does not lose it.
+    title.focus()
+    fireEvent.focus(title)
+    expect(lit().map(el => el.querySelector(':scope > button')?.getAttribute('aria-label'))).toEqual(['Edit the page title'])
+    fireEvent.mouseOver(home.querySelector('[data-widget="0"]')!)
+    expect(lit()[0].querySelector('[data-preview-widget="0"]')).toBeTruthy()
+    fireEvent.mouseLeave(list)
+    expect(lit().map(el => el.querySelector(':scope > button')?.getAttribute('aria-label'))).toEqual(['Edit the page title'])
+    title.blur()
+    fireEvent.blur(title)
+    expect(lit()).toHaveLength(0)
+
+    // A record's tile row: the editor keys one tile, the preview draws the tiles as one part.
+    const record = openRow('customer')
+    fireEvent.mouseOver(record.querySelector('[data-header-stat="0"]')!)
+    expect(lit()).toHaveLength(1)
+    expect(lit()[0].querySelector('[data-preview-stats]')).toBeTruthy()
+  })
+
+  it('lists warnings apart from problems, marks the page and the preview, and applies their fix', () => {
+    render(<Harness initial={[{ id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'bar', entity: 'Order' }] }]} />)
+    expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
+    const warnings = document.querySelector('[data-page-layout-warnings]')!
+    expect(warnings.textContent).toContain('clicking a bar of the Order chart goes nowhere')
+    expect(document.querySelector('[data-page-warnings]')?.textContent).toBe('1 warning')
+    expect(document.querySelector('[data-preview-nav="0"] [data-preview-warning]')).toBeTruthy()
+
+    fireEvent.click(within(warnings as HTMLElement).getByRole('button', { name: /Fix: Add a Orders list page/ }))
+    expect(pushUndo).toHaveBeenCalledWith('Add a Orders list page')
+    expect(latest.map(p => p.id)).toEqual(['home', 'orders'])
+    expect(document.querySelector('[data-page-layout-warnings]')).toBeNull()
+    expect(document.querySelector('[data-preview-warning]')).toBeNull()
+  })
+
+  it('makes a page the start page by moving it first, and keeps the start page open to everyone', () => {
+    render(<Harness initial={[
+      { id: 'orders', type: 'entity-list', entity: 'Order', title: 'Orders' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', title: 'Customers' },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true },
+    ]} />)
+    // The start page has no such button; a record page never does.
+    expect(screen.queryByRole('button', { name: 'Make Orders the start page' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: /the start page$/ })).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Make Customers the start page' }))
+    expect(pushUndo).toHaveBeenCalledWith('Made “Customers” the start page')
+    expect(latest.map(p => p.id)).toEqual(['customers', 'orders', 'customer'])
+    expect(screen.getByRole('button', { name: 'Make Orders the start page' })).toBeTruthy()
+
+    openRow('customers')
+    expect((screen.getByLabelText('Only ADMIN') as HTMLInputElement).disabled).toBe(true)
+    expect(screen.getByText('The start page is open to everyone — make another page the start page to restrict this one')).toBeTruthy()
+    openRow('orders')
+    expect((screen.getByLabelText('Only ADMIN') as HTMLInputElement).disabled).toBe(false)
   })
 })

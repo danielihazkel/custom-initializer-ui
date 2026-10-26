@@ -33,6 +33,7 @@ export const SCAFFOLD_OPTIONS: ScaffoldOption[] = [
   { value: 'openapi', label: 'OpenAPI annotations', hint: 'springdoc @Tag/@Operation on every controller; adds the openapi starter', perEntity: false },
   { value: 'secured', label: 'Permission hints', hint: 'Commented @RequiresPermission per endpoint; needs ldap-auth or ldap-auth-rest selected', perEntity: false, requiresAnyDep: ['ldap-auth', 'ldap-auth-rest'] },
   { value: 'csvExport', label: 'CSV export', hint: 'GET /export.csv (streamed, honors search/filters/sort) + Export button', entityHint: 'GET /export.csv + Export button', perEntity: true },
+  { value: 'csvImport', label: 'CSV import', hint: 'POST /import (every row checked, all saved or none) + Import button with column matching', entityHint: 'POST /import + Import button', perEntity: true },
   { value: 'bulkDelete', label: 'Bulk delete', hint: 'Select rows, DELETE /bulk across all', entityHint: 'row selection + DELETE /bulk', perEntity: true },
   { value: 'bulkUpdate', label: 'Bulk edit', hint: 'Select rows, set one field, PATCH /bulk across all', entityHint: 'row selection + PATCH /bulk', perEntity: true },
   { value: 'seedData', label: 'Demo data', hint: 'Seeds 8 rows per entity on first start (parents before children); off via app.demo-data.enabled=false', perEntity: false },

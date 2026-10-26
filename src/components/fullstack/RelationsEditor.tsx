@@ -4,7 +4,7 @@ import type { RelationErrors } from './validation'
 import { newUid } from './uid'
 import { focusRowWhenRendered } from './focus'
 import { moveItem } from './reorder'
-import { pluralize, toCamelCase, uniqueName } from './naming'
+import { pluralize, toCamelCase, toSnakeCase, uniqueName } from './naming'
 import { dropIndicatorClass, useDragReorder } from './useDragReorder'
 
 interface Props {
@@ -68,6 +68,7 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
       ...src,
       uid: newUid(),
       fieldName: src.fieldName.trim() ? uniqueName(`${src.fieldName.trim()}Copy`, taken) : '',
+      joinColumn: undefined,
     }
     onChange([...relations.slice(0, idx + 1), copy, ...relations.slice(idx + 1)])
     focusRowWhenRendered(copy.uid)
@@ -166,6 +167,17 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
                       placeholder="customer"
                     />
                     {rErr?.fieldName && <p className="mt-0.5 text-[11px] text-error">{rErr.fieldName}</p>}
+                    <input
+                      type="text"
+                      aria-label="Join column"
+                      aria-invalid={Boolean(rErr?.joinColumn)}
+                      className={`mt-1 w-full bg-background border rounded px-2 py-0.5 text-[11px] font-mono focus:ring-1 outline-none ${rErr?.joinColumn ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant/60 focus:ring-primary/20 focus:border-primary'}`}
+                      value={rel.joinColumn ?? ''}
+                      onChange={e => update(rIdx, { joinColumn: e.target.value || undefined })}
+                      placeholder={rel.fieldName.trim() ? `${toSnakeCase(rel.fieldName.trim())}_id` : 'join column'}
+                      title="The foreign-key column, exactly as the schema spells it. Leave blank for <field>_id. Filled in by Import from DDL."
+                    />
+                    {rErr?.joinColumn && <p className="mt-0.5 text-[11px] text-error">{rErr.joinColumn}</p>}
                   </td>
                   <td className="py-1.5 px-2 align-top">
                     <select

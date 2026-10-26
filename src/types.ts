@@ -358,13 +358,17 @@ export interface FullstackFieldDef {
    *  initializer, the generated form's starting value and the demo-data seed. Not allowed on a
    *  generated primary key. */
   defaultValue?: string
+  /** Database column as the schema spells it (`FRF_QOD_MISHLOAH_FUTURE_USE_8`). Set by the DDL
+   *  import, because the camelCase field name can't be turned back into it (`USE_8` and `USE8`
+   *  both become `use8`). Omitted = the snake_case of the name. Not used on a SELECT view. */
+  column?: string
 }
 
 /** Per-entity override of a project-wide scaffold opt (true = force on, false = force off;
  *  absent = inherit). Keys: audit, softDelete, csvExport, bulkDelete, bulkUpdate, tests. */
 export type FullstackEntityOpts = Partial<Record<FullstackEntityOptKey, boolean>>
-export type FullstackEntityOptKey = 'audit' | 'softDelete' | 'csvExport' | 'bulkDelete' | 'bulkUpdate' | 'tests'
-export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests']
+export type FullstackEntityOptKey = 'audit' | 'softDelete' | 'csvExport' | 'bulkDelete' | 'bulkUpdate' | 'tests' | 'csvImport'
+export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests', 'csvImport']
 
 // v1 supports the FK-owning side only (MANY_TO_ONE); the inverse @OneToMany is auto-derived
 // server-side via the inverseCollections opt.
@@ -377,6 +381,9 @@ export interface FullstackRelationDef {
   fieldName: string
   targetEntity: string
   required?: boolean
+  /** Foreign-key column as the schema spells it (set by the DDL import). Omitted =
+   *  `<snake fieldName>_id`. */
+  joinColumn?: string
 }
 
 export interface FullstackEntityDef {
@@ -400,10 +407,10 @@ export interface FullstackEntityDef {
    *  calendar, ordered; first = initial). A runtime toggle is emitted only when 2+ are enabled,
    *  and unsupported modes are dropped (kanban needs an ENUM/BOOLEAN field + a writable entity;
    *  calendar needs a LOCAL_DATE/LOCAL_DATE_TIME field). Empty/absent defaults to ['table']. */
-  listViews?: Array<'table' | 'cards' | 'kanban' | 'calendar'>
+  listViews?: FullstackListView[]
   /** @deprecated Legacy single initial view — still read for back-compat when {@link listViews}
    *  is absent. New code should write {@link listViews}. */
-  listView?: 'table' | 'cards' | 'kanban' | 'calendar'
+  listView?: FullstackListView
   /** Raw SELECT this entity maps to via Hibernate @Immutable/@Subselect. Implies readOnly. */
   viewQuery?: string
   /** Originating CREATE TABLE this entity was imported from. Informational only —
@@ -411,6 +418,15 @@ export interface FullstackEntityDef {
   sourceSql?: string
   /** Per-entity overrides of the project-wide `opts.scaffold` flags (see {@link FullstackEntityOpts}). */
   opts?: FullstackEntityOpts
+  /** The form in titled sections (the drawer form, the record's details, and a wizard without
+   *  its own steps follow them); fields no section lists come after, untitled. */
+  formSections?: FullstackFormSection[]
+}
+
+/** A titled group of an entity's form: field and MANY_TO_ONE relation names, in order. */
+export interface FullstackFormSection {
+  title: string
+  fields: string[]
 }
 
 /** A fullstack model saved on the server for the whole team (`/metadata/fullstack/models`).
@@ -456,6 +472,8 @@ export interface FullstackStarterRequest {
   dashboardOverview?: string
   /** Language of the generated frontend's own chrome strings; omitted = English. */
   locale?: 'en' | 'he'
+  /** The shell's navigation for a page layout (needs `pages`). */
+  nav?: FullstackNav
   /** Department id exposed to both halves' templates as {{department}}; omitted = the default. */
   department?: string
   /** Opt-in scaffolding extras, e.g. { scaffold: ["audit","softDelete","inverseCollections","tests"] }. */
@@ -505,12 +523,16 @@ export interface ExampleModel {
 
 /** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
 export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record' | 'report' | 'wizard'
+  | 'calendar' | 'board' | 'content' | 'import' | 'search'
+
+/** The views a calendar page offers (FullstackPageValidator.calendar). */
+export type FullstackCalendarMode = 'month' | 'week' | 'agenda' | 'timeline'
 
 /** The lucide icons a page may show in the generated nav (FullstackPageValidator.NAV_ICONS). */
 export type FullstackNavIcon =
-  | 'BarChart3' | 'Building2' | 'Calendar' | 'FileText' | 'Inbox' | 'Layers' | 'LayoutDashboard' | 'ListChecks'
-  | 'Package' | 'PanelLeft' | 'Settings' | 'ShoppingCart' | 'Star' | 'Table2' | 'Tag' | 'Ticket' | 'Truck' | 'Users'
-  | 'Wallet' | 'Wand2'
+  | 'BarChart3' | 'Building2' | 'Calendar' | 'Columns3' | 'FileText' | 'Inbox' | 'Layers' | 'LayoutDashboard'
+  | 'ListChecks' | 'Package' | 'PanelLeft' | 'Search' | 'Settings' | 'ShoppingCart' | 'Star' | 'Table2' | 'Tag'
+  | 'Ticket' | 'Truck' | 'Upload' | 'Users' | 'Wallet' | 'Wand2'
 
 /** How a tile or chart reduces the rows it covers. Anything but `count` needs a numeric field. */
 export type FullstackAgg = 'count' | 'sum' | 'avg' | 'min' | 'max'
@@ -521,11 +543,20 @@ export type FullstackBucket = 'day' | 'month' | 'year'
 /** The periods a dashboard's picker offers, each ending today. */
 export type FullstackDateRange = 'all' | '7d' | '30d' | '90d' | 'ytd' | '12m'
 
+/** The list views a generated entity page can offer (see {@link FullstackEntityDef.listViews}). */
+export type FullstackListView = 'table' | 'cards' | 'kanban' | 'calendar'
+
+/** How an entity-list page opens sorted: a sortable column, ascending unless `dir` is `desc`. */
+export interface FullstackListSort {
+  field: string
+  dir?: 'asc' | 'desc'
+}
+
 /** A dashboard widget: one number, a breakdown by an enum/boolean field, a time series over a
  *  date field, the latest rows, the largest groups ranked, or one number against a target. */
 export interface FullstackWidgetDef {
-  kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'line' | 'recent' | 'top' | 'progress' | 'text'
-  /** The entity the widget reads — empty for a text widget. */
+  kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'line' | 'recent' | 'top' | 'progress' | 'text' | 'links' | 'list'
+  /** The entity the widget reads — empty for a text or links widget. */
   entity: string
   title?: string
   /** bar: the enum/boolean field; line: the date field. Defaults to the entity's first of that kind. */
@@ -536,11 +567,11 @@ export interface FullstackWidgetDef {
   agg?: FullstackAgg
   /** The numeric field `agg` reduces — required unless agg is count, and forbidden when it is. */
   field?: string
-  /** recent: how many rows (1–20, default 5). */
+  /** recent/top: how many rows (1–20, default 5); list: its page size, 10 or 20 (default 10). */
   limit?: number
   /** Dashboard grid columns (1–4); default 1 for a tile, 2 for a chart or list. */
   span?: number
-  /** Enum/boolean field → value the widget is limited to. */
+  /** Field → value the widget is limited to (as a page's presetFilter: a constant, a period or a range). */
   presetFilter?: Record<string, string>
   /** recent: the column it orders by, newest first (default: the primary key). */
   sortBy?: string
@@ -554,6 +585,13 @@ export interface FullstackWidgetDef {
   series?: string
   /** text: the note itself; a blank line starts a new paragraph. */
   text?: string
+  /** links: the ids of the pages its tiles open (1–8; never a record page, nor a hidden page
+   *  that is not a wizard). */
+  pages?: string[]
+  /** list: the columns it shows, in order (as on a list page; omitted: every column). */
+  columns?: string[]
+  /** list: the column it opens sorted by. */
+  sort?: FullstackListSort
 }
 
 /** A report page's single chart: bars when `groupBy` is an enum/boolean, a line when it is a date. */
@@ -562,6 +600,8 @@ export interface FullstackChartDef {
   bucket?: FullstackBucket
   agg?: FullstackAgg
   field?: string
+  /** The grouped totals table under the chart. Absent: under a report's first chart only. */
+  table?: boolean
 }
 
 /** The generated security's logical roles (its Constants). */
@@ -569,12 +609,24 @@ export type FullstackPageRole = 'ADMIN' | 'USER'
 
 /** A record page's related-list tab: the entity, or `{ entity, via }` to pick which of its
  *  relations to the record entity links them (default: the first). */
-export type FullstackChildTabDef = string | { entity: string; via?: string }
+export type FullstackChildTabDef = string | {
+  entity: string
+  via?: string
+  /** How the related list opens: its columns, in order, and its sort (as a list page's). */
+  columns?: string[]
+  sort?: FullstackListSort
+}
+
+/** Where an entity-list page opens a row. */
+export type FullstackListDetail = 'drawer' | 'side' | 'record'
 
 /** One page of the generated frontend (the `pages` of a fullstack request). */
 export interface FullstackPageDef {
   /** Lower-case slug: the nav id and the screen's file name (`tickets-open` → TicketsOpenScreen). */
   id: string
+  /** Editor only: the id was typed by hand and no longer follows the title. Stripped from every
+   *  request by `requestPages` (the server would ignore it, but a request carries only its API). */
+  idLocked?: boolean
   type: FullstackPageType
   /** Nav label; required for tabs, else defaults to the entity's plural label / "Dashboard". */
   title?: string
@@ -589,12 +641,29 @@ export interface FullstackPageDef {
   icon?: FullstackNavIcon
   /** entity-list */
   entity?: string
-  /** entity-list: enum/boolean field → value the page opens filtered on. */
+  /** entity-list / report: field → value the page opens filtered on. An enum constant or
+   *  `true`/`false`; on a date field a period (`last:7d`, `last:30d`, `last:90d`, `ytd`, `12m`) or
+   *  a range `2026-01-01..2026-03-31`; on a number field a range `100..500` (either side optional). */
   presetFilter?: Record<string, string>
+  /** entity-list: the columns the list shows, by key, in this order — field names, relation field
+   *  names and, with the audit option, `createdAt`/`updatedAt`. Omitted: every column. */
+  columns?: string[]
+  /** entity-list: the column the list opens sorted by (default: the primary key). */
+  sort?: FullstackListSort
+  /** entity-list: the view the list opens in — one the entity actually offers (default: its first). */
+  view?: FullstackListView
+  /** entity-list: rows per page it opens with — 10, 20, 50 or 100 (default 20). */
+  pageSize?: number
+  /** entity-list: where a row opens — the quick-look drawer, a pane beside the rows (the open row
+   *  in the route) or the entity's record page. Default: the record page when there is one, else the drawer. */
+  detail?: FullstackListDetail
   /** dashboard */
   widgets?: FullstackWidgetDef[]
   /** dashboard: a period picker over the widgets' dates, opening on this period. */
   dateRange?: FullstackDateRange
+  /** dashboard: reload the widgets every so many seconds while the page is open (30, 60, 300 or
+   *  900). Absent: only the generated Refresh button reloads them. */
+  refreshSeconds?: number
   /** tabs: 2–6 other pages (never a tabs or record page). */
   tabs?: { title?: string; page: string }[]
   /** master-detail: the entity listed on the left. Needs a single primary key. */
@@ -604,6 +673,9 @@ export interface FullstackPageDef {
   /** master-detail: the child's MANY_TO_ONE field pointing at the parent. Optional while the
    *  child has exactly one such relation; required when it has several. */
   via?: string
+  /** master-detail: show the selected parent's own details (and Edit, for a writable parent)
+   *  above its rows. New pages start with it on; absent generates without the card. */
+  showParent?: boolean
   /** record: the related entities shown as tabs under the record. Omitted = every entity with a
    *  MANY_TO_ONE to it; an empty array = none. */
   childTabs?: FullstackChildTabDef[]
@@ -618,6 +690,30 @@ export interface FullstackPageDef {
   /** record: number tiles over its related lists (default: one row count per related tab;
    *  an empty array: none). */
   headerStats?: { child: string; agg?: FullstackAgg; field?: string; title?: string; via?: string }[]
+  /** calendar: the date field rows are placed by (default: the entity's first filterable date). */
+  dateField?: string
+  /** calendar: the date a row ends on (needed by the timeline); absent: rows are one day long. */
+  endField?: string
+  /** calendar: the views it offers, the first one opening (default: month). */
+  modes?: FullstackCalendarMode[]
+  /** board: the enum/boolean field the lanes split by (default: the first). */
+  laneField?: string
+  /** board: the lanes, in order (default: every value of the lane field). */
+  lanes?: string[]
+  /** board: what a card shows — 1–4 field or relation names, the first as its heading. */
+  cardFields?: string[]
+  /** board: lane value → the most cards it should hold. */
+  wipLimits?: Record<string, number>
+  /** board: the cards a lane loads at a time — 10, 20 or 50 (default 20). */
+  laneSize?: number
+  /** content: the page's text, in a small Markdown subset (see contentMarkdown.ts). */
+  body?: string
+  /** search: the entities searched (default: every entity with text to search, up to 8). */
+  entities?: string[]
+  /** search: the matches shown per entity — 3 to 10 (default 5). */
+  perEntity?: number
+  /** search: put a search box in the app's header that opens this page. */
+  shellSearch?: boolean
 }
 
 /** The editor state an example sets on load — FullstackExampleAdminController.validateSettings. */
@@ -629,6 +725,14 @@ export interface ExampleSettings {
   frontendTemplateSet?: string
   colorPalette?: string
   scaffold?: string[]
+  nav?: FullstackNav
+}
+
+/** The generated shell's navigation, for a page layout: a sidebar (default) or a top bar, and
+ *  whether nav sections fold. The Menora set is a top bar already and ignores it. */
+export interface FullstackNav {
+  style?: 'sidebar' | 'topbar'
+  collapsibleGroups?: boolean
 }
 
 export interface AdminColorPalette {

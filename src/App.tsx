@@ -33,6 +33,8 @@ import { triggerDownload, captureSnapshot, validateForm } from './utils/projectU
 import type { Toast } from './types'
 
 export default function App() {
+  // The guide topic another tab asked to open (the page editor's help button).
+  const [guideTopic, setGuideTopic] = useState<{ id: string; n: number } | undefined>(undefined)
   const [view, setView] = useState<'initializr' | 'tutorial' | 'admin' | 'guide' | 'frontend' | 'fullstack'>(() => {
     const tab = new URLSearchParams(window.location.search).get('tab')
     if (tab === 'frontend') return 'frontend'
@@ -484,7 +486,7 @@ export default function App() {
         ) : view === 'fullstack' ? (
           <div className="relative z-10 animate-fade-in-up">
             <Suspense fallback={<ViewSkeleton />}>
-              <FullstackView />
+              <FullstackView onOpenGuide={id => { setGuideTopic(prev => ({ id, n: (prev?.n ?? 0) + 1 })); setView('guide') }} />
             </Suspense>
           </div>
         ) : view === 'tutorial' ? (
@@ -496,7 +498,7 @@ export default function App() {
         ) : view === 'guide' ? (
           <div className="relative z-10 animate-fade-in-up">
             <Suspense fallback={<ViewSkeleton />}>
-              <GuideView onClose={() => setView('initializr')} />
+              <GuideView onClose={() => setView('initializr')} initialTopic={guideTopic} />
             </Suspense>
           </div>
         ) : view === 'admin' ? (

@@ -12,9 +12,10 @@ import { moveItem } from './reorder'
 import { entityOptApplicability, summarizeEntity } from './summary'
 import { QuickAddFields } from './QuickAddFields'
 import { dropIndicatorClass, useDragReorder } from './useDragReorder'
-import { uniqueName } from './naming'
+import { toSnakeCase, uniqueName } from './naming'
 import { FieldChips } from './FieldChips'
 import { EntitySettingsPanel, settingsSummary } from './EntitySettingsPanel'
+import { syncFormSections } from './formSections'
 import { EntityUiPreview } from './EntityUiPreview'
 import { EntityCodePanel } from './EntityCodePanel'
 import type { EntityCodeFile } from './entityCode'
@@ -115,9 +116,15 @@ const ICON_BTN = 'p-1.5 rounded text-secondary hover:text-primary hover:bg-prima
 const SMALL_ICON_BTN = 'p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
 
 export function EntitiesEditor({
-  entities, onChange, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [], onNotice,
+  entities, onChange: onChangeRaw, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [], onNotice,
   onRowAdded, lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx, onGoToOptions, onCodeFiles, codeState,
 }: Props) {
+  // Every edit keeps the entity's form sections in step: a renamed field or relation is renamed
+  // there, a removed one dropped.
+  const onChange = (next: FullstackEntityDef[]) => onChangeRaw(next.map(e => {
+    const before = e.uid ? entities.find(x => x.uid === e.uid) : undefined
+    return before && before !== e ? syncFormSections(before, e) : e
+  }))
   // The latest list for the Undo closures on removal toasts: they fire after later edits, and must
   // re-insert into the list as it is *then*, not as it was when the row went.
   const entitiesRef = useRef(entities)
@@ -327,6 +334,7 @@ export function EntitiesEditor({
         ...src,
         uid: newUid(),
         name: src.name.trim() ? uniqueName(`${src.name.trim()}Copy`, taken) : '',
+        column: undefined,
         enumValues: src.enumValues ? [...src.enumValues] : undefined,
         enumLabels: src.enumLabels ? { ...src.enumLabels } : undefined,
       }
@@ -414,7 +422,7 @@ export function EntitiesEditor({
         const cardDrop = dnd.indicatorFor('entities', eIdx)
         const settingsChips = settingsSummary(entity)
         // A problem inside Settings (blank query, generated PK / relations on a view) forces it open.
-        const settingsForced = Boolean(eErr?.viewQuery)
+        const settingsForced = Boolean(eErr?.viewQuery || eErr?.formSections)
         const settingsOpen = settingsForced || (panelFor?.key === entityKey && panelFor.kind === 'settings')
         const overridesOpen = panelFor?.key === entityKey && panelFor.kind === 'overrides'
         const previewOpen = panelFor?.key === entityKey && panelFor.kind === 'preview'
@@ -947,6 +955,7 @@ export function EntitiesEditor({
                           isTextSearch={isTextSearch}
                           isFilterableType={isFilterableType}
                           showLabel={compact}
+                          showColumn={!isView}
                           onUpdate={updates => updateField(eIdx, fIdx, updates)}
                         />
                       </td>
@@ -1057,7 +1066,7 @@ export function EntitiesEditor({
  *  email, numeric → min/max, ENUM → values), the default value, and the behaviour flags that used
  *  to be table columns (lock after create, search / filter inclusion; plus the display label in
  *  compact density). Only controls that apply to the field are shown. */
-function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilterableType, showLabel, onUpdate }: {
+function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilterableType, showLabel, showColumn, onUpdate }: {
   field: FullstackFieldDef
   fErr?: FieldErrors
   isString: boolean
@@ -1065,6 +1074,8 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
   isTextSearch: boolean
   isFilterableType: boolean
   showLabel: boolean
+  /** Table-backed entities only — a SELECT view maps fields by their names. */
+  showColumn: boolean
   onUpdate: (updates: Partial<FullstackFieldDef>) => void
 }) {
   const inputClass = (error?: string) =>
@@ -1085,6 +1096,20 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
             onChange={e => onUpdate({ label: e.target.value || undefined })}
             placeholder={field.name || 'label'}
             title="Display label for the generated UI. Leave blank to derive from the field name."
+          />
+        </ConstraintBox>
+      )}
+      {showColumn && (
+        <ConstraintBox label="DB column" error={fErr?.column}>
+          <input
+            type="text"
+            aria-label="DB column"
+            aria-invalid={Boolean(fErr?.column)}
+            className={`${inputClass(fErr?.column)} font-mono`}
+            value={field.column ?? ''}
+            onChange={e => onUpdate({ column: e.target.value || undefined })}
+            placeholder={toSnakeCase(field.name.trim()) || 'column'}
+            title="The database column, exactly as the schema spells it. Leave blank to derive it from the field name. Filled in by Import from DDL."
           />
         </ConstraintBox>
       )}

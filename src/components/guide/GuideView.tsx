@@ -11,6 +11,9 @@ import { parseMarkdown } from './guide-markdown'
 
 interface GuideViewProps {
   onClose?: () => void
+  /** A topic to open on (a deep link from another tab, e.g. the page editor's help button);
+   *  `n` changes on every request so the same topic can be asked for twice. */
+  initialTopic?: { id: string; n: number }
 }
 
 // The Hebrew guide (~195 KB of text) is loaded on demand the first time the user switches.
@@ -78,7 +81,7 @@ const renderContent = (content: string, isRtl: boolean) => {
   })
 }
 
-export function GuideView(_props: GuideViewProps) {
+export function GuideView({ initialTopic }: GuideViewProps) {
   // Only 'he' is validated — any other persisted value would make `UI_STRINGS[lang]`
   // undefined and crash the view.
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('guide-lang') === 'he' ? 'he' : 'en'))
@@ -110,6 +113,19 @@ export function GuideView(_props: GuideViewProps) {
     else loadGuide(lang).then(loaded => { guideCache.set(lang, loaded); apply(loaded) }).catch(() => { /* keep the current sections */ })
     return () => { cancelled = true }
   }, [lang])
+
+  // A deep link: open its topic once the sections for the language are in.
+  useEffect(() => {
+    if (!initialTopic) return
+    for (const section of sections) {
+      const topic = section.topics.find(t => t.id === initialTopic.id)
+      if (topic) {
+        setActiveSection(section)
+        setActiveTopic(topic)
+        return
+      }
+    }
+  }, [initialTopic, sections])
 
   useEffect(() => {
     const el = containerRef.current

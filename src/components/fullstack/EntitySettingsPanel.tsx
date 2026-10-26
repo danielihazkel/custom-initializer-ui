@@ -1,6 +1,8 @@
-import type { FullstackEntityDef } from '../../types'
+import type { FullstackEntityDef, FullstackFormSection } from '../../types'
 import type { EntityErrors } from './validation'
 import { Labeled, inputClass } from './controls'
+import { askableFields } from './pageLayout'
+import { MAX_FORM_SECTIONS } from './formSections'
 
 interface Props {
   entity: FullstackEntityDef
@@ -19,6 +21,8 @@ export function settingsSummary(entity: FullstackEntityDef): string[] {
   if (table) parts.push(table)
   if (entity.readOnly && entity.viewQuery == null) parts.push('read-only')
   if (entity.viewQuery != null) parts.push(entity.viewQuery.trim() ? 'SELECT view' : 'SELECT view (query missing)')
+  const sections = entity.formSections?.length ?? 0
+  if (sections) parts.push(`${sections} form section${sections === 1 ? '' : 's'}`)
   return parts
 }
 
@@ -52,6 +56,8 @@ export function EntitySettingsPanel({ entity, errors, onUpdate, onTickView }: Pr
                  onChange={e => onUpdate({ tableName: e.target.value || undefined })} />
         </Labeled>
       </div>
+
+      <FormSectionsEditor entity={entity} error={errors?.formSections} onChange={formSections => onUpdate({ formSections })} />
 
       <label
         className="flex items-start gap-2 text-xs text-on-surface cursor-pointer"
@@ -122,6 +128,98 @@ export function EntitySettingsPanel({ entity, errors, onUpdate, onTickView }: Pr
           />
         </details>
       )}
+    </div>
+  )
+}
+
+/**
+ * The form in titled sections: each lists some of the entity's fields and relations (a chip per
+ * name, on in at most one section). The drawer form, the record's details and a wizard without
+ * steps of its own follow them; what no section lists comes after, untitled.
+ */
+function FormSectionsEditor({ entity, error, onChange }: {
+  entity: FullstackEntityDef
+  error?: string
+  onChange: (sections: FullstackFormSection[] | undefined) => void
+}) {
+  const sections = entity.formSections ?? []
+  const names = askableFields(entity).map(a => a.name)
+  const owner = (name: string) => sections.findIndex(s => s.fields.includes(name))
+  const set = (next: FullstackFormSection[]) => onChange(next.length ? next : undefined)
+  const patch = (i: number, p: Partial<FullstackFormSection>) => set(sections.map((s, j) => (j === i ? { ...s, ...p } : s)))
+  const unplaced = names.filter(n => owner(n) < 0)
+  return (
+    <div className="space-y-2" data-form-sections>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
+          Form sections <span className="font-normal normal-case tracking-normal">· group the form, the details and the wizard's steps</span>
+        </p>
+        <button
+          type="button"
+          disabled={sections.length >= MAX_FORM_SECTIONS || names.length === 0}
+          onClick={() => set([...sections, { title: `Section ${sections.length + 1}`, fields: unplaced.slice(0, 4) }])}
+          className="inline-flex items-center gap-1 rounded-md border border-outline-variant px-2 py-0.5 text-[11px] font-semibold text-secondary hover:border-primary/50 hover:text-primary disabled:opacity-40"
+          title={sections.length >= MAX_FORM_SECTIONS ? `At most ${MAX_FORM_SECTIONS} sections` : 'Add a titled section'}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">add</span>
+          Add section
+        </button>
+      </div>
+      {sections.length === 0 && (
+        <p className="text-[11px] text-secondary">None — the form is one list of fields, in their order.</p>
+      )}
+      {sections.map((section, i) => (
+        <div key={i} className="space-y-1.5 rounded-md border border-outline-variant px-2 py-1.5" data-form-section={i}>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              aria-label={`Title of form section ${i + 1}`}
+              value={section.title}
+              onChange={e => patch(i, { title: e.target.value })}
+              className={`${inputClass(!section.title.trim() ? 'x' : undefined)} max-w-[16rem] py-1 text-xs`}
+            />
+            <span className="flex-1" />
+            <button type="button" disabled={i === 0} onClick={() => set(sections.map((s, j) => (j === i - 1 ? sections[i] : j === i ? sections[i - 1] : s)))}
+              className="rounded p-0.5 text-secondary hover:text-primary disabled:opacity-30" aria-label={`Move form section ${i + 1} up`}>
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">arrow_upward</span>
+            </button>
+            <button type="button" disabled={i === sections.length - 1} onClick={() => set(sections.map((s, j) => (j === i + 1 ? sections[i] : j === i ? sections[i + 1] : s)))}
+              className="rounded p-0.5 text-secondary hover:text-primary disabled:opacity-30" aria-label={`Move form section ${i + 1} down`}>
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">arrow_downward</span>
+            </button>
+            <button type="button" onClick={() => set(sections.filter((_, j) => j !== i))}
+              className="rounded p-0.5 text-secondary hover:text-error" aria-label={`Remove form section ${i + 1}`}>
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">close</span>
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {names.map(name => {
+              const at = owner(name)
+              const on = at === i
+              const elsewhere = at >= 0 && at !== i
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  aria-label={`${name} in form section ${i + 1}`}
+                  disabled={elsewhere}
+                  title={elsewhere ? `In “${sections[at].title}”` : on ? 'In this section — click to take it out' : 'Click to put it in this section'}
+                  onClick={() => patch(i, { fields: on ? section.fields.filter(f => f !== name) : [...section.fields, name] })}
+                  className={`rounded-full px-2 py-0.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-40 ${on ? 'bg-primary/10 text-primary' : 'border border-dashed border-outline-variant text-secondary hover:text-primary'}`}
+                >
+                  {name}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+      {sections.length > 0 && unplaced.length > 0 && (
+        <p className="text-[11px] text-secondary" data-form-sections-rest>Not in a section (shown after them): {unplaced.join(', ')}</p>
+      )}
+      {error && <p className="text-[11px] text-error">{error}</p>}
     </div>
   )
 }

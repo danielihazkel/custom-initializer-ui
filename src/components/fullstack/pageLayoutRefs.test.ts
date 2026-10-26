@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import type { FullstackEntityDef, FullstackPageDef } from '../../types'
+import type { FullstackEntityDef, FullstackPageDef, FullstackWidgetDef } from '../../types'
 import {
   defaultWizardSteps, renameEntityInPages,
   defaultBarGroupBy, defaultLineGroupBy, defaultOptionLabel, defaultReportGroupBy, describePagesChange,
-  dropTabsTo, duplicatePage, navSections, pageFromSuggestion, pagesEmbedding, renameFieldInPages, renamePageIdInPages,
-  renameRelationInPages, reportCharts, suggestPages, validatePages,
+  adoptedGroup, describePage, describePresetValue, dropTabsTo, duplicatePage, keptPresetFilter, moveNavGroup, navSections, pageFromSuggestion,
+  pagesEmbedding, renameFieldInPages,
+  renameGroupInPages, renamePageIdInPages,
+  renameEnumValueInPages, renameRelationInPages, reportCharts, suggestPages, validatePages,
 } from './pageLayout'
 
 const entities: FullstackEntityDef[] = [
@@ -144,10 +146,10 @@ describe('dashboard layout and filters', () => {
       { kind: 'kpi', entity: 'Order', dateField: 'placedOn' },
     ]), entities)
     expect(v.byPage[0]).toMatchObject({
-      'widget.0': 'spans 1 to 4 columns',
-      'widget.1': 'only a recent list takes a sort',
+      'widget.0.span': 'spans 1 to 4 columns',
+      'widget.1.sortBy': 'only a recent list takes a sort',
       'widget.2.presetFilter.status': '“LOST” is not one of the values of status',
-      'widget.3': 'a date field needs the dashboard’s period picker',
+      'widget.3.dateField': 'a date field needs the dashboard’s period picker',
     })
     // A period picker needs some widget with a date to limit.
     expect(validatePages(dash([{ kind: 'kpi', entity: 'Customer' }], { dateRange: '7d' }), entities).byPage[0]?.dateRange)
@@ -184,11 +186,11 @@ describe('top lists, targets, comparisons and report charts', () => {
       ],
     }], entities)
     expect(bad.byPage[0]).toMatchObject({
-      'widget.0': 'Order has no enum, boolean or relation “total”',
-      'widget.1': 'needs a target',
-      'widget.2': 'the target must be a number above 0',
-      'widget.3': 'comparing needs the period picker and a filterable date',
-      'widget.4': 'Customer has no enum, boolean or relation to rank by',
+      'widget.0.groupBy': 'Order has no enum, boolean or relation “total”',
+      'widget.1.target': 'needs a target',
+      'widget.2.target': 'the target must be a number above 0',
+      'widget.3.compare': 'comparing needs the period picker and a filterable date',
+      'widget.4.groupBy': 'Customer has no enum, boolean or relation to rank by',
     })
   })
 
@@ -197,7 +199,7 @@ describe('top lists, targets, comparisons and report charts', () => {
       id: 'r', type: 'report', entity: 'Order', charts: [{ groupBy: 'status' }, { groupBy: 'nope' }, { agg: 'sum' }],
     }], entities)
     expect(v.byPage[0]).toMatchObject({
-      'chart2.groupBy': 'Order has no enum, boolean or date field “nope”',
+      'chart2.groupBy': 'Order has no enum, boolean or date field, or relation, “nope”',
       'chart3.field': 'sum needs a numeric field of Order',
     })
     expect(v.byPage[0]?.['chart.groupBy']).toBeUndefined()
@@ -250,5 +252,238 @@ describe('wizard pages and record header stats', () => {
     expect(renameRelationInPages(pages, 'Order', 'customer', 'buyer')[0].steps?.[0].fields).toEqual(['status', 'buyer'])
     expect(renameFieldInPages(pages, 'Order', 'total', 'amount')[1].headerStats?.[0].field).toBe('amount')
     expect(renameEntityInPages(pages, 'Order', 'Purchase')[1].headerStats?.[0].child).toBe('Purchase')
+  })
+})
+
+describe('a report grouped by a relation', () => {
+  const pages: FullstackPageDef[] = [
+    { id: 'orders', type: 'entity-list', entity: 'Order' },
+    { id: 'by-customer', type: 'report', entity: 'Order', chart: { groupBy: 'customer', agg: 'sum', field: 'total' } },
+    { id: 'more', type: 'report', entity: 'Order', charts: [{ groupBy: 'status' }, { groupBy: 'customer' }] },
+  ]
+
+  it('is valid, as the generator accepts it; a bucket on it is not', () => {
+    expect(validatePages(pages, entities).count).toBe(0)
+    const v = validatePages([{ ...pages[1], chart: { groupBy: 'customer', bucket: 'month' } }], entities)
+    expect(v.byPage[0]?.['chart.bucket']).toBe('a bucket applies to a date grouping')
+    expect(validatePages([{ ...pages[1], chart: { groupBy: 'nope' } }], entities).problems[0])
+      .toContain('which is not an enum, boolean or date field, or a relation, of Order')
+  })
+
+  it('follows a relation rename into the chart, whichever spelling the page uses', () => {
+    const renamed = renameRelationInPages(pages, 'Order', 'customer', 'buyer')
+    expect(renamed[1].chart?.groupBy).toBe('buyer')
+    expect(renamed[2].charts?.map(c => c.groupBy)).toEqual(['status', 'buyer'])
+    expect(renameRelationInPages(pages, 'Customer', 'customer', 'buyer')).toBe(pages)
+  })
+})
+
+describe('undo labels for the preview’s widget handles', () => {
+  it('names a reorder and a resize', () => {
+    const home: FullstackPageDef = { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order', title: 'A' }, { kind: 'kpi', entity: 'Customer', title: 'B' }] }
+    const reordered = { ...home, widgets: [home.widgets![1], home.widgets![0]] }
+    expect(describePagesChange([home], [reordered])).toBe('Reordered the widgets of “Dashboard”')
+    const resized = { ...home, widgets: [{ ...home.widgets![0], span: 3 }, home.widgets![1]] }
+    expect(describePagesChange([home], [resized])).toBe('Resized a widget on “Dashboard”')
+    const retitled = { ...home, widgets: [{ ...home.widgets![0], title: 'C' }, home.widgets![1]] }
+    expect(describePagesChange([home], [retitled])).toBe('Edited the “Dashboard” page')
+  })
+})
+
+describe('a list page’s row detail', () => {
+  it('opens in a side pane on a single-key entity, or on a record page the layout has', () => {
+    const orders: FullstackPageDef = { id: 'orders', type: 'entity-list', entity: 'Order', detail: 'side' }
+    expect(validatePages([orders], entities).count).toBe(0)
+    expect(describePage(orders, [orders])).toBe('Order list · side pane')
+    const record = validatePages([{ ...orders, detail: 'record' }], entities)
+    expect(record.problems).toEqual(['Page “orders” opens rows on a record page, but Order has none'])
+    const fixed = record.issues[0].fix!.apply([{ ...orders, detail: 'record' }])
+    expect(fixed[1]).toEqual({ id: 'order', type: 'record', entity: 'Order', hidden: true })
+    expect(validatePages(fixed, entities).count).toBe(0)
+    const composite: FullstackEntityDef = { name: 'Link', fields: [{ name: 'a', type: 'LONG', primaryKey: true }, { name: 'b', type: 'LONG', primaryKey: true }] }
+    expect(validatePages([{ id: 'links', type: 'entity-list', entity: 'Link', detail: 'side' }], [composite]).byPage[0]?.detail)
+      .toBe('a side pane needs a single-key entity')
+  })
+})
+
+describe('date and number preset filters', () => {
+  const list = (presetFilter: Record<string, string>): FullstackPageDef => ({ id: 'orders', type: 'entity-list', entity: 'Order', presetFilter })
+  const problem = (presetFilter: Record<string, string>) => validatePages([list(presetFilter)], entities).byPage[0]?.['presetFilter.' + Object.keys(presetFilter)[0]]
+
+  it('accepts a period, a date range and a number range, and says what is wrong otherwise', () => {
+    expect(validatePages([list({ placedOn: 'last:30d', total: '100..', status: 'OPEN' })], entities).count).toBe(0)
+    expect(problem({ placedOn: '2026-01-01..2026-03-31' })).toBeUndefined()
+    expect(problem({ placedOn: 'last:5d' })).toBe('needs a period or a date range (from..to)')
+    expect(problem({ placedOn: '2026-03-31..2026-01-01' })).toBe('from is after to')
+    expect(problem({ placedOn: '..' })).toBe('a range needs a from or a to')
+    expect(problem({ total: '5' })).toBe('needs a number range (min..max)')
+    expect(problem({ total: 'abc..5' })).toBe('min and max must be numbers')
+    expect(problem({ total: '50..5' })).toBe('min is above max')
+    expect(validatePages([{ id: 'c', type: 'entity-list', entity: 'Customer', presetFilter: { name: 'x' } }], entities).byPage[0]?.['presetFilter.name'])
+      .toBe('only a filterable enum, boolean, date or number field can be preset')
+  })
+
+  it('keeps a valid range across a retarget and describes it as the app would', () => {
+    expect(keptPresetFilter({ placedOn: 'last:30d', total: '..5', status: 'NOPE' }, entities[1])).toEqual({ placedOn: 'last:30d', total: '..5' })
+    const placedOn = entities[1].fields.find(f => f.name === 'placedOn')!
+    expect(describePresetValue(placedOn, 'last:30d')).toBe('last 30 days')
+    expect(describePresetValue(placedOn, '2026-01-01..2026-03-31')).toBe('2026-01-01 – 2026-03-31')
+    expect(describePresetValue(entities[1].fields.find(f => f.name === 'total')!, '100..')).toBe('≥ 100')
+  })
+})
+
+describe('links widgets', () => {
+  const pages: FullstackPageDef[] = [
+    { id: 'home', type: 'dashboard', widgets: [{ kind: 'links', entity: '', pages: ['orders', 'new-order'] }] },
+    { id: 'orders', type: 'entity-list', entity: 'Order' },
+    { id: 'new-order', type: 'wizard', entity: 'Order', hidden: true },
+    { id: 'order', type: 'record', entity: 'Order', hidden: true },
+    { id: 'paid', type: 'entity-list', entity: 'Order', hidden: true },
+    { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ page: 'paid' }, { page: 'orders' }] },
+  ]
+
+  it('opens visible pages and hidden wizards, never a record or a tab-only page', () => {
+    expect(validatePages(pages, entities).count).toBe(0)
+    const bad = (ids: string[]) => validatePages([{ ...pages[0], widgets: [{ kind: 'links', entity: '', pages: ids }] }, ...pages.slice(1)], entities)
+    expect(bad([]).problems).toEqual(['Page “home” has a links widget that opens no page'])
+    expect(bad(['order']).problems).toEqual(['Page “home” links to the record page “Order”, which opens from a row'])
+    expect(bad(['paid']).problems).toEqual(['Page “home” links to “Order”, which is hidden from the navigation'])
+    expect(bad(['nope']).problems).toEqual(['Page “home” links to the missing page “nope”'])
+    expect(bad(['orders', 'orders']).problems).toEqual(['Page “home” links to “Order” twice'])
+    // The fix drops the one bad link.
+    const v = bad(['orders', 'nope'])
+    expect(v.issues[0].fix!.apply(v.issues[0].fix!.apply(pages))[0].widgets?.[0].pages).toEqual(['orders', 'new-order'])
+  })
+
+  it('follows a page id change and a removal into the links', () => {
+    expect(renamePageIdInPages(pages, 'orders', 'all-orders')[0].widgets?.[0].pages).toEqual(['all-orders', 'new-order'])
+    expect(dropTabsTo(pages, 'new-order')[0].widgets?.[0].pages).toEqual(['orders'])
+    expect(describePage(pages[0], pages)).toBe('1 page-links panel')
+  })
+})
+
+describe('list widgets', () => {
+  const home: FullstackPageDef = {
+    id: 'home', type: 'dashboard', widgets: [{ kind: 'list', entity: 'Order', columns: ['status', 'customer'], sort: { field: 'total', dir: 'desc' }, presetFilter: { status: 'OPEN' } }],
+  }
+
+  it('takes a list page’s presentation and the pager’s sizes, reported on the widget', () => {
+    expect(validatePages([home], entities).count).toBe(0)
+    const bad = (w: Partial<FullstackWidgetDef>) => validatePages([{ ...home, widgets: [{ ...home.widgets![0], ...w }] }], entities)
+    expect(bad({ columns: ['nope'] }).byPage[0]?.['widget.0.columns']).toBe('Order has no “nope” column')
+    expect(bad({ sort: { field: 'customer' } }).byPage[0]?.['widget.0.sort']).toBe('Order cannot sort by “customer”')
+    expect(bad({ limit: 15 }).byPage[0]?.['widget.0.limit']).toBe('shows 10 or 20 rows')
+    expect(bad({ presetFilter: { status: 'NOPE' } }).byPage[0]?.['widget.0.presetFilter.status']).toContain('is not one of the values')
+    expect(describePage(home, [home])).toBe('1 embedded list')
+  })
+
+  it('follows a field rename into the columns and sort', () => {
+    const renamed = renameFieldInPages([home], 'Order', 'total', 'amount')[0].widgets![0]
+    expect(renamed.sort).toEqual({ field: 'amount', dir: 'desc' })
+    const cols = renameFieldInPages([home], 'Order', 'status', 'state')[0].widgets![0]
+    expect(cols.columns).toEqual(['state', 'customer'])
+    expect(cols.presetFilter).toEqual({ state: 'OPEN' })
+  })
+})
+
+describe('nav group tools', () => {
+  const nav: FullstackPageDef[] = [
+    { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }] },
+    { id: 'orders', type: 'entity-list', entity: 'Order', group: 'Sales' },
+    { id: 'people', type: 'entity-list', entity: 'Customer', group: 'People' },
+    { id: 'tab-only', type: 'entity-list', entity: 'Order', hidden: true },
+    { id: 'more-orders', type: 'entity-list', entity: 'Order', group: 'Sales' },
+    { id: 'loose', type: 'entity-list', entity: 'Customer' },
+  ]
+
+  it('renames a group on every page that carries it, and ungroups on a blank name', () => {
+    const renamed = renameGroupInPages(nav, 'Sales', 'Orders')
+    expect(renamed.map(p => p.group)).toEqual([undefined, 'Orders', 'People', undefined, 'Orders', undefined])
+    expect(renameGroupInPages(nav, 'Sales', 'Sales')).toBe(nav)
+    expect(renameGroupInPages(nav, 'Nope', 'X')).toBe(nav)
+    expect(renameGroupInPages(nav, 'Sales', ' ').map(p => 'group' in p)).toEqual([false, false, true, false, false, false])
+    expect(describePagesChange(nav, renamed)).toBe('Renamed the “Sales” group to “Orders”')
+    expect(describePagesChange(nav, renameGroupInPages(nav, 'Sales', ''))).toBe('Ungrouped the “Sales” pages')
+  })
+
+  it('moves a section past its neighbour as a block, leaving hidden pages where they are', () => {
+    // Sections: [home] [Sales: orders, more-orders] [People: people] [loose]
+    const moved = moveNavGroup(nav, 1, 1)
+    expect(moved.map(p => p.id)).toEqual(['home', 'people', 'orders', 'tab-only', 'more-orders', 'loose'])
+    expect(navSections(moved).map(s => s.group)).toEqual([undefined, 'People', 'Sales', undefined])
+    expect(moveNavGroup(nav, 0, -1)).toBe(nav)
+    expect(moveNavGroup(nav, 3, 1)).toBe(nav)
+    expect(describePagesChange(nav, moved)).toBe('Reordered pages')
+  })
+
+  it('has a dropped page join the section it lands inside', () => {
+    const inside: FullstackPageDef[] = [nav[1], nav[5], nav[4]]
+    expect(adoptedGroup(inside, 1)).toBe('Sales')
+    expect(adoptedGroup([nav[1], nav[4], nav[5]], 2)).toBeUndefined()
+    expect(adoptedGroup([nav[1], nav[3], nav[4]], 1)).toBeUndefined()
+    expect(adoptedGroup([nav[1], { ...nav[5], group: 'Sales' }, nav[4]], 1)).toBeUndefined()
+  })
+})
+
+describe('renameEnumValueInPages', () => {
+  it('follows a renamed constant into page and widget presets, and a tab titled after it', () => {
+    const pages: FullstackPageDef[] = [
+      { id: 'queue', type: 'tabs', title: 'Orders by status', tabs: [{ page: 'order-open', title: 'Open' }, { page: 'order-paid', title: 'Paid' }] },
+      { id: 'order-open', type: 'entity-list', entity: 'Order', hidden: true, presetFilter: { status: 'OPEN' } },
+      { id: 'order-paid', type: 'entity-list', entity: 'Order', hidden: true, presetFilter: { status: 'PAID' } },
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order', presetFilter: { Status: 'open' } }, { kind: 'kpi', entity: 'Customer' }] },
+    ]
+    const next = renameEnumValueInPages(pages, 'order', 'status', 'OPEN', 'NEW')
+    expect(next[1].presetFilter).toEqual({ status: 'NEW' })
+    expect(next[2]).toBe(pages[2])
+    expect(next[3].widgets?.[0].presetFilter).toEqual({ Status: 'NEW' })
+    expect(next[3].widgets?.[1]).toBe(pages[3].widgets?.[1])
+    expect(next[0].tabs).toEqual([{ page: 'order-open', title: 'New' }, { page: 'order-paid', title: 'Paid' }])
+    expect(renameEnumValueInPages(pages, 'Order', 'status', 'CLOSED', 'DONE')).toBe(pages)
+  })
+})
+
+describe('renameRelationInPages — every reference', () => {
+  it('follows a list widget and a page holding several references at once', () => {
+    const pages: FullstackPageDef[] = [
+      { id: 'home', type: 'dashboard', widgets: [
+        { kind: 'top', entity: 'Order', groupBy: 'customer' },
+        { kind: 'list', entity: 'Order', columns: ['status', 'customer'] },
+      ] },
+    ]
+    const next = renameRelationInPages(pages, 'Order', 'customer', 'buyer')
+    expect(next[0].widgets).toEqual([
+      { kind: 'top', entity: 'Order', groupBy: 'buyer' },
+      { kind: 'list', entity: 'Order', columns: ['status', 'buyer'] },
+    ])
+    expect(renameRelationInPages(pages, 'Customer', 'customer', 'buyer')).toBe(pages)
+  })
+})
+
+describe('breakdowns by a relation', () => {
+  it('lets a bar or donut group by a many-to-one, as a top list does', () => {
+    const pages: FullstackPageDef[] = [{ id: 'home', type: 'dashboard', widgets: [
+      { kind: 'bar', entity: 'Order', groupBy: 'customer' },
+      { kind: 'donut', entity: 'Order', groupBy: 'customer' },
+    ] }]
+    expect(validatePages(pages, entities).problems).toEqual([])
+    const stacked: FullstackPageDef[] = [{ id: 'home', type: 'dashboard', widgets: [{ kind: 'stacked', entity: 'Order', groupBy: 'customer' }] }]
+    expect(validatePages(stacked, entities).problems[0]).toContain('which it no longer has')
+  })
+})
+
+describe('related lists that open with their own columns and sort', () => {
+  it('checks a record tab and a master-detail child like a list page, and keeps them through renames', () => {
+    const pages: FullstackPageDef[] = [
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, childTabs: [{ entity: 'Order', columns: ['status', 'total'], sort: { field: 'placedOn', dir: 'desc' } }] },
+      { id: 'md', type: 'master-detail', parent: 'Customer', child: 'Order', columns: ['total'], sort: { field: 'total' } },
+    ]
+    expect(validatePages(pages, entities).problems).toEqual([])
+    const bad: FullstackPageDef[] = [{ ...pages[0], childTabs: [{ entity: 'Order', columns: ['nope'] }] }, { ...pages[1], sort: { field: 'nope' } }]
+    const v = validatePages(bad, entities)
+    expect(v.byPage[0]['childTab.0']).toBe('Order has no “nope” column')
+    expect(v.byPage[1].sort).toBe('Order cannot sort by “nope”')
+    // An entity rename keeps the tab's presentation.
+    expect(renameEntityInPages(pages, 'Order', 'Sale')[0].childTabs).toEqual([{ entity: 'Sale', columns: ['status', 'total'], sort: { field: 'placedOn', dir: 'desc' } }])
   })
 })

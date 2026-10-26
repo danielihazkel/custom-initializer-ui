@@ -1,4 +1,6 @@
 import type { FullstackEntityDef } from '../../types'
+import { formSectionsProblem } from './formSections'
+import { columnOf, joinColumnOf } from './naming'
 
 /**
  * Client-side mirror of the backend `FullstackRequestValidator` so users see problems
@@ -111,7 +113,13 @@ export interface FieldErrors {
   pattern?: string
   email?: string
   defaultValue?: string
+  column?: string
 }
+
+/** Mirrors FullstackRequestValidator.SQL_NAME: column names are spliced into native SQL. A quoted
+ *  name ("OrderDate", `OrderDate`, [OrderDate]) keeps its exact case in the generated entity. */
+const COLUMN_RE = /^(?:[A-Za-z_$#@][A-Za-z0-9_$#@]{0,127}|"[A-Za-z0-9_$#@ .-]{1,128}"|`[A-Za-z0-9_$#@ .-]{1,128}`|\[[A-Za-z0-9_$#@ .-]{1,128}\])$/
+const COLUMN_RULE = 'Letters, digits and _ $ # @, or a quoted name like "OrderDate"'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -180,6 +188,7 @@ export function carryDefaultAcrossTypes(
 export interface RelationErrors {
   fieldName?: string
   targetEntity?: string
+  joinColumn?: string
 }
 
 export interface EntityErrors {
@@ -195,6 +204,8 @@ export interface EntityErrors {
   viewQuery?: string
   fields: Record<number, FieldErrors>
   relations?: Record<number, RelationErrors>
+  /** The form sections name a field twice, one that is gone, or have no title. */
+  formSections?: string
 }
 
 export interface FullstackErrors {
@@ -324,6 +335,11 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
       const defErr = defaultValueError(field)
       if (defErr) fErr.defaultValue = defErr
 
+      if (field.column?.trim()) {
+        if (entity.viewQuery != null) fErr.column = 'A view maps fields by their names'
+        else if (!COLUMN_RE.test(field.column.trim())) fErr.column = COLUMN_RULE
+      }
+
       if (Object.keys(fErr).length > 0) {
         eErr.fields[fIdx] = fErr
         result.count += Object.keys(fErr).length
@@ -399,6 +415,9 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
         else if (targetPkCount > 1) rErr.targetEntity = "Can't target a composite-PK entity"
         else if (viewNames.has(target.toLowerCase())) rErr.targetEntity = "Can't target a view"
       }
+      if (rel.joinColumn?.trim() && !COLUMN_RE.test(rel.joinColumn.trim())) {
+        rErr.joinColumn = COLUMN_RULE
+      }
       if (Object.keys(rErr).length > 0) {
         eErr.relations = eErr.relations ?? {}
         eErr.relations[rIdx] = rErr
@@ -406,9 +425,49 @@ export function validateEntities(entities: FullstackEntityDef[]): FullstackError
       }
     })
 
+    // Two members on one column — mirrors FullstackRequestValidator.checkColumnClashes, which only
+    // looks where an explicit column is involved.
+    const byColumn = new Map<string, { explicit: boolean; mark: () => void }[]>()
+    const addMember = (column: string, explicit: boolean, mark: () => void) => {
+      if (!column) return
+      const key = column.toLowerCase()
+      byColumn.set(key, [...(byColumn.get(key) ?? []), { explicit, mark }])
+    }
+    entity.fields.forEach((field, fIdx) => {
+      if (!field.name.trim()) return
+      addMember(columnOf(field), Boolean(field.column?.trim()), () => {
+        const existing = eErr.fields[fIdx] ?? {}
+        if (!existing.column) {
+          existing.column = `Column ${columnOf(field)} is used twice`
+          eErr.fields[fIdx] = existing
+          result.count += 1
+        }
+      })
+    })
+    relations.forEach((rel, rIdx) => {
+      if (!rel.fieldName.trim()) return
+      addMember(joinColumnOf(rel), Boolean(rel.joinColumn?.trim()), () => {
+        eErr.relations = eErr.relations ?? {}
+        const existing = eErr.relations[rIdx] ?? {}
+        if (!existing.joinColumn) {
+          existing.joinColumn = `Column ${joinColumnOf(rel)} is used twice`
+          eErr.relations[rIdx] = existing
+          result.count += 1
+        }
+      })
+    })
+    for (const members of byColumn.values()) {
+      if (members.length > 1 && members.some(m => m.explicit)) members.forEach(m => m.mark())
+    }
+
     if (eErr.name) result.count += 1
+    const sectionsErr = formSectionsProblem(entity)
+    if (sectionsErr) {
+      eErr.formSections = sectionsErr
+      result.count += 1
+    }
     const hasRelErrs = eErr.relations && Object.keys(eErr.relations).length > 0
-    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
+    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
       result.entities[eIdx] = eErr
     }
   })
