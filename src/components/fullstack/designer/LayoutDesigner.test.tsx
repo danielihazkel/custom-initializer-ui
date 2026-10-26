@@ -511,6 +511,92 @@ describe('Layout designer — page flow', () => {
   })
 })
 
+describe('Layout designer — page parts', () => {
+  const parted: FullstackPageDef[] = [
+    ...desk,
+    { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ page: 'orders' }, { page: 'customers' }] },
+    { id: 'customer', type: 'record', entity: 'Customer', hidden: true, childTabs: [], headerStats: [] },
+    { id: 'sales', type: 'report', entity: 'Order' },
+    { id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ fields: ['id', 'status', 'total'] }, { fields: ['placedOn', 'customer'] }] },
+  ]
+  const part = (designer: HTMLElement, key: string) => designer.querySelector(`[data-library-part="${key}"]`) as HTMLElement
+  const preview = (designer: HTMLElement) => designer.querySelector('[data-layout-preview]') as HTMLElement
+
+  it('embeds a page as a tab: a library card or a strip chip dropped on the tab strip', () => {
+    render(<Harness initial={parted} />)
+    const designer = openDesigner()
+    fireEvent.click(chip(designer, 'queue'))
+    expect(within(designer).getByRole('tab', { name: 'parts' })).toBeTruthy()
+    expect(part(designer, 'tab:orders').getAttribute('disabled')).not.toBeNull()
+
+    let dt = dataTransfer()
+    fireEvent.dragStart(part(designer, 'tab:desk'), { dataTransfer: dt })
+    const end = preview(designer).querySelector('[data-preview-part-drop]') as HTMLElement
+    fireEvent.dragOver(end, { dataTransfer: dt })
+    expect(end.className).toContain('border-primary')
+    fireEvent.drop(end, { dataTransfer: dt })
+    expect(latest[3].tabs).toEqual([{ page: 'orders' }, { page: 'customers' }, { page: 'desk' }])
+    expect(pushUndo).toHaveBeenLastCalledWith('Added “Desk” as a tab of “Queue”')
+
+    // A page chip dragged from the strip onto a tab goes in beside it.
+    dt = dataTransfer()
+    fireEvent.dragStart(chip(designer, 'sales'), { dataTransfer: dt })
+    const firstTab = within(preview(designer)).getAllByRole('tab')[0]
+    fireEvent.dragOver(firstTab, { dataTransfer: dt })
+    fireEvent.drop(firstTab, { dataTransfer: dt })
+    fireEvent.dragEnd(chip(designer, 'sales'))
+    expect(latest[3].tabs?.map(t => t.page)).toEqual(['orders', 'sales', 'customers', 'desk'])
+    expect(preview(designer).querySelector('[data-preview-part-drop]')).toBeNull()
+  })
+
+  it('adds a related list and a header number to a record page', () => {
+    render(<Harness initial={parted} />)
+    const designer = openDesigner()
+    fireEvent.click(chip(designer, 'customer'))
+    fireEvent.click(part(designer, 'child-tab:Order'))
+    expect(latest[4].childTabs).toEqual(['Order'])
+    expect(part(designer, 'child-tab:Order').getAttribute('title')).toBe('Already a tab here')
+
+    const dt = dataTransfer()
+    fireEvent.dragStart(part(designer, 'header-stat:Order'), { dataTransfer: dt })
+    const end = preview(designer).querySelector('[data-preview-part-drop]') as HTMLElement
+    expect(end.textContent).toContain('number above the tabs')
+    fireEvent.dragOver(end, { dataTransfer: dt })
+    fireEvent.drop(end, { dataTransfer: dt })
+    expect(latest[4].headerStats).toEqual([{ child: 'Order' }])
+    expect(preview(designer).querySelector('[data-preview-stats]')?.textContent).toContain('Order')
+  })
+
+  it('adds a report chart where it was dropped', () => {
+    render(<Harness initial={parted} />)
+    const designer = openDesigner()
+    fireEvent.click(chip(designer, 'sales'))
+    const dt = dataTransfer()
+    fireEvent.dragStart(part(designer, 'chart:placedOn'), { dataTransfer: dt })
+    const end = preview(designer).querySelector('[data-preview-part-drop="1"]') as HTMLElement
+    fireEvent.dragOver(end, { dataTransfer: dt })
+    fireEvent.drop(end, { dataTransfer: dt })
+    expect(latest[5].charts).toEqual([{}, { groupBy: 'placedOn' }])
+    expect(preview(designer).querySelector('[data-preview-chart="1"]')).toBeTruthy()
+  })
+
+  it('moves a wizard field onto another step, or into a new one from its picker', () => {
+    render(<Harness initial={parted} />)
+    const designer = openDesigner()
+    fireEvent.click(chip(designer, 'new-order'))
+    const dt = dataTransfer()
+    fireEvent.dragStart(part(designer, 'step-field:placedOn'), { dataTransfer: dt })
+    const first = preview(designer).querySelector('[data-preview-step-drop="0"]') as HTMLElement
+    fireEvent.dragOver(first, { dataTransfer: dt })
+    fireEvent.drop(first, { dataTransfer: dt })
+    expect(latest[6].steps).toEqual([{ fields: ['id', 'status', 'total', 'placedOn'] }, { fields: ['customer'] }])
+    expect(pushUndo).toHaveBeenLastCalledWith('Moved Placed on to step 1 of “Order”')
+
+    fireEvent.change(within(designer).getByLabelText('Step for Total'), { target: { value: '2' } })
+    expect(latest[6].steps).toEqual([{ fields: ['id', 'status', 'placedOn'] }, { fields: ['customer'] }, { fields: ['total'] }])
+  })
+})
+
 describe('Layout designer — Play mode', () => {
   const walkable: FullstackPageDef[] = [
     ...desk,

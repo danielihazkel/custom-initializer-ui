@@ -35,7 +35,7 @@ export function pickedAfterClick(pages: FullstackPageDef[], picked: string[], se
  * Ctrl/⌘-click and Shift-click pick several pages for a bulk action; a right-click (or Shift+F10)
  * opens a chip's menu; Delete removes the focused chip's page and Alt+←/→ moves it.
  */
-export function PageStrip({ pages, model, validation, selected, onSelect, onAddPage, findRequest, newPageDrop, picked = [], onPick }: {
+export function PageStrip({ pages, model, validation, selected, onSelect, onAddPage, findRequest, newPageDrop, picked = [], onPick, onChipDrag }: {
   pages: FullstackPageDef[]
   model: PagesModel
   validation: PageLayoutValidation
@@ -46,6 +46,8 @@ export function PageStrip({ pages, model, validation, selected, onSelect, onAddP
   findRequest?: number
   /** While a page is dragged from the library: where it would land, and how to drop it there. */
   newPageDrop?: { onDrop: (at: number) => void } | null
+  /** A chip is being dragged (its index), or the drag ended — a tabs page on the canvas takes it. */
+  onChipDrag?: (index: number | null) => void
   /** Page ids picked for a bulk action, and how a Ctrl/Shift-click changes them. Absent: no picking. */
   picked?: string[]
   onPick?: (ids: string[]) => void
@@ -125,6 +127,7 @@ export function PageStrip({ pages, model, validation, selected, onSelect, onAddP
     const warnings = validation.warningsByPage[index] ?? 0
     const indicator = newPageDrop ? (newAt === index ? 'before' : newAt === index + 1 && index === pages.length - 1 ? 'after' : null) : dnd.indicatorFor('pages', index)
     const reorder = dnd.rowProps('pages', index, 'x')
+    const handle = dnd.handleProps('pages', index)
     return (
       <li
         key={keys[index]}
@@ -153,7 +156,9 @@ export function PageStrip({ pages, model, validation, selected, onSelect, onAddP
       >
         <button
           type="button"
-          {...dnd.handleProps('pages', index)}
+          {...handle}
+          onDragStart={e => { handle.onDragStart(e); onChipDrag?.(index) }}
+          onDragEnd={() => { handle.onDragEnd(); onChipDrag?.(null) }}
           onClick={e => chipClick(e, index)}
           onKeyDown={e => chipKey(e, index)}
           onContextMenu={e => { e.preventDefault(); setMenu({ index, anchor: e.currentTarget }) }}

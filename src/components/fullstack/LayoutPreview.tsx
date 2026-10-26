@@ -3,6 +3,8 @@ import type { ContentBlock, ContentRun } from './contentMarkdown'
 import { highlights, previewPartOf, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewScreen, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
 import { dropIndicatorClass, useDragReorder, type DragReorder } from './useDragReorder'
 import type { PagePlayLinks } from './playLinks'
+import { MAX_STEPS } from './pageLayout'
+import type { PartSlot } from './pageParts'
 
 export type { EditTarget }
 
@@ -32,6 +34,9 @@ interface Props {
   /** A widget being dragged in from the layout designer's library: the dashboard shows where it
    *  would land, and a drop adds it there (`at` = the index it takes). */
   widgetDrop?: WidgetDrop | null
+  /** A page part being dragged in from the layout designer (a tab, a chart, a related list or
+   *  number, a wizard field): the matching part of the selected page shows where it would land. */
+  partDrop?: PartDrop | null
   /** A phone-width app: the menu as a top bar, dashboard widgets one per row. */
   narrow?: boolean
   /** Page index → control → message (`validation.byPage`): the parts with a problem are ringed in
@@ -93,6 +98,76 @@ function problemOf(problems: Record<number, Record<string, string>> | undefined,
   return key == null ? undefined : byControl[key]
 }
 
+export interface PartDrop {
+  slot: PartSlot
+  /** `at`: the index the part takes — for a wizard field, the step it moves into. */
+  onDrop: (page: number, at: number) => void
+}
+
+/** A part dragged over a screen: the slot it fits, where it would land, and the drop. */
+interface PartTarget {
+  slot: PartSlot
+  at: number | null
+  hover: (at: number | null) => void
+  drop: (at: number) => void
+}
+
+/** Drop handlers for a part over one element; `at` reads where it lands from the event. */
+function partDropProps(t: PartTarget, at: (e: DragEvent<HTMLElement>) => number) {
+  return {
+    onDragOver: (e: DragEvent<HTMLElement>) => {
+      e.preventDefault()
+      e.stopPropagation()
+      // A chip from the page strip is a move; a library card a copy.
+      e.dataTransfer.dropEffect = e.dataTransfer.effectAllowed === 'move' ? 'move' : 'copy'
+      const a = at(e)
+      if (a !== t.at) t.hover(a)
+    },
+    onDragLeave: (e: DragEvent<HTMLElement>) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) t.hover(null) },
+    onDrop: (e: DragEvent<HTMLElement>) => { e.preventDefault(); e.stopPropagation(); t.drop(at(e)) },
+  }
+}
+
+/** Before item `index` or after it, by which half of it the pointer is over (`x`: reading order). */
+function halfOf(index: number, axis: 'x' | 'y' = 'x') {
+  return (e: DragEvent<HTMLElement>) => {
+    const r = e.currentTarget.getBoundingClientRect()
+    if (axis === 'y') return e.clientY < r.top + r.height / 2 ? index : index + 1
+    const rtl = getComputedStyle(e.currentTarget).direction === 'rtl'
+    return (e.clientX < r.left + r.width / 2) !== rtl ? index : index + 1
+  }
+}
+
+/** Where a header number dropped on the four-column row lands: the column under the pointer,
+ *  at most after the last tile. */
+function statSlot(e: DragEvent<HTMLElement>, count: number): number {
+  const r = e.currentTarget.getBoundingClientRect()
+  if (r.width === 0) return count
+  const rtl = getComputedStyle(e.currentTarget).direction === 'rtl'
+  const x = rtl ? r.right - e.clientX : e.clientX - r.left
+  return Math.max(0, Math.min(count, Math.round(x / (r.width / 4))))
+}
+
+/** The drop line on item `index` of `count`: before it, or after the last. */
+function partIndicator(t: PartTarget | undefined, index: number, count: number): 'before' | 'after' | null {
+  if (t?.at == null) return null
+  return t.at === index ? 'before' : index === count - 1 && t.at === count ? 'after' : null
+}
+
+/** The slot at the end of a row of parts: "Drop to add a tab". */
+function PartEndSlot({ target, at, label, className = '' }: { target: PartTarget; at: number; label: string; className?: string }) {
+  return (
+    <div
+      {...partDropProps(target, () => at)}
+      className={`flex items-center justify-center rounded border-2 border-dashed px-2 py-1 text-center text-[9px] ${
+        target.at === at ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant text-secondary'} ${className}`}
+      data-preview-part-drop={at}
+    >
+      {label}
+    </div>
+  )
+}
+
 export interface WidgetDrop {
   /** The default width of the widget being dragged — the end slot is drawn that wide. */
   span: number
@@ -113,7 +188,7 @@ const WIDGET_LIST = 'preview-widgets:'
  * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
-export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups, palette, widgetDrop, narrow, problems, play }: Props) {
+export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups, palette, widgetDrop, partDrop, narrow, problems, play }: Props) {
   const screen = preview.screens[selected]
   const menora = skin === 'menora'
   // The generated tailwind shell: `--color-brand`/`--color-primary` = palette primary,
@@ -196,7 +271,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         <p className="rounded bg-surface-container px-2 py-1 text-[10px] text-secondary">{offNavNote}</p>
       )}
       {screen ? (
-        <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={onReorderWidget ? dnd : undefined} onResizeWidget={narrow ? undefined : onResizeWidget} widgetDrop={widgetDrop} narrow={narrow} />
+        <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={onReorderWidget ? dnd : undefined} onResizeWidget={narrow ? undefined : onResizeWidget} widgetDrop={widgetDrop} partDrop={partDrop} narrow={narrow} />
       ) : (
         <p className="text-[11px] text-secondary">Nothing to show.</p>
       )}
@@ -287,10 +362,11 @@ interface ScreenProps {
   dnd?: DragReorder
   onResizeWidget?: (page: number, index: number, span: number) => void
   widgetDrop?: WidgetDrop | null
+  partDrop?: PartDrop | null
   narrow?: boolean
 }
 
-function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, embedded, dnd, onResizeWidget, widgetDrop, narrow }: ScreenProps) {
+function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, embedded, dnd, onResizeWidget, widgetDrop, partDrop, narrow }: ScreenProps) {
   // Every part of this screen jumps to its editor control, and lights when that control is hovered.
   const link = { page, onEdit, highlight }
   // In Play mode, where this screen's parts lead instead.
@@ -302,6 +378,11 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
   const [dropAt, setDropAt] = useState<number | null>(null)
   const newDrop = widgetDrop && screen.type === 'dashboard' && !embedded
     ? { at: dropAt, hover: setDropAt, drop: (at: number) => { setDropAt(null); widgetDrop.onDrop(page, at) } }
+    : undefined
+  // A page part hovering this screen: the index it would take.
+  const [partAt, setPartAt] = useState<number | null>(null)
+  const parts: PartTarget | undefined = partDrop && !embedded
+    ? { slot: partDrop.slot, at: partAt, hover: setPartAt, drop: (at: number) => { setPartAt(null); partDrop.onDrop(page, at) } }
     : undefined
   const heading = !embedded && (
     <Editable {...link} control="title" label="Edit the page title" className="block text-start">
@@ -410,7 +491,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
         </div>
       )
     case 'tabs':
-      return <TabsScreen screen={screen} page={page} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} heading={heading} dnd={dnd} onResizeWidget={onResizeWidget} />
+      return <TabsScreen screen={screen} page={page} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} heading={heading} dnd={dnd} onResizeWidget={onResizeWidget} parts={parts?.slot === 'tab' ? parts : undefined} />
     case 'master-detail':
       return (
         <div className="space-y-2">
@@ -449,10 +530,12 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
         </div>
       )
     case 'record':
-      return <RecordScreen screen={screen} link={link} preview={preview} accent={accent} menora={menora} />
+      return <RecordScreen screen={screen} link={link} preview={preview} accent={accent} menora={menora} parts={parts} />
     case 'wizard':
-      return <WizardScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} />
-    case 'report':
+      return <WizardScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} parts={parts?.slot === 'step-field' ? parts : undefined} />
+    case 'report': {
+      const charts = parts?.slot === 'chart' ? parts : undefined
+      const chartCount = 1 + screen.moreCharts.length
       return (
         <div className="space-y-2">
           <div className="flex items-start justify-between gap-2">
@@ -460,28 +543,34 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
             {screen.exportLabel && <FakeButton outline>{screen.exportLabel}</FakeButton>}
           </div>
           <FilterRow filters={screen.filters} chips={screen.presetChips} label={preview.strings.filters} />
-          <Editable {...link} control="chart.groupBy" label="Edit the chart" className="block w-full">
-            <div {...playLink(play, here?.drill, `Open the ${screen.chartTitle} rows`).props} className={`rounded border border-outline-variant p-2 ${playLink(play, here?.drill, '').cls}`}>
-              <p className="mb-1 text-[10px] font-semibold text-on-surface">{screen.chartTitle}</p>
-              <ReportChartShape kind={screen.chart.kind} line={screen.chart.line} bars={screen.chart.bars} accent={accent} />
-            </div>
-          </Editable>
+          <div {...(charts ? partDropProps(charts, halfOf(0, 'y')) : {})} className={charts ? `rounded ${dropIndicatorClass(partIndicator(charts, 0, chartCount))}` : undefined}>
+            <Editable {...link} control="chart.groupBy" label="Edit the chart" className="block w-full">
+              <div {...playLink(play, here?.drill, `Open the ${screen.chartTitle} rows`).props} className={`rounded border border-outline-variant p-2 ${playLink(play, here?.drill, '').cls}`}>
+                <p className="mb-1 text-[10px] font-semibold text-on-surface">{screen.chartTitle}</p>
+                <ReportChartShape kind={screen.chart.kind} line={screen.chart.line} bars={screen.chart.bars} accent={accent} />
+              </div>
+            </Editable>
+          </div>
           {screen.chartTable && <TotalsTable bars={screen.chart.bars} group={screen.groupLabel} value={screen.valueLabel} total={screen.totalLabel} />}
           {screen.moreCharts.length > 0 && (
             <div className="grid grid-cols-2 gap-1.5">
               {screen.moreCharts.map((c, ci) => (
-                <Editable key={ci} {...link} control={`chart${ci + 2}.groupBy`} label={`Edit chart ${ci + 2}`} className="block min-w-0">
-                  <div className="rounded border border-outline-variant p-1.5" data-preview-chart={ci + 1}>
-                    <p className="mb-1 truncate text-[9px] font-semibold text-on-surface">{c.title}</p>
-                    <ReportChartShape kind={c.kind} line={c.line} bars={c.line ? c.bars : c.bars.slice(0, 4)} accent={accent} />
-                    {c.table && <TotalsTable bars={c.bars} value={screen.valueLabel} total={screen.totalLabel} />}
-                  </div>
-                </Editable>
+                <div key={ci} {...(charts ? partDropProps(charts, halfOf(ci + 1)) : {})} className={`min-w-0 rounded ${dropIndicatorClass(partIndicator(charts, ci + 1, chartCount), 'x')}`}>
+                  <Editable {...link} control={`chart${ci + 2}.groupBy`} label={`Edit chart ${ci + 2}`} className="block min-w-0">
+                    <div className="rounded border border-outline-variant p-1.5" data-preview-chart={ci + 1}>
+                      <p className="mb-1 truncate text-[9px] font-semibold text-on-surface">{c.title}</p>
+                      <ReportChartShape kind={c.kind} line={c.line} bars={c.line ? c.bars : c.bars.slice(0, 4)} accent={accent} />
+                      {c.table && <TotalsTable bars={c.bars} value={screen.valueLabel} total={screen.totalLabel} />}
+                    </div>
+                  </Editable>
+                </div>
               ))}
             </div>
           )}
+          {charts && <PartEndSlot target={charts} at={chartCount} label="Drop here to add a chart" className="min-h-10" />}
         </div>
       )
+    }
     case 'calendar':
       return (
         <div className="space-y-2" data-preview-calendar>
@@ -634,8 +723,8 @@ function ContentBlockView({ block, accent, page }: { block: ContentBlock; accent
   }
 }
 
-function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, heading, dnd, onResizeWidget }:
-  Omit<ScreenProps, 'screen'> & { screen: Extract<PreviewScreen, { type: 'tabs' }>; heading: ReactNode }) {
+function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, heading, dnd, onResizeWidget, parts }:
+  Omit<ScreenProps, 'screen'> & { screen: Extract<PreviewScreen, { type: 'tabs' }>; heading: ReactNode; parts?: PartTarget }) {
   const [active, setActive] = useState(0)
   const current = Math.min(active, Math.max(screen.tabs.length - 1, 0))
   const target = screen.tabs[current]?.target
@@ -644,14 +733,18 @@ function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent
     <div className="space-y-2">
       {heading}
       {screen.tabs.length === 0 ? (
-        <Editable page={page} onEdit={onEdit} highlight={highlight} control="tabs" label="Add tabs" className="block w-full">
-          <p className="rounded border border-dashed border-outline-variant px-2 py-3 text-center text-[10px] text-secondary">No tabs yet</p>
-        </Editable>
+        parts ? <PartEndSlot target={parts} at={0} label="Drop a page here to make it a tab" className="py-3" /> : (
+          <Editable page={page} onEdit={onEdit} highlight={highlight} control="tabs" label="Add tabs" className="block w-full">
+            <p className="rounded border border-dashed border-outline-variant px-2 py-3 text-center text-[10px] text-secondary">No tabs yet</p>
+          </Editable>
+        )
       ) : (
-        <div role="tablist" className="flex gap-3 border-b border-outline-variant">
+        <div className="flex items-end gap-2">
+        <div role="tablist" className="flex min-w-0 flex-1 gap-3 border-b border-outline-variant">
           {screen.tabs.map((tab, i) => {
             // The tab's card hovered in the editor rings the tab, like an Editable would.
             const lit = highlights(highlight, { page, control: `tab.${i}` })
+            const line = partIndicator(parts, i, screen.tabs.length)
             return (
               <button
                 key={i}
@@ -659,14 +752,17 @@ function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent
                 role="tab"
                 aria-selected={i === current}
                 onClick={() => setActive(i)}
+                {...(parts ? partDropProps(parts, halfOf(i)) : {})}
                 data-preview-highlight={lit ? '' : undefined}
-                className={`-mb-px border-b-2 pb-1 text-[10px] font-semibold ${i === current ? '' : 'border-transparent text-secondary'} ${lit ? HIGHLIGHT : ''}`}
-                style={i === current ? { borderColor: accent, color: accent } : undefined}
+                className={`-mb-px border-b-2 pb-1 text-[10px] font-semibold ${i === current ? '' : 'border-transparent text-secondary'} ${lit ? HIGHLIGHT : ''} ${line ? `px-1 ${dropIndicatorClass(line, 'x')}` : ''}`}
+                style={i === current ? { borderBottomColor: accent, color: accent } : undefined}
               >
                 {tab.label}
               </button>
             )
           })}
+        </div>
+        {parts && <PartEndSlot target={parts} at={screen.tabs.length} label="Drop to add a tab" className="shrink-0" />}
         </div>
       )}
       {embedded && target != null && embedded.type !== 'tabs' && (
@@ -706,12 +802,13 @@ function TotalsTable({ bars, group, value, total }: { bars: PreviewBar[]; group?
   )
 }
 
-function RecordScreen({ screen, link, preview, accent, menora }: {
+function RecordScreen({ screen, link, preview, accent, menora, parts }: {
   screen: Extract<PreviewScreen, { type: 'record' }>
   link: LinkProps
   preview: LayoutPreviewModel
   accent: string
   menora: boolean
+  parts?: PartTarget
 }) {
   const [active, setActive] = useState(0)
   const current = Math.min(active, screen.tabs.length - 1)
@@ -719,6 +816,10 @@ function RecordScreen({ screen, link, preview, accent, menora }: {
   const play = useContext(Play)
   const here = play?.links[link.page]
   const back = playLink(play, here?.back, 'Back')
+  const tabParts = parts?.slot === 'child-tab' ? parts : undefined
+  const statParts = parts?.slot === 'header-stat' ? parts : undefined
+  // The related tabs come after the details tab: tab i is related list i - 1.
+  const childCount = screen.tabs.length - 1
   return (
     <div className="space-y-2">
       {screen.back && <p {...back.props} className={`w-fit text-[10px] text-secondary ${back.cls}`}>{preview.rtl ? '→' : '←'} {screen.back}</p>}
@@ -726,33 +827,42 @@ function RecordScreen({ screen, link, preview, accent, menora }: {
         <h3 className="text-[13px] font-bold text-on-surface">{screen.heading}</h3>
       </Editable>
       {screen.stats.length > 0 && (
+        <div {...(statParts ? partDropProps(statParts, e => statSlot(e, screen.stats.length)) : {})}>
         <Editable {...link} control="headerStats" label="Edit the header numbers" className="block w-full">
           <div className="grid grid-cols-4 gap-1.5" data-preview-stats>
             {screen.stats.map((s, i) => (
-              <div key={i} className="min-w-0 rounded border border-outline-variant p-1">
+              <div key={i} className={`min-w-0 rounded border border-outline-variant p-1 ${dropIndicatorClass(partIndicator(statParts, i, screen.stats.length), 'x')}`}>
                 <p className="truncate text-[8px] text-secondary">{s.title}</p>
                 <p className="text-[12px] font-bold tabular-nums text-on-surface">{s.value}</p>
               </div>
             ))}
           </div>
         </Editable>
+        </div>
       )}
+      {statParts && <PartEndSlot target={statParts} at={screen.stats.length} label="Drop here to add a number above the tabs" />}
       <div className="flex items-end gap-1">
         <div role="tablist" className="flex min-w-0 flex-1 gap-3 border-b border-outline-variant" data-preview-record-tabs>
-          {screen.tabs.map((label, i) => (
-            <button
-              key={i}
-              type="button"
-              role="tab"
-              aria-selected={i === current}
-              onClick={() => setActive(i)}
-              className={`-mb-px truncate border-b-2 pb-1 text-[10px] font-semibold ${i === current ? '' : 'border-transparent text-secondary'}`}
-              style={i === current ? { borderColor: accent, color: accent } : undefined}
-            >
-              {label}
-            </button>
-          ))}
+          {screen.tabs.map((label, i) => {
+            // The details tab drops in front of the first related list; a related tab before or after itself.
+            const line = i === 0 ? (childCount === 0 && tabParts?.at === 0 ? 'after' : null) : partIndicator(tabParts, i - 1, childCount)
+            return (
+              <button
+                key={i}
+                type="button"
+                role="tab"
+                aria-selected={i === current}
+                onClick={() => setActive(i)}
+                {...(tabParts ? partDropProps(tabParts, i === 0 ? () => 0 : halfOf(i - 1)) : {})}
+                className={`-mb-px truncate border-b-2 pb-1 text-[10px] font-semibold ${i === current ? '' : 'border-transparent text-secondary'} ${line ? `px-1 ${dropIndicatorClass(line, 'x')}` : ''}`}
+                style={i === current ? { borderBottomColor: accent, color: accent } : undefined}
+              >
+                {label}
+              </button>
+            )
+          })}
         </div>
+        {tabParts && <PartEndSlot target={tabParts} at={childCount} label="Drop to add a tab" className="shrink-0" />}
         <Editable {...link} control="childTabs" label="Edit the related tabs" className="shrink-0 px-1 text-secondary">
           <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">edit</span>
         </Editable>
@@ -781,12 +891,14 @@ function RecordScreen({ screen, link, preview, accent, menora }: {
 }
 
 /** A wizard: its steps can be walked through, ending on the review. */
-function WizardScreen({ screen, link, heading, accent, menora }: {
+function WizardScreen({ screen, link, heading, accent, menora, parts }: {
   screen: Extract<PreviewScreen, { type: 'wizard' }>
   link: LinkProps
   heading: ReactNode
   accent: string
   menora: boolean
+  /** A field dragged in: each step takes it, and so does a new step after the last. */
+  parts?: PartTarget
 }) {
   const [active, setActive] = useState(0)
   const last = screen.steps.length - 1
@@ -796,24 +908,35 @@ function WizardScreen({ screen, link, heading, accent, menora }: {
   // In Play mode Save lands where the generated wizard does: the new row's page, else its list.
   const play = useContext(Play)
   const saveTo = play?.links[link.page]?.afterSave
+  // A field dropped on a step (or a new one) moves there, and the canvas shows that step.
+  const into = parts ? { ...parts, drop: (at: number) => { parts.drop(at); setActive(at) } } : undefined
   return (
     <div className="space-y-2">
       {heading}
       <div className="flex items-start gap-1">
         <ol className="flex min-w-0 flex-1 flex-wrap gap-1" data-preview-steps>
-          {screen.steps.map((s, i) => (
-            <li key={i}>
-              <button
-                type="button"
-                aria-current={i === step ? 'step' : undefined}
-                onClick={() => setActive(i)}
-                className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold"
-                style={i === step ? { borderColor: accent, color: accent } : undefined}
-              >
-                {i + 1} {s}
-              </button>
-            </li>
-          ))}
+          {screen.steps.map((s, i) => {
+            // The review is not a step a field can go to.
+            const target = into && i < last ? into : undefined
+            return (
+              <li key={i}>
+                <button
+                  type="button"
+                  aria-current={i === step ? 'step' : undefined}
+                  onClick={() => setActive(i)}
+                  {...(target ? partDropProps(target, () => i) : {})}
+                  className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${target?.at === i ? 'border-primary bg-primary/10 ring-2 ring-primary/40' : ''}`}
+                  style={i === step ? { borderColor: accent, color: accent } : undefined}
+                  data-preview-step-drop={target ? i : undefined}
+                >
+                  {i + 1} {s}
+                </button>
+              </li>
+            )
+          })}
+          {into && last < MAX_STEPS && (
+            <li><PartEndSlot target={into} at={last} label="New step" className="rounded-full py-0.5" /></li>
+          )}
         </ol>
         <Editable {...link} control="steps" label="Edit the steps" className="shrink-0 px-1 text-secondary">
           <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">edit</span>

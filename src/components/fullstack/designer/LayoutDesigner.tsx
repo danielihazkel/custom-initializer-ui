@@ -19,6 +19,7 @@ import { offNavNoteFor, usePagesModel } from '../pages/usePagesModel'
 import { DesignerInspector, tabOfControl, type InspectorTab } from './DesignerInspector'
 import { DesignerLibrary, type LibraryTab } from './DesignerLibrary'
 import { isPageDrag, type LibraryDrag } from './dragPayload'
+import { PAGE_SLOTS, type PagePart } from '../pageParts'
 import { IssuesPanel } from './IssuesPanel'
 import { PageStrip } from './PageStrip'
 import { SitemapView } from './SitemapView'
@@ -346,6 +347,16 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     else if (d.kind === 'suggestion') addSuggestion(d.key, at)
     else if (d.kind === 'my-template') addMyTemplate(d.name, at)
   }
+  /** A part dropped or clicked onto the page on the canvas; a refusal is said in the notice. */
+  function placePart(part: PagePart, at?: number) {
+    const reason = model.placePart(selectedIndex, part, at)
+    if (reason) model.setNotice(reason)
+  }
+  /** A strip chip dragged while a tabs page is on the canvas: it can become one of its tabs. */
+  function chipDrag(index: number | null) {
+    const target = index == null ? undefined : pages[index]
+    setDrag(page?.type === 'tabs' && target && index !== selectedIndex ? { kind: 'part', part: { kind: 'tab', page: target.id } } : null)
+  }
   function reorderWidget(pageIndex: number, from: number, to: number) {
     model.reorderWidget(pageIndex, from, to)
     if (pageIndex !== selectedIndex || widget == null) return
@@ -357,6 +368,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   const issueCount = model.issues.length
   const tipCount = validation.warnings.length
   const widgetDrag = drag?.kind === 'widget' ? drag : null
+  const partDrag = drag?.kind === 'part' && page && (PAGE_SLOTS[page.type] ?? []).includes(drag.part.kind) ? drag : null
+  const takesParts = page != null && (PAGE_SLOTS[page.type] ?? []).length > 0
 
   return createPortal(
     <EntityOptions.Provider value={model.entityOptions}>
@@ -504,6 +517,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             onEntity={setPickedEntity}
             onAddWidget={kind => addWidget(kind, widgetEntity)}
             onAddWidgetDef={def => addWidget(def.kind, def.entity, undefined, def)}
+            onAddPart={placePart}
             pageIndex={selectedIndex}
             onChooseType={type => chooseType(type)}
             onAddSuggestion={key => addSuggestion(key)}
@@ -526,6 +540,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
               newPageDrop={isPageDrag(drag) ? { onDrop: dropPage } : null}
               picked={picked}
               onPick={setPickedIds}
+              onChipDrag={chipDrag}
             />
             {picked.length > 0 && (
               <div className="border-b border-outline-variant bg-surface-container-lowest px-4 py-2">
@@ -646,7 +661,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                   <span className="font-semibold text-on-surface">{pageLabel(page)}</span>
                   <span>{PAGE_TYPE_META[page.type]?.label}</span>
                   <span className="font-mono">#/{page.id || '…'}</span>
-                  <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · drag to move · drag its edge to resize' : 'Click a part of the page to edit it'}</span>
+                  <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · drag to move · drag its edge to resize' : takesParts ? 'Click a part to edit it · drag parts in from the library' : 'Click a part of the page to edit it'}</span>
                   <ZoomControl zoom={prefs.zoom} onChange={zoom => setPrefs(p => ({ ...p, zoom }))} />
                   <DeviceSwitch device={device} onChange={setDevice} />
                   <button
@@ -716,6 +731,13 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                       onDrop: (pageIndex, at) => {
                         setDrag(null)
                         if (pageIndex === selectedIndex) addWidget(widgetDrag.widget, widgetEntity, at, widgetDrag.def)
+                      },
+                    } : null}
+                    partDrop={partDrag ? {
+                      slot: partDrag.part.kind,
+                      onDrop: (pageIndex, at) => {
+                        setDrag(null)
+                        if (pageIndex === selectedIndex) placePart(partDrag.part, at)
                       },
                     } : null}
                   />

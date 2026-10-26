@@ -1,7 +1,8 @@
 import { useMemo, useState, type DragEvent, type Ref } from 'react'
 import type { FullstackPageDef, FullstackPageType, FullstackWidgetDef } from '../../../types'
 import { inputClass } from '../controls'
-import { MAX_WIDGETS, PAGE_TYPE_META, pageLabel, suggestWidgets, widgetKindDisabledReason } from '../pageLayout'
+import { MAX_STEPS, MAX_WIDGETS, PAGE_TYPE_META, pageLabel, suggestWidgets, widgetKindDisabledReason } from '../pageLayout'
+import { pageParts, wizardStepsOf, type PagePart, type PartCard } from '../pageParts'
 import { WIDGET_KINDS } from '../pages/constants'
 import { EntitySelect } from '../pages/fields'
 import { TemplateGallery } from '../pages/TemplateGallery'
@@ -28,9 +29,10 @@ const matches = (query: string, ...texts: (string | undefined)[]) => {
 /**
  * The designer's library: page types, widgets and whole-layout templates. Every card is
  * draggable (onto the page strip, or a dashboard on the canvas) and clickable — a click or Enter
- * adds it where a drop at the end would.
+ * adds it where a drop at the end would. On a tabs, report, record or wizard page the widgets tab
+ * holds that page's parts instead: pages to embed, charts, related lists and numbers, fields.
  */
-export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, entity, onEntity, onSelectPage, onAddWidget, onAddWidgetDef, onChooseType, onAddSuggestion, onAddMyTemplate, onTemplate, onDrag, searchRef }: {
+export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, entity, onEntity, onSelectPage, onAddWidget, onAddWidgetDef, onAddPart, onChooseType, onAddSuggestion, onAddMyTemplate, onTemplate, onDrag, searchRef }: {
   pages: FullstackPageDef[]
   model: PagesModel
   tab: LibraryTab
@@ -46,6 +48,8 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
   onAddWidget: (kind: FullstackWidgetDef['kind']) => void
   /** Adds a suggested widget, settings and all. */
   onAddWidgetDef: (widget: FullstackWidgetDef) => void
+  /** Puts a part on the page on the canvas: at the end, or (a wizard field) into step `at`. */
+  onAddPart: (part: PagePart, at?: number) => void
   onChooseType: (type: FullstackPageType) => void
   onAddSuggestion: (key: string) => void
   onAddMyTemplate: (name: string) => void
@@ -64,6 +68,10 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
     () => (isDashboard ? suggestWidgets(entityDef, pages, pageIndex, { entities: named, scaffoldOpts: projectOpts }) : []),
     [isDashboard, entityDef, pages, pageIndex, named, projectOpts],
   ).filter(s => matches(query, s.label, s.blurb))
+
+  // The page's own parts, when it is a page that takes some (tabs, report, record, wizard).
+  const partGroups = useMemo(() => (page && !isDashboard ? pageParts(pages, pageIndex, named) : []), [page, isDashboard, pages, pageIndex, named])
+  const steps = page?.type === 'wizard' ? wizardStepsOf(page, named) : []
 
   const dragProps = (payload: LibraryDrag, disabled: boolean) => (disabled ? {} : {
     draggable: true,
@@ -97,14 +105,52 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
               onClick={() => onTab(t)}
               className={`flex-1 rounded-md py-1.5 text-xs capitalize ${tab === t ? 'bg-surface-container-high font-semibold text-on-surface' : 'text-secondary hover:text-on-surface'}`}
             >
-              {t}
+              {t === 'widgets' && partGroups.length > 0 ? 'parts' : t}
             </button>
           ))}
         </div>
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3" role="tabpanel" aria-label={`Library: ${tab}`}>
-        {tab === 'widgets' && (
+        {tab === 'widgets' && partGroups.length > 0 && partGroups.map(group => {
+          const cards = group.cards.filter(c => matches(query, c.label, c.blurb))
+          return (
+            <section key={group.slot} className="space-y-1.5" aria-label={group.label} data-part-group={group.slot}>
+              <h3 className={HEADING}>{group.label}</h3>
+              <p className="text-[11px] text-secondary">{group.hint}</p>
+              {group.cards.length === 0 && <p className="text-[11px] text-secondary">Nothing fits this page yet.</p>}
+              <ul className="space-y-1.5">
+                {cards.map(c => (
+                  <li key={c.key}>
+                    {c.part.kind === 'step-field'
+                      ? <StepFieldCard card={c} steps={steps} dragProps={dragProps({ kind: 'part', part: c.part }, false)} onMove={at => onAddPart(c.part, at)} />
+                      : (
+                        <button
+                          type="button"
+                          {...dragProps({ kind: 'part', part: c.part }, Boolean(c.reason))}
+                          onClick={() => onAddPart(c.part)}
+                          disabled={Boolean(c.reason)}
+                          title={c.reason ?? `${c.blurb} — drag onto the page, or click to add it at the end`}
+                          aria-label={`Add ${c.label}`}
+                          className={`${CARD} ${c.reason ? '' : 'cursor-grab'}`}
+                          data-library-part={c.key}
+                        >
+                          <PartIcon icon={c.icon} off={Boolean(c.reason)} />
+                          <span className="min-w-0 flex-1">
+                            <span className={`block truncate text-xs font-semibold ${c.reason ? 'text-secondary' : 'text-on-surface'}`}>{c.label}</span>
+                            <span className="block text-[11px] text-secondary">{c.reason ?? c.blurb}</span>
+                          </span>
+                          {!c.reason && <span className="material-symbols-outlined text-secondary/70" style={{ fontSize: '16px' }} aria-hidden="true">drag_indicator</span>}
+                        </button>
+                      )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        })}
+
+        {tab === 'widgets' && partGroups.length === 0 && (
           !isDashboard ? (
             <div className="space-y-2 text-[11px] text-secondary" data-library-no-dashboard>
               <p>Widgets go on a dashboard. Pick one on the canvas, or add a dashboard page.</p>
@@ -301,7 +347,8 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
         )}
       </div>
       <p className="border-t border-outline-variant px-3 py-2 text-[11px] text-secondary">
-        {tab === 'widgets' ? 'Drag a widget onto the dashboard, or click it to add it at the end.'
+        {tab === 'widgets' && partGroups.length > 0 ? 'Drag a part onto the page, or click it to add it at the end.'
+          : tab === 'widgets' ? 'Drag a widget onto the dashboard, or click it to add it at the end.'
           : tab === 'pages' ? 'Drag a page into the strip above the canvas, or click to add it.'
             : 'Pick a template to build the whole layout from it.'}
       </p>
@@ -309,3 +356,41 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
   )
 }
 
+
+function PartIcon({ icon, off }: { icon: string; off?: boolean }) {
+  return (
+    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${off ? 'bg-surface-container text-secondary' : 'bg-primary/10 text-primary'}`}>
+      <span className="material-symbols-outlined" style={{ fontSize: '17px' }} aria-hidden="true">{icon}</span>
+    </span>
+  )
+}
+
+/** A wizard field: dragged onto a step on the canvas, or moved with its step picker. */
+function StepFieldCard({ card, steps, dragProps, onMove }: {
+  card: PartCard
+  steps: { title?: string; fields: string[] }[]
+  dragProps: Record<string, unknown>
+  onMove: (step: number) => void
+}) {
+  const name = card.part.kind === 'step-field' ? card.part.field : ''
+  const step = steps.findIndex(s => s.fields.includes(name))
+  return (
+    <div {...dragProps} className={`${CARD} cursor-grab`} title={`${card.blurb} — drag onto a step of the wizard`} data-library-part={card.key}>
+      <PartIcon icon={card.icon} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-semibold text-on-surface">{card.label}</span>
+        <span className="block text-[11px] text-secondary">{card.blurb}</span>
+      </span>
+      <select
+        aria-label={`Step for ${card.label}`}
+        value={step}
+        onChange={e => onMove(Number(e.target.value))}
+        className="max-w-[6.5rem] shrink-0 rounded border border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-[11px]"
+      >
+        {step < 0 && <option value={-1} disabled>Not asked</option>}
+        {steps.map((s, i) => <option key={i} value={i}>Step {i + 1}{s.title ? ` · ${s.title}` : ''}</option>)}
+        {steps.length < MAX_STEPS && <option value={steps.length}>New step</option>}
+      </select>
+    </div>
+  )
+}

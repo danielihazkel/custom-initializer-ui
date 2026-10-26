@@ -122,7 +122,15 @@ tabs and every Play-mode link (`buildPlayLinks`, plus content page links) into o
 its kinds, lays pages out in columns by clicks from the menu (breadth first) and puts the pages nothing
 leads to in a last, red-dashed column. Edges are SVG under absolutely placed page buttons; hovering or
 focusing a page lights its edges, a click opens it in Design, and the menu edges can be hidden. Pinned by
-`pageFlow.test.ts`.
+`pageFlow.test.ts`. On a tabs, report, record or wizard page the library's Widgets tab becomes **Parts**
+(`pageParts.ts` `pageParts`): pages to embed, a chart per groupable field/relation, related lists and
+their counts, the wizard's fields (each with a step picker). A card drags onto the canvas (`LibraryDrag`
+`part`; `LayoutPreview` `partDrop` → drop lines on the tab strip, beside a chart, on the record's tabs or
+number row, onto a wizard step or a "New step" slot) or clicks in at the end; a page chip dragged from the
+strip drops onto a tabs page too (`PageStrip` `onChipDrag`). `placePart` applies the inspector's rules
+(caps, nothing twice, the record's default tabs/tiles written out first, a step a field leaves empty
+dropped) and `usePagesModel.placePart` files it as one labelled undo step; a refusal shows in the notice.
+Pinned by `pageParts.test.ts`.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;

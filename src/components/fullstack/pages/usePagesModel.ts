@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FullstackEntityDef, FullstackPageDef, FullstackPageType, FullstackWidgetDef } from '../../../types'
 import { entityOption } from '../fieldOptions'
 import { buildLayoutPreview } from '../layoutPreviewModel'
+import { placePart as placePagePart, type PagePart } from '../pageParts'
 import type { PreviewPalette } from '../LayoutPreview'
 import { moveItem } from '../reorder'
 import { useStableKeys } from '../rowKeys'
@@ -384,6 +385,16 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     }
   })
 
+  /** A part dragged (or clicked) onto a page — a tab, a chart, a related list or number, a wizard
+   *  field — as its own undo entry. Returns why it could not go there, if it could not. */
+  function placePart(pageIndex: number, part: PagePart, at?: number): string | undefined {
+    const placed = placePagePart(pages, pageIndex, named, part, at)
+    if ('reason' in placed) return placed.reason
+    pushUndo(placed.label)
+    update(pageIndex, placed.patch)
+    return undefined
+  }
+
   /** A problem's or warning's fix: its own undo entry, then the change. */
   function applyFix(fix: PageFix) {
     pushUndo(fix.label)
@@ -420,7 +431,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     reorderWidget, resizeWidget, addWidget, addWidgetDef, setWidget, retargetWidgetAt, duplicateWidget, removeWidget,
     changeType, removePage, requestRemove, duplicate, move, movePageTo, makeStart, toggleHidden,
     startFromEntities, layoutTemplates, startFromTemplate, myTemplates, saveAsTemplate, forgetTemplate,
-    dnd, applyFix, fixAll, entityOptions, preview, suggestions, issues,
+    placePart, dnd, applyFix, fixAll, entityOptions, preview, suggestions, issues,
     pushUndo, onChange,
     /** The messages on one page's controls, by control key. */
     validationErrors: (index: number): Record<string, string> => validation.byPage[index] ?? {},

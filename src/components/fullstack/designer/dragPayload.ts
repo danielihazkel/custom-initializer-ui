@@ -1,5 +1,6 @@
 import type { DragEvent } from 'react'
 import type { FullstackPageType, FullstackWidgetDef } from '../../../types'
+import type { PagePart } from '../pageParts'
 
 /** What the library hands the canvas or the page strip while one of its cards is dragged. */
 export type LibraryDrag =
@@ -8,6 +9,8 @@ export type LibraryDrag =
   | { kind: 'page'; type: FullstackPageType; pick?: string }
   | { kind: 'suggestion'; key: string }
   | { kind: 'my-template'; name: string }
+  /** A part of the page on the canvas: a tab, a chart, a related list or number, a wizard field. */
+  | { kind: 'part'; part: PagePart }
 
 export const LAYOUT_DRAG_MIME = 'application/x-menora-layout'
 
@@ -20,7 +23,7 @@ export function startLibraryDrag(e: DragEvent<HTMLElement>, payload: LibraryDrag
   e.dataTransfer.setData('text/plain', json)
 }
 
-/** True for a drop target of new pages (the strip); false for the canvas, which takes widgets. */
+/** True for a drop target of new pages (the strip); false for what the canvas takes (widgets, parts). */
 export function isPageDrag(drag: LibraryDrag | null): boolean {
-  return drag != null && drag.kind !== 'widget'
+  return drag != null && drag.kind !== 'widget' && drag.kind !== 'part'
 }
