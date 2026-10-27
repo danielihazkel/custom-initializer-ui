@@ -7,6 +7,7 @@ import { WIDGET_KINDS } from '../pages/constants'
 import { EntitySelect } from '../pages/fields'
 import { TemplateGallery } from '../pages/TemplateGallery'
 import type { PagesModel } from '../pages/usePagesModel'
+import { fitWidget, widgetName, type WidgetClip } from '../widgetClipboard'
 import { startLibraryDrag, type LibraryDrag } from './dragPayload'
 
 export type LibraryTab = 'pages' | 'widgets' | 'templates'
@@ -32,7 +33,7 @@ const matches = (query: string, ...texts: (string | undefined)[]) => {
  * adds it where a drop at the end would. On a tabs, report, record or wizard page the widgets tab
  * holds that page's parts instead: pages to embed, charts, related lists and numbers, fields.
  */
-export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, entity, onEntity, onSelectPage, onAddWidget, onAddWidgetDef, onAddPart, onChooseType, onAddSuggestion, onAddMyTemplate, onTemplate, onDrag, searchRef }: {
+export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, entity, onEntity, onSelectPage, onAddWidget, onAddWidgetDef, onAddPart, onChooseType, onAddSuggestion, onAddMyTemplate, onTemplate, onDrag, searchRef, clip = null, onPaste }: {
   pages: FullstackPageDef[]
   model: PagesModel
   tab: LibraryTab
@@ -56,6 +57,9 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
   onTemplate: (label: string, built: FullstackPageDef[]) => void
   onDrag: (drag: LibraryDrag | null) => void
   searchRef?: Ref<HTMLInputElement>
+  /** Copied widgets, offered as a card that pastes them onto the dashboard. */
+  clip?: WidgetClip | null
+  onPaste?: () => void
 }) {
   const [query, setQuery] = useState('')
   const { named, projectOpts } = model
@@ -68,6 +72,11 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
     () => (isDashboard ? suggestWidgets(entityDef, pages, pageIndex, { entities: named, scaffoldOpts: projectOpts }) : []),
     [isDashboard, entityDef, pages, pageIndex, named, projectOpts],
   ).filter(s => matches(query, s.label, s.blurb))
+
+  // Widgets saved in this browser, each fitted to this layout (or why it no longer fits).
+  const myWidgets = model.widgetTemplates
+    .filter(t => matches(query, t.name, WIDGET_KINDS.find(k => k.kind === t.widget.kind)?.label ?? ''))
+    .map(t => ({ ...t, fit: fitWidget(t.widget, pages, named) }))
 
   // The page's own parts, when it is a page that takes some (tabs, report, record, wizard).
   const partGroups = useMemo(() => (page && !isDashboard ? pageParts(pages, pageIndex, named) : []), [page, isDashboard, pages, pageIndex, named])
@@ -200,6 +209,73 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                         </button>
                       </li>
                     ))}
+                  </ul>
+                </section>
+              )}
+              {clip && onPaste && (
+                <section className="space-y-1.5" aria-label="Clipboard">
+                  <h3 className={HEADING}>Clipboard</h3>
+                  <button
+                    type="button"
+                    onClick={onPaste}
+                    disabled={widgetCap}
+                    title={widgetCap ? `At most ${MAX_WIDGETS} widgets` : 'Paste onto this dashboard, after the selected widget (Ctrl+V)'}
+                    aria-label={`Paste ${clip.widgets.length === 1 ? `“${widgetName(clip.widgets[0])}”` : `${clip.widgets.length} widgets`}`}
+                    className={`${CARD} border-primary/30`}
+                    data-library-clipboard
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                      <span className="material-symbols-outlined" style={{ fontSize: '17px' }} aria-hidden="true">content_paste</span>
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-semibold text-on-surface">
+                        {clip.widgets.length === 1 ? widgetName(clip.widgets[0]) : `${clip.widgets.length} widgets`}
+                      </span>
+                      <span className="block truncate text-[11px] text-secondary">Copied from {clip.from || 'a dashboard'} · click to paste</span>
+                    </span>
+                  </button>
+                </section>
+              )}
+              {myWidgets.length > 0 && (
+                <section className="space-y-1.5" aria-label="My widgets">
+                  <h3 className={HEADING}>My widgets</h3>
+                  <ul className="space-y-1.5" data-my-widgets>
+                    {myWidgets.map(t => {
+                      const kind = WIDGET_KINDS.find(k => k.kind === t.widget.kind)
+                      const reason = 'reason' in t.fit ? t.fit.reason : widgetCap ? `At most ${MAX_WIDGETS} widgets` : undefined
+                      const def = 'widget' in t.fit ? t.fit.widget : t.widget
+                      return (
+                        <li key={t.name} className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            {...dragProps({ kind: 'widget', widget: def.kind, def }, Boolean(reason))}
+                            onClick={() => onAddWidgetDef(def)}
+                            disabled={Boolean(reason)}
+                            title={reason ?? 'Saved in this browser — drag onto the dashboard, or click to add it at the end'}
+                            aria-label={`Add ${t.name}`}
+                            className={`${CARD} ${reason ? '' : 'cursor-grab'}`}
+                            data-my-widget={t.name}
+                          >
+                            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${reason ? 'bg-surface-container text-secondary' : 'bg-primary/10 text-primary'}`}>
+                              <span className="material-symbols-outlined" style={{ fontSize: '17px' }} aria-hidden="true">{kind?.icon ?? 'widgets'}</span>
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className={`block truncate text-xs font-semibold ${reason ? 'text-secondary' : 'text-on-surface'}`}>{t.name}</span>
+                              <span className="block truncate text-[11px] text-secondary">{reason ?? kind?.label}</span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => model.forgetWidgetTemplate(t.name)}
+                            className="shrink-0 rounded p-1 text-secondary hover:bg-error/10 hover:text-error"
+                            aria-label={`Forget ${t.name}`}
+                            title="Forget this saved widget"
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>close</span>
+                          </button>
+                        </li>
+                      )
+                    })}
                   </ul>
                 </section>
               )}

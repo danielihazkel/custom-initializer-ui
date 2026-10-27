@@ -14,6 +14,8 @@ export const FULLSTACK_SHORTCUTS: { keys: string; action: string }[] = [
   { keys: 'Delete', action: 'Remove the selected widget (layout designer)' },
   { keys: 'Alt+← / Alt+→', action: 'Move the selected widget (layout designer)' },
   { keys: 'Alt+Shift+← / →', action: 'Make the selected widget narrower or wider' },
+  { keys: 'Ctrl+C / Ctrl+X', action: 'Copy or cut the selected widget — or, with none selected, copy every widget of the dashboard' },
+  { keys: 'Ctrl+V', action: 'Paste copied widgets onto the dashboard on the canvas (after the selected one)' },
   { keys: 'Delete / Alt+← / →', action: 'On a focused page chip: remove the page, or move it (layout designer)' },
   { keys: 'P', action: 'Play the layout: click through it as the app would (layout designer)' },
   { keys: 'Shift+F10', action: 'Open a focused page chip’s menu; Ctrl/Shift-click picks several pages (layout designer)' },

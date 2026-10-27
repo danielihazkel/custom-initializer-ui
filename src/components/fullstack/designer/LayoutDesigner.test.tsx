@@ -515,6 +515,70 @@ describe('Layout designer — page flow', () => {
   })
 })
 
+describe('Layout designer — widget clipboard', () => {
+  const two: FullstackPageDef[] = [...desk, { id: 'board', type: 'dashboard', title: 'Board', widgets: [{ kind: 'text', entity: '', text: 'Hi' }] }]
+  const notice = (designer: HTMLElement) => designer.querySelector('[data-pages-notice]')?.textContent ?? ''
+  beforeEach(() => sessionStorage.clear())
+
+  it('copies a widget with Ctrl+C and pastes it on another dashboard with Ctrl+V, after the selected one', () => {
+    render(<Harness initial={two} />)
+    const designer = openDesigner()
+    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 2' }))
+    fireEvent.keyDown(designer, { key: 'c', ctrlKey: true })
+    expect(notice(designer)).toContain('Copied “Breakdown chart · Order”')
+
+    fireEvent.click(chip(designer, 'board'))
+    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    fireEvent.keyDown(designer, { key: 'v', ctrlKey: true })
+    expect(latest[3].widgets?.map(w => w.kind)).toEqual(['text', 'bar'])
+    expect(pushUndo).toHaveBeenLastCalledWith('Pasted “Breakdown chart · Order” into “Board”')
+    expect(within(inspector(designer)).getByText('Widget 2')).toBeTruthy()
+    // The copy outlives the designer: the library offers it again.
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.keyDown(document, { key: 'Escape' })
+    const again = openDesigner()
+    expect(again.querySelector('[data-library-clipboard]')?.textContent).toContain('Copied from Desk')
+  })
+
+  it('cuts with Ctrl+X, copies a whole dashboard with nothing selected, and refuses a page that is not a dashboard', () => {
+    render(<Harness initial={two} />)
+    const designer = openDesigner()
+    fireEvent.keyDown(designer, { key: 'c', ctrlKey: true })
+    expect(notice(designer)).toContain('Copied 2 widgets')
+    expect(designer.querySelector('[data-library-clipboard]')?.textContent).toContain('2 widgets')
+
+    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    fireEvent.keyDown(designer, { key: 'x', ctrlKey: true })
+    expect(latest[0].widgets?.map(w => w.kind)).toEqual(['bar'])
+    expect(notice(designer)).toContain('Cut “Number tile · Order”')
+    fireEvent.click(chip(designer, 'orders'))
+    fireEvent.keyDown(designer, { key: 'v', ctrlKey: true })
+    expect(notice(designer)).toContain('Widgets go on a dashboard')
+    expect(latest[1].widgets).toBeUndefined()
+  })
+
+  it('moves a widget to another dashboard, and keeps one as a saved widget in the library', () => {
+    render(<Harness initial={two} />)
+    const designer = openDesigner()
+    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    fireEvent.click(within(inspector(designer)).getByRole('button', { name: 'Save as widget' }))
+    expect(notice(designer)).toContain('Saved “Number tile · Order”')
+
+    fireEvent.click(within(inspector(designer)).getByRole('button', { name: 'Move to…' }))
+    fireEvent.click(within(designer).getByRole('menuitem', { name: /Board/ }))
+    expect(latest[0].widgets?.map(w => w.kind)).toEqual(['bar'])
+    expect(latest[3].widgets?.map(w => w.kind)).toEqual(['text', 'kpi'])
+    expect(pushUndo).toHaveBeenLastCalledWith('Moved “Number tile · Order” from “Desk” to “Board”')
+    expect(inspector(designer).getAttribute('data-page-key')).toBeTruthy()
+    expect(within(inspector(designer)).getByText('Widget 2')).toBeTruthy()
+
+    fireEvent.click(within(designer).getByRole('button', { name: 'Add Number tile · Order' }))
+    expect(latest[3].widgets?.map(w => w.kind)).toEqual(['text', 'kpi', 'kpi'])
+    fireEvent.click(within(designer).getByRole('button', { name: 'Forget Number tile · Order' }))
+    expect(designer.querySelector('[data-my-widgets]')).toBeNull()
+  })
+})
+
 describe('Layout designer — Code tab', () => {
   const coded: FullstackPageDef[] = [...desk, { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ page: 'orders' }, { page: 'customers' }] }]
   const previewOf = (paths: string[]) => ({ files: paths.map(path => ({ path, content: `// generated ${path}` })), tree: [] })

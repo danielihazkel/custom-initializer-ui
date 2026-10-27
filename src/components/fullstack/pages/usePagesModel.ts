@@ -9,7 +9,10 @@ import { useStableKeys } from '../rowKeys'
 import { LAYOUT_TEMPLATES, buildLayoutTemplate, deletePageTemplate, readPageTemplates, savePageTemplate } from '../layoutTemplates'
 import { useDragReorder } from '../useDragReorder'
 import {
-  MAX_PAGES, MIN_TABS, PAGE_TYPE_META, defaultSpan, removePageAt, adoptedGroup, blankPage,
+  deleteWidgetTemplate, fitWidget, pasteWidgets, readWidgetTemplates, saveWidgetTemplate, widgetName, type WidgetClip,
+} from '../widgetClipboard'
+import {
+  MAX_PAGES, MAX_WIDGETS, MIN_TABS, PAGE_TYPE_META, defaultSpan, removePageAt, adoptedGroup, blankPage,
   masterDetailPairs, newPageChoices, newPageTypeReason, moveNavGroup, navSections, renameGroupInPages,
   fixAllProblems, retargetPage, retargetWidget, tabCandidates, duplicatePage, listColumns, newWidget, pageLabel,
   pagesEmbedding, relationsTo, reportCharts, renamePageIdInPages, seedLayout, slugify, suggestPages,
@@ -270,6 +273,59 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     update(pageIndex, { widgets: (page.widgets ?? []).filter((_, i) => i !== wi) })
   }
 
+  /** Widgets from the clipboard (or a saved widget) into dashboard `pageIndex` at `at`, as one
+   *  undo step. Returns where they landed, or undefined — the reason is in the notice. */
+  function pasteWidgetsAt(pageIndex: number, clip: WidgetClip, at?: number): { at: number; added: number } | undefined {
+    const pasted = pasteWidgets(pages, pageIndex, clip, named, at)
+    if ('reason' in pasted) {
+      setNotice(pasted.reason)
+      return undefined
+    }
+    pushUndo(pasted.label)
+    update(pageIndex, { widgets: pasted.widgets })
+    setNotice(pasted.skipped.length ? `${pasted.label}. Left out — ${pasted.skipped.join('; ')}` : null)
+    return { at: pasted.at, added: pasted.added }
+  }
+  /** Widget `wi` of one dashboard moved to the end of another, as one undo step. Returns its new
+   *  index, or undefined (the reason is in the notice). */
+  function moveWidgetTo(pageIndex: number, wi: number, toIndex: number): number | undefined {
+    const from = pages[pageIndex]
+    const to = pages[toIndex]
+    const widget = from?.widgets?.[wi]
+    if (!from || !widget || to?.type !== 'dashboard' || toIndex === pageIndex) return undefined
+    const target = to.widgets ?? []
+    if (target.length >= MAX_WIDGETS) {
+      setNotice(`“${pageLabel(to)}” already has the most widgets a dashboard can have (${MAX_WIDGETS})`)
+      return undefined
+    }
+    const fit = fitWidget(widget, pages, named)
+    if ('reason' in fit) {
+      setNotice(fit.reason)
+      return undefined
+    }
+    pushUndo(`Moved “${widgetName(widget)}” from “${pageLabel(from)}” to “${pageLabel(to)}”`)
+    onChange(pages.map((p, i) => (i === pageIndex ? { ...p, widgets: (p.widgets ?? []).filter((_, j) => j !== wi) }
+      : i === toIndex ? { ...p, widgets: [...target, fit.widget] } : p)))
+    return target.length
+  }
+
+  // Widgets saved in this browser: offered in the library's Widgets tab.
+  const [widgetTemplates, setWidgetTemplates] = useState(readWidgetTemplates)
+  function saveWidgetAsTemplate(widget: FullstackWidgetDef) {
+    const name = widgetName(widget)
+    const replaced = widgetTemplates.some(t => t.name === name)
+    if (!saveWidgetTemplate(name, widget)) {
+      setNotice('This browser refused to store the widget (storage full or blocked).')
+      return
+    }
+    setWidgetTemplates(readWidgetTemplates())
+    setNotice(`${replaced ? 'Updated' : 'Saved'} “${name}” — add it to any dashboard from the library's Widgets tab › My widgets.`)
+  }
+  function forgetWidgetTemplate(name: string) {
+    deleteWidgetTemplate(name)
+    setWidgetTemplates(readWidgetTemplates())
+  }
+
   // A page moved to another type: what the new type cannot use is dropped, and said so.
   function changeType(index: number, type: FullstackPageType) {
     const page = pages[index]
@@ -429,6 +485,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     add, addPage, addTabsPage, newTypeReason, fittingChoices, noFitReason, switchBlocked, hasMdPair, tabsEligible,
     navGroupSections, renameGroup, moveGroup,
     reorderWidget, resizeWidget, addWidget, addWidgetDef, setWidget, retargetWidgetAt, duplicateWidget, removeWidget,
+    pasteWidgetsAt, moveWidgetTo, widgetTemplates, saveWidgetAsTemplate, forgetWidgetTemplate,
     changeType, removePage, requestRemove, duplicate, move, movePageTo, makeStart, toggleHidden,
     startFromEntities, layoutTemplates, startFromTemplate, myTemplates, saveAsTemplate, forgetTemplate,
     placePart, dnd, applyFix, fixAll, entityOptions, preview, suggestions, issues,

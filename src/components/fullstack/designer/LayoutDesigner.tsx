@@ -20,6 +20,7 @@ import { DesignerInspector, tabOfControl, type InspectorTab } from './DesignerIn
 import { DesignerLibrary, type LibraryTab } from './DesignerLibrary'
 import { isPageDrag, type LibraryDrag } from './dragPayload'
 import { PAGE_SLOTS, type PagePart } from '../pageParts'
+import { readClipboard, widgetName, writeClipboard, type WidgetClip } from '../widgetClipboard'
 import { IssuesPanel } from './IssuesPanel'
 import { PageStrip } from './PageStrip'
 import { SitemapView } from './SitemapView'
@@ -119,6 +120,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)) } catch { /* preference only */ }
   }, [prefs])
   const [historyOpen, setHistoryOpen] = useState(false)
+  // Copied widgets (also in sessionStorage, so a copy survives closing the designer).
+  const [clip, setClip] = useState<WidgetClip | null>(readClipboard)
   const historyButtonRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const inspectorRef = useRef<HTMLElement>(null)
@@ -250,6 +253,14 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
       else onClose()
       return
     }
+    if ((e.ctrlKey || e.metaKey) && !e.defaultPrevented && !isTypingTarget(e.target) && view === 'design' && mode === 'design') {
+      // Copy, cut and paste widgets — unless text is selected, which the browser's own copy is for.
+      if (e.altKey || e.shiftKey || window.getSelection()?.toString()) return
+      const key = e.key.toLowerCase()
+      if ((key === 'c' || key === 'x') && copyWidgets(key === 'x')) e.preventDefault()
+      else if (key === 'v' && clip) { e.preventDefault(); pasteClip() }
+      return
+    }
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || isTypingTarget(e.target) || view !== 'design') return
     if ((e.key === 'p' || e.key === 'P') && !e.altKey && !e.shiftKey) {
       e.preventDefault()
@@ -356,6 +367,41 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   function chipDrag(index: number | null) {
     const target = index == null ? undefined : pages[index]
     setDrag(page?.type === 'tabs' && target && index !== selectedIndex ? { kind: 'part', part: { kind: 'tab', page: target.id } } : null)
+  }
+  /** Copies the selected widget — or every widget, with none selected — of the dashboard on the
+   *  canvas; `cut` removes the selected one too. False when there was nothing to copy. */
+  function copyWidgets(cut = false): boolean {
+    if (page?.type !== 'dashboard') return false
+    const all = page.widgets ?? []
+    if (cut && widget == null) return false
+    const copied = widget != null ? [all[widget]] : all
+    if (copied.length === 0) return false
+    const next = { widgets: copied, from: pageLabel(page) }
+    setClip(next)
+    const kept = writeClipboard(next)
+    const what = copied.length === 1 ? `“${widgetName(copied[0])}”` : `${copied.length} widgets`
+    if (cut && widget != null) {
+      model.removeWidget(selectedIndex, widget)
+      setSelectedWidget(null)
+      model.setNotice(`Cut ${what} — Ctrl+V pastes it on any dashboard`)
+    } else {
+      model.setNotice(`Copied ${what} — Ctrl+V pastes ${copied.length === 1 ? 'it' : 'them'} on any dashboard${kept ? '' : ' (until the designer closes: this browser refused to keep it)'}`)
+    }
+    return true
+  }
+  /** The clipboard onto the dashboard on the canvas: after the selected widget, else at the end. */
+  function pasteClip() {
+    if (!clip) return
+    const placed = model.pasteWidgetsAt(selectedIndex, clip, widget != null ? widget + 1 : undefined)
+    if (placed) setSelectedWidget(placed.at)
+  }
+  /** The selected widget moved to another dashboard, which then opens with it selected. */
+  function moveWidget(toIndex: number) {
+    if (widget == null) return
+    const at = model.moveWidgetTo(selectedIndex, widget, toIndex)
+    if (at == null) return
+    setSelectedKey(keys[toIndex] ?? null)
+    setSelectedWidget(at)
   }
   function reorderWidget(pageIndex: number, from: number, to: number) {
     model.reorderWidget(pageIndex, from, to)
@@ -518,6 +564,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             onAddWidget={kind => addWidget(kind, widgetEntity)}
             onAddWidgetDef={def => addWidget(def.kind, def.entity, undefined, def)}
             onAddPart={placePart}
+            clip={clip}
+            onPaste={pasteClip}
             pageIndex={selectedIndex}
             onChooseType={type => chooseType(type)}
             onAddSuggestion={key => addSuggestion(key)}
@@ -773,6 +821,10 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             rootRef={inspectorRef}
             codeRequest={codeRequest}
             problems={validation.issues.length}
+            clip={clip}
+            onCopyWidgets={() => copyWidgets()}
+            onPasteWidgets={pasteClip}
+            onMoveWidget={moveWidget}
           />
           )}
 

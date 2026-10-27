@@ -137,6 +137,15 @@ layout has problems), keeps the last answer dimmed meanwhile and shows `pageCode
 page's `src/app/screens/<PascalId>Screen.tsx` (the backend's `Naming.toPascalCase`, mirrored by
 `naming.ts`), the screens a tabs page embeds, the entity pages it draws, then `App.tsx`/`route.ts`. Its own
 fetch, not the Explore preview — Explore opens the file-tree modal. Pinned by `pageCode.test.ts`.
+**Widget clipboard** (`widgetClipboard.ts`): Ctrl+C copies the selected widget (none selected: every widget
+of the dashboard), Ctrl+X cuts it, Ctrl+V pastes after the selected widget or at the end (design mode only;
+not in a field or with text selected — the browser's copy wins). The copy lives in `sessionStorage`
+(`fullstack:widgetClipboard`), so it outlives the designer; the library shows it as a Clipboard card. The
+widget inspector adds Copy, **Move to…** (another dashboard, one undo step, `usePagesModel.moveWidgetTo`) and
+**Save as widget** (`localStorage` `fullstack:widgetTemplates`, the library's "My widgets", with Forget).
+Every pasted, moved or saved widget goes through `fitWidget` first (its entity must exist; links and a
+`drillTo` to pages that are gone are dropped) and `pasteWidgets` stops at `MAX_WIDGETS`, naming what it
+left out. Pinned by `widgetClipboard.test.ts`.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;

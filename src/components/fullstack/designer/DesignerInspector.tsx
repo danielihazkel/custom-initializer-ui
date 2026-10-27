@@ -1,4 +1,4 @@
-import type { Ref } from 'react'
+import { useRef, useState, type Ref } from 'react'
 import type { FullstackPageDef, FullstackStarterRequest } from '../../../types'
 import { MAX_PAGES, MAX_WIDGETS, PAGE_TYPE_META, canDuplicate, inNav, pageLabel } from '../pageLayout'
 import { ICON_BUTTON, SMALL_BUTTON, WIDGET_KINDS } from '../pages/constants'
@@ -6,6 +6,8 @@ import { RolesField } from '../pages/fields'
 import { PageBasicsFields, PageTypeForm } from '../pages/PageSettings'
 import type { PagesModel } from '../pages/usePagesModel'
 import { WidgetCard } from '../pages/WidgetCard'
+import type { WidgetClip } from '../widgetClipboard'
+import { DesignerMenu } from './DesignerMenu'
 import { PageCode } from './PageCode'
 
 export type InspectorTab = 'basics' | 'layout' | 'access' | 'code'
@@ -23,7 +25,7 @@ export function tabOfControl(control: string | undefined): InspectorTab {
  * (type, title, route, place in the navigation), its type's own layout, who may open it and —
  * given the request to preview — the code it generates.
  */
-export function DesignerInspector({ pages, model, index, widget, tab, onTab, onDeselectWidget, ldapAuth, onAddDep, rootRef, codeRequest, problems = 0 }: {
+export function DesignerInspector({ pages, model, index, widget, tab, onTab, onDeselectWidget, ldapAuth, onAddDep, rootRef, codeRequest, problems = 0, clip = null, onCopyWidgets, onPasteWidgets, onMoveWidget }: {
   pages: FullstackPageDef[]
   model: PagesModel
   index: number
@@ -39,7 +41,15 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
   codeRequest?: () => FullstackStarterRequest
   /** The layout's problems — the Code tab waits for them to be fixed. */
   problems?: number
+  /** Copied widgets, and the clipboard actions: copy the selected widget (or, on the page, all of
+   *  them), paste onto this dashboard, move the selected widget to dashboard `to`. */
+  clip?: WidgetClip | null
+  onCopyWidgets?: () => void
+  onPasteWidgets?: () => void
+  onMoveWidget?: (to: number) => void
 }) {
+  const [moveOpen, setMoveOpen] = useState(false)
+  const moveRef = useRef<HTMLButtonElement>(null)
   const page = pages[index]
   const key = model.keys[index] ?? ''
   if (!page) {
@@ -57,6 +67,7 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
   if (widgetDef && widget != null) {
     const kind = WIDGET_KINDS.find(k => k.kind === widgetDef.kind)
     const widgets = page.widgets ?? []
+    const otherDashboards = pages.map((p, i) => ({ p, i })).filter(({ p, i }) => p.type === 'dashboard' && i !== index)
     return (
       <aside ref={rootRef} className="@container flex min-h-0 flex-col border-outline-variant bg-surface-container-lowest lg:w-[22rem] lg:shrink-0 lg:border-s" aria-label="Inspector" data-page-key={key} data-inspector="widget">
         <div className="space-y-2 border-b border-outline-variant px-4 py-3">
@@ -98,7 +109,50 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
             onRemove={() => model.removeWidget(index, widget)}
           />
         </div>
-        <div className="flex gap-2 border-t border-outline-variant px-4 py-3">
+        <div className="relative flex flex-wrap gap-2 border-t border-outline-variant px-4 pt-3" data-widget-clipboard>
+          {onCopyWidgets && (
+            <button type="button" onClick={onCopyWidgets} className={SMALL_BUTTON} title="Copy this widget — Ctrl+V pastes it on any dashboard (Ctrl+C)">
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">file_copy</span>
+              Copy
+            </button>
+          )}
+          {onMoveWidget && (
+            <button
+              ref={moveRef}
+              type="button"
+              onClick={() => setMoveOpen(o => !o)}
+              disabled={otherDashboards.length === 0}
+              aria-haspopup="menu"
+              aria-expanded={moveOpen}
+              className={SMALL_BUTTON}
+              title={otherDashboards.length === 0 ? 'There is no other dashboard to move it to' : 'Move this widget to another dashboard'}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">drive_file_move</span>
+              Move to…
+            </button>
+          )}
+          <button type="button" onClick={() => model.saveWidgetAsTemplate(widgetDef)} className={SMALL_BUTTON} title="Keep this widget in the library (My widgets), in this browser, for any dashboard">
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">bookmark_add</span>
+            Save as widget
+          </button>
+          {moveOpen && onMoveWidget && (
+            <DesignerMenu
+              label="Move to dashboard"
+              heading="Move to dashboard"
+              className="bottom-full start-4 mb-1"
+              returnFocus={moveRef.current}
+              onClose={() => setMoveOpen(false)}
+              items={otherDashboards.map(({ p, i }) => ({
+                key: p.id || String(i),
+                label: pageLabel(p),
+                icon: 'dashboard',
+                disabled: (p.widgets?.length ?? 0) >= MAX_WIDGETS ? `At most ${MAX_WIDGETS} widgets` : undefined,
+                onSelect: () => { setMoveOpen(false); onMoveWidget(i) },
+              }))}
+            />
+          )}
+        </div>
+        <div className="flex gap-2 px-4 py-3">
           <button type="button" onClick={() => model.duplicateWidget(index, widget)} disabled={widgets.length >= MAX_WIDGETS} className={`${SMALL_BUTTON} flex-1 justify-center`}>
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">content_copy</span>
             Duplicate
@@ -188,9 +242,25 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
         {tab === 'layout' && (
           <>
             {page.type === 'dashboard' && (
-              <p className="rounded-lg bg-surface-container px-3 py-2 text-[11px] text-secondary">
-                Widgets: drag them from the library onto the canvas. Click one there to edit it.
-              </p>
+              <div className="space-y-2 rounded-lg bg-surface-container px-3 py-2 text-[11px] text-secondary">
+                <p>Widgets: drag them from the library onto the canvas. Click one there to edit it.</p>
+                {(onPasteWidgets && clip) || (onCopyWidgets && (page.widgets?.length ?? 0) > 0) ? (
+                  <div className="flex flex-wrap gap-2" data-widget-clipboard>
+                    {onCopyWidgets && (page.widgets?.length ?? 0) > 0 && (
+                      <button type="button" onClick={onCopyWidgets} className={SMALL_BUTTON} title="Copy every widget of this dashboard (Ctrl+C with no widget selected)">
+                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">file_copy</span>
+                        Copy all widgets
+                      </button>
+                    )}
+                    {onPasteWidgets && clip && (
+                      <button type="button" onClick={onPasteWidgets} className={SMALL_BUTTON} title={`Paste what was copied from “${clip.from}” (Ctrl+V)`}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">content_paste</span>
+                        Paste {clip.widgets.length === 1 ? 'widget' : `${clip.widgets.length} widgets`}
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+              </div>
             )}
             <PageTypeForm
               page={page}
