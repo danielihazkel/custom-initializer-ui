@@ -60,7 +60,7 @@ export interface PagesModelOptions {
 export function offNavNoteFor(page: FullstackPageDef | undefined): string | undefined {
   if (!page) return undefined
   if (page.type === 'record') return `Opens from a ${page.entity || 'record'} row — not in the navigation.`
-  if (page.hidden && page.type === 'wizard') return 'Link only — opened from a Page links widget or a list’s New button, not from the navigation.'
+  if (page.hidden && (page.type === 'wizard' || page.type === 'form')) return 'Link only — opened from a Page links widget or a list’s New button, not from the navigation.'
   if (page.hidden) return 'Tab only — reachable inside a tabs page, not from the navigation.'
   return undefined
 }

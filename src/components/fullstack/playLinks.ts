@@ -39,12 +39,13 @@ const lower = (name: string | undefined) => (name ?? '').trim().toLowerCase()
 export function pageLinks(pages: FullstackPageDef[]) {
   const record = new Map<string, number>()
   const list = new Map<string, number>()
-  const wizard = new Map<string, number>()
+  // The page that creates an entity's rows: its wizard or its form.
+  const create = new Map<string, number>()
   const home = new Map<string, number>()
   const byId = new Map(pages.map((p, i) => [p.id, i]))
   pages.forEach((p, i) => {
     if (p.type === 'record') record.set(lower(p.entity), i)
-    if (p.type === 'wizard') wizard.set(lower(p.entity), i)
+    if (p.type === 'wizard' || p.type === 'form') create.set(lower(p.entity), i)
     if (p.type === 'entity-list' && !p.hidden && !list.has(lower(p.entity))) list.set(lower(p.entity), i)
   })
   for (const [e, i] of list) home.set(e, i)
@@ -60,7 +61,7 @@ export function pageLinks(pages: FullstackPageDef[]) {
     }
   })
   const of = (map: Map<string, number>) => (entity: string | undefined): number | null => map.get(lower(entity)) ?? null
-  return { recordOf: of(record), listOf: of(list), wizardOf: of(wizard), homeOf: of(home), byId }
+  return { recordOf: of(record), listOf: of(list), createOf: of(create), homeOf: of(home), byId }
 }
 
 /** Every page's click targets, index-aligned with the layout. */
@@ -84,16 +85,16 @@ export function buildPlayLinks(pages: FullstackPageDef[], entities: FullstackEnt
           ...base,
           row: opensRecord ? record : null,
           rowNote: page.detail === 'side' ? 'Rows open in the pane beside the list' : opensRecord ? undefined : 'Rows open in a quick-look drawer — add a record page to open a page',
-          create: links.wizardOf(page.entity),
+          create: links.createOf(page.entity),
         }
       }
       case 'calendar':
       case 'board': {
         const record = links.recordOf(page.entity)
-        return { ...base, row: record, rowNote: record == null ? 'A card opens in a quick-look drawer' : undefined, create: links.wizardOf(page.entity) }
+        return { ...base, row: record, rowNote: record == null ? 'A card opens in a quick-look drawer' : undefined, create: links.createOf(page.entity) }
       }
       case 'master-detail':
-        return { ...base, childRows: [links.recordOf(page.child)], create: links.wizardOf(page.child) }
+        return { ...base, childRows: [links.recordOf(page.child)], create: links.createOf(page.child) }
       case 'record': {
         const e = entityOf(page.entity)
         const related = page.childTabs?.map(childTabEntity)
@@ -101,6 +102,7 @@ export function buildPlayLinks(pages: FullstackPageDef[], entities: FullstackEnt
         return { ...base, back: links.homeOf(page.entity), childRows: related.map(name => links.recordOf(name)) }
       }
       case 'wizard':
+      case 'form':
         return { ...base, afterSave: links.recordOf(page.entity) ?? links.homeOf(page.entity) }
       case 'report':
         return { ...base, drill: links.listOf(page.entity) }

@@ -219,6 +219,7 @@ export const NAV_ICONS: Record<FullstackNavIcon, { symbol: string; label: string
   Inbox: { symbol: 'inbox', label: 'Inbox' },
   Calendar: { symbol: 'calendar_month', label: 'Calendar' },
   FileText: { symbol: 'description', label: 'Document' },
+  FilePlus: { symbol: 'note_add', label: 'New document' },
   Settings: { symbol: 'settings', label: 'Settings' },
   Truck: { symbol: 'local_shipping', label: 'Truck' },
   Wallet: { symbol: 'account_balance_wallet', label: 'Wallet' },
@@ -237,6 +238,7 @@ export const DEFAULT_NAV_ICON: Record<FullstackPageType, FullstackNavIcon> = {
   record: 'Table2',
   report: 'BarChart3',
   wizard: 'Wand2',
+  form: 'FilePlus',
   calendar: 'Calendar',
   board: 'Columns3',
   content: 'FileText',
@@ -843,7 +845,7 @@ export const ADVICE = {
 function adviceGroup(type: FullstackPageType): string {
   switch (type) {
     case 'dashboard': case 'report': return 'Insights'
-    case 'wizard': case 'import': case 'content': case 'search': return 'Tools'
+    case 'wizard': case 'form': case 'import': case 'content': case 'search': return 'Tools'
     default: return 'Data'
   }
 }
@@ -891,11 +893,11 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       out.push({ key, page: index, field, message: '', summary, ...(fix ? { fix } : {}) })
     }
 
-    if (page.hidden && page.type !== 'record' && page.type !== 'wizard' && pagesEmbedding(pages, page.id).length === 0) {
+    if (page.hidden && page.type !== 'record' && !createsRows(page) && pagesEmbedding(pages, page.id).length === 0) {
       warn('unreachable', 'page', `${where} is hidden but no tabs page embeds it, so nothing opens it`,
         patchPage(index, `Show “${label}” in the navigation`, p => ({ ...p, hidden: false })))
     }
-    if ((page.roles?.length ?? 0) > 0 && page.hidden && page.type !== 'wizard') {
+    if ((page.roles?.length ?? 0) > 0 && page.hidden && !createsRows(page)) {
       warn('hidden-roles', 'roles', `${where} is restricted to roles, but it is out of the navigation, so the roles never apply`,
         patchPage(index, `Drop the roles of “${label}”`, p => ({ ...p, roles: undefined })))
     }
@@ -1154,7 +1156,17 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
   const typeById = new Map(pages.map(p => [p.id, p.type]))
   const seenIds = new Set<string>()
   const recordEntities = new Map<string, string>()
-  const wizardEntities = new Map<string, string>()
+  // The page that creates each entity's rows: a wizard or a form, one per entity.
+  const createPages = new Map<string, FullstackPageDef>()
+  const checkOneCreatePage = (e: FullstackEntityDef, page: FullstackPageDef, where: string,
+                              add: (field: string, message: string, summary?: string) => void) => {
+    const already = createPages.get(e.name)
+    if (already) {
+      add('entity', `${e.name} already has the ${already.type} “${already.id}”`, already.type === page.type
+        ? `${where} is a second ${page.type} for ${e.name}`
+        : `${where} is a ${page.type} for ${e.name}, which already has a ${already.type} — an entity has one or the other`)
+    } else createPages.set(e.name, page)
+  }
 
   if (pages.length > MAX_PAGES) {
     issues.push({ message: '', summary: `A layout can have at most ${MAX_PAGES} pages` })
@@ -1197,6 +1209,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         return singlePk(r) ? patchPage(index, label, p => ({ ...p, ...retargetRecord(p, r.name).patch })) : undefined
       case 'wizard':
         return !r.readOnly && askableFields(r).length ? patchPage(index, label, p => ({ ...p, entity: r.name, steps: retargetWizardSteps(p.steps, r).steps })) : undefined
+      case 'form':
+        return !r.readOnly ? patchPage(index, label, p => ({ ...p, entity: r.name })) : undefined
       default:
         return undefined
     }
@@ -1360,7 +1374,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
               if (!target) add(`widget.${wi}.pages`, `no page “${id}”`, `${where} links to the missing page “${id}”`, dropLink(id))
               else if (target.type === 'record') {
                 add(`widget.${wi}.pages`, `“${pageLabel(target)}” opens from a row, not a link`, `${where} links to the record page “${pageLabel(target)}”, which opens from a row`, dropLink(id))
-              } else if (target.hidden && target.type !== 'wizard') {
+              } else if (target.hidden && !createsRows(target) && target.type !== 'search') {
                 add(`widget.${wi}.pages`, `“${pageLabel(target)}” is hidden, so a link cannot open it`, `${where} links to “${pageLabel(target)}”, which is hidden from the navigation`, dropLink(id))
               } else if (ids.indexOf(id) !== li) add(`widget.${wi}.pages`, `links to “${pageLabel(target)}” twice`, `${where} links to “${pageLabel(target)}” twice`)
             })
@@ -1746,9 +1760,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           break
         }
         if (e.readOnly) add('entity', `${e.name} is read-only`, `${where} creates ${e.name}, which is read-only`)
-        const already = wizardEntities.get(e.name)
-        if (already) add('entity', `${e.name} already has the wizard “${already}”`, `${where} is a second wizard for ${e.name}`)
-        wizardEntities.set(e.name, page.id)
+        checkOneCreatePage(e, page, where, add)
         const askable = askableFields(e)
         const steps = page.steps ?? []
         if (steps.length > MAX_STEPS) add('steps', `has more than ${MAX_STEPS} steps`)
@@ -1780,6 +1792,19 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           }
         }
         if (askable.length === 0) add('entity', `${e.name} has no field to ask for`)
+        break
+      }
+      case 'form': {
+        const e = entityOf(page.entity)
+        if (!e) {
+          add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
+            page.entity ? `${where} creates “${page.entity}”, which is no longer an entity` : `${where} names no entity`,
+            page.entity ? switchPage(index) ?? removePage(index) : undefined,
+            page.entity && switchPage(index) ? removePage(index) : undefined)
+          break
+        }
+        if (e.readOnly) add('entity', `${e.name} is read-only`, `${where} creates ${e.name}, which is read-only`)
+        checkOneCreatePage(e, page, where, add)
         break
       }
       case 'calendar':
@@ -1874,6 +1899,8 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       const steps = page.steps?.length
       return `${page.entity ?? '?'} · ${steps ? `${steps} step${steps === 1 ? '' : 's'}` : 'default steps'} and a review`
     }
+    case 'form':
+      return `${page.entity ?? '?'} · its whole form — New and Edit open it`
     case 'record': {
       const tabs = page.childTabs
       const related = tabs == null ? 'its related lists' : tabs.length === 0 ? 'no related lists'
@@ -2051,6 +2078,7 @@ export const PAGE_TYPE_META: Record<FullstackPageType, { icon: string; label: st
   record: { icon: 'article', label: 'Record', blurb: 'One row opened from a list, with its related lists as tabs.' },
   report: { icon: 'monitoring', label: 'Report', blurb: 'One entity’s filters above up to four charts and a totals table (an Export button with the CSV export option).' },
   wizard: { icon: 'format_list_numbered', label: 'Wizard', blurb: 'A create form split into steps, with a review before saving.' },
+  form: { icon: 'edit_note', label: 'Form', blurb: 'One entity’s whole form on a page of its own — New and Edit open it instead of a drawer.' },
   calendar: { icon: 'calendar_month', label: 'Calendar', blurb: 'One entity’s rows by date — month, week, agenda or a timeline of bars; click a day to add one.' },
   board: { icon: 'view_kanban', label: 'Board', blurb: 'Cards in lanes of an enum or yes/no field, dragged between lanes, with optional lane limits.' },
   content: { icon: 'description', label: 'Content', blurb: 'A page of text — headings, lists, notes and links to other pages or the web.' },
@@ -2311,7 +2339,11 @@ export function renameEnumValueInPages(pages: FullstackPageDef[], entity: string
 
 /** Page types a layout holds at most one of (per entity, or at all): a copy would be invalid
  *  the moment it was made, so the editor does not offer to duplicate them. */
-const SINGLE_PAGE_TYPES: ReadonlySet<FullstackPageType> = new Set<FullstackPageType>(['record', 'wizard', 'import', 'search'])
+const SINGLE_PAGE_TYPES: ReadonlySet<FullstackPageType> = new Set<FullstackPageType>(['record', 'wizard', 'form', 'import', 'search'])
+
+/** Whether `page` creates its entity's rows (a wizard or a form) — a route of its own even when
+ *  hidden, since New, a calendar's day and a record's Edit open it. */
+export const createsRows = (page: FullstackPageDef): boolean => page.type === 'wizard' || page.type === 'form'
 
 /** Whether the editor offers to duplicate `page`. */
 export const canDuplicate = (page: FullstackPageDef): boolean => !SINGLE_PAGE_TYPES.has(page.type)
@@ -2510,7 +2542,7 @@ export function suggestPages(entities: FullstackEntityDef[], pages: FullstackPag
   }
   for (const e of named) {
     if (e.readOnly || askableFields(e).length < 6) continue
-    if (pages.some(p => p.type === 'wizard' && sameName(p.entity, e.name))) continue
+    if (pages.some(p => createsRows(p) && sameName(p.entity, e.name))) continue
     out.push({
       key: `wizard:${e.name}`,
       icon: PAGE_TYPE_META.wizard.icon,
@@ -2651,6 +2683,11 @@ export function blankPage(type: FullstackPageType, entities: FullstackEntityDef[
       const e = picked ?? entities.find(x => !x.readOnly && askableFields(x).length > 0) ?? entities[0]
       return { id: id(`new-${e?.name ?? 'record'}`), type, entity: e?.name ?? first, title: `New ${e?.name ?? 'record'}`, steps: defaultWizardSteps(e) }
     }
+    case 'form': {
+      // A writable entity without a wizard or form of its own.
+      const e = picked ?? entities.find(x => !x.readOnly && !pages.some(p => createsRows(p) && sameName(p.entity, x.name))) ?? entities[0]
+      return { id: id(`new-${e?.name ?? 'record'}`), type, entity: e?.name ?? first, title: `New ${e?.name ?? 'record'}` }
+    }
     case 'calendar':
     case 'board':
     case 'import': {
@@ -2692,6 +2729,11 @@ export function newPageChoices(type: FullstackPageType, entities: FullstackEntit
     case 'wizard':
       return named.map(e => one(e, e.readOnly ? 'Read-only — nothing to create'
         : askableFields(e).length === 0 ? 'No fields to ask for'
+          : has('wizard', e.name) ? 'Already has a wizard'
+            : has('form', e.name) ? 'Already has a form page' : undefined))
+    case 'form':
+      return named.map(e => one(e, e.readOnly ? 'Read-only — nothing to create'
+        : has('form', e.name) ? 'Already has a form page'
           : has('wizard', e.name) ? 'Already has a wizard' : undefined))
     case 'master-detail':
       return masterDetailPairs(named).map(p => ({ value: pairKey(p), label: `${p.parent} → ${p.child}${p.via ? ` (via ${p.via})` : ''}` }))
@@ -2713,7 +2755,7 @@ export function newPageTypeReason(type: FullstackPageType, entities: FullstackEn
 /** The pages a links widget can open: any but a record page (it needs a row) or a hidden page
  *  that is not a wizard (a hidden wizard is a route of its own). */
 export function linkablePages(pages: FullstackPageDef[]): FullstackPageDef[] {
-  return pages.filter(p => p.type !== 'record' && (!p.hidden || p.type === 'wizard' || p.type === 'search'))
+  return pages.filter(p => p.type !== 'record' && (!p.hidden || createsRows(p) || p.type === 'search'))
 }
 
 /** The pages a new tabs page can embed, lists first: not a tabs or record page, not already a tab. */
@@ -2774,6 +2816,9 @@ export function retargetPage(page: FullstackPageDef, type: FullstackPageType, en
     else if (type === 'wizard' && !e.readOnly && askableFields(e).length > 0) {
       next.entity = e.name
       next.steps = defaultWizardSteps(e)
+      if (!page.title?.trim()) next.title = `New ${e.name}`
+    } else if (type === 'form' && !e.readOnly) {
+      next.entity = e.name
       if (!page.title?.trim()) next.title = `New ${e.name}`
     } else if ((type === 'calendar' || type === 'board' || type === 'import') && !newTypeReason(type, e, pages.filter(p => p.id !== page.id))) {
       // The entity follows, with its own date / lane field.

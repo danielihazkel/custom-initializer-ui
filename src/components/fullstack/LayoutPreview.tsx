@@ -690,6 +690,8 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
       )
     case 'record':
       return <RecordScreen screen={screen} link={link} preview={preview} accent={accent} menora={menora} parts={parts} />
+    case 'form':
+      return <FormScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} />
     case 'wizard':
       return <WizardScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} parts={parts?.slot === 'step-field' ? parts : undefined} />
     case 'report': {
@@ -1070,6 +1072,52 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
         <p className="text-[10px] text-error">This tab lists no entity.</p>
       )}
       </>)}
+    </div>
+  )
+}
+
+/** A form page: the entity's whole form, in its sections, with Cancel and Save. */
+function FormScreen({ screen, link, heading, accent, menora }: {
+  screen: Extract<PreviewScreen, { type: 'form' }>
+  link: LinkProps
+  heading: ReactNode
+  accent: string
+  menora: boolean
+}) {
+  const primary = menora ? { background: MENORA.yellow, color: MENORA.ink } : { background: accent, color: 'white' }
+  // In Play mode Save lands where the generated form does: the row's page, else its list.
+  const play = useContext(Play)
+  const saveTo = play?.links[link.page]?.afterSave
+  return (
+    <div className="space-y-2">
+      {heading}
+      <div className="space-y-2 rounded border border-outline-variant p-2" data-preview-form>
+        {screen.groups.map((g, gi) => (
+          <fieldset key={gi} className="space-y-1">
+            {g.title && <legend className="text-[9px] font-semibold text-on-surface">{g.title}</legend>}
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+              {g.fields.map(label => (
+                <div key={label}>
+                  <p className="text-[9px] text-secondary">{label}</p>
+                  <div className="h-3 rounded border border-outline-variant bg-surface-container-lowest" />
+                </div>
+              ))}
+            </div>
+          </fieldset>
+        ))}
+        <div className="flex justify-end gap-1 pt-1">
+          <FakeButton outline>{screen.cancel}</FakeButton>
+          <button
+            type="button"
+            onClick={() => (saveTo != null ? play?.go(saveTo) : play?.note('Save starts the form over — there is no record or list page to land on'))}
+            disabled={!play}
+            aria-label={screen.save}
+            data-play-link={play ? saveTo ?? 'note' : undefined}
+          >
+            <FakeButton style={primary}>{screen.save}</FakeButton>
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

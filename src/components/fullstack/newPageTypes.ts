@@ -192,7 +192,7 @@ export function checkContent(page: FullstackPageDef, pages: FullstackPageDef[], 
     const target = pages.find(p => p.id === link.target)
     if (!target) add('body', `links to no page “${link.target}”`, `${where} links to the missing page “${link.target}”`)
     else if (target.type === 'record') add('body', `cannot link to the record page “${link.target}” — it opens from a row`)
-    else if (target.hidden && target.type !== 'wizard' && target.type !== 'search') add('body', `“${link.target}” is hidden, so a link cannot open it`)
+    else if (target.hidden && target.type !== 'wizard' && target.type !== 'form' && target.type !== 'search') add('body', `“${link.target}” is hidden, so a link cannot open it`)
   }
 }
 

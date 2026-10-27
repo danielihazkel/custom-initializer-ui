@@ -10,7 +10,7 @@ import { toKebabCase, toPascalCase } from './naming'
  */
 export interface PageCodeFile extends EntityCodeFile {
   /** Why the file is listed, said under the file name. */
-  role: 'screen' | 'tab' | 'entity' | 'shell'
+  role: 'screen' | 'tab' | 'entity' | 'form' | 'shell'
 }
 
 const SCREENS = 'frontend/src/app/screens/'
@@ -45,7 +45,9 @@ export function pageCodeFiles(page: FullstackPageDef, pages: FullstackPageDef[],
     }
   }
   for (const entity of pageEntities(page)) {
-    add(`frontend/src/pages/${toKebabCase(entity)}/ui/${toPascalCase(entity)}Page.tsx`, 'entity')
+    // A wizard or a form page draws the entity's form, not its list.
+    if (page.type === 'wizard' || page.type === 'form') add(`frontend/src/features/${toKebabCase(entity)}-form/ui/${toPascalCase(entity)}Form.tsx`, 'form')
+    else add(`frontend/src/pages/${toKebabCase(entity)}/ui/${toPascalCase(entity)}Page.tsx`, 'entity')
   }
   for (const path of SHELL) add(path, 'shell')
   // Without its own screen the page did not render (an older server, or a renamed id the
@@ -57,5 +59,6 @@ export const PAGE_CODE_ROLE: Record<PageCodeFile['role'], string> = {
   screen: 'This page',
   tab: 'Embedded as a tab',
   entity: 'The list it draws',
+  form: 'The entity form it shows',
   shell: 'The app shell that routes to it',
 }

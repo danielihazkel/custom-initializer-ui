@@ -125,7 +125,7 @@ export function PageList({ pages, keys, picked, onTogglePick, validation, openKe
                   </span>
                 )}
                 {page.hidden && page.type !== 'record' && (
-                  page.type === 'wizard'
+                  page.type === 'wizard' || page.type === 'form'
                     ? <span className={`${CHIP} bg-surface-container text-secondary`} title="Hidden from the navigation — opened from a Page links widget or a list’s New button">Link only</span>
                     : <span className={`${CHIP} bg-surface-container text-secondary`} title="Hidden from the navigation — opens inside a tabs page">Tab only</span>
                 )}
@@ -167,7 +167,7 @@ export function PageList({ pages, keys, picked, onTogglePick, validation, openKe
                   onClick={() => update(index, page.hidden ? { hidden: false } : { hidden: true, group: undefined, icon: undefined })}
                   className={ICON_BUTTON}
                   aria-pressed={Boolean(page.hidden)}
-                  title={page.hidden ? 'Show in the navigation' : page.type === 'wizard' ? 'Hide from the navigation (link only)' : 'Hide from the navigation (tab only)'}
+                  title={page.hidden ? 'Show in the navigation' : page.type === 'wizard' || page.type === 'form' ? 'Hide from the navigation (link only)' : 'Hide from the navigation (tab only)'}
                   aria-label={page.hidden ? `Show ${pageLabel(page)} in the navigation` : `Hide ${pageLabel(page)} from the navigation`}
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>

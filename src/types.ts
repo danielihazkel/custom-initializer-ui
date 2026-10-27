@@ -540,14 +540,14 @@ export interface ExampleModel {
 
 /** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
 export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record' | 'report' | 'wizard'
-  | 'calendar' | 'board' | 'content' | 'import' | 'search'
+  | 'form' | 'calendar' | 'board' | 'content' | 'import' | 'search'
 
 /** The views a calendar page offers (FullstackPageValidator.calendar). */
 export type FullstackCalendarMode = 'month' | 'week' | 'agenda' | 'timeline'
 
 /** The lucide icons a page may show in the generated nav (FullstackPageValidator.NAV_ICONS). */
 export type FullstackNavIcon =
-  | 'BarChart3' | 'Building2' | 'Calendar' | 'Columns3' | 'FileText' | 'Inbox' | 'Layers' | 'LayoutDashboard'
+  | 'BarChart3' | 'Building2' | 'Calendar' | 'Columns3' | 'FilePlus' | 'FileText' | 'Inbox' | 'Layers' | 'LayoutDashboard'
   | 'ListChecks' | 'Package' | 'PanelLeft' | 'Search' | 'Settings' | 'ShoppingCart' | 'Star' | 'Table2' | 'Tag'
   | 'Ticket' | 'Truck' | 'Upload' | 'Users' | 'Wallet' | 'Wand2'
 
