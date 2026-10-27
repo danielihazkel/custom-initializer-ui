@@ -29,6 +29,7 @@ import { AppearanceView } from './AppearanceView'
 import { CANVAS_ZOOM, CanvasFrame, DATA_STATES, DataStateSwitch, DeviceSwitch, ZOOM_LEVELS, ZoomControl, type PreviewDevice } from './CanvasFrame'
 import type { PreviewDataState } from '../layoutPreviewModel'
 import { DesignerMenu, type MenuItem } from './DesignerMenu'
+import { DesignerTour, tourSeen } from './DesignerTour'
 import type { FrontendAppearance } from './FrontendSettings'
 
 /** Where the designer opens: a page (and control), and which panel is showing. */
@@ -125,6 +126,10 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)) } catch { /* preference only */ }
   }, [prefs])
   const [historyOpen, setHistoryOpen] = useState(false)
+  // The guided tour: by itself on a first visit (not on a jump to a panel), and from the help menu.
+  const [touring, setTouring] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const helpButtonRef = useRef<HTMLButtonElement>(null)
   // A widget's kind menu, opened from its hover bar on the canvas: which widget, and under what.
   const [kindMenu, setKindMenu] = useState<{ page: number; index: number; anchor: HTMLElement } | null>(null)
   // Copied widgets (also in sessionStorage, so a copy survives closing the designer).
@@ -232,6 +237,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   useEffect(() => {
     if (target.page != null) reveal({ page: target.page, control: target.control })
     if (target.panel === 'add' || target.panel === 'templates') openLibrary()
+    if (!target.panel && target.control == null && !tourSeen()) setTouring(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on open
   }, [])
 
@@ -584,11 +590,33 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             {issueCount > 0 ? `${issueCount} problem${issueCount === 1 ? '' : 's'}` : 'Ready'}
             {tipCount > 0 && ` · ${tipCount} tip${tipCount === 1 ? '' : 's'}`}
           </button>
-          {onOpenGuide && (
-            <button type="button" onClick={() => { onClose(); onOpenGuide('fs-pages') }} className={ICON_BUTTON} aria-label="Open the guide on frontend pages" title="How page layouts work">
+          <span className="relative">
+            <button
+              ref={helpButtonRef}
+              type="button"
+              onClick={() => setHelpOpen(o => !o)}
+              aria-haspopup="menu"
+              aria-expanded={helpOpen}
+              className={ICON_BUTTON}
+              aria-label="Help"
+              title="Tour and guide"
+              data-designer-help
+            >
               <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>help</span>
             </button>
-          )}
+            {helpOpen && (
+              <DesignerMenu
+                label="Help"
+                items={[
+                  { key: 'tour', label: 'Take the tour', icon: 'tour', onSelect: () => { setView('design'); setTouring(true) } },
+                  ...(onOpenGuide ? [{ key: 'guide', label: 'How page layouts work (guide)', icon: 'menu_book', onSelect: () => { onClose(); onOpenGuide('fs-pages') } }] : []),
+                ]}
+                returnFocus={helpButtonRef.current}
+                onClose={() => setHelpOpen(false)}
+                className="end-0 top-full mt-1"
+              />
+            )}
+          </span>
           <button type="button" onClick={onClose} className="rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-on-primary">Done</button>
         </header>
 
@@ -938,6 +966,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
           )}
         </div>
         )}
+        {touring && <DesignerTour root={dialogRef.current} onClose={() => setTouring(false)} />}
         {kindMenu && (() => {
           // Fixed under the button: the canvas is zoomed, and the menu should read at full size.
           const r = kindMenu.anchor.getBoundingClientRect()

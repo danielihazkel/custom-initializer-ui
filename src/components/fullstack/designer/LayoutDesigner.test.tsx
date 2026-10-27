@@ -74,6 +74,8 @@ const chip = (designer: HTMLElement, id: string) =>
 beforeEach(() => {
   pushUndo.mockClear()
   localStorage.clear()
+  // The tour opens by itself on a first visit; its own tests clear this.
+  localStorage.setItem('fullstack:designerTour', 'done')
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { cb(0); return 0 })
 })
 afterEach(() => vi.unstubAllGlobals())
@@ -1042,5 +1044,53 @@ describe('designer helpers', () => {
     expect(nextZoom(1.9, 1)).toBe(1.9)
     expect(nextZoom(0.8, -1)).toBe(0.8)
     expect(nextZoom(1.25, 1)).toBe(1.35)
+  })
+})
+
+describe('Layout designer — tour', () => {
+  const tour = () => screen.queryByRole('dialog', { name: /^Designer tour/ })
+
+  it('opens by itself on a first visit, steps with Next, Back and the arrows, and Skip ends it for good', () => {
+    localStorage.removeItem('fullstack:designerTour')
+    render(<Harness initial={desk} />)
+    let designer = openDesigner()
+    expect(tour()?.getAttribute('aria-label')).toBe('Designer tour — The library')
+    expect(document.activeElement).toBe(within(tour()!).getByRole('button', { name: 'Next' }))
+    fireEvent.click(within(tour()!).getByRole('button', { name: 'Next' }))
+    expect(tour()?.getAttribute('aria-label')).toBe('Designer tour — Your pages')
+    fireEvent.keyDown(tour()!, { key: 'ArrowRight' })
+    expect(tour()?.getAttribute('aria-label')).toBe('Designer tour — The canvas')
+    fireEvent.click(within(tour()!).getByRole('button', { name: 'Back' }))
+    expect(tour()?.getAttribute('aria-label')).toBe('Designer tour — Your pages')
+    // Its keys stay on the card: Escape skips the tour, not the designer.
+    fireEvent.keyDown(tour()!, { key: 'Escape' })
+    expect(tour()).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Layout designer' })).toBeTruthy()
+    expect(localStorage.getItem('fullstack:designerTour')).toBe('done')
+
+    fireEvent.click(within(designer).getByRole('button', { name: 'Done' }))
+    designer = openDesigner()
+    expect(tour()).toBeNull()
+  })
+
+  it('runs again from the help menu, skipping a folded pane, and ends with Done on the last step', () => {
+    render(<Harness initial={desk} />)
+    const designer = openDesigner()
+    expect(tour()).toBeNull()
+    fireEvent.click(designer.querySelector('[data-toggle-library]')!)
+    fireEvent.click(within(designer).getByRole('button', { name: 'Help' }))
+    fireEvent.click(within(designer).getByRole('menuitem', { name: 'Take the tour' }))
+    expect(tour()?.getAttribute('aria-label')).toBe('Designer tour — Your pages')
+    const steps = 5
+    expect(within(tour()!).getByText(`Tour · 1 of ${steps}`)).toBeTruthy()
+    for (let i = 1; i < steps; i++) fireEvent.click(within(tour()!).getByRole('button', { name: 'Next' }))
+    expect(tour()?.getAttribute('aria-label')).toBe('Designer tour — Problems and tips')
+    // Tab stays on the card.
+    const done = within(tour()!).getByRole('button', { name: 'Done' })
+    done.focus()
+    fireEvent.keyDown(done, { key: 'Tab' })
+    expect(tour()!.contains(document.activeElement)).toBe(true)
+    fireEvent.click(within(tour()!).getByRole('button', { name: 'Done' }))
+    expect(tour()).toBeNull()
   })
 })
