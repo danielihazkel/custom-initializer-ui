@@ -155,6 +155,35 @@ inspector ("Share with team") or a My templates / My widgets card; sharing under
 has (same kind, ignoring case) PUTs over it, and the button says "Update". Deleting asks for a second
 click, since it removes it for everyone. Pinned by `useTeamTemplates.test.ts` and the designer's
 "team templates" tests.
+**Designer round 3 (2026-10).** *Canvas:* a widget reorders along the row (`rowProps(…, 'x')`; a phone's
+single column still flows down) and the grid shows its four columns while one moves or resizes (a resize
+badges the width); the hover bar adds Duplicate (also Ctrl+D) and a kind menu (`widgetTools` prop →
+the designer's fixed `DesignerMenu`, reasons from `widgetKindDisabledReason`, applied by
+`retargetWidgetAt`). Double-click (or F2) renames a title in place — the page's, a widget's, a tab's, a
+wizard step's, a record header number's: `LayoutPreview` `onRename` with a `Rename` context, `RenameSlot`
+marks the text (`data-rename`), `Editable`/tab/step buttons start it (`renameFrom`, the slot under the
+pointer), Enter/blur saves, Escape cancels, focus returns via `data-rename-owner`; the model side is
+`pageParts.ts` `renamePart` (writes out dealt steps / default numbers first) and `usePagesModel.renamePart`
+(`retitle` for the page). `reveal` skips focusing the inspector while a rename input has focus. *Preview:*
+sample rows come from `previewSample.ts` (`sampleRaw` — name/entity heuristics, en/he words, min/max,
+default on row 1, dates around `today`; `cellText` = what the generated table prints, `detailText` = the
+details' formatting), so lists show raw ISO dates and `true`/`false` like the app. The canvas bar's
+**Data · Empty · Loading · Error** switch (`DataStateSwitch`, prefs `dataState`) sets `LayoutPreview`
+`dataState` (a `DataState` context: `StateNote`, `ListState`, `WidgetState`) in the generated app's words
+(`preview.strings.states`). Under the Menora skin the canvas uses Assistant (`@fontsource/assistant`,
+imported in `src/fonts.css`), lavender chips for enum cells, end-aligned numbers (`PreviewTable.kinds`) and
+yellow discs for a links widget; import steps, Export, calendar view names and activity times use the app's
+en/he strings (designer prompts stay English). *Advice:* `collectWarnings` adds crowded-nav (fix: groups by
+`adviceGroup`), crowded-dashboard, wide-list (fix: first 6 columns), duplicate-list (fix: remove),
+entity-without-page (only an entity nothing mentions or links to) and pivot-dead-end; thresholds in
+`ADVICE`. *Tour:* `designer/DesignerTour.tsx` (six steps on existing `data-*` anchors, skipping hidden
+ones), once per browser (`fullstack:designerTour`), again from the header's help menu. *Spec sheet:* the
+header's Export spec builds one offline HTML file — `specSnapshot.tsx` renders each page's
+`LayoutPreview` and the `PageFlowMap` into detached roots (`staticMarkup`, icons and edit overlays
+removed) and inlines the app's own CSS without fonts or urls (`collectAppCss`); `specSheet.ts`
+`buildSpecSheet` lays out cover, navigation, flow and one print page per screen (`html.light`). Pinned by
+`previewSample.test.ts`, `LayoutPreviewStates.test.tsx`, `LayoutPreviewSkin.test.tsx`,
+`pageLayoutAdvice.test.ts`, `designer/specSheet.test.tsx`, `pageParts.test.ts` and the designer tests.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;
