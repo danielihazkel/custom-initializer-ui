@@ -69,6 +69,9 @@ const Play = createContext<PlayNavigation | undefined>(undefined)
 /** What the data parts draw: sample rows, or the generated app's empty, loading or failed state. */
 const DataState = createContext<PreviewDataState>('data')
 
+/** The app's chrome words (its locale), for the chart pieces drawn without the model at hand. */
+const Words = createContext<PreviewStateStrings | undefined>(undefined)
+
 /** A data part outside the Data state: skeleton bars while loading, the generated "Couldn't load
  *  data. Try again" on a failure, and `empty` (the part's own empty text) with no rows. */
 function StateNote({ states, empty, lines = 3 }: { states: PreviewStateStrings; empty: ReactNode; lines?: number }) {
@@ -289,6 +292,9 @@ export interface PreviewPalette {
 }
 
 const MENORA = { purple: '#684eed', yellow: '#ffc700', ink: '#37374e' }
+/** The Menora table's header ground and its lavender value chip (tokens.css --surface-subtle / --lavender). */
+const MENORA_HEAD = 'color-mix(in srgb, #684eed 6%, transparent)'
+const MENORA_CHIP = { background: '#ede9fe', color: MENORA.ink }
 const WIDGET_LIST = 'preview-widgets:'
 
 /**
@@ -412,11 +418,14 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
     <Problems.Provider value={problems}>
     <Rename.Provider value={rename}>
     <DataState.Provider value={dataState}>
+    <Words.Provider value={preview.strings.states}>
     <div
       ref={rootRef}
       data-preview-data-state={dataState}
       dir={preview.rtl ? 'rtl' : 'ltr'}
       className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest shadow-sm"
+      // The Menora set's face: Assistant (Almoni is licensed), self-hosted like the generated app's.
+      style={menora ? { fontFamily: "'Assistant', Arial, sans-serif" } : undefined}
       data-layout-preview
     >
       {/* Window chrome, so the mock reads as "the app", not as part of the editor. */}
@@ -474,6 +483,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         </div>
       )}
     </div>
+    </Words.Provider>
     </DataState.Provider>
     </Rename.Provider>
     </Problems.Provider>
@@ -809,15 +819,15 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           <Editable {...link} control="entity" label="Edit the imported entity" className="block w-full">
             <div className="space-y-1.5 rounded border border-outline-variant p-2">
               <div className="flex gap-1 text-[9px]">
-                {['1 · File', '2 · Columns', '3 · Review'].map((s, i) => (
+                {screen.steps.map((step, i) => `${i + 1} · ${step}`).map((s, i) => (
                   <span key={s} className="rounded-full px-1.5 py-0.5" style={i === 0 ? { background: accent, color: 'white' } : { background: 'var(--color-surface-container-high, #eee)' }}>{s}</span>
                 ))}
               </div>
               <div className="rounded border-2 border-dashed border-outline-variant px-2 py-3 text-center text-[10px] text-secondary">
-                Drop a CSV file of {screen.entity}
+                {screen.drop}
               </div>
               <p className="text-[9px] text-secondary">
-                Columns: {screen.fields.map(f => f.label + (f.required ? '*' : '')).join(', ')}
+                {screen.columnsLabel}: {screen.fields.map(f => f.label + (f.required ? '*' : '')).join(', ')}
               </p>
             </div>
           </Editable>
@@ -1423,7 +1433,14 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
           <div className="mt-0.5 grid grid-cols-3 gap-1" data-preview-links>
             {widget.tiles.slice(0, 6).map((tile, i) => {
               const go = playLink(play, goes?.tiles[i], `Open ${tile.label}`)
-              return (
+              return menora ? (
+                <span key={i} {...go.props} className={`flex min-w-0 flex-col items-center gap-0.5 px-1 py-1 text-[8px] text-on-surface ${go.cls}`} data-preview-action-disc>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full" style={{ background: MENORA.yellow, color: MENORA.ink }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>{tile.icon}</span>
+                  </span>
+                  <span className="w-full truncate text-center">{tile.label}</span>
+                </span>
+              ) : (
                 <span key={i} {...go.props} className={`flex min-w-0 flex-col items-center gap-0.5 rounded border border-outline-variant px-1 py-1 text-[8px] text-on-surface ${go.cls}`}>
                   <span className="material-symbols-outlined" style={{ fontSize: '12px', color: accent }}>{tile.icon}</span>
                   <span className="w-full truncate text-center">{tile.label}</span>
@@ -1551,6 +1568,7 @@ function Donut({ bars, accent }: { bars: PreviewBar[]; accent: string }) {
 }
 
 function Bars({ bars, accent }: { bars: PreviewBar[]; accent: string }) {
+  const words = useContext(Words)
   const max = Math.max(1, ...bars.map(b => b.value))
   return (
     <div className="mt-0.5 space-y-0.5">
@@ -1560,13 +1578,14 @@ function Bars({ bars, accent }: { bars: PreviewBar[]; accent: string }) {
           <span className="h-1.5 rounded-full" style={{ width: `${Math.max(4, (b.value / max) * 100)}%`, background: accent, opacity: 0.85 }} />
         </div>
       ))}
-      {bars.length === 0 && <p className="text-[9px] text-secondary">No groups</p>}
+      {bars.length === 0 && <p className="text-[9px] text-secondary">{words?.noRecordsYet ?? 'No records yet.'}</p>}
     </div>
   )
 }
 
 function LineChart({ points, accent }: { points: PreviewBar[]; accent: string }) {
-  if (points.length < 2) return <p className="text-[9px] text-secondary">No data</p>
+  const words = useContext(Words)
+  if (points.length < 2) return <p className="text-[9px] text-secondary">{words?.noRecordsYet ?? 'No records yet.'}</p>
   const max = Math.max(...points.map(p => p.value))
   const min = Math.min(...points.map(p => p.value))
   const span = max - min || 1
@@ -1679,7 +1698,7 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
           </span>
         )}
         {!table.showSearch && <span className="flex-1" />}
-        {table.hasExport && <FakeButton outline>CSV</FakeButton>}
+        {table.hasExport && <FakeButton outline>{preview.strings.export}</FakeButton>}
         {table.newLabel && <span {...create.props} className={`inline-flex rounded-full ${create.cls}`}><FakeButton style={primary}>{table.newLabel}</FakeButton></span>}
       </div>
       {link ? (
@@ -1697,8 +1716,12 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
       <div className={sidePane ? 'grid grid-cols-[minmax(0,1fr)_6rem] gap-1' : ''}>
       <div className="min-w-0 space-y-0.5">
       {link && table.view !== 'cards' && table.view !== 'kanban' && table.view !== 'calendar' && part('columns', 'Edit the columns', (
-        <div className="grid gap-x-1 text-start text-[9px] font-semibold text-secondary" style={{ gridTemplateColumns: `repeat(${Math.max(1, table.columns.length)}, minmax(0, 1fr))` }} data-preview-columns>
-          {table.columns.map(c => <span key={c} className="truncate">{c}</span>)}
+        <div
+          className={`grid gap-x-1 text-start text-[9px] font-semibold text-secondary ${menora ? 'rounded-t px-0.5 py-0.5' : ''}`}
+          style={{ gridTemplateColumns: `repeat(${Math.max(1, table.columns.length)}, minmax(0, 1fr))`, ...(menora ? { background: MENORA_HEAD } : {}) }}
+          data-preview-columns
+        >
+          {table.columns.map((c, j) => <span key={c} className={`truncate ${menora && table.kinds[j] === 'number' ? 'text-end' : ''}`}>{c}</span>)}
         </div>
       ))}
       {part('entity', 'Edit the listed entity', (
@@ -1740,15 +1763,21 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
         <table className="w-full table-fixed text-[9px]">
           {!link && (
             <thead>
-              <tr className="text-secondary">
-                {table.columns.map(c => <th key={c} className="truncate pb-0.5 text-start font-semibold">{c}</th>)}
+              <tr className="text-secondary" style={menora ? { background: MENORA_HEAD } : undefined}>
+                {table.columns.map((c, j) => <th key={c} className={`truncate pb-0.5 font-semibold ${menora && table.kinds[j] === 'number' ? 'text-end' : 'text-start'}`}>{c}</th>)}
               </tr>
             </thead>
           )}
           <tbody>
             {table.rows.map((row, i) => (
               <tr key={i} {...rowLink(row).props} className={`border-t border-outline-variant/60 ${table.sidePane && i === 0 ? 'bg-primary/5' : ''} ${rowLink(row).cls}`}>
-                {row.map((cell, j) => <td key={j} className="truncate py-0.5 text-on-surface">{cell}</td>)}
+                {row.map((cell, j) => (
+                  <td key={j} className={`truncate py-0.5 text-on-surface ${menora && table.kinds[j] === 'number' ? 'text-end tabular-nums' : ''}`}>
+                    {menora && table.kinds[j] === 'enum' && cell !== '—'
+                      ? <span className="rounded-full px-1.5 py-px font-semibold" style={MENORA_CHIP} data-preview-chip-cell>{cell}</span>
+                      : cell}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>

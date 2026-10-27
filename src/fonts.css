@@ -7,6 +7,15 @@
 /* Material Symbols (variable: wght 100-700, FILL, GRAD, opsz) + the .material-symbols-outlined class */
 @import "material-symbols/outlined.css";
 
+/* Assistant: the Menora Digital design system's sanctioned face (Almoni is licensed), for the
+ * layout preview under the Menora set — the same @fontsource package the generated app uses. */
+@import "@fontsource/assistant/hebrew-400.css";
+@import "@fontsource/assistant/hebrew-600.css";
+@import "@fontsource/assistant/hebrew-700.css";
+@import "@fontsource/assistant/latin-400.css";
+@import "@fontsource/assistant/latin-600.css";
+@import "@fontsource/assistant/latin-700.css";
+
 @font-face {
   font-family: 'Geist';
   font-style: normal;

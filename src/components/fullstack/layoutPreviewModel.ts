@@ -96,6 +96,8 @@ export interface PreviewTable {
   /** The entity's plural label. */
   title: string
   columns: string[]
+  /** Per column, what it holds: the Menora table draws an enum as a chip and right-aligns numbers. */
+  kinds: PreviewColumnKind[]
   rows: string[][]
   /** The view the list opens in (the page's, else the entity's first). */
   view: FullstackListView
@@ -189,7 +191,11 @@ export type PreviewScreen =
     lanes: { label: string; count: number; limit: number | null; cards: { heading: string; details: string[] }[] }[]
   }
   | { type: 'content'; title: string; description?: string; blocks: ContentBlock[] }
-  | { type: 'import'; title: string; description?: string; entity: string; fields: { label: string; required: boolean }[] }
+  | {
+    type: 'import'; title: string; description?: string; entity: string; fields: { label: string; required: boolean }[]
+    /** The generated import's step names, drop zone and columns heading, in the app's language. */
+    steps: string[]; drop: string; columnsLabel: string
+  }
   | { type: 'search'; title: string; description?: string; words: string; groups: { title: string; total: number; rows: string[] }[]; header: boolean }
   | { type: 'broken'; title: string; message: string }
 
@@ -206,8 +212,11 @@ export interface LayoutPreview {
   sections: PreviewNavSection[]
   /** One per page, index-aligned with the layout. */
   screens: PreviewScreen[]
-  strings: { viewAll: string; search: string; filters: string; total: string; startPage: string; states: PreviewStateStrings }
+  strings: { viewAll: string; search: string; filters: string; total: string; startPage: string; export: string; states: PreviewStateStrings }
 }
+
+/** What a list column holds. */
+export type PreviewColumnKind = 'text' | 'enum' | 'number'
 
 /** What the canvas draws its data parts as: sample rows, or the generated app's empty, loading
  *  or failed state. */
@@ -246,6 +255,9 @@ const STRINGS = {
     noActivity: 'Nothing has changed yet.', couldNotLoad: 'Couldn’t load data.', retry: 'Try again',
     errorServer: 'Something went wrong on the server. Try again in a moment.', nothingScheduled: 'Nothing in this period.',
     emptyLane: 'Empty', nothingMatches: 'Nothing matches “{q}”.',
+    importX: 'Import {x}', importChooseFile: 'Choose a file', importMatchColumns: 'Match columns', importReview: 'Review',
+    importDropFile: 'Drop a CSV file of {x} here, or click to choose one', columns: 'Columns', export: 'Export',
+    calendarMonth: 'Month', calendarWeek: 'Week', calendarAgenda: 'Agenda', calendarTimeline: 'Timeline',
   },
   he: {
     dashboard: 'לוח בקרה', xByY: '{x} לפי {y}', xByYAndZ: '{x} לפי {y} ו{z}', recentX: '{x} – אחרונים', xOverTime: '{x} לאורך זמן',
@@ -263,6 +275,9 @@ const STRINGS = {
     noActivity: 'עדיין לא היו שינויים.', couldNotLoad: 'לא ניתן לטעון נתונים.', retry: 'נסו שוב',
     errorServer: 'משהו השתבש בשרת. נסו שוב בעוד רגע.', nothingScheduled: 'אין דבר בתקופה הזו.',
     emptyLane: 'ריק', nothingMatches: 'אין תוצאות עבור “{q}”.',
+    importX: 'ייבוא {x}', importChooseFile: 'בחירת קובץ', importMatchColumns: 'התאמת עמודות', importReview: 'בדיקה',
+    importDropFile: 'גררו לכאן קובץ CSV של {x}, או לחצו לבחירה', columns: 'עמודות', export: 'ייצוא',
+    calendarMonth: 'חודש', calendarWeek: 'שבוע', calendarAgenda: 'סדר יום', calendarTimeline: 'ציר זמן',
   },
 } as const
 
@@ -346,7 +361,7 @@ export function buildLayoutPreview(
   function table(e: FullstackEntityDef, presetFilter?: Record<string, string>, hideRelation?: string, opening: ListOpening = {}): PreviewTable {
     const { plural, singular, ui } = labels(e)
     // `value` as the list cell shows it, `detail` as the side pane (the details) shows it.
-    const cells: { key: string; label: string; value: (row: number) => string; detail: (row: number) => string }[] = e.fields.map(f => {
+    const cells: { key: string; label: string; kind?: PreviewColumnKind; value: (row: number) => string; detail: (row: number) => string }[] = e.fields.map(f => {
       // An enum or boolean preset pins the column (an enum list: its first value); ranges and periods don't.
       const preset = presetFilter?.[f.name]
       const pinned = preset == null ? undefined
@@ -355,6 +370,7 @@ export function buildLayoutPreview(
       return {
         key: f.name,
         label: fieldLabel(f),
+        kind: f.type === 'ENUM' ? 'enum' : !f.primaryKey && (f.type === 'LONG' || f.type === 'INTEGER' || f.type === 'BIG_DECIMAL') ? 'number' : 'text',
         value: (row: number) => (pinned != null ? cellText(f, pinned) : cell(e, f, row)),
         detail: (row: number) => (pinned != null ? detailText(f, pinned, ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') }) : detail(e, f, row)),
       }
@@ -388,6 +404,7 @@ export function buildLayoutPreview(
     return {
       title: plural,
       columns: shown.map(c => c.label),
+      kinds: shown.map(c => c.kind ?? 'text'),
       rows: Array.from({ length: SAMPLE_ROWS }, (_, i) => shown.map(c => c.value(i + 1))),
       view,
       lanes,
@@ -528,7 +545,7 @@ export function buildLayoutPreview(
                 return {
                   label: rowLabel(e, 30 - i),
                   what: `${singular} ${rand() < 0.4 ? t('activityCreated') : t('activityUpdated')}`,
-                  ago: `${(i + 1) * 7} min`,
+                  ago: new Intl.RelativeTimeFormat(ctx.locale, { numeric: 'always' }).format(-(i + 1) * 7, 'minute'),
                 }
               }),
             }
@@ -865,7 +882,8 @@ export function buildLayoutPreview(
       case 'calendar': {
         const e = entityOf(page.entity)
         if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
-        const modes = (page.modes ?? ['month']).map(m => CALENDAR_MODES.find(c => c.value === m)?.label ?? m)
+        const modeKey = { month: 'calendarMonth', week: 'calendarWeek', agenda: 'calendarAgenda', timeline: 'calendarTimeline' } as const
+        const modes = (page.modes ?? ['month']).map(m => (m in modeKey ? t(modeKey[m as keyof typeof modeKey]) : CALENDAR_MODES.find(c => c.value === m)?.label ?? m))
         const long = page.endField != null
         const days = Array.from({ length: 35 }, (_, i) => {
           const day = i + 1
@@ -909,7 +927,12 @@ export function buildLayoutPreview(
           ...e.fields.filter(f => !(f.primaryKey && f.generated) && !f.readOnly).map(f => ({ label: fieldLabel(f), required: Boolean(f.required) || Boolean(f.primaryKey) })),
           ...(e.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => ({ label: humanize(r.fieldName), required: Boolean(r.required) })),
         ]
-        return { type: 'import', title: page.title || `Import ${labels(e).plural}`, description, entity: labels(e).plural, fields }
+        return {
+          type: 'import', title: page.title || t('importX', { x: labels(e).plural }), description, entity: labels(e).plural, fields,
+          steps: [t('importChooseFile'), t('importMatchColumns'), t('importReview')],
+          drop: t('importDropFile', { x: labels(e).plural }),
+          columnsLabel: t('columns'),
+        }
       }
       case 'search': {
         const names = page.entities ?? defaultSearchEntities(named)
@@ -963,7 +986,7 @@ export function buildLayoutPreview(
     sections,
     screens,
     strings: {
-      viewAll: t('viewAll'), search: t('search'), filters: t('filters'), total: t('total'), startPage: t('startPage'),
+      viewAll: t('viewAll'), search: t('search'), filters: t('filters'), total: t('total'), startPage: t('startPage'), export: t('export'),
       states: {
         noRecordsTitle: t('noRecordsTitle'), noRecordsHint: t('noRecordsHint'), noRecordsYet: t('noRecordsYetDot'),
         noActivity: t('noActivity'), couldNotLoad: t('couldNotLoad'), retry: t('retry'), errorServer: t('errorServer'),
