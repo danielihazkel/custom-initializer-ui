@@ -184,6 +184,25 @@ removed) and inlines the app's own CSS without fonts or urls (`collectAppCss`); 
 `buildSpecSheet` lays out cover, navigation, flow and one print page per screen (`html.light`). Pinned by
 `previewSample.test.ts`, `LayoutPreviewStates.test.tsx`, `LayoutPreviewSkin.test.tsx`,
 `pageLayoutAdvice.test.ts`, `designer/specSheet.test.tsx`, `pageParts.test.ts` and the designer tests.
+**Generator round 8 (2026-10)** — the editor side of *Round 8* in `backend/CLAUDE.md`. *KPI trend:* `WidgetCard`'s
+"Trend line" select sets a kpi's `trend`; `pageLayout.ts` `trendDateField` mirrors the generator's date choice,
+`retargetWidget` drops the trend (named) when the kind changes, and the preview draws a seeded `Sparkline`. *Form
+page:* `pages/FormPageForm.tsx`; `createsRows` (wizard or form) is what a hidden page may still be (reachable
+by New), a form and a wizard of one entity are mutually exclusive in `validatePages` and `newPageChoices`, Play's
+New goes to the form, and the preview draws `FormScreen` with the entity's form sections. *Workflow:* a fifth
+entity panel, `WorkflowPanel.tsx` (status/assignee/due pickers and a transitions list; roles are disabled
+without ldap-auth, with an "Add ldap-auth-rest" shortcut). `workflow.ts` holds the rules — `workflowProblem`
+(the validator's mirror, also run by `validation.ts`), `syncWorkflow` (follows field and enum renames like
+`syncFormSections`), and `openStates`/`finalStates`/`unreachableStates`/`ambiguousMoves`. `lint.ts` adds
+`workflow-unreachable` (info), `workflow-ambiguous` and `workflow-roles` (fix: add ldap-auth-rest). `summary.ts`
+lists the transition/claim/release endpoints. *Inbox page:* `pages/InboxForm.tsx`, `newPageTypes.ts`
+(`INBOX_QUEUES`, `hasInbox`, `defaultInboxFields`, `checkInbox`; "No workflow with an assignee" in the chooser),
+and the preview's `InboxScreen` (queue tabs, chips, an overdue row, the first moves). *Approvals* is in the
+fixture. `examples.test.ts` validates every example's own layout (no problems; Approvals has no warnings
+either — Tickets, Inventory and Sales reporting still carry dead-end warnings), and the fixture lint check runs
+with `ldap-auth-rest`, the sets' default. The layout templates open a wide entity's list on its first six
+columns (`narrowColumns`, the wide-list fix). Pinned by `pageLayoutKpiTrend.test.ts`,
+`pageLayoutFormPage.test.ts`, `workflow.test.tsx` and `pageLayoutInbox.test.ts`.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;
