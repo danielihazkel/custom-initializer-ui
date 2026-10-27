@@ -1,7 +1,7 @@
 import type { FullstackChartDef, FullstackChildTabDef, FullstackEntityDef, FullstackPageDef } from '../../types'
 import { fieldLabel } from './uiPreview'
 import {
-  MAX_CHARTS, MAX_CHILD_TABS, MAX_HEADER_STATS, MAX_STEPS, MAX_TABS, PAGE_TYPE_META,
+  MAX_CHARTS, MAX_CHILD_TABS, MAX_HEADER_STATS, MAX_STEPS, MAX_TABS, MAX_TITLE, PAGE_TYPE_META,
   askableFields, childTabEntity, dateFields, defaultWizardSteps, pageLabel, relationKeys,
   relationsTo, reportCharts, reportGroupKeys,
 } from './pageLayout'
@@ -241,6 +241,47 @@ export function placePart(pages: FullstackPageDef[], index: number, entities: Fu
       const next = moved.filter((s, i) => s.fields.length > 0 || i === to)
       const label = `${from < 0 ? 'Asked for' : 'Moved'} ${keyText(entity, part.field)} ${to === steps.length ? 'into a new step' : `to step ${next.indexOf(moved[to]) + 1}`} of ${where}`
       return { patch: { steps: next }, label }
+    }
+  }
+}
+
+/**
+ * A title renamed on the canvas — a widget's (`widget.N.title`), a tab's (`tabs.N.title`), a
+ * wizard step's (`steps.N.title`) or a record header number's (`headerStats.N.title`): the page
+ * patch and an undo label, or why not. A blank title goes back to the default. A wizard's dealt
+ * steps and a record's default numbers are written out first, as a drop onto them is.
+ * (The page's own title is `retitle`'s, which keeps the id in step.)
+ */
+export function renamePart(pages: FullstackPageDef[], index: number, entities: FullstackEntityDef[], control: string, value: string): PlacedPart {
+  const page = pages[index]
+  if (!page) return { reason: 'No page to rename on' }
+  const m = /^(widget|tabs|steps|headerStats)\.(\d+)\.title$/.exec(control)
+  if (!m) return { reason: 'That cannot be renamed here' }
+  const at = Number(m[2])
+  const title = value.trim().slice(0, MAX_TITLE) || undefined
+  const where = `“${pageLabel(page)}”`
+  const said = title ? `“${title}”` : 'its default'
+  const retitled = <T extends { title?: string }>(list: T[]): T[] => list.map((item, i) => (i === at ? { ...item, title } : item))
+  switch (m[1]) {
+    case 'widget': {
+      const widgets = page.widgets ?? []
+      if (!widgets[at]) return { reason: 'No such widget' }
+      return { patch: { widgets: retitled(widgets) }, label: `Renamed widget ${at + 1} of ${where} to ${said}` }
+    }
+    case 'tabs': {
+      const tabs = page.tabs ?? []
+      if (!tabs[at]) return { reason: 'No such tab' }
+      return { patch: { tabs: retitled(tabs) }, label: `Renamed tab ${at + 1} of ${where} to ${said}` }
+    }
+    case 'steps': {
+      const steps = wizardStepsOf(page, entities)
+      if (!steps[at]) return { reason: 'No such step' }
+      return { patch: { steps: retitled(steps) }, label: `Renamed step ${at + 1} of ${where} to ${said}` }
+    }
+    default: {
+      const stats = headerStatsOf(page, entities)
+      if (!stats[at]) return { reason: 'No such number' }
+      return { patch: { headerStats: retitled(stats) }, label: `Renamed header number ${at + 1} of ${where} to ${said}` }
     }
   }
 }

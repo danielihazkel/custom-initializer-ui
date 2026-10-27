@@ -205,6 +205,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
       setInspectorTab(tabOfControl(t.control?.split('.')[0]))
     }
     const attempt = (triesLeft: number) => {
+      // A double-click renames in place: the click before it must not pull the focus away.
+      if ((document.activeElement as HTMLElement | null)?.matches?.('[data-preview-rename]')) return
       const root = inspectorRef.current
       const scope = t.control
         ? root?.querySelector<HTMLElement>(`[data-control="${cssEscape(t.control)}"]`)
@@ -790,7 +792,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                   <span className="font-semibold text-on-surface">{pageLabel(page)}</span>
                   <span>{PAGE_TYPE_META[page.type]?.label}</span>
                   <span className="font-mono">#/{page.id || '…'}</span>
-                  <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · drag to move · drag its edge to resize · Ctrl+D duplicates' : takesParts ? 'Click a part to edit it · drag parts in from the library' : 'Click a part of the page to edit it'}</span>
+                  <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · double-click a title to rename · drag to move · drag its edge to resize' : takesParts ? 'Click a part to edit it · double-click a title to rename · drag parts in from the library' : 'Click a part to edit it · double-click a title to rename'}</span>
                   <ZoomControl zoom={prefs.zoom} onChange={zoom => setPrefs(p => ({ ...p, zoom }))} />
                   <DeviceSwitch device={device} onChange={setDevice} />
                   <button
@@ -851,6 +853,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     offNavNote={offNavNoteFor(page)}
                     onReorderWidget={reorderWidget}
                     onResizeWidget={model.resizeWidget}
+                    onRename={(t, value) => model.renamePart(t.page, t.control ?? '', value)}
                     widgetTools={{ duplicate: duplicateWidget, kindMenu: (pageIndex, index, anchor) => setKindMenu({ page: pageIndex, index, anchor }) }}
                     navStyle={nav?.style}
                     collapsibleGroups={nav?.collapsibleGroups}

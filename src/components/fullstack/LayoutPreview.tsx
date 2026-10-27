@@ -1,9 +1,10 @@
-import { Fragment, createContext, useContext, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
+import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import type { ContentBlock, ContentRun } from './contentMarkdown'
 import { highlights, previewPartOf, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewScreen, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
 import { dropIndicatorClass, useDragReorder, type DragReorder } from './useDragReorder'
 import type { PagePlayLinks } from './playLinks'
-import { MAX_STEPS } from './pageLayout'
+import { MAX_STEPS, MAX_TITLE } from './pageLayout'
+import { cssEscape } from './focus'
 import type { PartSlot } from './pageParts'
 
 export type { EditTarget }
@@ -46,6 +47,10 @@ interface Props {
   problems?: Record<number, Record<string, string>>
   /** Play mode: the parts follow the generated app's links instead of opening their editor. */
   play?: PlayNavigation
+  /** A title renamed in place (double-click or F2 on it): the page's own (`title`), a widget's
+   *  (`widget.N.title`), a tab's (`tabs.N.title`), a step's (`steps.N.title`) or a record header
+   *  number's (`headerStats.N.title`). Blank means back to the default. Absent: no renaming. */
+  onRename?: (target: EditTarget, value: string) => void
 }
 
 /** Play mode: where the parts of each page lead (`buildPlayLinks`), and how to go there. */
@@ -57,6 +62,71 @@ export interface PlayNavigation {
 }
 
 const Play = createContext<PlayNavigation | undefined>(undefined)
+
+/** A title being renamed on the canvas: which one, its text when it started, and the part that
+ *  opened it (focused again after Enter or Escape). */
+interface RenameEdit { page: number; control: string; initial: string; owner: string }
+interface RenameApi {
+  editing: RenameEdit | null
+  start: (edit: RenameEdit) => void
+  /** `value` null: cancelled. `back`: return the focus to the part. */
+  finish: (value: string | null, back: boolean) => void
+}
+const Rename = createContext<RenameApi | undefined>(undefined)
+
+/** Starts renaming the title under the pointer inside `scope` (else its first): false when it
+ *  holds none. */
+function renameFrom(r: RenameApi, owner: string, scope: HTMLElement, x?: number, y?: number): boolean {
+  const hit = x != null && y != null && typeof document.elementsFromPoint === 'function'
+    ? document.elementsFromPoint(x, y).map(el => el.closest<HTMLElement>('[data-rename]')).find(el => el != null && scope.contains(el))
+    : undefined
+  const slot = hit ?? scope.querySelector<HTMLElement>('[data-rename]')
+  if (!slot) return false
+  r.start({ page: Number(slot.dataset.renamePage), control: slot.dataset.rename ?? '', initial: slot.dataset.renameValue ?? '', owner })
+  return true
+}
+
+/** A title that can be renamed in place: its text, or the input while it is being renamed. */
+function RenameSlot({ page, control, value, children }: { page: number; control: string; value: string; children: ReactNode }) {
+  const r = useContext(Rename)
+  if (!r) return <>{children}</>
+  if (r.editing?.page === page && r.editing.control === control) return <RenameInput api={r} initial={r.editing.initial} />
+  return <span data-rename={control} data-rename-page={page} data-rename-value={value}>{children}</span>
+}
+
+function RenameInput({ api, initial }: { api: RenameApi; initial: string }) {
+  const ref = useRef<HTMLInputElement>(null)
+  const done = useRef(false)
+  useLayoutEffect(() => {
+    ref.current?.focus()
+    ref.current?.select()
+  }, [])
+  const finish = (value: string | null, back: boolean) => {
+    if (done.current) return
+    done.current = true
+    api.finish(value, back)
+  }
+  return (
+    <input
+      ref={ref}
+      type="text"
+      defaultValue={initial}
+      maxLength={MAX_TITLE}
+      aria-label="Rename — Enter saves, Escape cancels, blank goes back to the default"
+      onKeyDown={e => {
+        e.stopPropagation()
+        if (e.key === 'Enter') { e.preventDefault(); finish(e.currentTarget.value, true) }
+        else if (e.key === 'Escape') { e.preventDefault(); finish(null, true) }
+      }}
+      onBlur={e => finish(e.currentTarget.value, false)}
+      onClick={e => e.stopPropagation()}
+      onDoubleClick={e => e.stopPropagation()}
+      className="w-full min-w-[5rem] rounded border border-primary bg-surface-container-lowest px-0.5 text-on-surface outline-none ring-2 ring-primary/30"
+      style={{ font: 'inherit' }}
+      data-preview-rename
+    />
+  )
+}
 
 /** What makes an element a link in Play mode: `props` to spread and `cls` to add to its class.
  *  Nothing outside Play, or with neither a target nor a note. */
@@ -197,7 +267,28 @@ const WIDGET_LIST = 'preview-widgets:'
  * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
-export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, widgetTools, navStyle, collapsibleGroups, palette, widgetDrop, partDrop, narrow, problems, play }: Props) {
+export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, widgetTools, navStyle, collapsibleGroups, palette, widgetDrop, partDrop, narrow, problems, play, onRename }: Props) {
+  // The title being renamed in place, and the part to focus again once Enter or Escape ends it.
+  const [renaming, setRenaming] = useState<RenameEdit | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const refocus = useRef<string | null>(null)
+  useEffect(() => {
+    if (renaming || !refocus.current) return
+    const owner = refocus.current
+    refocus.current = null
+    rootRef.current?.querySelector<HTMLElement>(`[data-rename-owner="${cssEscape(owner)}"]`)?.focus()
+  }, [renaming])
+  const rename: RenameApi | undefined = onRename && !play ? {
+    editing: renaming,
+    start: setRenaming,
+    finish: (value, back) => {
+      const edit = renaming
+      setRenaming(null)
+      if (!edit) return
+      if (back) refocus.current = edit.owner
+      if (value != null && value.trim() !== edit.initial) onRename({ page: edit.page, control: edit.control }, value.trim())
+    },
+  } : undefined
   const screen = preview.screens[selected]
   const menora = skin === 'menora'
   // The generated tailwind shell: `--color-brand`/`--color-primary` = palette primary,
@@ -290,7 +381,9 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
   return (
     <Play.Provider value={play}>
     <Problems.Provider value={problems}>
+    <Rename.Provider value={rename}>
     <div
+      ref={rootRef}
       dir={preview.rtl ? 'rtl' : 'ltr'}
       className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest shadow-sm"
       data-layout-preview
@@ -350,6 +443,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         </div>
       )}
     </div>
+    </Rename.Provider>
     </Problems.Provider>
     </Play.Provider>
   )
@@ -399,7 +493,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
   const heading = !embedded && (
     <Editable {...link} control="title" label="Edit the page title" className="block text-start">
       <h3 className="text-[13px] font-bold text-on-surface">
-        {screen.title}
+        <RenameSlot page={page} control="title" value={screen.title}>{screen.title}</RenameSlot>
         {menora && <span style={{ color: MENORA.yellow }}>.</span>}
       </h3>
       {'description' in screen && screen.description && (
@@ -746,6 +840,7 @@ function ContentBlockView({ block, accent, page }: { block: ContentBlock; accent
 function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, heading, dnd, onResizeWidget, widgetTools, parts }:
   Omit<ScreenProps, 'screen'> & { screen: Extract<PreviewScreen, { type: 'tabs' }>; heading: ReactNode; parts?: PartTarget }) {
   const [active, setActive] = useState(0)
+  const rename = useContext(Rename)
   const current = Math.min(active, Math.max(screen.tabs.length - 1, 0))
   const target = screen.tabs[current]?.target
   const embedded = target != null ? preview.screens[target] : undefined
@@ -765,6 +860,9 @@ function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent
             // The tab's card hovered in the editor rings the tab, like an Editable would.
             const lit = highlights(highlight, { page, control: `tab.${i}` })
             const line = partIndicator(parts, i, screen.tabs.length)
+            const owner = `${page}:tabs.${i}.title`
+            const slot = <RenameSlot page={page} control={`tabs.${i}.title`} value={tab.label}>{tab.label}</RenameSlot>
+            if (rename?.editing?.owner === owner) return <span key={i} className="-mb-px pb-1 text-[10px] font-semibold">{slot}</span>
             return (
               <button
                 key={i}
@@ -772,12 +870,16 @@ function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent
                 role="tab"
                 aria-selected={i === current}
                 onClick={() => setActive(i)}
+                onDoubleClick={rename ? e => renameFrom(rename, owner, e.currentTarget) : undefined}
+                onKeyDown={rename ? e => { if (e.key === 'F2') { e.preventDefault(); renameFrom(rename, owner, e.currentTarget) } } : undefined}
+                title={rename ? 'Double-click to rename' : undefined}
+                data-rename-owner={rename ? owner : undefined}
                 {...(parts ? partDropProps(parts, halfOf(i)) : {})}
                 data-preview-highlight={lit ? '' : undefined}
                 className={`-mb-px border-b-2 pb-1 text-[10px] font-semibold ${i === current ? '' : 'border-transparent text-secondary'} ${lit ? HIGHLIGHT : ''} ${line ? `px-1 ${dropIndicatorClass(line, 'x')}` : ''}`}
                 style={i === current ? { borderBottomColor: accent, color: accent } : undefined}
               >
-                {tab.label}
+                {slot}
               </button>
             )
           })}
@@ -852,7 +954,9 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
           <div className="grid grid-cols-4 gap-1.5" data-preview-stats>
             {screen.stats.map((s, i) => (
               <div key={i} className={`min-w-0 rounded border border-outline-variant p-1 ${dropIndicatorClass(partIndicator(statParts, i, screen.stats.length), 'x')}`}>
-                <p className="truncate text-[8px] text-secondary">{s.title}</p>
+                <p className="truncate text-[8px] text-secondary">
+                  <RenameSlot page={link.page} control={`headerStats.${i}.title`} value={s.title}>{s.title}</RenameSlot>
+                </p>
                 <p className="text-[12px] font-bold tabular-nums text-on-surface">{s.value}</p>
               </div>
             ))}
@@ -930,26 +1034,37 @@ function WizardScreen({ screen, link, heading, accent, menora, parts }: {
   const saveTo = play?.links[link.page]?.afterSave
   // A field dropped on a step (or a new one) moves there, and the canvas shows that step.
   const into = parts ? { ...parts, drop: (at: number) => { parts.drop(at); setActive(at) } } : undefined
+  const rename = useContext(Rename)
   return (
     <div className="space-y-2">
       {heading}
       <div className="flex items-start gap-1">
         <ol className="flex min-w-0 flex-1 flex-wrap gap-1" data-preview-steps>
           {screen.steps.map((s, i) => {
-            // The review is not a step a field can go to.
+            // The review is not a step a field can go to, nor one to rename.
             const target = into && i < last ? into : undefined
+            const owner = `${link.page}:steps.${i}.title`
+            const renames = rename && i < last ? rename : undefined
+            const label = i < last ? <RenameSlot page={link.page} control={`steps.${i}.title`} value={s}>{s}</RenameSlot> : s
+            if (renames?.editing?.owner === owner) {
+              return <li key={i} className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold">{i + 1} {label}</li>
+            }
             return (
               <li key={i}>
                 <button
                   type="button"
                   aria-current={i === step ? 'step' : undefined}
                   onClick={() => setActive(i)}
+                  onDoubleClick={renames ? e => renameFrom(renames, owner, e.currentTarget) : undefined}
+                  onKeyDown={renames ? e => { if (e.key === 'F2') { e.preventDefault(); renameFrom(renames, owner, e.currentTarget) } } : undefined}
+                  title={renames ? 'Double-click to rename' : undefined}
+                  data-rename-owner={renames ? owner : undefined}
                   {...(target ? partDropProps(target, () => i) : {})}
                   className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${target?.at === i ? 'border-primary bg-primary/10 ring-2 ring-primary/40' : ''}`}
                   style={i === step ? { borderColor: accent, color: accent } : undefined}
                   data-preview-step-drop={target ? i : undefined}
                 >
-                  {i + 1} {s}
+                  {i + 1} {label}
                 </button>
               </li>
             )
@@ -1019,10 +1134,16 @@ function Editable({ page, control, onEdit, highlight, label, className, children
   const target = { page, control }
   const lit = highlights(highlight, target)
   const problem = problemOf(useContext(Problems), page, control)
+  const rename = useContext(Rename)
+  const owner = useId()
+  const ref = useRef<HTMLDivElement>(null)
   // Play mode: the part is the app's own, its links are live; nothing opens an editor.
   if (useContext(Play)) return <div className={`relative rounded ${className ?? ''}`}>{children}</div>
+  // A title inside is being renamed: the part is drawn live, with its input, and nothing over it.
+  if (rename?.editing?.owner === owner) return <div className={`relative rounded ${HIGHLIGHT} ${className ?? ''}`}>{children}</div>
   return (
     <div
+      ref={ref}
       className={`relative rounded ${lit ? HIGHLIGHT : problem ? PROBLEM : ''} ${className ?? ''}`}
       data-preview-highlight={lit ? '' : undefined}
       data-preview-problem={problem ? '' : undefined}
@@ -1034,6 +1155,12 @@ function Editable({ page, control, onEdit, highlight, label, className, children
       <button
         type="button"
         onClick={() => onEdit(target)}
+        onDoubleClick={rename ? e => { if (ref.current) renameFrom(rename, owner, ref.current, e.clientX, e.clientY) } : undefined}
+        onKeyDown={rename ? e => {
+          if (e.key !== 'F2' || !ref.current) return
+          if (renameFrom(rename, owner, ref.current)) e.preventDefault()
+        } : undefined}
+        data-rename-owner={owner}
         title={problem ? `${label} — ${problem}` : label}
         aria-label={problem ? `${label} (problem: ${problem})` : label}
         className="absolute inset-0 h-full w-full cursor-pointer rounded outline-offset-2 hover:outline hover:outline-1 hover:outline-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
@@ -1136,7 +1263,9 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
         className={`h-full rounded border p-1.5 ${widget.kind === 'broken' ? 'border-error/50 bg-error/5' : 'border-outline-variant bg-surface-container-lowest'} ${card.cls}`}
         data-preview-widget={widget.index}
       >
-        <p className="truncate text-[9px] font-semibold text-secondary">{widget.title}</p>
+        <p className="truncate text-[9px] font-semibold text-secondary">
+          <RenameSlot page={link.page} control={`widget.${widget.index}.title`} value={widget.title}>{widget.title}</RenameSlot>
+        </p>
         {widget.filters.length > 0 && (
           <p className="truncate text-[8px] text-secondary" data-preview-widget-filter>{widget.filters.join(' · ')}</p>
         )}

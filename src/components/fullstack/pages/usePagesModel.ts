@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FullstackEntityDef, FullstackPageDef, FullstackPageType, FullstackWidgetDef } from '../../../types'
 import { entityOption } from '../fieldOptions'
 import { buildLayoutPreview } from '../layoutPreviewModel'
-import { placePart as placePagePart, type PagePart } from '../pageParts'
+import { placePart as placePagePart, renamePart as renamePagePart, type PagePart } from '../pageParts'
 import type { PreviewPalette } from '../LayoutPreview'
 import { moveItem } from '../reorder'
 import { useStableKeys } from '../rowKeys'
@@ -457,6 +457,30 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     return undefined
   }
 
+  /** A title renamed on the canvas — the page's own, or a widget's, tab's, step's or header
+   *  number's — as its own undo step. A blank title goes back to the default. */
+  function renamePart(pageIndex: number, control: string, value: string) {
+    const page = pages[pageIndex]
+    if (!page) return
+    if (control === 'title') {
+      const title = value.trim()
+      if (!title && page.type === 'tabs') {
+        setNotice('A tabs page needs a title — it heads the tab strip')
+        return
+      }
+      pushUndo(title ? `Renamed “${pageLabel(page)}” to “${title}”` : `Cleared the title of “${pageLabel(page)}”`)
+      retitle(pageIndex, title)
+      return
+    }
+    const renamed = renamePagePart(pages, pageIndex, named, control, value)
+    if ('reason' in renamed) {
+      setNotice(renamed.reason)
+      return
+    }
+    pushUndo(renamed.label)
+    update(pageIndex, renamed.patch)
+  }
+
   /** A problem's or warning's fix: its own undo entry, then the change. */
   function applyFix(fix: PageFix) {
     pushUndo(fix.label)
@@ -490,7 +514,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     update, retitle, unlockId,
     add, addPage, addTabsPage, newTypeReason, fittingChoices, noFitReason, switchBlocked, hasMdPair, tabsEligible,
     navGroupSections, renameGroup, moveGroup,
-    reorderWidget, resizeWidget, addWidget, addWidgetDef, setWidget, retargetWidgetAt, duplicateWidget, removeWidget,
+    renamePart, reorderWidget, resizeWidget, addWidget, addWidgetDef, setWidget, retargetWidgetAt, duplicateWidget, removeWidget,
     pasteWidgetsAt, moveWidgetTo, widgetTemplates, saveWidgetAsTemplate, forgetWidgetTemplate,
     changeType, removePage, requestRemove, duplicate, move, movePageTo, makeStart, toggleHidden,
     startFromEntities, layoutTemplates, startFromTemplate, myTemplates, saveAsTemplate, forgetTemplate,

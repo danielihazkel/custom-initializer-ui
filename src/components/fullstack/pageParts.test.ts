@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import { validatePages } from './pageLayout'
-import { pageParts, placePart, type PlacedPart } from './pageParts'
+import { pageParts, placePart, renamePart, type PlacedPart } from './pageParts'
 
 const entities: FullstackEntityDef[] = [
   { name: 'Customer', fields: [{ name: 'id', type: 'LONG', primaryKey: true, generated: true }, { name: 'name', type: 'STRING', required: true }] },
@@ -127,5 +127,33 @@ describe('placePart', () => {
       next = next.map((p, i) => (i === index ? { ...p, ...placed.patch } : p))
     }
     expect(validatePages(next, entities).issues).toEqual([])
+  })
+})
+
+describe('renamePart', () => {
+  const withWidget: FullstackPageDef[] = pages.map(p => (p.id === 'desk' ? { ...p, widgets: [{ kind: 'kpi', entity: 'Order', title: 'Orders' }] } : p))
+
+  it('renames a widget, a tab and a step, and a blank title goes back to the default', () => {
+    expect(patchOf(renamePart(withWidget, 2, entities, 'widget.0.title', '  Open orders ')).patch.widgets?.[0].title).toBe('Open orders')
+    const cleared = patchOf(renamePart(withWidget, 2, entities, 'widget.0.title', ' '))
+    expect(cleared.patch.widgets?.[0]).toEqual({ kind: 'kpi', entity: 'Order', title: undefined })
+    expect(cleared.label).toBe('Renamed widget 1 of “Dashboard” to its default')
+    expect(patchOf(renamePart(pages, 3, entities, 'tabs.1.title', 'Support')).patch.tabs).toEqual([{ page: 'orders' }, { page: 'tickets', title: 'Support' }])
+    expect(patchOf(renamePart(pages, 6, entities, 'steps.2.title', 'Who')).patch.steps?.[2]).toEqual({ fields: ['customer'], title: 'Who' })
+  })
+
+  it('writes out a record’s default numbers and a wizard’s dealt steps before renaming one', () => {
+    const stats = patchOf(renamePart(pages, 4, entities, 'headerStats.1.title', 'Open tickets')).patch.headerStats
+    expect(stats).toEqual([{ child: 'Order' }, { child: 'Ticket', title: 'Open tickets' }])
+    const dealt: FullstackPageDef[] = [{ id: 'new-order', type: 'wizard', entity: 'Order' }]
+    const steps = patchOf(renamePart(dealt, 0, entities, 'steps.0.title', 'Basics')).patch.steps
+    expect(steps?.[0].title).toBe('Basics')
+    expect(steps?.flatMap(st => st.fields)).toEqual(expect.arrayContaining(['status', 'total', 'placedOn', 'customer']))
+  })
+
+  it('says why when there is nothing of that name to rename', () => {
+    expect(reasonOf(renamePart(pages, 3, entities, 'tabs.5.title', 'X'))).toBe('No such tab')
+    expect(reasonOf(renamePart(pages, 0, entities, 'columns.0', 'X'))).toBe('That cannot be renamed here')
+    expect(reasonOf(renamePart(pages, 99, entities, 'widget.0.title', 'X'))).toBe('No page to rename on')
   })
 })

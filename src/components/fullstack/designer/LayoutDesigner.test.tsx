@@ -299,6 +299,67 @@ describe('Layout designer', () => {
     expect(within(inspector(designer)).getByText('Widget 4')).toBeTruthy()
   })
 
+  it('renames the page and a widget in place: Enter saves, Escape cancels, blank goes back to the default', () => {
+    render(<Harness initial={desk} />)
+    const designer = openDesigner()
+    const renameInput = () => designer.querySelector('[data-preview-rename]') as HTMLInputElement | null
+    const heading = within(designer).getByRole('button', { name: 'Edit the page title' })
+    fireEvent.doubleClick(heading)
+    expect(document.activeElement).toBe(renameInput())
+    expect(renameInput()?.value).toBe('Desk')
+    fireEvent.change(renameInput()!, { target: { value: 'Front desk' } })
+    fireEvent.keyDown(renameInput()!, { key: 'Enter' })
+    // A dashboard keeps its id; the focus goes back to the part.
+    expect(latest[0]).toMatchObject({ id: 'desk', title: 'Front desk' })
+    expect(pushUndo).toHaveBeenCalledWith('Renamed “Desk” to “Front desk”')
+    expect(renameInput()).toBeNull()
+    expect(document.activeElement).toBe(within(designer).getByRole('button', { name: 'Edit the page title' }))
+
+    // F2 on a focused widget; Escape leaves it as it was, and the designer open.
+    const second = within(designer).getByRole('button', { name: 'Edit widget 2' })
+    fireEvent.keyDown(second, { key: 'F2' })
+    fireEvent.change(renameInput()!, { target: { value: 'Mix' } })
+    fireEvent.keyDown(renameInput()!, { key: 'Escape' })
+    expect(latest[0].widgets?.[1].title).toBeUndefined()
+    expect(screen.getByRole('dialog', { name: 'Layout designer' })).toBeTruthy()
+
+    fireEvent.doubleClick(within(designer).getByRole('button', { name: 'Edit widget 2' }))
+    fireEvent.change(renameInput()!, { target: { value: 'Mix' } })
+    fireEvent.blur(renameInput()!)
+    expect(latest[0].widgets?.[1].title).toBe('Mix')
+    fireEvent.doubleClick(within(designer).getByRole('button', { name: 'Edit widget 2' }))
+    expect(renameInput()?.value).toBe('Mix')
+    fireEvent.change(renameInput()!, { target: { value: '  ' } })
+    fireEvent.keyDown(renameInput()!, { key: 'Enter' })
+    expect(latest[0].widgets?.[1].title).toBeUndefined()
+  })
+
+  it('renames a tab and a wizard step in place, writing the dealt steps out', () => {
+    render(<Harness initial={[
+      ...desk,
+      { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ page: 'orders' }, { page: 'customers' }] },
+      { id: 'new-order', type: 'wizard', entity: 'Order' },
+    ]} />)
+    const designer = openDesigner()
+    const renameInput = () => designer.querySelector('[data-preview-rename]') as HTMLInputElement
+    fireEvent.click(chip(designer, 'queue'))
+    fireEvent.doubleClick(designer.querySelector('[data-rename-owner="3:tabs.0.title"]')!)
+    fireEvent.change(renameInput(), { target: { value: 'Open' } })
+    fireEvent.keyDown(renameInput(), { key: 'Enter' })
+    expect(latest[3].tabs).toEqual([{ page: 'orders', title: 'Open' }, { page: 'customers' }])
+    expect(designer.querySelector('[data-rename-owner="3:tabs.0.title"]')?.textContent).toBe('Open')
+
+    fireEvent.click(chip(designer, 'new-order'))
+    fireEvent.doubleClick(designer.querySelector('[data-rename-owner="4:steps.0.title"]')!)
+    fireEvent.change(renameInput(), { target: { value: 'Basics' } })
+    fireEvent.keyDown(renameInput(), { key: 'Enter' })
+    expect(latest[4].steps?.[0].title).toBe('Basics')
+    expect(latest[4].steps?.length).toBeGreaterThan(0)
+    // The review is not a step to rename.
+    const steps = designer.querySelectorAll('[data-preview-steps] button')
+    expect(steps[steps.length - 1].getAttribute('data-rename-owner')).toBeNull()
+  })
+
   it('starts a layout from the entities on an empty card and opens the designer', () => {
     render(<Harness initial={[]} />)
     fireEvent.click(screen.getByRole('button', { name: /Start from my entities/ }))
