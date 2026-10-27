@@ -258,12 +258,18 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     lossy(`Changed widget ${wi + 1} of “${pageLabel(page)}”`, dropped)
     update(pageIndex, { widgets: (page.widgets ?? []).map((w, i) => (i === wi ? widget : w)) })
   }
-  function duplicateWidget(pageIndex: number, wi: number) {
+  /** A copy of widget `wi` right after it; returns where the copy landed (undefined at the cap). */
+  function duplicateWidget(pageIndex: number, wi: number): number | undefined {
     const widgets = pages[pageIndex]?.widgets ?? []
-    if (!widgets[wi]) return
+    if (!widgets[wi]) return undefined
+    if (widgets.length >= MAX_WIDGETS) {
+      setNotice(`A dashboard can have at most ${MAX_WIDGETS} widgets`)
+      return undefined
+    }
     const next = [...widgets]
     next.splice(wi + 1, 0, { ...widgets[wi] })
     update(pageIndex, { widgets: next })
+    return wi + 1
   }
   function removeWidget(pageIndex: number, wi: number) {
     const page = pages[pageIndex]

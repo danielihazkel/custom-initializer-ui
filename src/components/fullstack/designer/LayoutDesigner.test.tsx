@@ -245,6 +245,60 @@ describe('Layout designer', () => {
     expect(designer.querySelector('[data-preview-topbar]')).toBeTruthy()
   })
 
+  it('reorders widgets along the row, showing the columns while one moves or resizes', () => {
+    render(<Harness initial={desk} />)
+    const designer = openDesigner()
+    const dt = dataTransfer()
+    const guides = () => designer.querySelector('[data-preview-grid-guides]')
+    expect(guides()).toBeNull()
+    fireEvent.dragStart(within(designer).getByRole('button', { name: 'Drag widget 1' }), { dataTransfer: dt })
+    expect(guides()).toBeTruthy()
+    const second = designer.querySelector('[data-preview-widget-slot="1"]') as HTMLElement
+    fireEvent.dragOver(second, { dataTransfer: dt })
+    // The grid flows sideways: the drop line is on the widget's end edge, not under it.
+    expect(second.className).toContain('border-e-2')
+    expect(second.className).not.toContain('border-b-2')
+    fireEvent.drop(second, { dataTransfer: dt })
+    expect(latest[0].widgets?.map(w => w.kind)).toEqual(['bar', 'kpi'])
+    expect(guides()).toBeNull()
+
+    // Dragging an edge shows the columns and the width it would take.
+    const capture = Element.prototype.setPointerCapture
+    Element.prototype.setPointerCapture = vi.fn()
+    const edge = designer.querySelector('[data-preview-widget-slot="0"] [data-preview-widget-resize]')!
+    fireEvent.pointerDown(edge, { pointerId: 1, clientX: 0 })
+    expect(guides()).toBeTruthy()
+    expect(designer.querySelector('[data-preview-span-badge]')?.textContent).toBe('2 / 4')
+    fireEvent.pointerUp(edge, { pointerId: 1 })
+    expect(guides()).toBeNull()
+    expect(designer.querySelector('[data-preview-span-badge]')).toBeNull()
+    Element.prototype.setPointerCapture = capture
+  })
+
+  it('duplicates a widget from its hover bar or with Ctrl+D, and switches its kind from a menu', () => {
+    render(<Harness initial={desk} />)
+    const designer = openDesigner()
+    fireEvent.click(within(designer).getByRole('button', { name: 'Duplicate widget 1' }))
+    expect(latest[0].widgets?.map(w => w.kind)).toEqual(['kpi', 'kpi', 'bar'])
+    // The copy is selected, so Ctrl+D copies it again.
+    expect(within(inspector(designer)).getByText('Widget 2')).toBeTruthy()
+    fireEvent.keyDown(designer, { key: 'd', ctrlKey: true })
+    expect(latest[0].widgets?.map(w => w.kind)).toEqual(['kpi', 'kpi', 'kpi', 'bar'])
+    expect(within(inspector(designer)).getByText('Widget 3')).toBeTruthy()
+
+    const opener = within(designer).getByRole('button', { name: 'Change the kind of widget 4' })
+    fireEvent.click(opener)
+    const menu = within(designer).getByRole('menu', { name: 'Kind of widget 4' })
+    expect((within(menu).getByRole('menuitem', { name: /Breakdown chart \(now\)/ }) as HTMLButtonElement).disabled).toBe(true)
+    // Activity reads audited rows; the audit option is off here.
+    expect((within(menu).getByRole('menuitem', { name: 'Recent activity' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Donut chart' }))
+    expect(latest[0].widgets?.[3]).toMatchObject({ kind: 'donut', entity: 'Order', groupBy: 'status' })
+    expect(within(designer).queryByRole('menu')).toBeNull()
+    expect(document.activeElement).toBe(opener)
+    expect(within(inspector(designer)).getByText('Widget 4')).toBeTruthy()
+  })
+
   it('starts a layout from the entities on an empty card and opens the designer', () => {
     render(<Harness initial={[]} />)
     fireEvent.click(screen.getByRole('button', { name: /Start from my entities/ }))

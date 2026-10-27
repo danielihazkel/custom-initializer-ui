@@ -8,11 +8,11 @@ import { isTypingTarget } from '../undo'
 import { LayoutPreview, type EditTarget } from '../LayoutPreview'
 import { pageFromTemplate } from '../layoutTemplates'
 import { buildPlayLinks } from '../playLinks'
-import { PAGE_TYPE_META, defaultSpan, newPageChoices, pageFromSuggestion, pageLabel, pagesEmbedding } from '../pageLayout'
+import { PAGE_TYPE_META, defaultSpan, newPageChoices, widgetKindDisabledReason, pageFromSuggestion, pageLabel, pagesEmbedding } from '../pageLayout'
 import type { PagesEditorProps } from '../PagesEditor'
 import { handleRadioKeys, syncRadioTabStops } from '../rovingRadios'
 import { focusWithoutClipping } from '../scroll'
-import { ICON_BUTTON, SMALL_BUTTON } from '../pages/constants'
+import { ICON_BUTTON, SMALL_BUTTON, WIDGET_KINDS } from '../pages/constants'
 import { BulkPageBar } from '../pages/BulkPageBar'
 import { EntityOptions } from '../pages/fields'
 import { NewTabsForm, initialTabsForm, type TabsFormState } from '../pages/NewTabsForm'
@@ -121,6 +121,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)) } catch { /* preference only */ }
   }, [prefs])
   const [historyOpen, setHistoryOpen] = useState(false)
+  // A widget's kind menu, opened from its hover bar on the canvas: which widget, and under what.
+  const [kindMenu, setKindMenu] = useState<{ page: number; index: number; anchor: HTMLElement } | null>(null)
   // Copied widgets (also in sessionStorage, so a copy survives closing the designer).
   const [clip, setClip] = useState<WidgetClip | null>(readClipboard)
   // Pages and widgets shared with the team, listed when the designer opens.
@@ -260,6 +262,11 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
       // Copy, cut and paste widgets — unless text is selected, which the browser's own copy is for.
       if (e.altKey || e.shiftKey || window.getSelection()?.toString()) return
       const key = e.key.toLowerCase()
+      if (key === 'd' && widget != null) {
+        e.preventDefault()
+        duplicateWidget(selectedIndex, widget)
+        return
+      }
       if ((key === 'c' || key === 'x') && copyWidgets(key === 'x')) e.preventDefault()
       else if (key === 'v' && clip) { e.preventDefault(); pasteClip() }
       return
@@ -436,6 +443,37 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     if (at == null) return
     setSelectedKey(keys[toIndex] ?? null)
     setSelectedWidget(at)
+  }
+  /** A copy of a widget right after it, selected. */
+  function duplicateWidget(pageIndex: number, index: number) {
+    const at = model.duplicateWidget(pageIndex, index)
+    if (at == null) return
+    setSelectedKey(keys[pageIndex] ?? null)
+    setSelectedWidget(at)
+  }
+  /** The kinds a widget can switch to — each off with the reason the widget card gives. */
+  function kindMenuItems(pageIndex: number, index: number): MenuItem[] {
+    const w = pages[pageIndex]?.widgets?.[index]
+    if (!w) return []
+    const named = model.named
+    const entity = named.find(e => e.name === w.entity)
+    return WIDGET_KINDS.map(k => {
+      const on = w.kind === k.kind
+      const reason = on ? undefined
+        : widgetKindDisabledReason(k.kind, entity ?? (w.entity ? undefined : named[0]), { entities: named, scaffoldOpts: previewSettings?.projectOpts ?? [] })
+      return {
+        key: k.kind,
+        label: on ? `${k.label} (now)` : k.label,
+        icon: k.icon,
+        disabled: on || reason,
+        onSelect: () => {
+          model.retargetWidgetAt(pageIndex, index, k.kind !== 'text' && k.kind !== 'activity' && !w.entity
+            ? { kind: k.kind, entity: named[0]?.name ?? '' } : { kind: k.kind })
+          setSelectedKey(keys[pageIndex] ?? null)
+          setSelectedWidget(index)
+        },
+      }
+    })
   }
   function reorderWidget(pageIndex: number, from: number, to: number) {
     model.reorderWidget(pageIndex, from, to)
@@ -752,7 +790,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                   <span className="font-semibold text-on-surface">{pageLabel(page)}</span>
                   <span>{PAGE_TYPE_META[page.type]?.label}</span>
                   <span className="font-mono">#/{page.id || '…'}</span>
-                  <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · drag to move · drag its edge to resize' : takesParts ? 'Click a part to edit it · drag parts in from the library' : 'Click a part of the page to edit it'}</span>
+                  <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · drag to move · drag its edge to resize · Ctrl+D duplicates' : takesParts ? 'Click a part to edit it · drag parts in from the library' : 'Click a part of the page to edit it'}</span>
                   <ZoomControl zoom={prefs.zoom} onChange={zoom => setPrefs(p => ({ ...p, zoom }))} />
                   <DeviceSwitch device={device} onChange={setDevice} />
                   <button
@@ -813,6 +851,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     offNavNote={offNavNoteFor(page)}
                     onReorderWidget={reorderWidget}
                     onResizeWidget={model.resizeWidget}
+                    widgetTools={{ duplicate: duplicateWidget, kindMenu: (pageIndex, index, anchor) => setKindMenu({ page: pageIndex, index, anchor }) }}
                     navStyle={nav?.style}
                     collapsibleGroups={nav?.collapsibleGroups}
                     narrow={device === 'mobile'}
@@ -888,6 +927,22 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
           )}
         </div>
         )}
+        {kindMenu && (() => {
+          // Fixed under the button: the canvas is zoomed, and the menu should read at full size.
+          const r = kindMenu.anchor.getBoundingClientRect()
+          return (
+            <div className="fixed" style={{ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 232)), zIndex: 60 }} data-widget-kind-menu>
+              <DesignerMenu
+                label={`Kind of widget ${kindMenu.index + 1}`}
+                heading="Change the kind"
+                items={kindMenuItems(kindMenu.page, kindMenu.index)}
+                returnFocus={kindMenu.anchor}
+                onClose={() => setKindMenu(null)}
+                className="start-0 top-0"
+              />
+            </div>
+          )
+        })()}
         <p className="sr-only" role="status">{issueCount === 0 ? '' : `${issueCount} layout problem${issueCount === 1 ? '' : 's'}`}</p>
       </div>
 

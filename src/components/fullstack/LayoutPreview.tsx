@@ -24,6 +24,8 @@ interface Props {
   onReorderWidget?: (page: number, from: number, to: number) => void
   /** A dashboard widget given another width (1–4 columns). Absent: no handles. */
   onResizeWidget?: (page: number, index: number, span: number) => void
+  /** More tools on a dashboard widget's hover bar: Duplicate and a kind switcher. Absent: none. */
+  widgetTools?: WidgetTools
   /** The tailwind shell's navigation: the default sidebar, or a top bar. */
   navStyle?: 'sidebar' | 'topbar'
   /** Sidebar sections with a group name fold. */
@@ -168,6 +170,13 @@ function PartEndSlot({ target, at, label, className = '' }: { target: PartTarget
   )
 }
 
+/** The designer's extra widget tools (the inline editor passes none). */
+export interface WidgetTools {
+  duplicate: (page: number, index: number) => void
+  /** Opens the designer's kind menu under `anchor` (the button pressed). */
+  kindMenu: (page: number, index: number, anchor: HTMLElement) => void
+}
+
 export interface WidgetDrop {
   /** The default width of the widget being dragged — the end slot is drawn that wide. */
   span: number
@@ -188,7 +197,7 @@ const WIDGET_LIST = 'preview-widgets:'
  * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
-export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, navStyle, collapsibleGroups, palette, widgetDrop, partDrop, narrow, problems, play }: Props) {
+export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, widgetTools, navStyle, collapsibleGroups, palette, widgetDrop, partDrop, narrow, problems, play }: Props) {
   const screen = preview.screens[selected]
   const menora = skin === 'menora'
   // The generated tailwind shell: `--color-brand`/`--color-primary` = palette primary,
@@ -271,7 +280,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         <p className="rounded bg-surface-container px-2 py-1 text-[10px] text-secondary">{offNavNote}</p>
       )}
       {screen ? (
-        <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={onReorderWidget ? dnd : undefined} onResizeWidget={narrow ? undefined : onResizeWidget} widgetDrop={widgetDrop} partDrop={partDrop} narrow={narrow} />
+        <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={onReorderWidget ? dnd : undefined} onResizeWidget={narrow ? undefined : onResizeWidget} widgetTools={widgetTools} widgetDrop={widgetDrop} partDrop={partDrop} narrow={narrow} />
       ) : (
         <p className="text-[11px] text-secondary">Nothing to show.</p>
       )}
@@ -361,12 +370,13 @@ interface ScreenProps {
   embedded?: boolean
   dnd?: DragReorder
   onResizeWidget?: (page: number, index: number, span: number) => void
+  widgetTools?: WidgetTools
   widgetDrop?: WidgetDrop | null
   partDrop?: PartDrop | null
   narrow?: boolean
 }
 
-function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, embedded, dnd, onResizeWidget, widgetDrop, partDrop, narrow }: ScreenProps) {
+function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, embedded, dnd, onResizeWidget, widgetTools, widgetDrop, partDrop, narrow }: ScreenProps) {
   // Every part of this screen jumps to its editor control, and lights when that control is hovered.
   const link = { page, onEdit, highlight }
   // In Play mode, where this screen's parts lead instead.
@@ -374,6 +384,8 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
   const here = play?.links[page]
   // The dashboard grid, measured while a widget's edge is dragged to a new width.
   const gridRef = useRef<HTMLDivElement>(null)
+  // A widget's edge being dragged: the grid shows its columns.
+  const [resizing, setResizing] = useState(false)
   // A library widget hovering the grid: the index it would take.
   const [dropAt, setDropAt] = useState<number | null>(null)
   const newDrop = widgetDrop && screen.type === 'dashboard' && !embedded
@@ -444,7 +456,12 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               </div>
             </Editable>
           )}
-          <div ref={gridRef} className={`grid ${narrow ? 'grid-cols-1' : 'grid-cols-4'} gap-1.5`}>
+          <div ref={gridRef} className={`relative grid ${narrow ? 'grid-cols-1' : 'grid-cols-4'} gap-1.5`} data-preview-widget-grid>
+            {!narrow && (resizing || screen.widgets.some(w => dnd?.isDragging(`${WIDGET_LIST}${page}`, w.index))) && (
+              <div className="pointer-events-none absolute inset-0 grid grid-cols-4 gap-1.5" aria-hidden="true" data-preview-grid-guides>
+                {SPAN.map(c => <div key={c} className="rounded border border-dashed border-primary/40 bg-primary/5" />)}
+              </div>
+            )}
             {screen.widgets.map(w => (
               <Widget
                 key={w.index}
@@ -457,6 +474,9 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                 list={`${WIDGET_LIST}${page}`}
                 gridRef={gridRef}
                 onResize={onResizeWidget ? span => onResizeWidget(page, w.index, span) : undefined}
+                onResizing={setResizing}
+                onDuplicate={widgetTools ? () => widgetTools.duplicate(page, w.index) : undefined}
+                onKindMenu={widgetTools ? anchor => widgetTools.kindMenu(page, w.index, anchor) : undefined}
                 newDrop={newDrop}
                 last={w.index === screen.widgets.length - 1}
                 narrow={narrow}
@@ -491,7 +511,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
         </div>
       )
     case 'tabs':
-      return <TabsScreen screen={screen} page={page} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} heading={heading} dnd={dnd} onResizeWidget={onResizeWidget} parts={parts?.slot === 'tab' ? parts : undefined} />
+      return <TabsScreen screen={screen} page={page} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} heading={heading} dnd={dnd} onResizeWidget={onResizeWidget} widgetTools={widgetTools} parts={parts?.slot === 'tab' ? parts : undefined} />
     case 'master-detail':
       return (
         <div className="space-y-2">
@@ -723,7 +743,7 @@ function ContentBlockView({ block, accent, page }: { block: ContentBlock; accent
   }
 }
 
-function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, heading, dnd, onResizeWidget, parts }:
+function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent, menora, heading, dnd, onResizeWidget, widgetTools, parts }:
   Omit<ScreenProps, 'screen'> & { screen: Extract<PreviewScreen, { type: 'tabs' }>; heading: ReactNode; parts?: PartTarget }) {
   const [active, setActive] = useState(0)
   const current = Math.min(active, Math.max(screen.tabs.length - 1, 0))
@@ -766,7 +786,7 @@ function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent
         </div>
       )}
       {embedded && target != null && embedded.type !== 'tabs' && (
-        <Screen screen={embedded} page={target} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={dnd} onResizeWidget={onResizeWidget} embedded />
+        <Screen screen={embedded} page={target} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={dnd} onResizeWidget={onResizeWidget} widgetTools={widgetTools} embedded />
       )}
       {screen.tabs.length > 0 && target == null && (
         <p className="text-[10px] text-error">This tab points at no page.</p>
@@ -1030,7 +1050,7 @@ const MAX_SPAN = SPAN.length
 const DRILLS = new Set<PreviewWidget['kind']>(['kpi', 'progress', 'bar', 'donut', 'stacked', 'pivot', 'line', 'top'])
 const TOOL = 'rounded px-1 text-[10px] font-semibold leading-4 text-secondary hover:bg-primary/10 hover:text-primary disabled:opacity-30'
 
-function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, onResize, newDrop, last, narrow, ...link }: LinkProps & {
+function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, onResize, onResizing, onDuplicate, onKindMenu, newDrop, last, narrow, ...link }: LinkProps & {
   widget: PreviewWidget
   accent: string
   viewAll: string
@@ -1042,6 +1062,10 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
   gridRef: RefObject<HTMLDivElement | null>
   /** Sets the widget's width (1–4 columns), when the editor takes resizes. */
   onResize?: (span: number) => void
+  /** Told when an edge drag starts and ends, so the grid can show its columns. */
+  onResizing?: (on: boolean) => void
+  onDuplicate?: () => void
+  onKindMenu?: (anchor: HTMLElement) => void
   /** A library widget being dragged over the dashboard: where it would land, and the drop. */
   newDrop?: { at: number | null; hover: (at: number | null) => void; drop: (at: number) => void }
   last?: boolean
@@ -1073,6 +1097,10 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
     onDrop: (e: DragEvent<HTMLElement>) => { e.preventDefault(); newDrop.drop(dropIndex(e)) },
   } : undefined
   const dragging = dnd?.isDragging(list, widget.index) ?? false
+  // The grid flows along the line, so a reorder lands before or after by the pointer's side
+  // (on a phone the single column flows down).
+  const axis = narrow ? 'y' : 'x'
+
   const spanAt = (clientX: number): number | null => {
     const grid = gridRef.current?.getBoundingClientRect()
     if (!grid || grid.width === 0) return null
@@ -1084,6 +1112,7 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
     setLiveSpan(widget.span)
+    onResizing?.(true)
   }
   const moveResize = (e: ReactPointerEvent<HTMLElement>) => {
     if (liveSpan == null) return
@@ -1093,11 +1122,12 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
   const endResize = () => {
     if (liveSpan != null && liveSpan !== widget.span) onResize?.(liveSpan)
     setLiveSpan(null)
+    onResizing?.(false)
   }
   return (
     <div
-      {...(newDropProps ?? (dnd ? dnd.rowProps(list, widget.index) : {}))}
-      className={`group relative ${narrow ? 'col-span-1' : SPAN[span - 1] ?? 'col-span-1'} min-w-0 ${dragging ? 'opacity-40' : ''} ${newDrop ? `rounded border-2 border-transparent ${dropIndicatorClass(indicator, 'x')}` : dropIndicatorClass(indicator)}`}
+      {...(newDropProps ?? (dnd ? dnd.rowProps(list, widget.index, axis) : {}))}
+      className={`group relative ${narrow ? 'col-span-1' : SPAN[span - 1] ?? 'col-span-1'} min-w-0 ${dragging ? 'opacity-40' : ''} ${newDrop ? `rounded border-2 border-transparent ${dropIndicatorClass(indicator, 'x')}` : dropIndicatorClass(indicator, axis)}`}
       data-preview-widget-slot={widget.index}
     >
     <Editable {...link} control={`widget.${widget.index}`} label={`Edit widget ${widget.index + 1}`} className="block h-full w-full min-w-0 text-start">
@@ -1222,7 +1252,12 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
         {widget.kind === 'broken' && <p className="text-[10px] text-error">{widget.message}</p>}
       </div>
     </Editable>
-    {(dnd || onResize) && (
+    {liveSpan != null && (
+      <span className="pointer-events-none absolute start-1 top-1 rounded bg-primary px-1 text-[9px] font-semibold text-on-primary" data-preview-span-badge>
+        {span} / {MAX_SPAN}
+      </span>
+    )}
+    {(dnd || onResize || onDuplicate || onKindMenu) && (
       <span
         className="absolute end-1 top-1 flex items-center gap-0.5 rounded bg-surface-container-lowest/90 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
         data-preview-widget-tools
@@ -1244,6 +1279,24 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
             <button type="button" onClick={() => onResize(widget.span - 1)} disabled={widget.span <= 1} aria-label={`Narrower: widget ${widget.index + 1}`} title="Narrower" className={TOOL}>−</button>
             <button type="button" onClick={() => onResize(widget.span + 1)} disabled={widget.span >= MAX_SPAN} aria-label={`Wider: widget ${widget.index + 1}`} title="Wider" className={TOOL}>+</button>
           </>
+        )}
+        {onDuplicate && (
+          <button type="button" onClick={onDuplicate} aria-label={`Duplicate widget ${widget.index + 1}`} title="Duplicate (Ctrl+D)" className={TOOL} data-preview-widget-duplicate>
+            <span className="material-symbols-outlined align-middle" style={{ fontSize: '11px' }}>content_copy</span>
+          </button>
+        )}
+        {onKindMenu && (
+          <button
+            type="button"
+            onClick={e => onKindMenu(e.currentTarget)}
+            aria-haspopup="menu"
+            aria-label={`Change the kind of widget ${widget.index + 1}`}
+            title="Change the kind"
+            className={TOOL}
+            data-preview-widget-kind
+          >
+            <span className="material-symbols-outlined align-middle" style={{ fontSize: '11px' }}>swap_horiz</span>
+          </button>
         )}
       </span>
     )}

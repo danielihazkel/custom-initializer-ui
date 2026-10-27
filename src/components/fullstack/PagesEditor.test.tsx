@@ -192,13 +192,14 @@ describe('PagesEditor', () => {
     expect(latest[0].widgets?.[0].span).toBeUndefined()
     expect((screen.getByRole('button', { name: 'Narrower: widget 1' }) as HTMLButtonElement).disabled).toBe(true)
 
-    // Widget 2 dragged onto the upper half of widget 1's slot lands first. jsdom has no DragEvent,
-    // so the pointer position (above a zero-height rect) is set on the event by hand.
+    // Widget 2 dragged onto the first half of widget 1's slot lands first — the grid flows along
+    // the row. jsdom has no DragEvent, so the pointer position (before a zero-width rect) is set
+    // on the event by hand.
     fireEvent.dragStart(screen.getByLabelText('Drag widget 2'), { dataTransfer: { setData: vi.fn(), effectAllowed: '' } })
     const first = document.querySelector('[data-preview-widget-slot="0"]') as HTMLElement
     const above = (type: 'dragOver' | 'drop') => {
       const event = createEvent[type](first, { dataTransfer: { dropEffect: '' } })
-      Object.defineProperty(event, 'clientY', { value: -1 })
+      Object.defineProperty(event, 'clientX', { value: -1 })
       return event
     }
     fireEvent(first, above('dragOver'))
