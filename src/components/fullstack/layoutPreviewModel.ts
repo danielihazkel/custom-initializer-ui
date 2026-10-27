@@ -28,6 +28,7 @@ import {
 } from './pageLayout'
 import { buildUiPreview, fieldLabel } from './uiPreview'
 import { parseContent, type ContentBlock } from './contentMarkdown'
+import { auditText, cellText, detailText, sampleRaw, seeded } from './previewSample'
 import {
   CALENDAR_MODES, cardFieldOptions, defaultCardFields, defaultLaneField, defaultSearchEntities, laneValues,
 } from './newPageTypes'
@@ -47,6 +48,8 @@ export interface LayoutPreviewContext {
   projectOpts: string[]
   /** The pages the layout validation warns about — their nav entries carry a marker. */
   warnPages?: ReadonlySet<number>
+  /** "Now" for the sample rows' dates (tests pin it); absent: today. */
+  today?: Date
 }
 
 export interface PreviewNavItem {
@@ -219,6 +222,7 @@ const STRINGS = {
     period30d: 'Last 30 days', period90d: 'Last 90 days', periodYtd: 'This year', period12m: 'Last 12 months',
     perPage: '{n} per page', opensRecord: 'rows open their page', opensDrawer: 'rows open in a drawer', newestBy: 'Newest by {x}',
     recentActivity: 'Recent activity', activityCreated: 'created', activityUpdated: 'updated',
+    created: 'Created', updated: 'Updated',
   },
   he: {
     dashboard: 'לוח בקרה', xByY: '{x} לפי {y}', xByYAndZ: '{x} לפי {y} ו{z}', recentX: '{x} – אחרונים', xOverTime: '{x} לאורך זמן',
@@ -231,6 +235,7 @@ const STRINGS = {
     period12m: '12 החודשים האחרונים',
     perPage: '{n} בעמוד', opensRecord: 'שורה נפתחת בעמוד שלה', opensDrawer: 'שורה נפתחת במגירה', newestBy: 'החדשים לפי {x}',
     recentActivity: 'פעילות אחרונה', activityCreated: 'נוצר', activityUpdated: 'עודכן',
+    created: 'נוצר', updated: 'עודכן',
   },
 } as const
 
@@ -241,7 +246,6 @@ function translator(locale: 'en' | 'he') {
   return (key: StringKey, vars: Record<string, string> = {}) =>
     table[key].replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? `{${k}}`)
 }
-type T = ReturnType<typeof translator>
 
 const PERIOD_KEYS = {
   all: 'periodAll', '7d': 'period7d', '30d': 'period30d', '90d': 'period90d', ytd: 'periodYtd', '12m': 'period12m',
@@ -254,22 +258,6 @@ export function navSymbol(page: FullstackPageDef): string {
 }
 
 // ── Sample data ─────────────────────────────────────────────────────────────
-
-/** A small deterministic generator (mulberry32 over a string hash). */
-function seeded(seed: string): () => number {
-  let h = 1779033703 ^ seed.length
-  for (let i = 0; i < seed.length; i++) {
-    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353)
-    h = (h << 13) | (h >>> 19)
-  }
-  let a = h >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) | 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
 
 const between = (rand: () => number, lo: number, hi: number) => Math.round(lo + rand() * (hi - lo))
 
@@ -286,31 +274,9 @@ function magnitude(agg: FullstackAgg | undefined, field: FullstackFieldDef | und
   return agg === 'sum' ? [a * 20 + 50, b * 20 + 100] : [a, b]
 }
 
-function sampleCell(f: FullstackFieldDef, row: number, t: T): string {
-  if (f.primaryKey) return f.type === 'UUID' ? `3f2a…${row}` : String(row)
-  switch (f.type) {
-    case 'LONG': case 'INTEGER': return String(((row * 37) % 90) + 3)
-    case 'BIG_DECIMAL': return `${((row * 173) % 900) + 12}.50`
-    case 'BOOLEAN': return row % 2 ? t('trueLabel') : t('falseLabel')
-    case 'LOCAL_DATE': return `2026-0${(row % 9) + 1}-1${row % 9}`
-    case 'LOCAL_DATE_TIME': return `2026-0${(row % 9) + 1}-1${row % 9} 09:${10 + row}`
-    case 'ENUM': {
-      const values = f.enumValues ?? []
-      return values.length ? enumLabel(f, values[(row - 1) % values.length]) : '—'
-    }
-    case 'UUID': return `3f2a…${row}`
-    default: return `${fieldLabel(f)} ${row}`
-  }
-}
-
 /** The field the generated app labels a row with: the first non-key string (EntityScaffoldContext). */
 function labelFieldOf(e: FullstackEntityDef): FullstackFieldDef | undefined {
   return e.fields.find(f => !f.primaryKey && (f.type === 'STRING' || f.type === 'TEXT'))
-}
-
-function rowLabel(e: FullstackEntityDef, row: number, singular: string, t: T): string {
-  const f = labelFieldOf(e)
-  return f ? sampleCell(f, row, t) : `${singular} #${row}`
 }
 
 // ── Builder ──────────────────────────────────────────────────────────────────
@@ -332,6 +298,16 @@ export function buildLayoutPreview(
     return { singular: ui.title, plural: ui.titlePlural, ui }
   }
   const fieldOf = (e: FullstackEntityDef, name: string | undefined) => (name ? e.fields.find(f => f.name === name) : undefined)
+  // Sample rows: a list cell shows the value as the API sends it, the details format it.
+  const raw = (e: FullstackEntityDef, f: FullstackFieldDef, row: number) => sampleRaw(f, row, { locale: ctx.locale, entity: e.name, today: ctx.today })
+  const cell = (e: FullstackEntityDef, f: FullstackFieldDef, row: number) => cellText(f, raw(e, f, row))
+  const detail = (e: FullstackEntityDef, f: FullstackFieldDef, row: number) =>
+    detailText(f, raw(e, f, row), ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') })
+  /** What a row of `e` is called: its label field's value, else "Order #3". */
+  const rowLabel = (e: FullstackEntityDef, row: number) => {
+    const f = labelFieldOf(e)
+    return f ? cell(e, f, row) : `${labels(e).singular} #${row}`
+  }
   const aggTitle = (agg: FullstackAgg, field: FullstackFieldDef | undefined) => {
     const x = field ? fieldLabel(field) : '?'
     return t(agg === 'sum' ? 'aggSum' : agg === 'avg' ? 'aggAvg' : agg === 'min' ? 'aggMin' : 'aggMax', { x })
@@ -342,28 +318,32 @@ export function buildLayoutPreview(
 
   function table(e: FullstackEntityDef, presetFilter?: Record<string, string>, hideRelation?: string, opening: ListOpening = {}): PreviewTable {
     const { plural, singular, ui } = labels(e)
-    const cells: { key: string; label: string; value: (row: number) => string }[] = e.fields.map(f => ({
-      key: f.name,
-      label: fieldLabel(f),
-      value: (row: number) => {
-        const preset = presetFilter?.[f.name]
-        if (preset != null) return f.type === 'ENUM' ? enumLabel(f, preset) : preset === 'true' ? t('trueLabel') : t('falseLabel')
-        return sampleCell(f, row, t)
-      },
-    }))
+    // `value` as the list cell shows it, `detail` as the side pane (the details) shows it.
+    const cells: { key: string; label: string; value: (row: number) => string; detail: (row: number) => string }[] = e.fields.map(f => {
+      // An enum or boolean preset pins the column (an enum list: its first value); ranges and periods don't.
+      const preset = presetFilter?.[f.name]
+      const pinned = preset == null ? undefined
+        : f.type === 'ENUM' ? preset.split(',')[0]
+          : f.type === 'BOOLEAN' ? preset === 'true' : undefined
+      return {
+        key: f.name,
+        label: fieldLabel(f),
+        value: (row: number) => (pinned != null ? cellText(f, pinned) : cell(e, f, row)),
+        detail: (row: number) => (pinned != null ? detailText(f, pinned, ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') }) : detail(e, f, row)),
+      }
+    })
     for (const r of e.relations ?? []) {
       if (!r.fieldName.trim() || r.fieldName === hideRelation) continue
       const target = entityOf(r.targetEntity)
-      cells.push({
-        key: r.fieldName,
-        label: humanize(r.fieldName),
-        value: row => (target ? rowLabel(target, row, labels(target).singular, t) : `#${row}`),
-      })
+      const named = (row: number) => (target ? rowLabel(target, row) : `#${row}`)
+      cells.push({ key: r.fieldName, label: humanize(r.fieldName), value: named, detail: named })
     }
     if (auditOn(e, ctx.projectOpts)) {
+      const created = (row: number) => auditText(row, false, ctx.locale, ctx.today)
+      const updated = (row: number) => auditText(row, true, ctx.locale, ctx.today)
       cells.push(
-        { key: 'createdAt', label: 'Created', value: row => `2026-0${Math.min(9, row + 2)}-1${row}` },
-        { key: 'updatedAt', label: 'Updated', value: row => `2026-0${Math.min(9, row + 3)}-0${row}` },
+        { key: 'createdAt', label: t('created'), value: created, detail: created },
+        { key: 'updatedAt', label: t('updated'), value: updated, detail: updated },
       )
     }
     // A page that names its columns shows exactly those, in that order; otherwise the first few.
@@ -389,7 +369,7 @@ export function buildLayoutPreview(
       showSearch: ui.showSearch,
       filters: ui.filters.filter(label => !hideRelation || label !== humanize(hideRelation)),
       presetChips: presetChips(e, presetFilter),
-      sidePane: opening.detail === 'side' ? cells.slice(0, 5).map(c => ({ label: c.label, value: c.value(1) })) : null,
+      sidePane: opening.detail === 'side' ? cells.slice(0, 5).map(c => ({ label: c.label, value: c.detail(1) })) : null,
       newLabel: ui.canCreate ? t('newX', { x: singular }) : null,
       hasExport: ui.hasExport,
       footer: [
@@ -403,7 +383,7 @@ export function buildLayoutPreview(
 
   function recordDetails(e: FullstackEntityDef): { label: string; value: string; section?: string }[] {
     const sections = e.formSections ?? []
-    if (sections.length === 0) return e.fields.slice(0, 6).map(f => ({ label: fieldLabel(f), value: sampleCell(f, 1, t) }))
+    if (sections.length === 0) return e.fields.slice(0, 6).map(f => ({ label: fieldLabel(f), value: detail(e, f, 1) }))
     const out: { label: string; value: string; section?: string }[] = []
     for (const s of sections) {
       s.fields.forEach((name, i) => {
@@ -413,7 +393,7 @@ export function buildLayoutPreview(
         if (!f && !r) return
         out.push({
           label: f ? fieldLabel(f) : humanize(name),
-          value: f ? sampleCell(f, 1, t) : target ? rowLabel(target, 1, labels(target).singular, t) : '—',
+          value: f ? detail(e, f, 1) : target ? rowLabel(target, 1) : '—',
           ...(i === 0 && s.title ? { section: s.title } : {}),
         })
       })
@@ -519,7 +499,7 @@ export function buildLayoutPreview(
                 const e = sources[i % sources.length]
                 const { singular } = labels(e)
                 return {
-                  label: rowLabel(e, 30 - i, singular, t),
+                  label: rowLabel(e, 30 - i),
                   what: `${singular} ${rand() < 0.4 ? t('activityCreated') : t('activityUpdated')}`,
                   ago: `${(i + 1) * 7} min`,
                 }
@@ -572,7 +552,7 @@ export function buildLayoutPreview(
                 const target = entityOf(relation.targetEntity)
                 groupLabel = humanize(relation.fieldName)
                 rows = Array.from({ length: Math.min(limit, 5) }, (_, i) => ({
-                  label: target ? rowLabel(target, i + 1, labels(target).singular, t) : `#${i + 1}`,
+                  label: target ? rowLabel(target, i + 1) : `#${i + 1}`,
                   value: between(rand, lo, hi),
                 }))
               } else {
@@ -600,7 +580,7 @@ export function buildLayoutPreview(
                   ...base, kind: w.kind,
                   title: w.title || t('xByY', { x: measured, y: humanize(relation.fieldName) }),
                   bars: Array.from({ length: 5 }, (_, i) => ({
-                    label: target ? rowLabel(target, i + 1, labels(target).singular, t) : `#${i + 1}`,
+                    label: target ? rowLabel(target, i + 1) : `#${i + 1}`,
                     value: between(rand, lo, hi),
                   })),
                 }
@@ -642,7 +622,7 @@ export function buildLayoutPreview(
                 const relation = (e.relations ?? []).find(r => r.type === 'MANY_TO_ONE' && r.fieldName === key)
                 if (relation) {
                   const target = entityOf(relation.targetEntity)
-                  return Array.from({ length: 3 }, (_, i) => (target ? rowLabel(target, i + 1, labels(target).singular, t) : `#${i + 1}`))
+                  return Array.from({ length: 3 }, (_, i) => (target ? rowLabel(target, i + 1) : `#${i + 1}`))
                 }
                 const f = fieldOf(e, key)
                 return f ? breakdown(f, undefined, undefined, `${seed}:${salt}`).map(b => b.label).slice(0, 4) : []
@@ -676,13 +656,12 @@ export function buildLayoutPreview(
             }
             case 'recent': {
               const limit = Math.min(Math.max(w.limit ?? 5, 1), 20)
-              const { singular } = labels(e)
               // Newest first: the generated list sorts by key, descending.
               return {
                 ...base, kind: 'recent',
                 title: w.title || t('recentX', { x: plural }),
                 by: t('newestBy', { x: (() => { const f = fieldOf(e, w.sortBy); return f ? fieldLabel(f) : fieldLabel(e.fields.find(x => x.primaryKey) ?? e.fields[0]) })() }),
-                rows: Array.from({ length: Math.min(limit, 5) }, (_, i) => rowLabel(e, limit - i + 20, singular, t)),
+                rows: Array.from({ length: Math.min(limit, 5) }, (_, i) => rowLabel(e, limit - i + 20)),
               }
             }
           }
@@ -722,17 +701,17 @@ export function buildLayoutPreview(
           return { type: 'broken', title: page.title || page.id, message: `Pick a parent and a child entity` }
         }
         const via = page.via ?? relationsTo(child, parent.name)[0]
-        const { plural: parentPlural, singular: parentSingular } = labels(parent)
+        const { plural: parentPlural } = labels(parent)
         return {
           type: 'master-detail',
           title: page.title || parentPlural,
           description,
           parentTitle: parentPlural,
-          parentItems: Array.from({ length: 5 }, (_, i) => rowLabel(parent, i + 1, parentSingular, t)),
+          parentItems: Array.from({ length: 5 }, (_, i) => rowLabel(parent, i + 1)),
           child: table(child, undefined, via, { columns: page.columns, sort: page.sort }),
           childTitle: labels(child).plural,
           parentDetails: page.showParent
-            ? parent.fields.filter(f => !f.primaryKey).slice(0, 4).map(f => ({ label: fieldLabel(f), value: sampleCell(f, 1, t) }))
+            ? parent.fields.filter(f => !f.primaryKey).slice(0, 4).map(f => ({ label: fieldLabel(f), value: detail(parent, f, 1) }))
             : null,
         }
       }
@@ -747,7 +726,7 @@ export function buildLayoutPreview(
           type: 'record',
           title: page.title || singular,
           description,
-          heading: rowLabel(e, 1, singular, t),
+          heading: rowLabel(e, 1),
           back: home ? t('back') : null,
           tabs: [t('xDetails', { x: singular }), ...related.map(name => {
             const c = entityOf(name)
@@ -796,7 +775,7 @@ export function buildLayoutPreview(
             const target = r ? entityOf(r.targetEntity) : undefined
             return {
               label: labelOf(name),
-              value: f ? sampleCell(f, 1, t) : target ? rowLabel(target, 1, labels(target).singular, t) : '—',
+              value: f ? detail(e, f, 1) : target ? rowLabel(target, 1) : '—',
             }
           }),
           save: t('save'),
@@ -825,7 +804,7 @@ export function buildLayoutPreview(
             const rand = seeded(seed)
             const [lo, hi] = magnitude(chart.agg, valueField)
             bars = Array.from({ length: 5 }, (_, i) => ({
-              label: target ? rowLabel(target, i + 1, labels(target).singular, t) : `#${i + 1}`,
+              label: target ? rowLabel(target, i + 1) : `#${i + 1}`,
               value: between(rand, lo, hi),
             }))
           } else {
@@ -865,7 +844,7 @@ export function buildLayoutPreview(
           const day = i + 1
           // A few sample rows, spread over the month; with an end date they run over two days.
           const starts = [3, 9, 9, 16, 22, 27].map((d, n) => ({ d, n: n + 1 }))
-          const events = starts.filter(s => day === s.d || (long && day === s.d + 1)).map(s => rowLabel(e, s.n, labels(e).singular, t))
+          const events = starts.filter(s => day === s.d || (long && day === s.d + 1)).map(s => rowLabel(e, s.n))
           return { day: ((day - 1) % 30) + 1, events }
         })
         return { type: 'calendar', title: page.title || labels(e).plural, description, modes, days, creates: !e.readOnly }
@@ -879,7 +858,7 @@ export function buildLayoutPreview(
         const cardNames = (page.cardFields ?? defaultCardFields(e, lane)).filter(n => cardFieldOptions(e).includes(n))
         const valueOf = (name: string, row: number) => {
           const f = e.fields.find(x => x.name === name)
-          return f ? sampleCell(f, row, t) : `#${row}`
+          return f ? detail(e, f, row) : `#${row}`
         }
         let row = 0
         const lanes = values.map((v, li) => {
@@ -910,9 +889,10 @@ export function buildLayoutPreview(
         const groups = names.map(entityOf).filter((e): e is FullstackEntityDef => e != null).map((e, gi) => ({
           title: labels(e).plural,
           total: [12, 4, 7, 2][gi % 4],
-          rows: Array.from({ length: Math.min(page.perEntity ?? 5, 3) }, (_, i) => rowLabel(e, i + 1, labels(e).singular, t)),
+          rows: Array.from({ length: Math.min(page.perEntity ?? 5, 3) }, (_, i) => rowLabel(e, i + 1)),
         }))
-        return { type: 'search', title: page.title || t('search').replace('…', ''), description, words: 'acme', groups, header: Boolean(page.shellSearch) }
+        const words = (groups[0]?.rows[0] ?? '').split(/\s+/)[0]?.toLowerCase() || '…'
+        return { type: 'search', title: page.title || t('search').replace('…', ''), description, words, groups, header: Boolean(page.shellSearch) }
       }
     }
     return { type: 'broken', title: page.id, message: `Unknown page type “${String((page as FullstackPageDef).type)}”` }
