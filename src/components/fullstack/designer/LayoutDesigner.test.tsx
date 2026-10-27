@@ -579,6 +579,82 @@ describe('Layout designer — widget clipboard', () => {
   })
 })
 
+describe('Layout designer — team templates', () => {
+  const two: FullstackPageDef[] = [...desk, { id: 'board', type: 'dashboard', title: 'Board', widgets: [{ kind: 'text', entity: '', text: 'Hi' }] }]
+  const stamp = { description: null, createdAt: '2026-10-01T10:00:00Z', updatedAt: '2026-10-01T10:00:00Z' }
+  const shared = [
+    { ...stamp, id: 1, kind: 'page', name: 'Paid orders', createdBy: 'dana', content: { id: 'paid', type: 'entity-list', title: 'Paid orders', entity: 'Order', presetFilter: { status: 'PAID' } } },
+    { ...stamp, id: 2, kind: 'widget', name: 'Open count', createdBy: 'dana', content: { kind: 'kpi', entity: 'Order', title: 'Open count' } },
+    { ...stamp, id: 3, kind: 'widget', name: 'Invoices', createdBy: null, content: { kind: 'kpi', entity: 'Invoice' } },
+  ]
+  const json = (status: number, body: unknown) => new Response(body == null ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+  let calls: { url: string; method: string; body?: unknown }[] = []
+  beforeEach(() => {
+    calls = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      calls.push({ url, method, body: init?.body ? JSON.parse(init.body as string) : undefined })
+      if (method === 'GET') return json(200, shared)
+      if (method === 'DELETE') return json(204, null)
+      const body = JSON.parse(init!.body as string)
+      return json(method === 'POST' ? 201 : 200, { ...stamp, id: 50, createdBy: 'me', ...body })
+    }))
+  })
+  const library = (designer: HTMLElement) => within(designer).getByRole('complementary', { name: 'Library' })
+  const notice = (designer: HTMLElement) => designer.querySelector('[data-pages-notice]')?.textContent ?? ''
+
+  it('adds a shared page and a shared widget, refusing one whose entity this model lacks', async () => {
+    render(<Harness initial={two} />)
+    const designer = openDesigner()
+    const widgets = await waitFor(() => {
+      const el = designer.querySelector('[data-team-widgets]')
+      if (!el) throw new Error('not listed yet')
+      return el as HTMLElement
+    })
+    expect(within(widgets).getByRole('button', { name: 'Add Invoices' }).getAttribute('disabled')).not.toBeNull()
+    fireEvent.click(within(widgets).getByRole('button', { name: 'Add Open count' }))
+    expect(latest[0].widgets?.[2]).toEqual({ kind: 'kpi', entity: 'Order', title: 'Open count' })
+
+    fireEvent.click(within(library(designer)).getByRole('tab', { name: 'pages' }))
+    fireEvent.click(within(library(designer)).getByRole('button', { name: 'Add the team template Paid orders' }))
+    expect(latest).toHaveLength(5)
+    expect(latest[4]).toMatchObject({ type: 'entity-list', entity: 'Order', presetFilter: { status: 'PAID' } })
+    expect(latest[4].id).toBe('paid-orders')
+  })
+
+  it('shares a page and a widget, updating the team’s one of the same name, and deletes on a second click', async () => {
+    render(<Harness initial={two} />)
+    const designer = openDesigner()
+    await waitFor(() => expect(designer.querySelector('[data-team-widgets]')).toBeTruthy())
+
+    fireEvent.click(within(inspector(designer)).getByRole('button', { name: 'Share Desk with the team' }))
+    await waitFor(() => expect(notice(designer)).toContain('Shared “Desk” for the team'))
+    expect(calls[calls.length - 1]).toMatchObject({ url: '/metadata/fullstack/templates', method: 'POST', body: { kind: 'page', name: 'Desk', content: { id: 'desk', type: 'dashboard' } } })
+
+    // A widget titled like a team widget replaces it.
+    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    fireEvent.change(within(inspector(designer)).getByLabelText('Widget title'), { target: { value: 'open count' } })
+    fireEvent.click(within(inspector(designer)).getByRole('button', { name: 'Update for team' }))
+    await waitFor(() => expect(notice(designer)).toContain('Updated “Open count” for the team'))
+    expect(calls[calls.length - 1]).toMatchObject({ url: '/metadata/fullstack/templates/2', method: 'PUT', body: { name: 'Open count', content: { kind: 'kpi', title: 'open count' } } })
+
+    const remove = within(library(designer)).getByRole('button', { name: 'Delete the team template “Invoices”' })
+    fireEvent.click(remove)
+    expect(calls.some(c => c.method === 'DELETE')).toBe(false)
+    fireEvent.click(within(library(designer)).getByRole('button', { name: 'Delete “Invoices” for everyone' }))
+    await waitFor(() => expect(within(library(designer)).queryByRole('button', { name: 'Add Invoices' })).toBeNull())
+    expect(calls[calls.length - 1]).toEqual({ url: '/metadata/fullstack/templates/3', method: 'DELETE', body: undefined })
+  })
+
+  it('says when the team’s templates did not load', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json(500, { error: 'boom' })))
+    render(<Harness initial={two} />)
+    const designer = openDesigner()
+    fireEvent.click(within(library(designer)).getByRole('tab', { name: 'pages' }))
+    await waitFor(() => expect(designer.querySelector('[data-team-error]')?.textContent).toContain('boom'))
+  })
+})
+
 describe('Layout designer — Code tab', () => {
   const coded: FullstackPageDef[] = [...desk, { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ page: 'orders' }, { page: 'customers' }] }]
   const previewOf = (paths: string[]) => ({ files: paths.map(path => ({ path, content: `// generated ${path}` })), tree: [] })
@@ -592,6 +668,8 @@ describe('Layout designer — Code tab', () => {
     'frontend/src/app/screens/QueueScreen.tsx',
     'frontend/src/pages/order/ui/OrderPage.tsx',
   ])
+  // Opening the designer also lists the team's templates; only the preview calls count here.
+  const previewCalls = (mock: ReturnType<typeof vi.fn>) => mock.mock.calls.filter(c => c[0] === '/starter-fullstack.preview')
   const openCode = (designer: HTMLElement) => fireEvent.click(within(inspector(designer)).getByRole('tab', { name: 'Code' }))
 
   it('is offered only when the editor can build a request', () => {
@@ -611,8 +689,8 @@ describe('Layout designer — Code tab', () => {
       if (!el) throw new Error('no code yet')
       return el as HTMLElement
     })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(previewCalls(fetchMock)).toHaveLength(1)
+    const [url, init] = previewCalls(fetchMock)[0] as unknown as [string, RequestInit]
     expect(url).toBe('/starter-fullstack.preview')
     expect(JSON.parse(init.body as string).pages[3].id).toBe('queue')
     expect(viewer.getAttribute('data-page-code-path')).toBe('frontend/src/app/screens/QueueScreen.tsx')
@@ -625,13 +703,13 @@ describe('Layout designer — Code tab', () => {
     expect(designer.querySelector('[data-page-code-path]')?.getAttribute('data-page-code-path')).toBe('frontend/src/app/App.tsx')
     fireEvent.click(chip(designer, 'orders'))
     expect(designer.querySelector('[data-page-code-path]')?.getAttribute('data-page-code-path')).toBe('frontend/src/app/screens/OrdersScreen.tsx')
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(previewCalls(fetchMock)).toHaveLength(1)
 
     // An edit asks again once the typing stops.
     fireEvent.click(within(inspector(designer)).getByRole('tab', { name: 'Basics' }))
     fireEvent.change(within(inspector(designer)).getByLabelText('Page title'), { target: { value: 'All orders' } })
     openCode(designer)
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2), { timeout: 2000 })
+    await waitFor(() => expect(previewCalls(fetchMock)).toHaveLength(2), { timeout: 2000 })
   })
 
   it('says what the generator turned down, and tries again on request', async () => {
@@ -660,7 +738,7 @@ describe('Layout designer — Code tab', () => {
     openCode(designer)
     expect(designer.querySelector('[data-page-code-status]')?.textContent).toMatch(/Fix the \d+ problems? first/)
     await new Promise(r => setTimeout(r, 20))
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(previewCalls(fetchMock)).toHaveLength(0)
   })
 })
 

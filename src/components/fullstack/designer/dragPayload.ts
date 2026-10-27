@@ -9,6 +9,8 @@ export type LibraryDrag =
   | { kind: 'page'; type: FullstackPageType; pick?: string }
   | { kind: 'suggestion'; key: string }
   | { kind: 'my-template'; name: string }
+  /** A page template shared with the team, by its server id. */
+  | { kind: 'team-template'; id: number }
   /** A part of the page on the canvas: a tab, a chart, a related list or number, a wizard field. */
   | { kind: 'part'; part: PagePart }
 

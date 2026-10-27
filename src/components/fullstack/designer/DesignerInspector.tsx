@@ -1,12 +1,12 @@
 import { useRef, useState, type Ref } from 'react'
-import type { FullstackPageDef, FullstackStarterRequest } from '../../../types'
+import type { FullstackPageDef, FullstackStarterRequest, FullstackWidgetDef, TeamTemplate } from '../../../types'
 import { MAX_PAGES, MAX_WIDGETS, PAGE_TYPE_META, canDuplicate, inNav, pageLabel } from '../pageLayout'
 import { ICON_BUTTON, SMALL_BUTTON, WIDGET_KINDS } from '../pages/constants'
 import { RolesField } from '../pages/fields'
 import { PageBasicsFields, PageTypeForm } from '../pages/PageSettings'
 import type { PagesModel } from '../pages/usePagesModel'
 import { WidgetCard } from '../pages/WidgetCard'
-import type { WidgetClip } from '../widgetClipboard'
+import { widgetName, type WidgetClip } from '../widgetClipboard'
 import { DesignerMenu } from './DesignerMenu'
 import { PageCode } from './PageCode'
 
@@ -25,7 +25,7 @@ export function tabOfControl(control: string | undefined): InspectorTab {
  * (type, title, route, place in the navigation), its type's own layout, who may open it and —
  * given the request to preview — the code it generates.
  */
-export function DesignerInspector({ pages, model, index, widget, tab, onTab, onDeselectWidget, ldapAuth, onAddDep, rootRef, codeRequest, problems = 0, clip = null, onCopyWidgets, onPasteWidgets, onMoveWidget }: {
+export function DesignerInspector({ pages, model, index, widget, tab, onTab, onDeselectWidget, ldapAuth, onAddDep, rootRef, codeRequest, problems = 0, clip = null, onCopyWidgets, onPasteWidgets, onMoveWidget, onSharePage, onShareWidget, teamHas }: {
   pages: FullstackPageDef[]
   model: PagesModel
   index: number
@@ -47,6 +47,10 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
   onCopyWidgets?: () => void
   onPasteWidgets?: () => void
   onMoveWidget?: (to: number) => void
+  /** Share the page, or the selected widget, with the team; `teamHas` says whether that replaces one. */
+  onSharePage?: () => void
+  onShareWidget?: (widget: FullstackWidgetDef) => void
+  teamHas?: (kind: TeamTemplate['kind'], name: string) => boolean
 }) {
   const [moveOpen, setMoveOpen] = useState(false)
   const moveRef = useRef<HTMLButtonElement>(null)
@@ -135,6 +139,17 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">bookmark_add</span>
             Save as widget
           </button>
+          {onShareWidget && (
+            <button
+              type="button"
+              onClick={() => onShareWidget(widgetDef)}
+              className={SMALL_BUTTON}
+              title={teamHas?.('widget', widgetName(widgetDef)) ? `Replace the team's “${widgetName(widgetDef)}” with this one` : 'Share this widget with the team: everyone who opens the generator finds it in the library'}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">group_add</span>
+              {teamHas?.('widget', widgetName(widgetDef)) ? 'Update for team' : 'Share with team'}
+            </button>
+          )}
           {moveOpen && onMoveWidget && (
             <DesignerMenu
               label="Move to dashboard"
@@ -184,6 +199,18 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
           {inNav(page) && !isStart && (
             <button type="button" onClick={() => model.makeStart(index, model.preview.nav[0]?.index ?? 0)} className={ICON_BUTTON} title="Make this the start page (the app opens here)" aria-label={`Make ${pageLabel(page)} the start page`} data-make-start>
               <span className="material-symbols-outlined" style={{ fontSize: '17px' }}>home</span>
+            </button>
+          )}
+          {onSharePage && (
+            <button
+              type="button"
+              onClick={onSharePage}
+              className={ICON_BUTTON}
+              title={teamHas?.('page', pageLabel(page)) ? `Replace the team's “${pageLabel(page)}” template with this page` : 'Share this page with the team as a template'}
+              aria-label={teamHas?.('page', pageLabel(page)) ? `Update the team template “${pageLabel(page)}”` : `Share ${pageLabel(page)} with the team`}
+              data-share-page
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '17px' }}>group_add</span>
             </button>
           )}
           {page.type !== 'record' && (

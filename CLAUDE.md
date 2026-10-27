@@ -146,6 +146,15 @@ widget inspector adds Copy, **Move to…** (another dashboard, one undo step, `u
 Every pasted, moved or saved widget goes through `fitWidget` first (its entity must exist; links and a
 `drillTo` to pages that are gone are dropped) and `pasteWidgets` stops at `MAX_WIDGETS`, naming what it
 left out. Pinned by `widgetClipboard.test.ts`.
+**Team templates** (`hooks/useTeamTemplates.ts`, backend `/metadata/fullstack/templates` — see *Team
+templates* in `backend/CLAUDE.md`): the designer lists them once on opening. The library's Pages tab has
+"Team templates" (click or drag — `LibraryDrag` `team-template` — through `pageFromTemplate`, like My
+templates) and the dashboard Widgets tab "Team widgets" (fitted by `fitWidget`, so one naming a missing
+entity is disabled with the reason). Share from the page inspector's header (`data-share-page`), the widget
+inspector ("Share with team") or a My templates / My widgets card; sharing under a name the team already
+has (same kind, ignoring case) PUTs over it, and the button says "Update". Deleting asks for a second
+click, since it removes it for everyone. Pinned by `useTeamTemplates.test.ts` and the designer's
+"team templates" tests.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;

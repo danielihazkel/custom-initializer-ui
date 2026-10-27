@@ -1,5 +1,6 @@
 import { useMemo, useState, type DragEvent, type Ref } from 'react'
-import type { FullstackPageDef, FullstackPageType, FullstackWidgetDef } from '../../../types'
+import type { FullstackPageDef, FullstackPageType, FullstackWidgetDef, TeamTemplate } from '../../../types'
+import type { TeamShare } from '../../../hooks/useTeamTemplates'
 import { inputClass } from '../controls'
 import { MAX_STEPS, MAX_WIDGETS, PAGE_TYPE_META, pageLabel, suggestWidgets, widgetKindDisabledReason } from '../pageLayout'
 import { pageParts, wizardStepsOf, type PagePart, type PartCard } from '../pageParts'
@@ -33,7 +34,7 @@ const matches = (query: string, ...texts: (string | undefined)[]) => {
  * adds it where a drop at the end would. On a tabs, report, record or wizard page the widgets tab
  * holds that page's parts instead: pages to embed, charts, related lists and numbers, fields.
  */
-export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, entity, onEntity, onSelectPage, onAddWidget, onAddWidgetDef, onAddPart, onChooseType, onAddSuggestion, onAddMyTemplate, onTemplate, onDrag, searchRef, clip = null, onPaste }: {
+export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, entity, onEntity, onSelectPage, onAddWidget, onAddWidgetDef, onAddPart, onChooseType, onAddSuggestion, onAddMyTemplate, onTemplate, onDrag, searchRef, clip = null, onPaste, team }: {
   pages: FullstackPageDef[]
   model: PagesModel
   tab: LibraryTab
@@ -60,7 +61,19 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
   /** Copied widgets, offered as a card that pastes them onto the dashboard. */
   clip?: WidgetClip | null
   onPaste?: () => void
+  /** Templates shared with the team, and what can be done with them. Absent: no team sections. */
+  team?: {
+    templates: TeamTemplate[]
+    loading: boolean
+    error: string | null
+    onRetry: () => void
+    onShare: (item: TeamShare) => void
+    onRemove: (id: number) => void
+    onAddPage: (id: number) => void
+  }
 }) {
+  // A team template whose delete was asked for once — the second click deletes it for everyone.
+  const [confirmRemove, setConfirmRemove] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const { named, projectOpts } = model
   const entityDef = named.find(e => e.name === entity)
@@ -77,6 +90,38 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
   const myWidgets = model.widgetTemplates
     .filter(t => matches(query, t.name, WIDGET_KINDS.find(k => k.kind === t.widget.kind)?.label ?? ''))
     .map(t => ({ ...t, fit: fitWidget(t.widget, pages, named) }))
+
+  const teamPages = (team?.templates ?? []).filter((t): t is Extract<TeamTemplate, { kind: 'page' }> => t.kind === 'page' && matches(query, t.name, t.createdBy ?? ''))
+  const teamWidgets = (team?.templates ?? [])
+    .filter((t): t is Extract<TeamTemplate, { kind: 'widget' }> => t.kind === 'widget' && matches(query, t.name, t.createdBy ?? ''))
+    .map(t => ({ ...t, fit: fitWidget(t.content, pages, named) }))
+  const by = (t: TeamTemplate) => (t.createdBy ? ` · by ${t.createdBy}` : '')
+  const teamRemove = (t: TeamTemplate) => (
+    <button
+      type="button"
+      onClick={() => { if (confirmRemove === t.id) { setConfirmRemove(null); team?.onRemove(t.id) } else setConfirmRemove(t.id) }}
+      onBlur={() => setConfirmRemove(prev => (prev === t.id ? null : prev))}
+      className={`shrink-0 rounded-lg p-1.5 ${confirmRemove === t.id ? 'bg-error/10 text-[10px] font-semibold text-error' : 'text-secondary hover:bg-error/5 hover:text-error'}`}
+      aria-label={confirmRemove === t.id ? `Delete “${t.name}” for everyone` : `Delete the team template “${t.name}”`}
+      title={confirmRemove === t.id ? 'Click again: it goes for the whole team' : 'Delete for the whole team'}
+    >
+      {confirmRemove === t.id ? 'Delete?' : <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">delete</span>}
+    </button>
+  )
+  const shareButton = (item: TeamShare) => {
+    const replaces = (team?.templates ?? []).some(t => t.kind === item.kind && t.name.toLowerCase() === item.name.toLowerCase())
+    return (
+      <button
+        type="button"
+        onClick={() => team?.onShare(item)}
+        className="shrink-0 rounded-lg p-1.5 text-secondary hover:bg-primary/5 hover:text-primary"
+        aria-label={replaces ? `Update the team's “${item.name}”` : `Share “${item.name}” with the team`}
+        title={replaces ? 'Replace the team’s template of this name with yours' : 'Share with the team'}
+      >
+        <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">group_add</span>
+      </button>
+    )
+  }
 
   // The page's own parts, when it is a page that takes some (tabs, report, record, wizard).
   const partGroups = useMemo(() => (page && !isDashboard ? pageParts(pages, pageIndex, named) : []), [page, isDashboard, pages, pageIndex, named])
@@ -264,6 +309,7 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                               <span className="block truncate text-[11px] text-secondary">{reason ?? kind?.label}</span>
                             </span>
                           </button>
+                          {team && shareButton({ kind: 'widget', name: t.name, content: t.widget })}
                           <button
                             type="button"
                             onClick={() => model.forgetWidgetTemplate(t.name)}
@@ -273,6 +319,41 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                           >
                             <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>close</span>
                           </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </section>
+              )}
+              {teamWidgets.length > 0 && (
+                <section className="space-y-1.5" aria-label="Team widgets">
+                  <h3 className={HEADING}>Team widgets</h3>
+                  <ul className="space-y-1.5" data-team-widgets>
+                    {teamWidgets.map(t => {
+                      const kind = WIDGET_KINDS.find(k => k.kind === t.content.kind)
+                      const reason = 'reason' in t.fit ? t.fit.reason : widgetCap ? `At most ${MAX_WIDGETS} widgets` : undefined
+                      const def = 'widget' in t.fit ? t.fit.widget : t.content
+                      return (
+                        <li key={t.id} className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            {...dragProps({ kind: 'widget', widget: def.kind, def }, Boolean(reason))}
+                            onClick={() => onAddWidgetDef(def)}
+                            disabled={Boolean(reason)}
+                            title={reason ?? `Shared with the team${by(t)} — drag onto the dashboard, or click to add it at the end`}
+                            aria-label={`Add ${t.name}`}
+                            className={`${CARD} ${reason ? '' : 'cursor-grab'}`}
+                            data-team-widget={t.id}
+                          >
+                            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${reason ? 'bg-surface-container text-secondary' : 'bg-primary/10 text-primary'}`}>
+                              <span className="material-symbols-outlined" style={{ fontSize: '17px' }} aria-hidden="true">{kind?.icon ?? 'widgets'}</span>
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className={`block truncate text-xs font-semibold ${reason ? 'text-secondary' : 'text-on-surface'}`}>{t.name}</span>
+                              <span className="block truncate text-[11px] text-secondary">{reason ?? `${kind?.label ?? t.content.kind}${by(t)}`}</span>
+                            </span>
+                          </button>
+                          {teamRemove(t)}
                         </li>
                       )
                     })}
@@ -340,6 +421,7 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                         <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{PAGE_TYPE_META[t.page.type]?.icon ?? 'web_asset'}</span>
                         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-on-surface">{t.name}</span>
                       </button>
+                      {team && shareButton({ kind: 'page', name: t.name, content: t.page })}
                       <button
                         type="button"
                         onClick={() => model.forgetTemplate(t.name)}
@@ -349,6 +431,40 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                       >
                         <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">close</span>
                       </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {team && (teamPages.length > 0 || team.error) && (
+              <section className="space-y-1.5" aria-label="Team templates">
+                <h3 className={HEADING}>Team templates</h3>
+                {team.error && (
+                  <p className="text-[11px] text-secondary" data-team-error>
+                    The team's templates did not load ({team.error}).{' '}
+                    <button type="button" onClick={team.onRetry} className="font-semibold text-primary hover:underline">Try again</button>
+                  </p>
+                )}
+                <ul className="space-y-1.5" data-team-templates>
+                  {teamPages.map(t => (
+                    <li key={t.id} className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        {...dragProps({ kind: 'team-template', id: t.id }, model.atPageCap)}
+                        onClick={() => team.onAddPage(t.id)}
+                        disabled={model.atPageCap}
+                        className={CARD}
+                        title={`Add a page like “${t.name}” — shared with the team${by(t)}`}
+                        aria-label={`Add the team template ${t.name}`}
+                        data-team-template={t.id}
+                      >
+                        <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{PAGE_TYPE_META[t.content.type]?.icon ?? 'web_asset'}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-semibold text-on-surface">{t.name}</span>
+                          {t.createdBy && <span className="block truncate text-[11px] text-secondary">by {t.createdBy}</span>}
+                        </span>
+                      </button>
+                      {teamRemove(t)}
                     </li>
                   ))}
                 </ul>

@@ -444,6 +444,17 @@ export interface TeamModelSummary {
   updatedAt: string
 }
 
+/** A layout-designer template shared with the team (`/metadata/fullstack/templates`): a page or a
+ *  dashboard widget, its definition in `content`. The listing carries the content too. */
+export type TeamTemplate = {
+  id: number
+  name: string
+  description: string | null
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+} & ({ kind: 'page'; content: FullstackPageDef } | { kind: 'widget'; content: FullstackWidgetDef })
+
 export interface EntityTemplateSetSummary {
   setKey: string
   name: string

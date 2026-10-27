@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { FullstackPageType, FullstackWidgetDef } from '../../../types'
+import { useTeamTemplates, type TeamShare } from '../../../hooks/useTeamTemplates'
 import { ConfirmDialog } from '../../ConfirmDialog'
 import { cssEscape } from '../focus'
 import { isTypingTarget } from '../undo'
@@ -122,6 +123,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   const [historyOpen, setHistoryOpen] = useState(false)
   // Copied widgets (also in sessionStorage, so a copy survives closing the designer).
   const [clip, setClip] = useState<WidgetClip | null>(readClipboard)
+  // Pages and widgets shared with the team, listed when the designer opens.
+  const team = useTeamTemplates()
   const historyButtonRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const inspectorRef = useRef<HTMLElement>(null)
@@ -341,6 +344,36 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     const t = model.myTemplates.find(x => x.name === name)
     if (t) model.add(pageFromTemplate(t, pages), at)
   }
+  function addTeamTemplate(id: number, at?: number) {
+    const t = team.templates.find(x => x.id === id)
+    if (t?.kind === 'page') model.add(pageFromTemplate({ name: t.name, page: t.content }, pages), at)
+  }
+  /** Shares a page or widget with the team (replacing the team's one of that name), said in the notice. */
+  async function shareWithTeam(item: TeamShare) {
+    try {
+      const { template, replaced } = await team.share(item)
+      const where = item.kind === 'page' ? 'Pages › Team templates' : 'Widgets › Team widgets'
+      model.setNotice(`${replaced ? 'Updated' : 'Shared'} “${template.name}” for the team — everyone finds it in the library's ${where}.`)
+    } catch (err) {
+      model.setNotice(`Could not share “${item.name}”: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  function sharePage(index: number) {
+    const p = pages[index]
+    if (!p) return
+    const { idLocked: _locked, ...content } = p
+    void _locked
+    void shareWithTeam({ kind: 'page', name: pageLabel(p), content })
+  }
+  async function removeTeamTemplate(id: number) {
+    const t = team.templates.find(x => x.id === id)
+    try {
+      await team.remove(id)
+      if (t) model.setNotice(`Deleted the team's “${t.name}” — for everyone.`)
+    } catch (err) {
+      model.setNotice(`Could not delete it: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
   function addWidget(kind: FullstackWidgetDef['kind'], entity: string, at?: number, def?: FullstackWidgetDef) {
     if (page?.type !== 'dashboard') return
     const index = def ? model.addWidgetDef(selectedIndex, def, at) : model.addWidget(selectedIndex, kind, entity, at)
@@ -357,6 +390,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     if (d.kind === 'page') chooseType(d.type, at)
     else if (d.kind === 'suggestion') addSuggestion(d.key, at)
     else if (d.kind === 'my-template') addMyTemplate(d.name, at)
+    else if (d.kind === 'team-template') addTeamTemplate(d.id, at)
   }
   /** A part dropped or clicked onto the page on the canvas; a refusal is said in the notice. */
   function placePart(part: PagePart, at?: number) {
@@ -566,6 +600,15 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             onAddPart={placePart}
             clip={clip}
             onPaste={pasteClip}
+            team={{
+              templates: team.templates,
+              loading: team.loading,
+              error: team.error,
+              onRetry: () => void team.refresh(),
+              onShare: item => void shareWithTeam(item),
+              onRemove: id => void removeTeamTemplate(id),
+              onAddPage: id => addTeamTemplate(id),
+            }}
             pageIndex={selectedIndex}
             onChooseType={type => chooseType(type)}
             onAddSuggestion={key => addSuggestion(key)}
@@ -825,6 +868,9 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             onCopyWidgets={() => copyWidgets()}
             onPasteWidgets={pasteClip}
             onMoveWidget={moveWidget}
+            onSharePage={() => sharePage(selectedIndex)}
+            onShareWidget={w => void shareWithTeam({ kind: 'widget', name: widgetName(w), content: w })}
+            teamHas={(kind, name) => Boolean(team.find(kind, name))}
           />
           )}
 
