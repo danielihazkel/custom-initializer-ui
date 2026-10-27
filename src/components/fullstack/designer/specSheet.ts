@@ -38,7 +38,8 @@ export function specFileName(project: string): string {
 
 function widgetLine(w: FullstackWidgetDef): string {
   const kind = WIDGET_KINDS.find(k => k.kind === w.kind)?.label ?? w.kind
-  const parts = [w.title ? `“${w.title}”` : '', w.entity, w.groupBy ? `by ${w.groupBy}` : '', w.agg && w.agg !== 'count' ? `${w.agg} of ${w.field ?? '?'}` : '']
+  const parts = [w.title ? `“${w.title}”` : '', w.entity, w.groupBy ? `by ${w.groupBy}` : '', w.agg && w.agg !== 'count' ? `${w.agg} of ${w.field ?? '?'}` : '',
+    w.trend ? `trend per ${w.trend}` : '']
     .filter(Boolean)
   return parts.length ? `${kind} — ${parts.join(' · ')}` : kind
 }

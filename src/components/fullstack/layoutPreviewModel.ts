@@ -76,7 +76,8 @@ interface WidgetBase {
 }
 
 export type PreviewWidget = WidgetBase & (
-  | { kind: 'kpi'; value: string; /** "▲ 12%" when the tile compares periods. */ delta: string | null }
+  | { kind: 'kpi'; value: string; /** "▲ 12%" when the tile compares periods. */ delta: string | null
+      /** The trend line's values, oldest first, when the tile draws one. */ trend: number[] | null }
   | { kind: 'progress'; value: string; target: string; percent: number }
   | { kind: 'top'; rows: PreviewBar[] }
   | { kind: 'bar'; bars: PreviewBar[] }
@@ -572,6 +573,7 @@ export function buildLayoutPreview(
               return {
                 ...base, kind: 'kpi', title: w.title || measured, value: kpiValue(w.agg, valueField, seed),
                 delta: w.compare ? `${change >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(change))}%` : null,
+                trend: w.trend ? series(w.trend, w.agg, valueField, `${seed}:trend`).map(p => p.value) : null,
               }
             }
             case 'progress': {

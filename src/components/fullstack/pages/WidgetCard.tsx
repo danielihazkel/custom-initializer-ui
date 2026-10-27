@@ -37,6 +37,7 @@ function widgetSummary(w: FullstackWidgetDef, span: number): string {
   }
   const parts = [kind, `${w.entity || '(no entity)'}${w.groupBy ? ` by ${w.groupBy}` : ''}`]
   if (w.agg && w.agg !== 'count') parts.push(`${w.agg} of ${w.field ?? '?'}`)
+  if (w.trend) parts.push(`trend per ${w.trend}`)
   if (w.title) parts.push(`“${w.title}”`)
   parts.push(`width ${span}`)
   return parts.join(' · ')
@@ -597,6 +598,41 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
                 />
                 vs previous period
               </label>
+            )}
+            {widget.kind === 'kpi' && (
+              <MiniField label="Trend line" hint={dateRange ? 'Over the picked period, under the number' : 'A small line under the number'}>
+                <select
+                  aria-label="Trend line"
+                  aria-invalid={Boolean(err('trend'))}
+                  value={widget.trend ?? ''}
+                  disabled={!widget.trend && dateFields(entity).length === 0}
+                  title={dateFields(entity).length === 0 ? `${entity?.name ?? 'The entity'} has no date field to plot over time` : undefined}
+                  onChange={e => onChange({ trend: (e.target.value || undefined) as FullstackWidgetDef['trend'] })}
+                  className={`${inputClass(err('trend'))} max-w-[8rem] py-1 text-xs`}
+                >
+                  <option value="">None</option>
+                  <option value="day">Per day</option>
+                  <option value="month">Per month</option>
+                  <option value="year">Per year</option>
+                </select>
+              </MiniField>
+            )}
+            {widget.kind === 'kpi' && widget.trend && !dateRange && (
+              <MiniField label="Trend over" hint="The date it plots over">
+                <select
+                  aria-label="Trend date field"
+                  aria-invalid={Boolean(err('dateField'))}
+                  value={widget.dateField ?? ''}
+                  onChange={e => onChange({ dateField: e.target.value || undefined })}
+                  className={`${inputClass(err('dateField'))} max-w-[11rem] py-1 text-xs`}
+                >
+                  <option value="">{defaultOptionLabel(dateFields(entity)[0]?.name, 'date field', labelOf)}</option>
+                  {dateFields(entity).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
+                  {widget.dateField && !dateFields(entity).some(f => f.name === widget.dateField) && (
+                    <option value={widget.dateField}>{widget.dateField}</option>
+                  )}
+                </select>
+              </MiniField>
             )}
           </div>
         </fieldset>

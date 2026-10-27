@@ -1354,6 +1354,7 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
         {widget.kind === 'kpi' && widget.delta && (
           <p className={`text-[8px] font-semibold ${widget.delta.startsWith('▲') ? 'text-emerald-600' : 'text-error'}`} data-preview-delta>{widget.delta}</p>
         )}
+        {widget.kind === 'kpi' && widget.trend && <Sparkline values={widget.trend} accent={accent} />}
         {widget.kind === 'progress' && (
           <>
             <p className="text-[13px] font-bold tabular-nums text-on-surface">
@@ -1580,6 +1581,20 @@ function Bars({ bars, accent }: { bars: PreviewBar[]; accent: string }) {
       ))}
       {bars.length === 0 && <p className="text-[9px] text-secondary">{words?.noRecordsYet ?? 'No records yet.'}</p>}
     </div>
+  )
+}
+
+/** A kpi's trend: a bare line under the number, like the generated tile's. */
+function Sparkline({ values, accent }: { values: number[]; accent: string }) {
+  if (values.length < 2) return null
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  const span = max - min || 1
+  const points = values.map((v, i) => `${((i / (values.length - 1)) * 100).toFixed(1)},${(18 - ((v - min) / span) * 16).toFixed(1)}`).join(' ')
+  return (
+    <svg viewBox="0 0 100 20" preserveAspectRatio="none" className="mt-0.5 h-4 w-full" aria-hidden="true" style={{ direction: 'ltr' }} data-preview-sparkline>
+      <polyline points={points} fill="none" stroke={accent} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+    </svg>
   )
 }
 

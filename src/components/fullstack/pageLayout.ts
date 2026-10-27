@@ -613,6 +613,14 @@ export function widgetDateField(w: FullstackWidgetDef, entity: FullstackEntityDe
   return w.dateField || filterableDateFields(entity)[0]?.name
 }
 
+/** The date a kpi's trend plots over, as the backend resolves it: the period picker's date, else
+ *  the named `dateField` (a picker-less dashboard lets a trend name any date), else the first date. */
+export function trendDateField(w: FullstackWidgetDef, entity: FullstackEntityDef | undefined, hasPicker: boolean): string | undefined {
+  if (hasPicker) return widgetDateField(w, entity) ?? dateFields(entity)[0]?.name
+  if (w.dateField) return dateFields(entity).some(f => f.name === w.dateField) ? w.dateField : undefined
+  return dateFields(entity)[0]?.name
+}
+
 /** What sum/avg/min/max can reduce: a non-key numeric column. */
 export function numericFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
   return (entity?.fields ?? [])
@@ -1467,6 +1475,16 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
                 `${where} compares periods, but ${!page.dateRange ? 'has no period picker' : `${e.name} has no filterable date`}`)
             }
           }
+          if (w.trend) {
+            if (w.kind !== 'kpi') {
+              add(`widget.${wi}.trend`, 'only a number tile draws a trend', `${where} draws a trend on a ${w.kind} widget`)
+            } else if (!['day', 'month', 'year'].includes(w.trend)) {
+              add(`widget.${wi}.trend`, `“${w.trend}” is not day, month or year`, `${where} draws a trend per “${w.trend}”`)
+            } else if (!trendDateField(w, e, Boolean(page.dateRange)) && !w.dateField) {
+              add(`widget.${wi}.trend`, `${e.name} has no date field to plot over time`,
+                `${where} draws a trend of ${e.name}, which has no date field`)
+            }
+          }
           if (w.bucket && w.kind !== 'line') {
             add(`widget.${wi}.bucket`, 'only a trend takes a bucket', `${where} buckets a ${w.kind} widget`)
           }
@@ -1495,7 +1513,13 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           }
           checkPresetFilter(w.presetFilter, e, entityOf, add, `${where} has a widget that`, field => `widget.${wi}.presetFilter.${field}`)
           if (w.dateField) {
-            if (!page.dateRange) {
+            if (!page.dateRange && w.kind === 'kpi' && w.trend) {
+              // No picker: the date only names what the trend plots over.
+              if (!dateFields(e).some(f => f.name === w.dateField)) {
+                add(`widget.${wi}.dateField`, `${e.name} has no date field “${w.dateField}”`,
+                  `${where} plots a trend over “${w.dateField}”, which is not one of ${e.name}’s date fields`)
+              }
+            } else if (!page.dateRange) {
               add(`widget.${wi}.dateField`, 'a date field needs the dashboard’s period picker',
                 `${where} limits a widget by “${w.dateField}”, but has no period picker`)
             } else if (!filterableDateFields(e).some(f => f.name === w.dateField)) {
@@ -2884,7 +2908,7 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     if (next.entities?.length) kept.entities = next.entities
     if (next.limit != null && next.limit >= MIN_ACTIVITY_LIMIT && next.limit <= MAX_RECENT_LIMIT) kept.limit = next.limit
     if (next.span != null && next.span !== defaultSpan(kind)) kept.span = next.span
-    const lost = (['groupBy', 'agg', 'sortBy', 'compare', 'target', 'presetFilter', 'dateField', 'series', 'columns', 'sort'] as const)
+    const lost = (['groupBy', 'agg', 'sortBy', 'compare', 'trend', 'target', 'presetFilter', 'dateField', 'series', 'columns', 'sort'] as const)
       .filter(k => next[k] != null)
     const dropped = lost.length ? ['data settings'] : []
     if (next.drillTo != null) dropped.push('click target')
@@ -2896,7 +2920,7 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     if (kind === 'text' && next.text) kept.text = next.text
     if (kind === 'links') kept.pages = next.pages ?? []
     if (next.span != null && next.span !== defaultSpan(kind)) kept.span = next.span
-    const lost = (['groupBy', 'agg', 'limit', 'sortBy', 'compare', 'target', 'presetFilter', 'dateField', 'series'] as const)
+    const lost = (['groupBy', 'agg', 'limit', 'sortBy', 'compare', 'trend', 'target', 'presetFilter', 'dateField', 'series'] as const)
       .filter(k => next[k] != null)
     const dropped = lost.length ? ['data settings'] : []
     if (next.drillTo != null) dropped.push('click target')
@@ -2942,8 +2966,12 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     drop(['sortBy'], 'sort')
   }
   if (kind !== 'kpi') drop(['compare'], 'period comparison')
+  if (kind !== 'kpi') drop(['trend'], 'trend line')
+  if (kind === 'kpi' && next.trend && dateFields(entity).length === 0) drop(['trend'], 'trend line')
   if (kind !== 'progress') drop(['target'], 'target')
-  if (next.dateField != null && !filterableDateFields(entity).some(f => f.name === next.dateField)) drop(['dateField'], 'period date')
+  // A trend may name any date; the period picker only a filterable one.
+  const dated = kind === 'kpi' && next.trend ? dateFields(entity) : filterableDateFields(entity)
+  if (next.dateField != null && !dated.some(f => f.name === next.dateField)) drop(['dateField'], 'period date')
   if (next.presetFilter) {
     const kept = keptPresetFilter(next.presetFilter, entity)
     if (Object.keys(kept ?? {}).length < Object.keys(next.presetFilter).length) dropped.push('filter')

@@ -596,6 +596,9 @@ export interface FullstackWidgetDef {
   dateField?: string
   /** kpi: also show the change against the previous period of the dashboard's picker. */
   compare?: boolean
+  /** kpi: a sparkline under the number, one point per day/month/year over a date — the picker's
+   *  date field, else `dateField` (which then needs no picker), else the entity's first date. */
+  trend?: FullstackBucket
   /** progress: the value the bar fills up to (a positive number, as written). */
   target?: string
   /** activity: the audited entities whose latest changes it lists (default: every audited one, up to 6). */
