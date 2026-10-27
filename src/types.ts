@@ -424,12 +424,37 @@ export interface FullstackEntityDef {
   /** The form in titled sections (the drawer form, the record's details, and a wizard without
    *  its own steps follow them); fields no section lists come after, untitled. */
   formSections?: FullstackFormSection[]
+  /** A workflow over one enum field ("human tasks"): its values are states, and only the named
+   *  transitions move a row between them (FullstackRequestValidator.parseWorkflow). */
+  workflow?: FullstackWorkflow
 }
 
 /** A titled group of an entity's form: field and MANY_TO_ONE relation names, in order. */
 export interface FullstackFormSection {
   title: string
   fields: string[]
+}
+
+/** An entity's workflow: the status field, where a new row starts (default: the field's default,
+ *  else its first value), who a row is assigned to (a text field holding a user id) and when it
+ *  is due, and the moves between states. */
+export interface FullstackWorkflow {
+  statusField: string
+  initial?: string
+  assigneeField?: string
+  dueField?: string
+  transitions: FullstackTransition[]
+}
+
+/** One move of a workflow: from any of `from` to `to`, by a user with one of `roles` (none:
+ *  anyone), asking for the `requires` fields and relations. */
+export interface FullstackTransition {
+  name: string
+  label?: string
+  from: string[]
+  to: string
+  roles?: FullstackPageRole[]
+  requires?: string[]
 }
 
 /** A fullstack model saved on the server for the whole team (`/metadata/fullstack/models`).

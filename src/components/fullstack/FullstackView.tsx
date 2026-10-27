@@ -277,14 +277,14 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
   // Validation — mirrors the backend FullstackRequestValidator so problems surface inline
   // before submit. The server stays the source of truth.
-  const entityErrors = useMemo(() => validateEntities(entities, scaffoldOpts), [entities, scaffoldOpts])
+  const ldapAuth = selectedDeps.some(d => d === 'ldap-auth' || d === 'ldap-auth-rest')
+  const entityErrors = useMemo(() => validateEntities(entities, scaffoldOpts, { ldapAuth }), [entities, scaffoldOpts, ldapAuth])
   const metaErrors: MetaErrors = useMemo(
     () => validateMeta(meta, { bootVersions, javaVersions }),
     [meta, bootVersions, javaVersions],
   )
   // A layout outlives the entities it names (rename / delete) — flagged here, not as a 400 later.
   // Page roles are enforced by the generated backend's LDAP groups, so they need an LDAP auth variant (ldap-auth-rest, the sets' default, or ldap-auth).
-  const ldapAuth = selectedDeps.some(d => d === 'ldap-auth' || d === 'ldap-auth-rest')
   const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth, scaffoldOpts, dismissed: dismissedWarnings }),
     [pages, entities, ldapAuth, scaffoldOpts, dismissedWarnings])
   const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageValidation.count
@@ -1485,6 +1485,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
               onCodeFiles={codeFilesFor}
               codeState={codeState}
               onGoToOptions={() => jumpToSection('fs-options')}
+              ldapAuth={ldapAuth}
+              onAddDep={dep => setSelectedDeps(prev => (prev.includes(dep) ? prev : [...prev, dep]))}
             />
           </div>
         </div>

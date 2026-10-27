@@ -16,6 +16,8 @@ import { toSnakeCase, uniqueName } from './naming'
 import { FieldChips } from './FieldChips'
 import { EntitySettingsPanel, settingsSummary } from './EntitySettingsPanel'
 import { syncFormSections } from './formSections'
+import { syncWorkflow } from './workflow'
+import { WorkflowPanel, workflowSummary } from './WorkflowPanel'
 import { EntityUiPreview } from './EntityUiPreview'
 import { EntityCodePanel } from './EntityCodePanel'
 import type { EntityCodeFile } from './entityCode'
@@ -77,6 +79,10 @@ interface Props {
     stale: boolean
     onExplore: () => void
   }
+  /** Whether an LDAP auth dependency is selected (a workflow's roles need one). */
+  ldapAuth?: boolean
+  /** Adds a dependency (the workflow panel's "Add ldap-auth-rest"). */
+  onAddDep?: (dep: string) => void
 }
 
 /** Number of distinct problems on one entity (its own + every field's + every relation's) —
@@ -89,6 +95,7 @@ export function countEntityErrors(e?: EntityErrors): number {
   if (e.pk) n += 1
   if (e.view) n += 1
   if (e.viewQuery) n += 1
+  if (e.workflow) n += 1
   for (const f of Object.values(e.fields ?? {})) n += Object.values(f).filter(Boolean).length
   for (const r of Object.values(e.relations ?? {})) n += Object.values(r).filter(Boolean).length
   return n
@@ -110,7 +117,7 @@ function newField(): FullstackFieldDef {
   return { uid: newUid(), name: '', type: 'STRING' }
 }
 
-type PanelKind = 'settings' | 'overrides' | 'preview' | 'code'
+type PanelKind = 'settings' | 'overrides' | 'workflow' | 'preview' | 'code'
 
 const ICON_BTN = 'p-1.5 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
 const SMALL_ICON_BTN = 'p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
@@ -118,12 +125,13 @@ const SMALL_ICON_BTN = 'p-1 rounded text-secondary hover:text-primary hover:bg-p
 export function EntitiesEditor({
   entities, onChange: onChangeRaw, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = [], onNotice,
   onRowAdded, lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx, onGoToOptions, onCodeFiles, codeState,
+  ldapAuth, onAddDep,
 }: Props) {
   // Every edit keeps the entity's form sections in step: a renamed field or relation is renamed
   // there, a removed one dropped.
   const onChange = (next: FullstackEntityDef[]) => onChangeRaw(next.map(e => {
     const before = e.uid ? entities.find(x => x.uid === e.uid) : undefined
-    return before && before !== e ? syncFormSections(before, e) : e
+    return before && before !== e ? syncWorkflow(before, syncFormSections(before, e)) : e
   }))
   // The latest list for the Undo closures on removal toasts: they fire after later edits, and must
   // re-insert into the list as it is *then*, not as it was when the row went.
@@ -425,6 +433,9 @@ export function EntitiesEditor({
         const settingsForced = Boolean(eErr?.viewQuery || eErr?.formSections)
         const settingsOpen = settingsForced || (panelFor?.key === entityKey && panelFor.kind === 'settings')
         const overridesOpen = panelFor?.key === entityKey && panelFor.kind === 'overrides'
+        // A workflow problem forces its panel open, like Settings.
+        const workflowOpen = Boolean(eErr?.workflow) || (panelFor?.key === entityKey && panelFor.kind === 'workflow')
+        const workflowChip = workflowSummary(entity)
         const previewOpen = panelFor?.key === entityKey && panelFor.kind === 'preview'
         const codeOpen = panelFor?.key === entityKey && panelFor.kind === 'code'
         const overrideCount = entity.opts ? Object.keys(entity.opts).length : 0
@@ -593,6 +604,17 @@ export function EntitiesEditor({
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>tune</span>
                 Overrides{overrideCount > 0 ? ` (${overrideCount})` : ''}
               </button>
+              <button
+                type="button"
+                onClick={() => togglePanel(entityKey, 'workflow')}
+                aria-expanded={workflowOpen}
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${workflowChip || workflowOpen ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/5'}`}
+                title={workflowChip ?? 'States, the steps between them, who may take each, and who a row is assigned to'}
+                data-workflow-toggle
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
+                Workflow{workflowChip ? ` (${entity.workflow!.transitions.length})` : ''}
+              </button>
               <div
                 className="flex items-center gap-1.5 text-xs text-secondary shrink-0"
                 title="Which list views the generated page includes. A runtime toggle appears when you pick 2+; the first (Table > Cards > Kanban > Calendar) is the initial mode."
@@ -677,6 +699,15 @@ export function EntitiesEditor({
               errors={eErr}
               onUpdate={updates => updateEntity(eIdx, updates)}
               onTickView={checked => tickView(eIdx, entityKey, entity.uid, checked)}
+            />
+          )}
+          {workflowOpen && (
+            <WorkflowPanel
+              entity={entity}
+              error={eErr?.workflow}
+              onChange={workflow => updateEntity(eIdx, { workflow })}
+              ldapAuth={ldapAuth}
+              onAddDep={onAddDep}
             />
           )}
           {overridesOpen && (

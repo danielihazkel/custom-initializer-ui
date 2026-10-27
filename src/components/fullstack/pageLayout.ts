@@ -121,6 +121,13 @@ export function viewDisabledReason(entity: FullstackEntityDef | undefined, view:
 
 /** What a wizard step can ask for: every field but a generated key, then the MANY_TO_ONE
  *  relations (by field name) — what the entity's form shows. */
+/** What a wizard can ask for: the form's fields, without a workflow's status (it starts in its
+ *  initial state, and only transitions move it). */
+export function wizardFields(entity: FullstackEntityDef | undefined): { name: string; required: boolean; relation: boolean }[] {
+  const status = entity?.workflow?.statusField
+  return askableFields(entity).filter(a => a.relation || a.name !== status)
+}
+
 export function askableFields(entity: FullstackEntityDef | undefined): { name: string; required: boolean; relation: boolean }[] {
   if (!entity) return []
   return [
@@ -133,12 +140,16 @@ export function askableFields(entity: FullstackEntityDef | undefined): { name: s
 
 /** The steps a wizard gets when it names none (FullstackPageValidator): four fields to a step. */
 export function defaultWizardSteps(entity: FullstackEntityDef | undefined): { title?: string; fields: string[] }[] {
-  const names = askableFields(entity).map(f => f.name)
+  const names = wizardFields(entity).map(f => f.name)
+  const status = entity?.workflow?.statusField
   // The entity's form sections, one step each, then whatever they leave out (FullstackPageValidator.steps).
   if (entity?.formSections?.length) {
     const placed = new Set(entity.formSections.flatMap(s => s.fields.map(f => f.toLowerCase())))
     const rest = names.filter(n => !placed.has(n.toLowerCase()))
-    return [...entity.formSections.map(s => ({ title: s.title, fields: [...s.fields] })), ...(rest.length ? [{ fields: rest }] : [])]
+    const sections = entity.formSections
+      .map(s => ({ title: s.title, fields: s.fields.filter(f => f !== status) }))
+      .filter(s => s.fields.length > 0)
+    return [...sections, ...(rest.length ? [{ fields: rest }] : [])]
   }
   const steps: { fields: string[] }[] = []
   for (let i = 0; i < names.length; i += DEFAULT_STEP_SIZE) steps.push({ fields: names.slice(i, i + DEFAULT_STEP_SIZE) })
@@ -1761,14 +1772,16 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         }
         if (e.readOnly) add('entity', `${e.name} is read-only`, `${where} creates ${e.name}, which is read-only`)
         checkOneCreatePage(e, page, where, add)
-        const askable = askableFields(e)
+        const askable = wizardFields(e)
         const steps = page.steps ?? []
         if (steps.length > MAX_STEPS) add('steps', `has more than ${MAX_STEPS} steps`)
         const asked = new Set<string>()
         steps.forEach((step, si) => {
           if (step.fields.length === 0) add(`step.${si}`, 'asks for nothing', `${where} has an empty step ${si + 1}`)
           for (const name of step.fields) {
-            if (!askable.some(a => a.name === name)) {
+            if (name === e.workflow?.statusField) {
+              add(`step.${si}`, `“${name}” is set by the workflow`, `${where} asks for “${name}”, which its workflow sets`)
+            } else if (!askable.some(a => a.name === name)) {
               add(`step.${si}`, `${e.name} has no field “${name}”`, `${where} asks for “${name}”, which ${e.name} no longer has`)
             } else if (asked.has(name)) {
               add(`step.${si}`, `“${name}” is already asked for`, `${where} asks for “${name}” twice`)
