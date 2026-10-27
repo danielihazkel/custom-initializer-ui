@@ -819,8 +819,30 @@ export function fixAllProblems(pages: FullstackPageDef[], entities: FullstackEnt
   return { pages: current, applied }
 }
 
+/** Advice thresholds: past these a layout still generates, but reads as crowded. */
+export const ADVICE = {
+  /** Visible nav entries with no group to sort them into. */
+  navItems: 8,
+  /** Widgets on one dashboard. */
+  dashboardWidgets: 12,
+  /** Columns a list shows — the ones it names, or by default every field and relation. */
+  listColumns: 11,
+  /** What a "keep the first N columns" fix keeps. */
+  keepColumns: 6,
+} as const
+
+/** The nav group a crowded nav's fix files a page under, by what the page is for. */
+function adviceGroup(type: FullstackPageType): string {
+  switch (type) {
+    case 'dashboard': case 'report': return 'Insights'
+    case 'wizard': case 'import': case 'content': case 'search': return 'Tools'
+    default: return 'Data'
+  }
+}
+
 /** The dead ends a valid layout can still have — what the generated app silently does nothing
- *  about. Each names the page and, where one repair is obvious, offers it. */
+ *  about — and advice on one that reads as crowded. Each names the page (or the layout) and,
+ *  where one repair is obvious, offers it. */
 function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Issue[] {
   if (pages.length === 0) return []
   const out: Issue[] = []
@@ -845,6 +867,8 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
     apply: all => [...all, { id: uniquePageId(slugify(e.name), all.map(p => p.id)), type: 'record', entity: e.name, hidden: true }],
   } : undefined)
   const seen = new Set<string>()
+  // Entities a record page lists as related tabs (their rows show there).
+  const relatedShown: string[] = []
 
   pages.forEach((page, index) => {
     const label = pageLabel(page)
@@ -877,6 +901,9 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
         if (chart && !w.drillTo?.trim() && !visibleList(e.name)) {
           warn('chart-dead-end', `widget.${wi}`, `${where}: clicking a bar of the ${e.name} chart goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e), e.name)
         }
+        if (w.kind === 'pivot' && !w.drillTo?.trim() && !visibleList(e.name)) {
+          warn('pivot-dead-end', `widget.${wi}`, `${where}: clicking a cell of the ${e.name} pivot goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e), e.name)
+        }
         if (w.kind === 'recent' && singlePk(e) && !recordPage(e.name)) {
           warn('recent-dead-end', `widget.${wi}`, `${where}: the recent ${e.name} rows open nothing — ${e.name} has no record page`, addRecordPage(e), e.name)
         }
@@ -884,6 +911,28 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       })
       if (page.dateRange && dateless.length > 0) {
         warn('dateless', `widget.${dateless[0]}`, `${where}: ${dateless.length === 1 ? 'one widget has' : `${dateless.length} widgets have`} no date, so the period picker does not limit ${dateless.length === 1 ? 'it' : 'them'}`)
+      }
+      const count = page.widgets?.length ?? 0
+      if (count >= ADVICE.dashboardWidgets) {
+        warn('crowded-dashboard', 'widgets', `${where} has ${count} widgets — consider splitting it into a tabs page or a second dashboard`)
+      }
+    }
+    if (page.type === 'entity-list') {
+      const e = entityOf(page.entity)
+      const all = e ? [...e.fields.map(f => f.name), ...(e.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => r.fieldName)] : []
+      const shown = page.columns ?? all
+      if (e && shown.length >= ADVICE.listColumns) {
+        warn('wide-list', 'columns', `${where} shows ${shown.length} columns — a list reads best with ${ADVICE.keepColumns} or fewer`,
+          patchPage(index, `Show the first ${ADVICE.keepColumns} columns of “${label}”`, p => ({ ...p, columns: shown.slice(0, ADVICE.keepColumns) })))
+      }
+      // The same list twice in the navigation: an earlier visible list of the entity that opens
+      // the same way (preset and view).
+      const twin = !page.hidden && e ? pages.findIndex((o, oi) => oi < index && o.type === 'entity-list' && !o.hidden && same(o.entity, e.name)
+        && JSON.stringify(o.presetFilter ?? {}) === JSON.stringify(page.presetFilter ?? {}) && (o.view ?? null) === (page.view ?? null)) : -1
+      if (twin >= 0) {
+        const embedded = pagesEmbedding(pages, page.id).length > 0
+        warn('duplicate-list', 'entity', `${where} lists the same ${e!.name} rows as “${pageLabel(pages[twin])}”`,
+          embedded ? undefined : { label: `Remove “${label}”`, apply: all => all.filter((_, i) => i !== index) })
       }
     }
     if (page.type === 'report') {
@@ -896,6 +945,7 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       const e = entityOf(page.entity)
       if (!e) return
       const related = entities.filter(o => o.name.trim() && relationsTo(o, e.name).length > 0)
+      relatedShown.push(...(page.childTabs ? page.childTabs.map(childTabEntity) : related.slice(0, MAX_CHILD_TABS).map(o => o.name)))
       if (page.childTabs == null && related.length > MAX_CHILD_TABS) {
         warn('child-tabs-cap', 'childTabs', `${where} shows only the first ${MAX_CHILD_TABS} of its ${related.length} related lists`,
           patchPage(index, `Choose the first ${MAX_CHILD_TABS} related lists`, p => ({ ...p, childTabs: related.slice(0, MAX_CHILD_TABS).map(o => o.name) })))
@@ -907,6 +957,36 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       }
     }
   })
+
+  // The layout as a whole.
+  const layoutWarn = (key: string, summary: string, fix?: PageFix) => out.push({ key, message: '', summary, ...(fix ? { fix } : {}) })
+  const nav = pages.map((p, i) => ({ p, i })).filter(({ p }) => !p.hidden && p.type !== 'record')
+  if (nav.length > ADVICE.navItems && nav.every(({ p }) => !p.group?.trim())) {
+    layoutWarn('crowded-nav:layout', `The navigation lists ${nav.length} pages with no sections — group them so the menu stays scannable`, {
+      label: 'Group the navigation by what each page is for',
+      apply: all => all.map(p => (!p.hidden && p.type !== 'record' ? { ...p, group: adviceGroup(p.type) } : p)),
+    })
+  }
+  // An entity the layout forgot: no page, widget, tab or number names it, and it is not linked to
+  // one that is (a lookup shown through a relation is left alone).
+  const used = new Set<string>(relatedShown.map(n => n.trim().toLowerCase()))
+  const use = (name: string | undefined) => { if (name?.trim()) used.add(name.trim().toLowerCase()) }
+  for (const p of pages) {
+    use(p.entity); use(p.parent); use(p.child)
+    p.entities?.forEach(use)
+    p.childTabs?.forEach(t => use(childTabEntity(t)))
+    p.headerStats?.forEach(st => use(st.child))
+    p.widgets?.forEach(w => { use(w.entity); w.entities?.forEach(use) })
+  }
+  const linked = (e: FullstackEntityDef) => (e.relations ?? []).some(r => used.has(r.targetEntity.trim().toLowerCase()))
+    || entities.some(o => used.has(o.name.trim().toLowerCase()) && relationsTo(o, e.name).length > 0)
+  if (used.size > 0) {
+    for (const e of entities) {
+      const name = e.name.trim().toLowerCase()
+      if (!name || used.has(name) || linked(e)) continue
+      layoutWarn(`entity-without-page:${name}`, `No page shows ${e.name} — the app offers no way to browse or edit its rows`, addListPage(e))
+    }
+  }
   return out
 }
 
