@@ -30,6 +30,7 @@ import { CANVAS_ZOOM, CanvasFrame, DATA_STATES, DataStateSwitch, DeviceSwitch, Z
 import type { PreviewDataState } from '../layoutPreviewModel'
 import { DesignerMenu, type MenuItem } from './DesignerMenu'
 import { DesignerTour, tourSeen } from './DesignerTour'
+import { downloadLayoutSpec } from './specSnapshot'
 import type { FrontendAppearance } from './FrontendSettings'
 
 /** Where the designer opens: a page (and control), and which panel is showing. */
@@ -456,6 +457,21 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     setSelectedKey(keys[toIndex] ?? null)
     setSelectedWidget(at)
   }
+  /** The layout as a spec sheet for its reviewers: one offline HTML file, downloaded. */
+  function exportSpec() {
+    if (pages.length === 0) return
+    const request = codeRequest?.()
+    const project = request?.name?.trim() || request?.artifactId?.trim() || 'Layout'
+    try {
+      const name = downloadLayoutSpec({
+        project, pages, entities, preview, skin: settings.skin, palette: settings.palette,
+        locale: previewSettings?.locale ?? 'en', navStyle: nav?.style,
+      })
+      model.setNotice(`Downloaded ${name} — open it in a browser to read it, or print it to PDF`)
+    } catch {
+      model.setNotice('The spec sheet could not be built in this browser')
+    }
+  }
   /** A copy of a widget right after it, selected. */
   function duplicateWidget(pageIndex: number, index: number) {
     const at = model.duplicateWidget(pageIndex, index)
@@ -589,6 +605,17 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">{issueCount > 0 ? 'error' : tipCount > 0 ? 'lightbulb' : 'check_circle'}</span>
             {issueCount > 0 ? `${issueCount} problem${issueCount === 1 ? '' : 's'}` : 'Ready'}
             {tipCount > 0 && ` · ${tipCount} tip${tipCount === 1 ? '' : 's'}`}
+          </button>
+          <button
+            type="button"
+            onClick={exportSpec}
+            disabled={pages.length === 0}
+            className={ICON_BUTTON}
+            aria-label="Export the layout as a spec sheet"
+            title="Export a spec sheet (an HTML page that prints to PDF)"
+            data-designer-export-spec
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>description</span>
           </button>
           <span className="relative">
             <button

@@ -1094,3 +1094,25 @@ describe('Layout designer — tour', () => {
     expect(tour()).toBeNull()
   })
 })
+
+describe('Layout designer — spec sheet', () => {
+  it('downloads the layout as an HTML spec named after the project', async () => {
+    const created: Blob[] = []
+    vi.stubGlobal('URL', Object.assign(Object.create(URL), { createObjectURL: (b: Blob) => { created.push(b); return 'blob:spec' }, revokeObjectURL: vi.fn() }))
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    try {
+      render(<Harness initial={desk} code />)
+      const designer = openDesigner()
+      fireEvent.click(within(designer).getByRole('button', { name: 'Export the layout as a spec sheet' }))
+      expect(click).toHaveBeenCalledTimes(1)
+      expect(created).toHaveLength(1)
+      const html = await created[0].text()
+      expect(html).toContain('<title>Layout — page layout</title>')
+      expect(html.match(/class="page"/g)).toHaveLength(desk.length)
+      expect(within(designer).getByText(/Downloaded layout-layout-spec\.html/)).toBeTruthy()
+    } finally {
+      click.mockRestore()
+    }
+  })
+})
+
