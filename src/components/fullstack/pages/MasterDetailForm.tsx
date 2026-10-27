@@ -11,7 +11,7 @@ export function MasterDetailForm({ page, index, entities, errors, update, lossy,
   const vias = relationsTo(child, page.parent)
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+    <div className="grid grid-cols-1 @sm:grid-cols-3 gap-2">
       <Field label="Parent (left list)" error={errors.parent} control="parent">
         <EntitySelect
           label="Parent entity"

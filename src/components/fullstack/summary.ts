@@ -78,6 +78,10 @@ export function summarizeEntity(entity: FullstackEntityDef, projectOpts: string[
   if (optOn('softDelete')) endpoints.push({ method: 'POST', path: `${path}/{id}/restore` })
   if (optOn('bulkDelete')) endpoints.push({ method: 'DELETE', path: `${path}/bulk` })
   if (optOn('bulkUpdate')) endpoints.push({ method: 'PATCH', path: `${path}/bulk` })
+  if (entity.workflow && !readOnly) {
+    endpoints.push({ method: 'POST', path: `${path}/{id}/transitions/{name}` })
+    if (entity.workflow.assigneeField) endpoints.push({ method: 'POST', path: `${path}/{id}/claim` }, { method: 'POST', path: `${path}/{id}/release` })
+  }
   const opts = (['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests', 'inlineEdit', 'optimisticLocking'] as FullstackEntityOptKey[]).filter(optOn)
 
   const breakdown = entity.fields.find(f => f.type === 'ENUM') ?? entity.fields.find(f => f.type === 'BOOLEAN')

@@ -1,6 +1,7 @@
 import type { FullstackEntityDef, FullstackFieldDef, FullstackPageDef, FullstackWidgetDef } from '../../types'
 import { pluralize } from './naming'
 import {
+  ADVICE,
   MAX_PAGES,
   askableFields,
   chartableFields,
@@ -48,9 +49,15 @@ function recordPages(entities: FullstackEntityDef[], id: (base: string) => strin
     .map(e => ({ id: id(e.name), type: 'record' as const, entity: e.name, hidden: true }))
 }
 
+/** A wide entity's list opens on its first columns — what the wide-list advice's fix would leave. */
+function narrowColumns(e: FullstackEntityDef): Pick<FullstackPageDef, 'columns'> {
+  const all = [...e.fields.map(f => f.name), ...(e.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => r.fieldName)]
+  return all.length >= ADVICE.listColumns ? { columns: all.slice(0, ADVICE.keepColumns) } : {}
+}
+
 /** One list page per entity, under a nav group. */
 function listPages(entities: FullstackEntityDef[], id: (base: string) => string, group?: string): FullstackPageDef[] {
-  return entities.map(e => ({ id: id(pluralize(e.name)), type: 'entity-list' as const, entity: e.name, ...(group ? { group } : {}) }))
+  return entities.map(e => ({ id: id(pluralize(e.name)), type: 'entity-list' as const, entity: e.name, ...narrowColumns(e), ...(group ? { group } : {}) }))
 }
 
 /** The field a queue splits into tabs: an enum (else boolean) with 2–6 values. */
@@ -80,7 +87,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
           { kind: 'recent', entity: e.name, span: 4 },
         ],
       }
-      const list: FullstackPageDef = { id: id(pluralize(e.name)), type: 'entity-list', entity: e.name }
+      const list: FullstackPageDef = { id: id(pluralize(e.name)), type: 'entity-list', entity: e.name, ...narrowColumns(e) }
       const others = entities.filter(x => x !== e)
       // splitListByField mints its own ids against the pages it is given, so hand it the rest first.
       const records = recordPages(entities, id)

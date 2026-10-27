@@ -327,6 +327,15 @@ The Generate button POSTs to \`/starter-fullstack.zip\` and streams the result. 
         content: `### Classic shell or a layout
 Without a layout the generated app has a dashboard plus one list page per entity. The **Frontend pages** section (below Entities) replaces that with pages of your own. **Start from my entities** seeds a dashboard and a list per entity, the Examples ship layouts to learn from, and **Use classic layout** drops the layout again (undoable).
 
+### The layout designer
+The section is a card: the layout as a small sitemap, its problems, and **Open designer**. The designer fills the screen:
+- **Library** (left) — page types, suggestions for your entities, your saved page templates, widgets and whole-layout templates. Drag a card where it should go, or click it to add it at the end.
+- **Canvas** (middle) — the page strip (the navigation's sections, then the pages off it) over a live preview of the selected page. Click a widget to edit it; drag it to move it, drag its edge to resize it. **Mobile** shows the page at phone width.
+- **Inspector** (right) — the selected widget's settings, or the page's **Basics** (type, title, route, group, icon), **Layout** (what the type is made of) and **Access** (roles).
+- **Appearance** sets the app's look beside its preview: the frontend template set, colour palette, language, right-to-left, and (without pages) the classic dashboard's heading. Setup's Frontend row opens it.
+- **Sitemap** renames and reorders the navigation's sections, moves pages between them and sets the menu style. The **issues** button lists problems and tips with their fixes.
+- Keys: \`/\` searches the library, Delete removes the selected widget, Alt+←/→ moves it, Alt+Shift+←/→ makes it narrower or wider, Esc deselects and then closes.
+
 ### The page types
 - **Dashboard** — widgets on a four-column grid: number tiles, breakdown, donut and stacked charts, a trend line, recent rows, top lists, progress to a target and text notes. A period picker limits every widget that has a date.
 - **List** — one entity's table (or cards, board, calendar). It can open filtered, with chosen columns, a sort, a view and a page size.
@@ -342,8 +351,8 @@ Without a layout the generated app has a dashboard plus one list page per entity
 - **Search** — one search box over several entities, results grouped by entity; with **Header search box** on, the app's header opens it.
 
 ### How the navigation is built
-- The first page in the navigation is the **start page** — the app opens there, for everyone. The home button on a row makes another page the start page.
-- Pages sharing a **group** are listed together as one section; the **Navigation** strip above the list renames and reorders groups. An **icon** is one of the shipped set.
+- The first page in the navigation is the **start page** — the app opens there, for everyone. The home button in the inspector makes another page the start page.
+- Pages sharing a **group** are listed together as one section; the designer's **Sitemap** renames and reorders groups. An **icon** is one of the shipped set.
 - A **hidden** page is out of the navigation: a list hidden this way shows up only as a tab; a hidden wizard is still a route.
 - **Roles** (ADMIN, USER) restrict a page to users holding one. They need the \`ldap-auth-rest\` (or \`ldap-auth\`) dependency and cannot sit on the start page or on a tab — restrict the tabs page instead.
 

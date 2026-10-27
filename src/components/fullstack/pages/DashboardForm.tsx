@@ -14,13 +14,15 @@ import { COLLAPSE_WIDGETS_FROM, SMALL_BUTTON, WIDGET_KINDS } from './constants'
 import { EntitySelect, Field, MiniField } from './fields'
 import { WidgetCard } from './WidgetCard'
 
-export function DashboardForm({ page, index, pages, projectOpts, entities, errors, update, dnd, lossy, removed, expandRequest }: FormProps & {
+export function DashboardForm({ page, index, pages, projectOpts, entities, errors, update, dnd, lossy, removed, expandRequest, widgetsOnCanvas }: FormProps & {
   pages: FullstackPageDef[]
   /** The project-wide scaffold opts — a list widget's audit columns exist only with `audit` on. */
   projectOpts: string[]
   dnd: ReturnType<typeof useDragReorder>
   /** A problem click about widget `widget` of this page: open that card (a new `n` per click). */
   expandRequest?: { widget: number; n: number } | null
+  /** The layout designer adds, edits and orders the widgets on its canvas: only the page's own settings here. */
+  widgetsOnCanvas?: boolean
 }) {
   const widgets = page.widgets ?? []
   const list = `widgets:${index}`
@@ -125,7 +127,7 @@ export function DashboardForm({ page, index, pages, projectOpts, entities, error
         </select>
       </Field>
       <DashboardFilters page={page} entities={entities} error={errors.filters} onChange={filters => update(index, { filters })} />
-      <div className="space-y-2" data-control="widgets">
+      {!widgetsOnCanvas && <div className="space-y-2" data-control="widgets">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
             Widgets <span className="font-normal normal-case tracking-normal">· laid out left to right on a four-column grid</span>
@@ -194,7 +196,7 @@ export function DashboardForm({ page, index, pages, projectOpts, entities, error
                 onChange={setGalleryEntity}
               />
             </MiniField>
-            <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
+            <ul className="grid grid-cols-2 gap-1.5 @sm:grid-cols-3 @lg:grid-cols-5">
               {WIDGET_KINDS.map(k => {
                 const reason = widgetKindDisabledReason(k.kind, galleryPick, { entities, scaffoldOpts: projectOpts })
                 return (
@@ -219,7 +221,7 @@ export function DashboardForm({ page, index, pages, projectOpts, entities, error
             </ul>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   )
 }

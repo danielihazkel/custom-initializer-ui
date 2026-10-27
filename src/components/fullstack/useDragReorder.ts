@@ -11,6 +11,7 @@ import { useState, type DragEvent } from 'react'
  * and `onMove(list, from, to)` receives the final index the row lands on (as `moveItem` expects).
  */
 export type DropPosition = 'before' | 'after'
+export type DropAxis = 'x' | 'y'
 
 export interface DragReorder {
   /** Spread on the grip element. */
@@ -19,8 +20,8 @@ export interface DragReorder {
     onDragStart: (e: DragEvent<HTMLElement>) => void
     onDragEnd: () => void
   }
-  /** Spread on the row (drop target). */
-  rowProps(list: string, index: number): {
+  /** Spread on the row (drop target). `axis: 'x'` for a row of chips: the left/right half decides. */
+  rowProps(list: string, index: number, axis?: DropAxis): {
     onDragOver: (e: DragEvent<HTMLElement>) => void
     onDragLeave: (e: DragEvent<HTMLElement>) => void
     onDrop: (e: DragEvent<HTMLElement>) => void
@@ -33,8 +34,13 @@ export interface DragReorder {
 
 interface Hover { list: string; index: number; position: DropPosition }
 
-function positionIn(e: DragEvent<HTMLElement>): DropPosition {
+function positionIn(e: DragEvent<HTMLElement>, axis: DropAxis = 'y'): DropPosition {
   const rect = e.currentTarget.getBoundingClientRect()
+  if (axis === 'x') {
+    const rtl = getComputedStyle(e.currentTarget).direction === 'rtl'
+    const firstHalf = e.clientX < rect.left + rect.width / 2
+    return firstHalf !== rtl ? 'before' : 'after'
+  }
   return e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
 }
 
@@ -55,13 +61,13 @@ export function useDragReorder(onMove: (list: string, from: number, to: number) 
         onDragEnd: () => { setDrag(null); setHover(null) },
       }
     },
-    rowProps(list, index) {
+    rowProps(list, index, axis) {
       return {
         onDragOver: e => {
           if (!drag || drag.list !== list) return
           e.preventDefault() // allows the drop
           e.dataTransfer.dropEffect = 'move'
-          const position = positionIn(e)
+          const position = positionIn(e, axis)
           setHover(prev => prev && prev.list === list && prev.index === index && prev.position === position
             ? prev : { list, index, position })
         },
@@ -74,7 +80,7 @@ export function useDragReorder(onMove: (list: string, from: number, to: number) 
         onDrop: e => {
           if (!drag || drag.list !== list) return
           e.preventDefault()
-          const position = positionIn(e)
+          const position = positionIn(e, axis)
           let to = position === 'before' ? index : index + 1
           if (drag.index < to) to -= 1 // removing the source shifts everything after it up by one
           if (to !== drag.index) onMove(list, drag.index, to)
@@ -99,7 +105,12 @@ export function useDragReorder(onMove: (list: string, from: number, to: number) 
 
 /** Tailwind classes for the drop-line on a row. Replaces the row's own top/bottom border classes,
  *  so callers should switch between their normal border and this rather than concatenate. */
-export function dropIndicatorClass(position: DropPosition | null): string {
+export function dropIndicatorClass(position: DropPosition | null, axis: DropAxis = 'y'): string {
+  if (axis === 'x') {
+    if (position === 'before') return 'border-s-2 border-s-primary'
+    if (position === 'after') return 'border-e-2 border-e-primary'
+    return ''
+  }
   if (position === 'before') return 'border-t-2 border-t-primary'
   if (position === 'after') return 'border-b-2 border-b-primary'
   return ''

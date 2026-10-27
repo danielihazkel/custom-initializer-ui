@@ -2,6 +2,7 @@ import type { FullstackEntityDef } from '../../types'
 import { entityOptApplicability, summarizeEntity } from './summary'
 import { toCamelCase } from './naming'
 import { newUid } from './uid'
+import { ambiguousMoves, stateLabel, unreachableStates } from './workflow'
 
 /**
  * Model lint: things that are *valid* (the server would accept them) but will produce a
@@ -128,6 +129,38 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
         entityUid: uid,
         message: `${name} has only key fields — its form and table will carry no data.`,
       })
+    }
+
+    // A workflow: a state nothing leads to, two steps a board drag cannot tell apart, roles without LDAP.
+    if (entity.workflow) {
+      for (const state of unreachableStates(entity)) {
+        issues.push({
+          id: `workflow-unreachable:${uid}:${state}`,
+          rule: 'workflow-unreachable',
+          severity: 'info',
+          entityUid: uid,
+          message: `${name}: no step of its workflow leads to ${stateLabel(state)}, and new rows start elsewhere — it is never reached.`,
+        })
+      }
+      for (const move of ambiguousMoves(entity.workflow)) {
+        issues.push({
+          id: `workflow-ambiguous:${uid}:${move.from}>${move.to}`,
+          rule: 'workflow-ambiguous',
+          severity: 'warn',
+          entityUid: uid,
+          message: `${name}: ${move.names.join(' and ')} both move ${stateLabel(move.from)} to ${stateLabel(move.to)}, so dragging a card between those lanes asks the user to pick on the record.`,
+        })
+      }
+      if (entity.workflow.transitions.some(t => (t.roles?.length ?? 0) > 0) && !selectedDeps.some(d => LDAP_DEPS.includes(d))) {
+        issues.push({
+          id: `workflow-roles:${uid}`,
+          rule: 'workflow-roles',
+          severity: 'warn',
+          entityUid: uid,
+          message: `${name}: its workflow limits steps to roles, which come from LDAP groups — the project has no ldap-auth dependency.`,
+          fix: { label: 'Add ldap-auth-rest', apply: m => ({ ...m, selectedDeps: [...m.selectedDeps, 'ldap-auth-rest'] }) },
+        })
+      }
     }
 
     // A unique column with a default: the second row created from the form collides.

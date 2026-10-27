@@ -36,6 +36,33 @@ const pages: FullstackPageDef[] = [
 const ctx = { locale: 'en' as const, projectOpts: ['csvExport'] }
 
 describe('buildLayoutPreview', () => {
+  it('fills lists with realistic rows: raw values in the table, formatted ones in the side pane', () => {
+    const today = new Date(2026, 9, 27)
+    const withFlag: FullstackEntityDef[] = [entities[0], { ...entities[1], fields: [...entities[1].fields, { name: 'paid', type: 'BOOLEAN' }] }]
+    const list: FullstackPageDef[] = [
+      { id: 'orders', type: 'entity-list', entity: 'Order', columns: ['placedOn', 'paid', 'customer', 'createdAt'], detail: 'side' },
+      { id: 'find', type: 'search', entities: ['Customer'] },
+    ]
+    const preview = buildLayoutPreview(list, withFlag, { locale: 'he', projectOpts: ['audit'], today })
+    const screen = preview.screens[0]
+    if (screen.type !== 'entity-list') throw new Error(screen.type)
+    expect(screen.table.columns).toEqual(['Placed on', 'Paid', 'Customer', 'נוצר'])
+    const [placedOn, paid, customer] = screen.table.rows[0]
+    // As the generated table prints them: an ISO date and a raw boolean.
+    expect(placedOn).toMatch(/^2026-10-2\d$/)
+    expect(paid).toBe('true')
+    // A customer is a person — in Hebrew, under the Hebrew locale.
+    expect(customer).toMatch(/^[\u0590-\u05FF]+ [\u0590-\u05FF]+$/)
+    // The side pane is the details: the boolean worded, the date in the app's locale.
+    const pane = Object.fromEntries((screen.table.sidePane ?? []).map(r => [r.label, r.value]))
+    expect(pane['Paid']).toBe('כן')
+    expect(pane['Placed on']).not.toMatch(/^2026-/)
+    // The search page looks for a word its first match holds.
+    const search = preview.screens[1]
+    if (search.type !== 'search') throw new Error(search.type)
+    expect(search.groups[0].rows[0].toLowerCase().startsWith(search.words)).toBe(true)
+  })
+
   it('draws a list page the way it opens: its columns, its view and its sort', () => {
     const orders: FullstackEntityDef[] = [entities[0], { ...entities[1], listViews: ['table', 'kanban'] }]
     const board: FullstackPageDef = {
@@ -237,7 +264,9 @@ describe('previewPartOf', () => {
     expect(screen.groupLabel).toBe('Customer')
     expect(screen.chartTitle).toContain('by Customer')
     expect(screen.chart.bars).toHaveLength(5)
-    expect(screen.chart.bars[0].label).toBe('Name 1')
+    // Each bar is a customer, named as a customer is (first and last name), none twice.
+    expect(screen.chart.bars.every(b => /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(b.label))).toBe(true)
+    expect(new Set(screen.chart.bars.map(b => b.label)).size).toBe(5)
   })
 
   it('marks the nav entries of the pages the validation warns about', () => {

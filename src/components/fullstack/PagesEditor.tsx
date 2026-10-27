@@ -1,49 +1,30 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { handleRadioKeys, syncRadioTabStops } from './rovingRadios'
-import type { FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackPageType } from '../../types'
+import type { FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackPageType, FullstackStarterRequest } from '../../types'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { inputClass } from './controls'
-import { entityOption } from './fieldOptions'
 import { cssEscape } from './focus'
 import { buildLayoutPreview } from './layoutPreviewModel'
-import { LayoutPreview, type EditTarget, type PreviewPalette } from './LayoutPreview'
-import { moveItem } from './reorder'
-import { useStableKeys } from './rowKeys'
+import { LayoutPreview, type EditTarget } from './LayoutPreview'
 import { focusWithoutClipping, scrollToElement } from './scroll'
-import { LAYOUT_TEMPLATES, buildLayoutTemplate, deletePageTemplate, pageFromTemplate, readPageTemplates, savePageTemplate } from './layoutTemplates'
-import { useDragReorder } from './useDragReorder'
+import { pageFromTemplate } from './layoutTemplates'
 import {
-  MAX_PAGES, MAX_TABS, MIN_TABS, PAGE_TYPE_META, defaultSpan, removePageAt, adoptedGroup, blankPage,
-  masterDetailPairs, newPageChoices, newPageTypeReason, moveNavGroup, navSections, renameGroupInPages,
-  retargetPage, tabCandidates, duplicatePage, inNav, listColumns, pageFromSuggestion, pageLabel,
-  pagesEmbedding, relationsTo, reportCharts, renamePageIdInPages, seedLayout, slugify, suggestPages,
-  uniquePageId, type PageLayoutValidation,
+  MAX_PAGES, PAGE_TYPE_META, newPageChoices, inNav, pageFromSuggestion, pageLabel,
+  pagesEmbedding, seedLayout, type PageLayoutValidation,
 } from './pageLayout'
-import type { Lossy, Removed } from './pages/formTypes'
 import { ICON_BUTTON, SMALL_BUTTON } from './pages/constants'
 import { EntityOptions, GroupChip, MoveButtons } from './pages/fields'
 import { TemplateGallery } from './pages/TemplateGallery'
 import { PreviewDrawer } from './pages/PreviewDrawer'
 import { LayoutWarnings } from './pages/LayoutWarnings'
 import { BulkPageBar } from './pages/BulkPageBar'
+import { NewTabsForm, initialTabsForm, type TabsFormState } from './pages/NewTabsForm'
 import { PageList } from './pages/PageList'
+import { offNavNoteFor, usePagesModel, type PagesPreviewSettings } from './pages/usePagesModel'
 
-/** What the layout preview needs beyond the layout: the chrome language, the project-wide
- *  scaffold opts (list toolbars follow them) and which frontend set draws the shell. */
-export interface PagesPreviewSettings {
-  locale: 'en' | 'he'
-  projectOpts: string[]
-  skin: 'tailwind' | 'menora'
-  /** The colour palette the generator will use — the tailwind shell and accents follow it. */
-  palette?: PreviewPalette
-  /** The setup panel's dashboard heading — "Start from my entities" puts it on the dashboard page. */
-  dashboardTitle?: string
-  dashboardOverview?: string
-}
+export type { PagesPreviewSettings } from './pages/usePagesModel'
 
-const DEFAULT_PREVIEW_SETTINGS: PagesPreviewSettings = { locale: 'en', projectOpts: [], skin: 'tailwind' }
-
-interface Props {
+export interface PagesEditorProps {
   pages: FullstackPageDef[]
   entities: FullstackEntityDef[]
   /** Opens the guide on a topic — the header's help button. Absent (the admin form): no button. */
@@ -75,12 +56,21 @@ interface Props {
   /** `stacked` puts the preview under the page list at every width — for narrow hosts (the
    *  admin drawer), where the viewport-wide split would squeeze both. */
   layout?: 'split' | 'stacked'
+  /** Builds the generate request for the model as it stands. Present, the designer's inspector
+   *  has a Code tab with the selected page's generated screen; absent (the admin form): none. */
+  codeRequest?: () => FullstackStarterRequest
   /** The editor's undo/redo, offered in the header too (the entities toolbar is far below). */
   history?: {
     undoLabel: string | null
     redoLabel: string | null
     onUndo: () => void
     onRedo: () => void
+    /** The edits undo walks back through, oldest first, and redo forward through, furthest first
+     *  (the history's own order). With `onJump`, the designer lists them to jump several at once. */
+    undoEntries?: string[]
+    redoEntries?: string[]
+    /** Undoes (negative) or redoes (positive) that many edits in one step. */
+    onJump?: (steps: number) => void
   }
   /** A 400 from Generate that names a page of this layout — listed with the problems and revealed. */
   serverIssue?: { page: number; message: string } | null
@@ -108,7 +98,7 @@ function readSectionOpen(): boolean {
 }
 
 /** One line for the collapsed section: what the generated app's navigation will hold. */
-function summarizeLayout(pages: FullstackPageDef[]): string {
+export function summarizeLayout(pages: FullstackPageDef[]): string {
   if (pages.length === 0) return 'Classic layout — a dashboard plus one list page per entity.'
   const labels = pages.filter(inNav).map(pageLabel)
   const more = labels.length - SUMMARY_NAMES
@@ -126,15 +116,13 @@ function summarizeLayout(pages: FullstackPageDef[]): string {
  * dashboard plus one list page per entity), which "Start from my entities" materializes as an
  * editable starting point.
  */
-export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, dismissedWarnings, onDismissedWarningsChange }: Props) {
-  const keys = useStableKeys(pages, p => p.id)
+export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, dismissedWarnings, onDismissedWarningsChange }: PagesEditorProps) {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   // The "Tabs" gallery card asks which pages to embed before adding anything.
-  const [tabsForm, setTabsForm] = useState<{ picked: string[]; title: string; hide: boolean } | null>(null)
+  const [tabsForm, setTabsForm] = useState<TabsFormState | null>(null)
   // The gallery's "which entity?" step, for a page type more than one entity fits.
   const [entityForm, setEntityForm] = useState<{ type: FullstackPageType; pick: string } | null>(null)
-  const [confirmRemove, setConfirmRemove] = useState<number | null>(null)
   const [confirmClassic, setConfirmClassic] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(readPreviewOpen)
   // The whole section folds to its header and a one-line summary; a problem reveal reopens it.
@@ -146,8 +134,6 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const [classicPreview, setClassicPreview] = useState(false)
   const [classicSelected, setClassicSelected] = useState(0)
   const [templatesOpen, setTemplatesOpen] = useState(false)
-  // "Changed widget 2 — dropped: target" after a switch that could not keep everything.
-  const [notice, setNotice] = useState<string | null>(null)
   // Pages picked for a bulk action, by id (ids that no longer exist drop out on their own).
   const [pickedIds, setPickedIds] = useState<string[]>([])
   const picked = pickedIds.filter(id => pages.some(p => p.id === id))
@@ -166,59 +152,22 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   // The editor part under the pointer or keyboard focus — the preview rings its counterpart.
   const [hover, setHover] = useState<EditTarget | null>(null)
   const sectionRef = useRef<HTMLElement>(null)
+  // Finding a page: the search box shows past a handful of pages, or when asked for.
+  const [pageQuery, setPageQuery] = useState('')
 
-  const named = entities.filter(e => e.name.trim())
-  // The project-wide scaffold opts: a list page's audit columns exist only with `audit` on.
-  const projectOpts = previewSettings?.projectOpts ?? []
-  const atPageCap = pages.length >= MAX_PAGES
-  const dnd = useDragReorder((list, from, to) => {
-    if (list === 'pages') {
-      const moved = moveItem(pages, from, to)
-      const group = adoptedGroup(moved, to)
-      if (group == null) return onChange(moved)
-      pushUndo(`Moved “${pageLabel(moved[to])}” into the “${group}” group`)
-      return onChange(moved.map((p, i) => (i === to ? { ...p, group } : p)))
-    }
-    const [kind, at, sub] = list.split(':')
-    const index = Number(at)
-    const page = pages[index]
-    if (!page) return
-    if (kind === 'wcolumns') {
-      // A list widget's columns: `wcolumns:<page>:<widget>`.
-      const wi = Number(sub)
-      const widget = page.widgets?.[wi]
-      if (!widget) return
-      const all = listColumns(entities.find(e => e.name === widget.entity), projectOpts).map(c => c.key)
-      const next = moveItem(widget.columns ?? all, from, to)
-      const isDefault = next.length === all.length && next.every((k, i) => k === all[i])
-      return update(index, { widgets: (page.widgets ?? []).map((w, j) => (j === wi ? { ...w, columns: isDefault ? undefined : next } : w)) })
-    }
-    if (kind === 'widgets') update(index, { widgets: moveItem(page.widgets ?? [], from, to) })
-    else if (kind === 'tabs') update(index, { tabs: moveItem(page.tabs ?? [], from, to) })
-    else if (kind === 'charts') {
-      const charts = moveItem(reportCharts(page), from, to)
-      update(index, charts.length <= 1 ? { chart: charts[0] ?? {}, charts: undefined } : { charts, chart: undefined })
-    } else if (kind === 'childTabs') {
-      const related = entities.filter(e => relationsTo(e, page.entity).length > 0).map(e => e.name)
-      update(index, { childTabs: moveItem(page.childTabs ?? related, from, to) })
-    } else if (kind === 'steps') update(index, { steps: moveItem(page.steps ?? [], from, to) })
-    else if (kind === 'columns') {
-      const all = listColumns(entities.find(e => e.name === page.entity), projectOpts).map(c => c.key)
-      update(index, { columns: moveItem(page.columns ?? all, from, to) })
-    }
+  const model = usePagesModel({
+    pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, ldapAuth,
+    onOpenKey: key => { setOpenKey(key); setPreviewKey(key) },
+    // The new page must be on screen to open: a page search that would hide it is cleared.
+    onAdd: () => { setAddOpen(false); setPageQuery('') },
+    onRemovedKey: key => setOpenKey(prev => (prev === key ? null : prev)),
   })
-
-  const lossy: Lossy = (label, dropped) => {
-    if (dropped.length === 0) return
-    pushUndo(label)
-    setNotice(`${label} — dropped the ${dropped.join(', ')} setting${dropped.length === 1 ? '' : 's'}, which no longer fit.`)
-  }
-  // A part of a page taken out (a widget, tab, chart, tile or step): its own undo entry, and a
-  // notice with Undo — the button sits far from the part, so the removal should not go unseen.
-  const removed: Removed = (label, detail) => {
-    pushUndo(label)
-    setNotice(detail ? `${label} — ${detail}.` : `${label}.`)
-  }
+  const {
+    keys, named, projectOpts, atPageCap, notice, setNotice, lossy, removed, confirmRemove, setConfirmRemove,
+    update, retitle, unlockId, add, switchBlocked, tabsEligible, navGroupSections, renameGroup, moveGroup,
+    reorderWidget, resizeWidget, changeType, removePage, requestRemove, duplicate, move, startFromEntities,
+    layoutTemplates, myTemplates, saveAsTemplate, dnd,
+  } = model
 
   useEffect(() => {
     try { localStorage.setItem(PREVIEW_KEY, previewOpen ? 'open' : 'closed') } catch { /* preference only */ }
@@ -227,203 +176,37 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     try { localStorage.setItem(SECTION_KEY, sectionOpen ? 'open' : 'closed') } catch { /* preference only */ }
   }, [sectionOpen])
 
-  function update(index: number, patch: Partial<FullstackPageDef>) {
-    const before = pages[index]
-    let next = pages.map((p, i) => (i === index ? { ...p, ...patch } : p))
-    // Tabs embed pages by id — follow the rename instead of leaving them pointing at nothing.
-    if (patch.id != null && before && before.id !== patch.id && before.id) {
-      next = renamePageIdInPages(next, before.id, patch.id)
-    }
-    onChange(next)
-  }
-
-  // Ids follow the title until the user edits one by hand — `idLocked`, kept on the page itself
-  // so the choice survives a reload, an example load and a saved model.
-  function retitle(index: number, title: string) {
-    const page = pages[index]
-    const keepsId = page.idLocked || page.type === 'dashboard'
-    const patch: Partial<FullstackPageDef> = { title }
-    if (!keepsId) {
-      const slug = slugify(title)
-      if (slug) patch.id = uniquePageId(slug, pages.filter((_, i) => i !== index).map(p => p.id))
-    }
-    update(index, patch)
-  }
-
-  /** Drops the hand-edited id: it follows the title again, starting now. */
-  function unlockId(index: number) {
-    const slug = slugify(pages[index].title ?? '')
-    update(index, {
-      idLocked: undefined,
-      ...(slug ? { id: uniquePageId(slug, pages.filter((_, i) => i !== index).map(p => p.id)) } : {}),
-    })
-  }
-
   function openPage(index: number | null) {
     const key = index == null ? null : keys[index] ?? null
     setOpenKey(key)
     if (key) setPreviewKey(key)
   }
 
-  function add(page: FullstackPageDef) {
-    setAddOpen(false)
-    // The new page must be on screen to open: a page search that would hide it is cleared.
-    setPageQuery('')
-    onChange([...pages, page])
-    // The new row's key is minted on the next render; open it by position once it exists.
-    pendingOpen.current = pages.length
-  }
-  const pendingOpen = useRef<number | null>(null)
-  useEffect(() => {
-    if (pendingOpen.current == null) return
-    const index = pendingOpen.current
-    pendingOpen.current = null
-    if (keys[index]) {
-      setOpenKey(keys[index])
-      setPreviewKey(keys[index])
-    }
-  }, [keys])
-
   function addPage(type: FullstackPageType, pick?: string) {
-    add(blankPage(type, named, pages, pick))
+    model.addPage(type, pick)
     setEntityForm(null)
   }
   /** A gallery card: straight in when the type takes no entity or only one fits, else ask which. */
   function chooseType(type: FullstackPageType) {
     if (type === 'tabs') { setEntityForm(null); openTabsForm(); return }
-    const fit = (newPageChoices(type, named, pages) ?? []).filter(c => !c.reason)
+    const fit = model.fittingChoices(type)
     setTabsForm(null)
     if (fit.length <= 1) addPage(type, fit[0]?.value)
     else setEntityForm({ type, pick: fit[0].value })
   }
-  /** Why a gallery card is off: no entity fits the type (each entity's own reason is in the chooser). */
-  function noFitReason(type: FullstackPageType, others: FullstackPageDef[] = pages): string | undefined {
-    const choices = newPageChoices(type, named, others)
-    if (!choices || choices.length === 0 || choices.some(c => !c.reason)) return undefined
-    return `No entity fits: ${[...new Set(choices.map(c => c.reason!))].join('; ').toLowerCase()}`
-  }
-  const hasMdPair = masterDetailPairs(named).length > 0
-  const tabsEligible = tabCandidates(pages)
-  /** Why an existing page cannot switch to `type` — the gallery's rules, with the page itself left
-   *  out (its own record/wizard slot is free to reuse, and it cannot be one of its own tabs). */
-  function switchBlocked(page: FullstackPageDef, type: FullstackPageType): { short: string; reason: string } | undefined {
-    if (type === page.type) return undefined
-    if (type === 'master-detail' && !hasMdPair) {
-      return { short: 'needs a many-to-one relation', reason: 'Add a many-to-one relation between two entities first' }
-    }
-    const others = pages.filter(p => p !== page)
-    if (type === 'tabs') {
-      return tabCandidates(others).length < MIN_TABS
-        ? { short: 'needs two other pages', reason: 'A tabs page holds two or more other pages — a list, dashboard, report or master–detail' }
-        : undefined
-    }
-    const own = newPageTypeReason(type, named, others)
-    if (own) return { short: 'not available', reason: own }
-    const reason = noFitReason(type, others)
-    return reason ? { short: 'no entity fits', reason } : undefined
-  }
 
   function openTabsForm() {
-    setTabsForm({ picked: tabsEligible.slice(0, 2).map(p => p.id), title: 'Tabs', hide: true })
+    setTabsForm(initialTabsForm(tabsEligible))
   }
   function addTabsPage() {
     if (!tabsForm) return
-    const { picked, title, hide } = tabsForm
-    const tabsPage: FullstackPageDef = {
-      id: uniquePageId(slugify(title) || 'tabs', pages.map(p => p.id)),
-      type: 'tabs',
-      title: title.trim() || 'Tabs',
-      tabs: picked.map(page => ({ page })),
-    }
-    pushUndo(`Added a tabs page over ${picked.length} pages`)
+    model.addTabsPage(tabsForm)
     setTabsForm(null)
-    setAddOpen(false)
-    onChange([
-      ...(hide ? pages.map(p => (picked.includes(p.id) && !p.hidden ? { ...p, hidden: true, group: undefined, icon: undefined } : p)) : pages),
-      tabsPage,
-    ])
-    pendingOpen.current = pages.length
   }
 
-  // The generated nav's sections, in order — the strip above the list renames and reorders them.
-  const navGroupSections = navSections(pages)
-  function renameGroup(from: string, to: string) {
-    pushUndo(`Renamed the “${from}” group to “${to}”`)
-    onChange(renameGroupInPages(pages, from, to))
-  }
-  function moveGroup(sectionIndex: number, delta: number) {
-    pushUndo('Reordered the navigation sections')
-    onChange(moveNavGroup(pages, sectionIndex, delta))
-  }
-
-  // The preview's own handles on a dashboard: drag a widget to another slot, drag its edge wider.
-  function reorderWidget(pageIndex: number, from: number, to: number) {
-    update(pageIndex, { widgets: moveItem(pages[pageIndex]?.widgets ?? [], from, to) })
-  }
-  function resizeWidget(pageIndex: number, widgetIndex: number, span: number) {
-    const widgets = pages[pageIndex]?.widgets ?? []
-    update(pageIndex, { widgets: widgets.map((w, j) => (j === widgetIndex ? { ...w, span: span === defaultSpan(w.kind) ? undefined : span } : w)) })
-  }
-
-  // A page moved to another type: what the new type cannot use is dropped, and said so.
-  function changeType(index: number, type: FullstackPageType) {
-    const page = pages[index]
-    const { page: next, dropped } = retargetPage(page, type, named, pages)
-    const label = `Changed “${pageLabel(page)}” to a ${PAGE_TYPE_META[type].label.toLowerCase()} page`
-    if (dropped.length) lossy(label, dropped)
-    else pushUndo(label)
-    onChange(pages.map((p, i) => (i === index ? next : p)))
-  }
-
-  function removePage(index: number, dropTabs = false) {
-    setConfirmRemove(null)
-    const page = pages[index]
-    pushUndo(`Removed the “${pageLabel(page)}” page`)
-    onChange(removePageAt(pages, index, dropTabs))
-    if (keys[index] === openKey) setOpenKey(null)
-  }
-
-  function requestRemove(index: number) {
-    if (pagesEmbedding(pages, pages[index].id).length > 0) setConfirmRemove(index)
-    else removePage(index)
-  }
-
-  function duplicate(index: number) {
-    const copy = duplicatePage(pages[index], pages.map(p => p.id))
-    const next = [...pages]
-    next.splice(index + 1, 0, copy)
-    onChange(next)
-    pendingOpen.current = index + 1
-  }
-
-  function move(index: number, delta: number) {
-    const to = index + delta
-    if (to < 0 || to >= pages.length) return
-    onChange(moveItem(pages, index, to))
-  }
-
-  function startFromEntities() {
-    pushUndo('Started a page layout from the entities')
-    onChange(seedLayout(entities, { title: previewSettings?.dashboardTitle, description: previewSettings?.dashboardOverview }))
-  }
-  const layoutTemplates = useMemo(() => LAYOUT_TEMPLATES.map(t => ({ template: t, result: buildLayoutTemplate(t, entities) })), [entities])
   function startFromTemplate(label: string, built: FullstackPageDef[]) {
-    pushUndo(pages.length > 0 ? `Replaced the page layout with the “${label}” template` : `Started a page layout from the “${label}” template`)
-    onChange(built)
+    model.startFromTemplate(label, built)
     setTemplatesOpen(false)
-  }
-
-  // Pages saved as templates, in this browser: offered in the "Add page" gallery.
-  const [myTemplates, setMyTemplates] = useState(readPageTemplates)
-  function saveAsTemplate(page: FullstackPageDef) {
-    const name = pageLabel(page)
-    const replaced = myTemplates.some(t => t.name === name)
-    if (!savePageTemplate(name, page)) {
-      setNotice('This browser refused to store the template (storage full or blocked).')
-      return
-    }
-    setMyTemplates(readPageTemplates())
-    setNotice(`${replaced ? 'Updated' : 'Saved'} “${name}” as a page template — add it again from Add page › My templates.`)
   }
 
   /** Opens a page and focuses one of its controls (or its first invalid one). */
@@ -489,8 +272,6 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     if (serverIssue) reveal({ page: serverIssue.page })
   }, [serverIssue])
 
-  // Finding a page: the search box shows past a handful of pages, or when asked for.
-  const [pageQuery, setPageQuery] = useState('')
   const [searchWanted, setSearchWanted] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const showSearch = pages.length >= PAGE_SEARCH_FROM || searchWanted || pageQuery !== ''
@@ -557,13 +338,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     requestAnimationFrame(() => scrollToElement(sectionRef.current, 'start'))
   }, [previewRequest, layout])
 
-  const settings = previewSettings ?? DEFAULT_PREVIEW_SETTINGS
-  const entityOptions = useMemo(() => new Map(entities.map(e => [e.name, entityOption(e)])), [entities])
-  const warnPages = useMemo(() => new Set(validation.warnings.map(w => w.page).filter((p): p is number => p != null)), [validation.warnings])
-  const preview = useMemo(
-    () => buildLayoutPreview(pages, entities, { locale: settings.locale, projectOpts: settings.projectOpts, warnPages }),
-    [pages, entities, settings.locale, settings.projectOpts, warnPages],
-  )
+  const { settings, entityOptions, preview } = model
   const classicModel = useMemo(
     () => (pages.length === 0 && classicPreview
       ? buildLayoutPreview(seedLayout(entities, { title: settings.dashboardTitle, description: settings.dashboardOverview }), entities, { locale: settings.locale, projectOpts: settings.projectOpts })
@@ -575,16 +350,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     return i >= 0 ? i : preview.nav[0]?.index ?? 0
   })()
   const previewPage = pages[previewIndex]
-  const offNavNote = !previewPage ? undefined
-    : previewPage.type === 'record' ? `Opens from a ${previewPage.entity || 'record'} row — not in the navigation.`
-      : previewPage.hidden && previewPage.type === 'wizard' ? 'Link only — opened from a Page links widget or a list’s New button, not from the navigation.'
-        : previewPage.hidden ? 'Tab only — reachable inside a tabs page, not from the navigation.'
-        : undefined
-  const suggestions = useMemo(() => suggestPages(entities, pages), [entities, pages])
-
-  const issues = serverIssue && pages[serverIssue.page]
-    ? [{ page: serverIssue.page, field: undefined, summary: `The server rejected “${pageLabel(pages[serverIssue.page])}”: ${serverIssue.message}`, fix: undefined }, ...validation.issues]
-    : validation.issues
+  const offNavNote = offNavNoteFor(previewPage)
+  const { suggestions, issues } = model
   const showPreview = pages.length > 0 && previewOpen
 
   return (
@@ -592,7 +359,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
     <section
       ref={sectionRef}
       id="fs-pages"
-      className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 space-y-3"
+      className="@container rounded-xl border border-outline-variant bg-surface-container-lowest p-4 space-y-3"
       aria-label="Frontend page layout"
       data-page-layout
       onKeyDown={onSectionKey}
@@ -788,7 +555,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                     </button>
                     <button
                       type="button"
-                      onClick={() => { deletePageTemplate(t.name); setMyTemplates(readPageTemplates()) }}
+                      onClick={() => model.forgetTemplate(t.name)}
                       className="px-1.5 py-1 text-secondary hover:bg-error/5 hover:text-error"
                       aria-label={`Forget the template “${t.name}”`}
                       title="Forget this template"
@@ -826,11 +593,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {(Object.keys(PAGE_TYPE_META) as FullstackPageType[]).map(type => {
               const meta = PAGE_TYPE_META[type]
-              const reason = type === 'master-detail' && !hasMdPair
-                ? 'Add a many-to-one relation between two entities first (the child’s Relations table)'
-                : type === 'tabs' && tabsEligible.length < MIN_TABS
-                  ? 'Add two pages that can be tabs first — a list, dashboard, report or master–detail'
-                  : newPageTypeReason(type, named, pages) ?? noFitReason(type)
+              const reason = model.newTypeReason(type)
               return (
                 <li key={type}>
                   <button
@@ -891,64 +654,14 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             </div>
           )}
           {tabsForm && (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2" data-tabs-form>
-              <p className="text-xs font-semibold text-on-surface">New tabs page</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-secondary" htmlFor="new-tabs-title">Title</label>
-                <input
-                  id="new-tabs-title"
-                  type="text"
-                  aria-label="Tabs page title"
-                  value={tabsForm.title}
-                  onChange={e => setTabsForm({ ...tabsForm, title: e.target.value })}
-                  className={`${inputClass()} max-w-[14rem] py-1 text-xs`}
-                />
-              </div>
-              <p className="text-[11px] text-secondary">Pages to show as tabs, {MIN_TABS} to {MAX_TABS}, in this order:</p>
-              <ul className="flex flex-wrap gap-2">
-                {tabsEligible.map(p => {
-                  const on = tabsForm.picked.includes(p.id)
-                  return (
-                    <li key={p.id}>
-                      <label className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] ${on ? 'border-primary/50 bg-primary/10 text-primary' : 'border-outline-variant text-on-surface'}`}>
-                        <input
-                          type="checkbox"
-                          className="accent-primary"
-                          checked={on}
-                          aria-label={`Tab: ${pageLabel(p)}`}
-                          onChange={() => setTabsForm({ ...tabsForm, picked: on ? tabsForm.picked.filter(id => id !== p.id) : [...tabsForm.picked, p.id] })}
-                        />
-                        {pageLabel(p)}
-                        <span className="text-[10px] text-secondary">{PAGE_TYPE_META[p.type]?.label ?? p.type}</span>
-                      </label>
-                    </li>
-                  )
-                })}
-              </ul>
-              <label className="inline-flex items-center gap-1.5 text-xs text-on-surface">
-                <input
-                  type="checkbox"
-                  className="accent-primary"
-                  checked={tabsForm.hide}
-                  aria-label="Hide these pages from the navigation"
-                  onChange={e => setTabsForm({ ...tabsForm, hide: e.target.checked })}
-                />
-                Hide these pages from the navigation — they open only as tabs
-              </label>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={addTabsPage}
-                  disabled={tabsForm.picked.length < MIN_TABS || tabsForm.picked.length > MAX_TABS}
-                  className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-on-primary disabled:opacity-50"
-                  title={tabsForm.picked.length < MIN_TABS ? `Pick at least ${MIN_TABS} pages` : tabsForm.picked.length > MAX_TABS ? `At most ${MAX_TABS} tabs` : undefined}
-                >
-                  Add tabs page
-                </button>
-                <button type="button" onClick={() => setTabsForm(null)} className={SMALL_BUTTON}>Cancel</button>
-                <span className="text-[10px] text-secondary">{tabsForm.picked.length} of {MAX_TABS} picked</span>
-              </div>
-            </div>
+            <NewTabsForm
+              eligible={tabsEligible}
+              form={tabsForm}
+              onChange={setTabsForm}
+              onAdd={addTabsPage}
+              onCancel={() => setTabsForm(null)}
+              className="rounded-lg border border-primary/30 bg-primary/5 p-3"
+            />
           )}
         </div>
       )}
@@ -980,10 +693,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               {issue.fix && (
                 <button
                   type="button"
-                  onClick={() => {
-                    pushUndo(issue.fix!.label)
-                    onChange(issue.fix!.apply(pages))
-                  }}
+                  onClick={() => model.applyFix(issue.fix!)}
                   className="inline-flex items-center gap-1 rounded border border-error/40 px-1.5 py-0.5 text-[10px] font-semibold text-error hover:bg-error/10"
                   title="Apply this fix (undoable)"
                   data-page-fix
@@ -995,10 +705,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               {issue.alsoFix && (
                 <button
                   type="button"
-                  onClick={() => {
-                    pushUndo(issue.alsoFix!.label)
-                    onChange(issue.alsoFix!.apply(pages))
-                  }}
+                  onClick={() => model.applyFix(issue.alsoFix!)}
                   className="inline-flex items-center gap-1 rounded border border-error/30 px-1.5 py-0.5 text-[10px] text-error hover:bg-error/10"
                   title="Apply this fix instead (undoable)"
                   data-page-fix-alt

@@ -1,5 +1,6 @@
 import type { FullstackEntityDef } from '../../types'
 import { formSectionsProblem } from './formSections'
+import { workflowProblem } from './workflow'
 import { columnOf, joinColumnOf } from './naming'
 
 /**
@@ -206,6 +207,8 @@ export interface EntityErrors {
   relations?: Record<number, RelationErrors>
   /** The form sections name a field twice, one that is gone, or have no title. */
   formSections?: string
+  /** The workflow would be rejected (a state, field or role it names). */
+  workflow?: string
 }
 
 export interface FullstackErrors {
@@ -218,7 +221,8 @@ export interface FullstackErrors {
 
 /** `projectOpts` (the project's `opts.scaffold`) is needed for the one rule that depends on an
  *  option: optimistic locking takes the name `version` for itself. */
-export function validateEntities(entities: FullstackEntityDef[], projectOpts: string[] = []): FullstackErrors {
+export function validateEntities(entities: FullstackEntityDef[], projectOpts: string[] = [],
+                                 context: { ldapAuth?: boolean } = {}): FullstackErrors {
   const result: FullstackErrors = { entities: {}, count: 0 }
 
   // The backend requires at least one entity (FullstackRequestValidator.java).
@@ -483,8 +487,13 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       eErr.formSections = sectionsErr
       result.count += 1
     }
+    const workflowErr = workflowProblem(entity, context)
+    if (workflowErr) {
+      eErr.workflow = workflowErr
+      result.count += 1
+    }
     const hasRelErrs = eErr.relations && Object.keys(eErr.relations).length > 0
-    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
+    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || eErr.workflow || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
       result.entities[eIdx] = eErr
     }
   })

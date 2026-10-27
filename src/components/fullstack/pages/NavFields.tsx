@@ -10,7 +10,7 @@ export function NavFields({ page, index, pages, errors, update }: Omit<FormProps
   const fallback = DEFAULT_NAV_ICON[page.type]
   const current = page.icon ?? fallback
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[12rem_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-2 @sm:grid-cols-[12rem_minmax(0,1fr)]">
       <Field label="Nav group" error={errors.group} control="group" hint={`Pages with the same group are listed together · up to ${MAX_GROUP} characters`}>
         <div className="flex flex-wrap items-center gap-1.5">
           <input

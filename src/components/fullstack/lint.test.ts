@@ -142,9 +142,11 @@ describe('lintModel', () => {
 })
 
 describe('built-in examples', () => {
+  // An example opens on the backend set's default dependencies, which carry ldap-auth-rest
+  // (Approvals limits steps to roles, which need it).
   for (const example of seededExamples as ExampleModel[]) {
     it(`${example.name} raises no warnings`, () => {
-      const warns = lintModel(withUids(example.entities), [], []).filter(i => i.severity === 'warn')
+      const warns = lintModel(withUids(example.entities), [], ['ldap-auth-rest']).filter(i => i.severity === 'warn')
       expect(warns.map(i => i.message)).toEqual([])
     })
   }

@@ -424,12 +424,37 @@ export interface FullstackEntityDef {
   /** The form in titled sections (the drawer form, the record's details, and a wizard without
    *  its own steps follow them); fields no section lists come after, untitled. */
   formSections?: FullstackFormSection[]
+  /** A workflow over one enum field ("human tasks"): its values are states, and only the named
+   *  transitions move a row between them (FullstackRequestValidator.parseWorkflow). */
+  workflow?: FullstackWorkflow
 }
 
 /** A titled group of an entity's form: field and MANY_TO_ONE relation names, in order. */
 export interface FullstackFormSection {
   title: string
   fields: string[]
+}
+
+/** An entity's workflow: the status field, where a new row starts (default: the field's default,
+ *  else its first value), who a row is assigned to (a text field holding a user id) and when it
+ *  is due, and the moves between states. */
+export interface FullstackWorkflow {
+  statusField: string
+  initial?: string
+  assigneeField?: string
+  dueField?: string
+  transitions: FullstackTransition[]
+}
+
+/** One move of a workflow: from any of `from` to `to`, by a user with one of `roles` (none:
+ *  anyone), asking for the `requires` fields and relations. */
+export interface FullstackTransition {
+  name: string
+  label?: string
+  from: string[]
+  to: string
+  roles?: FullstackPageRole[]
+  requires?: string[]
 }
 
 /** A fullstack model saved on the server for the whole team (`/metadata/fullstack/models`).
@@ -443,6 +468,17 @@ export interface TeamModelSummary {
   createdAt: string
   updatedAt: string
 }
+
+/** A layout-designer template shared with the team (`/metadata/fullstack/templates`): a page or a
+ *  dashboard widget, its definition in `content`. The listing carries the content too. */
+export type TeamTemplate = {
+  id: number
+  name: string
+  description: string | null
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+} & ({ kind: 'page'; content: FullstackPageDef } | { kind: 'widget'; content: FullstackWidgetDef })
 
 export interface EntityTemplateSetSummary {
   setKey: string
@@ -529,14 +565,17 @@ export interface ExampleModel {
 
 /** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
 export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record' | 'report' | 'wizard'
-  | 'calendar' | 'board' | 'content' | 'import' | 'search'
+  | 'form' | 'calendar' | 'board' | 'content' | 'import' | 'search' | 'inbox'
+
+/** An inbox page's queues: the user's own open rows, nobody's, or every open one. */
+export type FullstackInboxQueue = 'mine' | 'unassigned' | 'open'
 
 /** The views a calendar page offers (FullstackPageValidator.calendar). */
 export type FullstackCalendarMode = 'month' | 'week' | 'agenda' | 'timeline'
 
 /** The lucide icons a page may show in the generated nav (FullstackPageValidator.NAV_ICONS). */
 export type FullstackNavIcon =
-  | 'BarChart3' | 'Building2' | 'Calendar' | 'Columns3' | 'FileText' | 'Inbox' | 'Layers' | 'LayoutDashboard'
+  | 'BarChart3' | 'Building2' | 'Calendar' | 'Columns3' | 'FilePlus' | 'FileText' | 'Inbox' | 'Layers' | 'LayoutDashboard'
   | 'ListChecks' | 'Package' | 'PanelLeft' | 'Search' | 'Settings' | 'ShoppingCart' | 'Star' | 'Table2' | 'Tag'
   | 'Ticket' | 'Truck' | 'Upload' | 'Users' | 'Wallet' | 'Wand2'
 
@@ -585,6 +624,9 @@ export interface FullstackWidgetDef {
   dateField?: string
   /** kpi: also show the change against the previous period of the dashboard's picker. */
   compare?: boolean
+  /** kpi: a sparkline under the number, one point per day/month/year over a date — the picker's
+   *  date field, else `dateField` (which then needs no picker), else the entity's first date. */
+  trend?: FullstackBucket
   /** progress: the value the bar fills up to (a positive number, as written). */
   target?: string
   /** activity: the audited entities whose latest changes it lists (default: every audited one, up to 6). */
@@ -729,6 +771,8 @@ export interface FullstackPageDef {
   lanes?: string[]
   /** board: what a card shows — 1–4 field or relation names, the first as its heading. */
   cardFields?: string[]
+  /** inbox: the queues it offers as tabs, the first opening (default: mine, unassigned). */
+  queues?: FullstackInboxQueue[]
   /** board: lane value → the most cards it should hold. */
   wipLimits?: Record<string, number>
   /** board: the cards a lane loads at a time — 10, 20 or 50 (default 20). */

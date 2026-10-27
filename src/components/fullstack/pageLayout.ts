@@ -17,7 +17,7 @@ import type {
   FullstackWidgetDef,
 } from '../../types'
 import {
-  blankNewTypePage, checkBoard, checkCalendar, checkContent, checkImport, checkSearch, describeNewTypePage,
+  blankNewTypePage, checkBoard, checkCalendar, checkContent, checkImport, checkInbox, checkSearch, describeNewTypePage,
   newSearchReason, newTypeReason, renameEntityInNewPages, renameEnumValueInNewPages, renameFieldInNewPages,
   renamePageIdInBody, renameRelationInNewPages,
 } from './newPageTypes'
@@ -121,6 +121,13 @@ export function viewDisabledReason(entity: FullstackEntityDef | undefined, view:
 
 /** What a wizard step can ask for: every field but a generated key, then the MANY_TO_ONE
  *  relations (by field name) — what the entity's form shows. */
+/** What a wizard can ask for: the form's fields, without a workflow's status (it starts in its
+ *  initial state, and only transitions move it). */
+export function wizardFields(entity: FullstackEntityDef | undefined): { name: string; required: boolean; relation: boolean }[] {
+  const status = entity?.workflow?.statusField
+  return askableFields(entity).filter(a => a.relation || a.name !== status)
+}
+
 export function askableFields(entity: FullstackEntityDef | undefined): { name: string; required: boolean; relation: boolean }[] {
   if (!entity) return []
   return [
@@ -133,12 +140,16 @@ export function askableFields(entity: FullstackEntityDef | undefined): { name: s
 
 /** The steps a wizard gets when it names none (FullstackPageValidator): four fields to a step. */
 export function defaultWizardSteps(entity: FullstackEntityDef | undefined): { title?: string; fields: string[] }[] {
-  const names = askableFields(entity).map(f => f.name)
+  const names = wizardFields(entity).map(f => f.name)
+  const status = entity?.workflow?.statusField
   // The entity's form sections, one step each, then whatever they leave out (FullstackPageValidator.steps).
   if (entity?.formSections?.length) {
     const placed = new Set(entity.formSections.flatMap(s => s.fields.map(f => f.toLowerCase())))
     const rest = names.filter(n => !placed.has(n.toLowerCase()))
-    return [...entity.formSections.map(s => ({ title: s.title, fields: [...s.fields] })), ...(rest.length ? [{ fields: rest }] : [])]
+    const sections = entity.formSections
+      .map(s => ({ title: s.title, fields: s.fields.filter(f => f !== status) }))
+      .filter(s => s.fields.length > 0)
+    return [...sections, ...(rest.length ? [{ fields: rest }] : [])]
   }
   const steps: { fields: string[] }[] = []
   for (let i = 0; i < names.length; i += DEFAULT_STEP_SIZE) steps.push({ fields: names.slice(i, i + DEFAULT_STEP_SIZE) })
@@ -219,6 +230,7 @@ export const NAV_ICONS: Record<FullstackNavIcon, { symbol: string; label: string
   Inbox: { symbol: 'inbox', label: 'Inbox' },
   Calendar: { symbol: 'calendar_month', label: 'Calendar' },
   FileText: { symbol: 'description', label: 'Document' },
+  FilePlus: { symbol: 'note_add', label: 'New document' },
   Settings: { symbol: 'settings', label: 'Settings' },
   Truck: { symbol: 'local_shipping', label: 'Truck' },
   Wallet: { symbol: 'account_balance_wallet', label: 'Wallet' },
@@ -237,11 +249,13 @@ export const DEFAULT_NAV_ICON: Record<FullstackPageType, FullstackNavIcon> = {
   record: 'Table2',
   report: 'BarChart3',
   wizard: 'Wand2',
+  form: 'FilePlus',
   calendar: 'Calendar',
   board: 'Columns3',
   content: 'FileText',
   import: 'Upload',
   search: 'Search',
+  inbox: 'Inbox',
 }
 
 /** Whether a page is listed in the generated nav (a record page never is). */
@@ -613,6 +627,14 @@ export function widgetDateField(w: FullstackWidgetDef, entity: FullstackEntityDe
   return w.dateField || filterableDateFields(entity)[0]?.name
 }
 
+/** The date a kpi's trend plots over, as the backend resolves it: the period picker's date, else
+ *  the named `dateField` (a picker-less dashboard lets a trend name any date), else the first date. */
+export function trendDateField(w: FullstackWidgetDef, entity: FullstackEntityDef | undefined, hasPicker: boolean): string | undefined {
+  if (hasPicker) return widgetDateField(w, entity) ?? dateFields(entity)[0]?.name
+  if (w.dateField) return dateFields(entity).some(f => f.name === w.dateField) ? w.dateField : undefined
+  return dateFields(entity)[0]?.name
+}
+
 /** What sum/avg/min/max can reduce: a non-key numeric column. */
 export function numericFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
   return (entity?.fields ?? [])
@@ -791,8 +813,58 @@ export function validatePages(pages: FullstackPageDef[], entities: FullstackEnti
   }
 }
 
+/**
+ * Applies every problem's own fix, one at a time: a fix is written against the layout it was found
+ * in (it removes page 3, widget 2…), so the layout is validated again after each one instead of
+ * applying them all to the first. A fix that leaves no fewer problems is skipped, so a fix that does
+ * not hold cannot loop. Returns the layout and the labels of the fixes applied, in order.
+ */
+export function fixAllProblems(pages: FullstackPageDef[], entities: FullstackEntityDef[], context: PageLayoutContext = {}): { pages: FullstackPageDef[]; applied: string[] } {
+  let current = pages
+  const applied: string[] = []
+  for (let round = 0; round < 100; round++) {
+    const before = validatePages(current, entities, context)
+    const fixes = before.issues.flatMap(i => (i.fix ? [i.fix] : []))
+    let next: FullstackPageDef[] | null = null
+    for (const fix of fixes) {
+      const after = fix.apply(current)
+      const check = validatePages(after, entities, context)
+      if (check.count < before.count || check.issues.filter(i => i.fix).length < fixes.length) {
+        next = after
+        applied.push(fix.label)
+        break
+      }
+    }
+    if (!next) break
+    current = next
+  }
+  return { pages: current, applied }
+}
+
+/** Advice thresholds: past these a layout still generates, but reads as crowded. */
+export const ADVICE = {
+  /** Visible nav entries with no group to sort them into. */
+  navItems: 8,
+  /** Widgets on one dashboard. */
+  dashboardWidgets: 12,
+  /** Columns a list shows — the ones it names, or by default every field and relation. */
+  listColumns: 11,
+  /** What a "keep the first N columns" fix keeps. */
+  keepColumns: 6,
+} as const
+
+/** The nav group a crowded nav's fix files a page under, by what the page is for. */
+function adviceGroup(type: FullstackPageType): string {
+  switch (type) {
+    case 'dashboard': case 'report': return 'Insights'
+    case 'wizard': case 'form': case 'import': case 'content': case 'search': case 'inbox': return 'Tools'
+    default: return 'Data'
+  }
+}
+
 /** The dead ends a valid layout can still have — what the generated app silently does nothing
- *  about. Each names the page and, where one repair is obvious, offers it. */
+ *  about — and advice on one that reads as crowded. Each names the page (or the layout) and,
+ *  where one repair is obvious, offers it. */
 function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef[]): Issue[] {
   if (pages.length === 0) return []
   const out: Issue[] = []
@@ -817,6 +889,8 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
     apply: all => [...all, { id: uniquePageId(slugify(e.name), all.map(p => p.id)), type: 'record', entity: e.name, hidden: true }],
   } : undefined)
   const seen = new Set<string>()
+  // Entities a record page lists as related tabs (their rows show there).
+  const relatedShown: string[] = []
 
   pages.forEach((page, index) => {
     const label = pageLabel(page)
@@ -831,11 +905,11 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       out.push({ key, page: index, field, message: '', summary, ...(fix ? { fix } : {}) })
     }
 
-    if (page.hidden && page.type !== 'record' && page.type !== 'wizard' && pagesEmbedding(pages, page.id).length === 0) {
+    if (page.hidden && page.type !== 'record' && !createsRows(page) && pagesEmbedding(pages, page.id).length === 0) {
       warn('unreachable', 'page', `${where} is hidden but no tabs page embeds it, so nothing opens it`,
         patchPage(index, `Show “${label}” in the navigation`, p => ({ ...p, hidden: false })))
     }
-    if ((page.roles?.length ?? 0) > 0 && page.hidden && page.type !== 'wizard') {
+    if ((page.roles?.length ?? 0) > 0 && page.hidden && !createsRows(page)) {
       warn('hidden-roles', 'roles', `${where} is restricted to roles, but it is out of the navigation, so the roles never apply`,
         patchPage(index, `Drop the roles of “${label}”`, p => ({ ...p, roles: undefined })))
     }
@@ -849,6 +923,9 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
         if (chart && !w.drillTo?.trim() && !visibleList(e.name)) {
           warn('chart-dead-end', `widget.${wi}`, `${where}: clicking a bar of the ${e.name} chart goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e), e.name)
         }
+        if (w.kind === 'pivot' && !w.drillTo?.trim() && !visibleList(e.name)) {
+          warn('pivot-dead-end', `widget.${wi}`, `${where}: clicking a cell of the ${e.name} pivot goes nowhere — ${e.name} has no list page in the navigation`, addListPage(e), e.name)
+        }
         if (w.kind === 'recent' && singlePk(e) && !recordPage(e.name)) {
           warn('recent-dead-end', `widget.${wi}`, `${where}: the recent ${e.name} rows open nothing — ${e.name} has no record page`, addRecordPage(e), e.name)
         }
@@ -856,6 +933,28 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       })
       if (page.dateRange && dateless.length > 0) {
         warn('dateless', `widget.${dateless[0]}`, `${where}: ${dateless.length === 1 ? 'one widget has' : `${dateless.length} widgets have`} no date, so the period picker does not limit ${dateless.length === 1 ? 'it' : 'them'}`)
+      }
+      const count = page.widgets?.length ?? 0
+      if (count >= ADVICE.dashboardWidgets) {
+        warn('crowded-dashboard', 'widgets', `${where} has ${count} widgets — consider splitting it into a tabs page or a second dashboard`)
+      }
+    }
+    if (page.type === 'entity-list') {
+      const e = entityOf(page.entity)
+      const all = e ? [...e.fields.map(f => f.name), ...(e.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => r.fieldName)] : []
+      const shown = page.columns ?? all
+      if (e && shown.length >= ADVICE.listColumns) {
+        warn('wide-list', 'columns', `${where} shows ${shown.length} columns — a list reads best with ${ADVICE.keepColumns} or fewer`,
+          patchPage(index, `Show the first ${ADVICE.keepColumns} columns of “${label}”`, p => ({ ...p, columns: shown.slice(0, ADVICE.keepColumns) })))
+      }
+      // The same list twice in the navigation: an earlier visible list of the entity that opens
+      // the same way (preset and view).
+      const twin = !page.hidden && e ? pages.findIndex((o, oi) => oi < index && o.type === 'entity-list' && !o.hidden && same(o.entity, e.name)
+        && JSON.stringify(o.presetFilter ?? {}) === JSON.stringify(page.presetFilter ?? {}) && (o.view ?? null) === (page.view ?? null)) : -1
+      if (twin >= 0) {
+        const embedded = pagesEmbedding(pages, page.id).length > 0
+        warn('duplicate-list', 'entity', `${where} lists the same ${e!.name} rows as “${pageLabel(pages[twin])}”`,
+          embedded ? undefined : { label: `Remove “${label}”`, apply: all => all.filter((_, i) => i !== index) })
       }
     }
     if (page.type === 'report') {
@@ -868,6 +967,7 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       const e = entityOf(page.entity)
       if (!e) return
       const related = entities.filter(o => o.name.trim() && relationsTo(o, e.name).length > 0)
+      relatedShown.push(...(page.childTabs ? page.childTabs.map(childTabEntity) : related.slice(0, MAX_CHILD_TABS).map(o => o.name)))
       if (page.childTabs == null && related.length > MAX_CHILD_TABS) {
         warn('child-tabs-cap', 'childTabs', `${where} shows only the first ${MAX_CHILD_TABS} of its ${related.length} related lists`,
           patchPage(index, `Choose the first ${MAX_CHILD_TABS} related lists`, p => ({ ...p, childTabs: related.slice(0, MAX_CHILD_TABS).map(o => o.name) })))
@@ -879,6 +979,36 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       }
     }
   })
+
+  // The layout as a whole.
+  const layoutWarn = (key: string, summary: string, fix?: PageFix) => out.push({ key, message: '', summary, ...(fix ? { fix } : {}) })
+  const nav = pages.map((p, i) => ({ p, i })).filter(({ p }) => !p.hidden && p.type !== 'record')
+  if (nav.length > ADVICE.navItems && nav.every(({ p }) => !p.group?.trim())) {
+    layoutWarn('crowded-nav:layout', `The navigation lists ${nav.length} pages with no sections — group them so the menu stays scannable`, {
+      label: 'Group the navigation by what each page is for',
+      apply: all => all.map(p => (!p.hidden && p.type !== 'record' ? { ...p, group: adviceGroup(p.type) } : p)),
+    })
+  }
+  // An entity the layout forgot: no page, widget, tab or number names it, and it is not linked to
+  // one that is (a lookup shown through a relation is left alone).
+  const used = new Set<string>(relatedShown.map(n => n.trim().toLowerCase()))
+  const use = (name: string | undefined) => { if (name?.trim()) used.add(name.trim().toLowerCase()) }
+  for (const p of pages) {
+    use(p.entity); use(p.parent); use(p.child)
+    p.entities?.forEach(use)
+    p.childTabs?.forEach(t => use(childTabEntity(t)))
+    p.headerStats?.forEach(st => use(st.child))
+    p.widgets?.forEach(w => { use(w.entity); w.entities?.forEach(use) })
+  }
+  const linked = (e: FullstackEntityDef) => (e.relations ?? []).some(r => used.has(r.targetEntity.trim().toLowerCase()))
+    || entities.some(o => used.has(o.name.trim().toLowerCase()) && relationsTo(o, e.name).length > 0)
+  if (used.size > 0) {
+    for (const e of entities) {
+      const name = e.name.trim().toLowerCase()
+      if (!name || used.has(name) || linked(e)) continue
+      layoutWarn(`entity-without-page:${name}`, `No page shows ${e.name} — the app offers no way to browse or edit its rows`, addListPage(e))
+    }
+  }
   return out
 }
 
@@ -1038,7 +1168,17 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
   const typeById = new Map(pages.map(p => [p.id, p.type]))
   const seenIds = new Set<string>()
   const recordEntities = new Map<string, string>()
-  const wizardEntities = new Map<string, string>()
+  // The page that creates each entity's rows: a wizard or a form, one per entity.
+  const createPages = new Map<string, FullstackPageDef>()
+  const checkOneCreatePage = (e: FullstackEntityDef, page: FullstackPageDef, where: string,
+                              add: (field: string, message: string, summary?: string) => void) => {
+    const already = createPages.get(e.name)
+    if (already) {
+      add('entity', `${e.name} already has the ${already.type} “${already.id}”`, already.type === page.type
+        ? `${where} is a second ${page.type} for ${e.name}`
+        : `${where} is a ${page.type} for ${e.name}, which already has a ${already.type} — an entity has one or the other`)
+    } else createPages.set(e.name, page)
+  }
 
   if (pages.length > MAX_PAGES) {
     issues.push({ message: '', summary: `A layout can have at most ${MAX_PAGES} pages` })
@@ -1081,6 +1221,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         return singlePk(r) ? patchPage(index, label, p => ({ ...p, ...retargetRecord(p, r.name).patch })) : undefined
       case 'wizard':
         return !r.readOnly && askableFields(r).length ? patchPage(index, label, p => ({ ...p, entity: r.name, steps: retargetWizardSteps(p.steps, r).steps })) : undefined
+      case 'form':
+        return !r.readOnly ? patchPage(index, label, p => ({ ...p, entity: r.name })) : undefined
       default:
         return undefined
     }
@@ -1244,7 +1386,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
               if (!target) add(`widget.${wi}.pages`, `no page “${id}”`, `${where} links to the missing page “${id}”`, dropLink(id))
               else if (target.type === 'record') {
                 add(`widget.${wi}.pages`, `“${pageLabel(target)}” opens from a row, not a link`, `${where} links to the record page “${pageLabel(target)}”, which opens from a row`, dropLink(id))
-              } else if (target.hidden && target.type !== 'wizard') {
+              } else if (target.hidden && !createsRows(target) && target.type !== 'search') {
                 add(`widget.${wi}.pages`, `“${pageLabel(target)}” is hidden, so a link cannot open it`, `${where} links to “${pageLabel(target)}”, which is hidden from the navigation`, dropLink(id))
               } else if (ids.indexOf(id) !== li) add(`widget.${wi}.pages`, `links to “${pageLabel(target)}” twice`, `${where} links to “${pageLabel(target)}” twice`)
             })
@@ -1359,6 +1501,16 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
                 `${where} compares periods, but ${!page.dateRange ? 'has no period picker' : `${e.name} has no filterable date`}`)
             }
           }
+          if (w.trend) {
+            if (w.kind !== 'kpi') {
+              add(`widget.${wi}.trend`, 'only a number tile draws a trend', `${where} draws a trend on a ${w.kind} widget`)
+            } else if (!['day', 'month', 'year'].includes(w.trend)) {
+              add(`widget.${wi}.trend`, `“${w.trend}” is not day, month or year`, `${where} draws a trend per “${w.trend}”`)
+            } else if (!trendDateField(w, e, Boolean(page.dateRange)) && !w.dateField) {
+              add(`widget.${wi}.trend`, `${e.name} has no date field to plot over time`,
+                `${where} draws a trend of ${e.name}, which has no date field`)
+            }
+          }
           if (w.bucket && w.kind !== 'line') {
             add(`widget.${wi}.bucket`, 'only a trend takes a bucket', `${where} buckets a ${w.kind} widget`)
           }
@@ -1387,7 +1539,13 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           }
           checkPresetFilter(w.presetFilter, e, entityOf, add, `${where} has a widget that`, field => `widget.${wi}.presetFilter.${field}`)
           if (w.dateField) {
-            if (!page.dateRange) {
+            if (!page.dateRange && w.kind === 'kpi' && w.trend) {
+              // No picker: the date only names what the trend plots over.
+              if (!dateFields(e).some(f => f.name === w.dateField)) {
+                add(`widget.${wi}.dateField`, `${e.name} has no date field “${w.dateField}”`,
+                  `${where} plots a trend over “${w.dateField}”, which is not one of ${e.name}’s date fields`)
+              }
+            } else if (!page.dateRange) {
               add(`widget.${wi}.dateField`, 'a date field needs the dashboard’s period picker',
                 `${where} limits a widget by “${w.dateField}”, but has no period picker`)
             } else if (!filterableDateFields(e).some(f => f.name === w.dateField)) {
@@ -1614,17 +1772,17 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           break
         }
         if (e.readOnly) add('entity', `${e.name} is read-only`, `${where} creates ${e.name}, which is read-only`)
-        const already = wizardEntities.get(e.name)
-        if (already) add('entity', `${e.name} already has the wizard “${already}”`, `${where} is a second wizard for ${e.name}`)
-        wizardEntities.set(e.name, page.id)
-        const askable = askableFields(e)
+        checkOneCreatePage(e, page, where, add)
+        const askable = wizardFields(e)
         const steps = page.steps ?? []
         if (steps.length > MAX_STEPS) add('steps', `has more than ${MAX_STEPS} steps`)
         const asked = new Set<string>()
         steps.forEach((step, si) => {
           if (step.fields.length === 0) add(`step.${si}`, 'asks for nothing', `${where} has an empty step ${si + 1}`)
           for (const name of step.fields) {
-            if (!askable.some(a => a.name === name)) {
+            if (name === e.workflow?.statusField) {
+              add(`step.${si}`, `“${name}” is set by the workflow`, `${where} asks for “${name}”, which its workflow sets`)
+            } else if (!askable.some(a => a.name === name)) {
               add(`step.${si}`, `${e.name} has no field “${name}”`, `${where} asks for “${name}”, which ${e.name} no longer has`)
             } else if (asked.has(name)) {
               add(`step.${si}`, `“${name}” is already asked for`, `${where} asks for “${name}” twice`)
@@ -1650,8 +1808,22 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         if (askable.length === 0) add('entity', `${e.name} has no field to ask for`)
         break
       }
+      case 'form': {
+        const e = entityOf(page.entity)
+        if (!e) {
+          add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
+            page.entity ? `${where} creates “${page.entity}”, which is no longer an entity` : `${where} names no entity`,
+            page.entity ? switchPage(index) ?? removePage(index) : undefined,
+            page.entity && switchPage(index) ? removePage(index) : undefined)
+          break
+        }
+        if (e.readOnly) add('entity', `${e.name} is read-only`, `${where} creates ${e.name}, which is read-only`)
+        checkOneCreatePage(e, page, where, add)
+        break
+      }
       case 'calendar':
       case 'board':
+      case 'inbox':
       case 'import': {
         const e = entityOf(page.entity)
         if (!e) {
@@ -1666,6 +1838,10 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         } else if (page.type === 'board') {
           checkPresetFilter(page.presetFilter, e, entityOf, add, where)
           checkBoard(page, e, add, where)
+          if (page.sort) checkListPresentation({ id: page.id, type: 'entity-list', entity: e.name, sort: page.sort }, e, add, where, scaffoldOpts)
+        } else if (page.type === 'inbox') {
+          checkPresetFilter(page.presetFilter, e, entityOf, add, where)
+          checkInbox(page, e, add, where)
           if (page.sort) checkListPresentation({ id: page.id, type: 'entity-list', entity: e.name, sort: page.sort }, e, add, where, scaffoldOpts)
         } else {
           checkImport(page, e, pages, add, where)
@@ -1742,6 +1918,8 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       const steps = page.steps?.length
       return `${page.entity ?? '?'} · ${steps ? `${steps} step${steps === 1 ? '' : 's'}` : 'default steps'} and a review`
     }
+    case 'form':
+      return `${page.entity ?? '?'} · its whole form — New and Edit open it`
     case 'record': {
       const tabs = page.childTabs
       const related = tabs == null ? 'its related lists' : tabs.length === 0 ? 'no related lists'
@@ -1919,11 +2097,13 @@ export const PAGE_TYPE_META: Record<FullstackPageType, { icon: string; label: st
   record: { icon: 'article', label: 'Record', blurb: 'One row opened from a list, with its related lists as tabs.' },
   report: { icon: 'monitoring', label: 'Report', blurb: 'One entity’s filters above up to four charts and a totals table (an Export button with the CSV export option).' },
   wizard: { icon: 'format_list_numbered', label: 'Wizard', blurb: 'A create form split into steps, with a review before saving.' },
+  form: { icon: 'edit_note', label: 'Form', blurb: 'One entity’s whole form on a page of its own — New and Edit open it instead of a drawer.' },
   calendar: { icon: 'calendar_month', label: 'Calendar', blurb: 'One entity’s rows by date — month, week, agenda or a timeline of bars; click a day to add one.' },
   board: { icon: 'view_kanban', label: 'Board', blurb: 'Cards in lanes of an enum or yes/no field, dragged between lanes, with optional lane limits.' },
   content: { icon: 'description', label: 'Content', blurb: 'A page of text — headings, lists, notes and links to other pages or the web.' },
   import: { icon: 'upload_file', label: 'Import', blurb: 'Upload a CSV file, match its columns, check every row, then create them all at once.' },
   search: { icon: 'search', label: 'Search', blurb: 'One search box over several entities, results grouped by entity — optionally in the app’s header.' },
+  inbox: { icon: 'inbox', label: 'Inbox', blurb: 'A workflow’s tasks — mine, unassigned, all open — with each row’s next steps, Claim and Release.' },
 }
 
 // ── Defaults the generator resolves ─────────────────────────────────────────
@@ -2179,7 +2359,11 @@ export function renameEnumValueInPages(pages: FullstackPageDef[], entity: string
 
 /** Page types a layout holds at most one of (per entity, or at all): a copy would be invalid
  *  the moment it was made, so the editor does not offer to duplicate them. */
-const SINGLE_PAGE_TYPES: ReadonlySet<FullstackPageType> = new Set<FullstackPageType>(['record', 'wizard', 'import', 'search'])
+const SINGLE_PAGE_TYPES: ReadonlySet<FullstackPageType> = new Set<FullstackPageType>(['record', 'wizard', 'form', 'import', 'search'])
+
+/** Whether `page` creates its entity's rows (a wizard or a form) — a route of its own even when
+ *  hidden, since New, a calendar's day and a record's Edit open it. */
+export const createsRows = (page: FullstackPageDef): boolean => page.type === 'wizard' || page.type === 'form'
 
 /** Whether the editor offers to duplicate `page`. */
 export const canDuplicate = (page: FullstackPageDef): boolean => !SINGLE_PAGE_TYPES.has(page.type)
@@ -2378,7 +2562,7 @@ export function suggestPages(entities: FullstackEntityDef[], pages: FullstackPag
   }
   for (const e of named) {
     if (e.readOnly || askableFields(e).length < 6) continue
-    if (pages.some(p => p.type === 'wizard' && sameName(p.entity, e.name))) continue
+    if (pages.some(p => createsRows(p) && sameName(p.entity, e.name))) continue
     out.push({
       key: `wizard:${e.name}`,
       icon: PAGE_TYPE_META.wizard.icon,
@@ -2388,6 +2572,93 @@ export function suggestPages(entities: FullstackEntityDef[], pages: FullstackPag
     })
   }
   return out.slice(0, limit)
+}
+
+// ── Suggestions for the designer's widget library ───────────────────────────
+
+export interface WidgetSuggestion {
+  key: string
+  icon: string
+  label: string
+  blurb: string
+  /** The widget to add, settings and all. */
+  widget: FullstackWidgetDef
+}
+
+/** What a widget shows, for spotting one the dashboard already has: its kind (a donut is a bar
+ *  drawn round), entity, grouping (defaults resolved), aggregate and field. */
+function widgetShape(w: FullstackWidgetDef, entity: FullstackEntityDef | undefined): string {
+  const kind = w.kind === 'donut' ? 'bar' : w.kind
+  const groupBy = w.groupBy ?? (kind === 'line' ? defaultLineGroupBy(entity) : kind === 'bar' || kind === 'top' ? defaultTopGroupBy(entity) : undefined)
+  const agg = w.agg ?? 'count'
+  return [kind, (w.entity ?? '').trim().toLowerCase(), groupBy ?? '', agg, agg === 'count' ? '' : w.field ?? ''].join('|')
+}
+
+/**
+ * Ready-made widgets for one entity on one dashboard — a count, the total of its money (or other
+ * number) column, a breakdown by its first enum/boolean, a trend over its first date, its top
+ * related records, its latest rows — leaving out what the dashboard already shows. Each one is run
+ * through the validator on the dashboard first, so a suggestion is valid the moment it is added.
+ */
+export function suggestWidgets(entity: FullstackEntityDef | undefined, pages: FullstackPageDef[], pageIndex: number,
+                               context: { entities: FullstackEntityDef[]; scaffoldOpts?: string[] }, limit = 6): WidgetSuggestion[] {
+  const dashboard = pages[pageIndex]
+  if (!entity || !entity.name.trim() || dashboard?.type !== 'dashboard') return []
+  const name = entity.name.trim()
+  const plural = pluralize(name)
+  const labelOf = (f: FullstackFieldDef) => f.label?.trim() || humanize(f.name)
+  const candidates: WidgetSuggestion[] = [{
+    key: 'count', icon: 'counter_1', label: `Number of ${plural}`, blurb: 'A tile counting the rows',
+    widget: { kind: 'kpi', entity: name },
+  }]
+  const numbers = numericFields(entity)
+  const money = numbers.find(f => f.type === 'BIG_DECIMAL') ?? numbers[0]
+  if (money) {
+    candidates.push({
+      key: `sum:${money.name}`, icon: 'functions', label: `Total ${labelOf(money).toLowerCase()}`, blurb: `A tile summing ${labelOf(money)} over every ${name}`,
+      widget: { kind: 'kpi', entity: name, agg: 'sum', field: money.name },
+    })
+  }
+  const group = defaultBarGroupBy(entity)
+  const groupField = entity.fields.find(f => f.name === group)
+  if (groupField) {
+    candidates.push({
+      key: `donut:${groupField.name}`, icon: 'donut_large', label: `${plural} by ${labelOf(groupField).toLowerCase()}`, blurb: 'Shares of each value, as a ring',
+      widget: { kind: 'donut', entity: name, groupBy: groupField.name },
+    })
+  }
+  const date = dateFields(entity)[0]
+  if (date) {
+    candidates.push({
+      key: `line:${date.name}`, icon: 'show_chart', label: `${plural} over time`, blurb: `Counted per month of ${labelOf(date)}`,
+      widget: { kind: 'line', entity: name, groupBy: date.name, bucket: 'month' },
+    })
+  }
+  const relation = (entity.relations ?? []).find(r => r.type === 'MANY_TO_ONE' && r.fieldName.trim())
+  if (relation) {
+    candidates.push({
+      key: `top:${relation.fieldName}`, icon: 'format_list_numbered', label: `Top ${humanize(relation.fieldName).toLowerCase()} by ${plural.toLowerCase()}`,
+      blurb: `The ${relation.targetEntity} records with the most ${plural}`,
+      widget: { kind: 'top', entity: name, groupBy: relation.fieldName, limit: 5 },
+    })
+  }
+  candidates.push({
+    key: 'recent', icon: 'list', label: `Latest ${plural.toLowerCase()}`, blurb: 'The newest rows, each opening its record',
+    widget: { kind: 'recent', entity: name, limit: 5 },
+  })
+
+  const widgets = dashboard.widgets ?? []
+  if (widgets.length >= MAX_WIDGETS) return []
+  const shown = new Set(widgets.map(w => widgetShape(w, context.entities.find(e => e.name.trim().toLowerCase() === (w.entity ?? '').trim().toLowerCase()))))
+  const at = widgets.length
+  return candidates
+    .filter(c => !shown.has(widgetShape(c.widget, entity)))
+    .filter(c => {
+      const trial = pages.map((p, i) => (i === pageIndex ? { ...p, widgets: [...widgets, c.widget] } : p))
+      const errors = validatePages(trial, context.entities, { scaffoldOpts: context.scaffoldOpts }).byPage[pageIndex] ?? {}
+      return !Object.keys(errors).some(k => k === `widget.${at}` || k.startsWith(`widget.${at}.`))
+    })
+    .slice(0, limit)
 }
 
 /** Materializes a suggestion under a free id. */
@@ -2432,8 +2703,14 @@ export function blankPage(type: FullstackPageType, entities: FullstackEntityDef[
       const e = picked ?? entities.find(x => !x.readOnly && askableFields(x).length > 0) ?? entities[0]
       return { id: id(`new-${e?.name ?? 'record'}`), type, entity: e?.name ?? first, title: `New ${e?.name ?? 'record'}`, steps: defaultWizardSteps(e) }
     }
+    case 'form': {
+      // A writable entity without a wizard or form of its own.
+      const e = picked ?? entities.find(x => !x.readOnly && !pages.some(p => createsRows(p) && sameName(p.entity, x.name))) ?? entities[0]
+      return { id: id(`new-${e?.name ?? 'record'}`), type, entity: e?.name ?? first, title: `New ${e?.name ?? 'record'}` }
+    }
     case 'calendar':
     case 'board':
+    case 'inbox':
     case 'import': {
       // The picked entity, else the first one the type fits.
       const e = picked ?? entities.find(x => !newTypeReason(type, x, pages)) ?? entities[0]
@@ -2473,11 +2750,17 @@ export function newPageChoices(type: FullstackPageType, entities: FullstackEntit
     case 'wizard':
       return named.map(e => one(e, e.readOnly ? 'Read-only — nothing to create'
         : askableFields(e).length === 0 ? 'No fields to ask for'
+          : has('wizard', e.name) ? 'Already has a wizard'
+            : has('form', e.name) ? 'Already has a form page' : undefined))
+    case 'form':
+      return named.map(e => one(e, e.readOnly ? 'Read-only — nothing to create'
+        : has('form', e.name) ? 'Already has a form page'
           : has('wizard', e.name) ? 'Already has a wizard' : undefined))
     case 'master-detail':
       return masterDetailPairs(named).map(p => ({ value: pairKey(p), label: `${p.parent} → ${p.child}${p.via ? ` (via ${p.via})` : ''}` }))
     case 'calendar':
     case 'board':
+    case 'inbox':
     case 'import':
       return named.map(e => one(e, newTypeReason(type, e, pages)))
     case 'content':
@@ -2494,7 +2777,7 @@ export function newPageTypeReason(type: FullstackPageType, entities: FullstackEn
 /** The pages a links widget can open: any but a record page (it needs a row) or a hidden page
  *  that is not a wizard (a hidden wizard is a route of its own). */
 export function linkablePages(pages: FullstackPageDef[]): FullstackPageDef[] {
-  return pages.filter(p => p.type !== 'record' && (!p.hidden || p.type === 'wizard' || p.type === 'search'))
+  return pages.filter(p => p.type !== 'record' && (!p.hidden || createsRows(p) || p.type === 'search'))
 }
 
 /** The pages a new tabs page can embed, lists first: not a tabs or record page, not already a tab. */
@@ -2556,7 +2839,10 @@ export function retargetPage(page: FullstackPageDef, type: FullstackPageType, en
       next.entity = e.name
       next.steps = defaultWizardSteps(e)
       if (!page.title?.trim()) next.title = `New ${e.name}`
-    } else if ((type === 'calendar' || type === 'board' || type === 'import') && !newTypeReason(type, e, pages.filter(p => p.id !== page.id))) {
+    } else if (type === 'form' && !e.readOnly) {
+      next.entity = e.name
+      if (!page.title?.trim()) next.title = `New ${e.name}`
+    } else if ((type === 'calendar' || type === 'board' || type === 'inbox' || type === 'import') && !newTypeReason(type, e, pages.filter(p => p.id !== page.id))) {
       // The entity follows, with its own date / lane field.
       const { id: _id, title: _title, ...fitted } = blankNewTypePage(type, e, named, () => page.id)
       Object.assign(next, fitted)
@@ -2689,7 +2975,7 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     if (next.entities?.length) kept.entities = next.entities
     if (next.limit != null && next.limit >= MIN_ACTIVITY_LIMIT && next.limit <= MAX_RECENT_LIMIT) kept.limit = next.limit
     if (next.span != null && next.span !== defaultSpan(kind)) kept.span = next.span
-    const lost = (['groupBy', 'agg', 'sortBy', 'compare', 'target', 'presetFilter', 'dateField', 'series', 'columns', 'sort'] as const)
+    const lost = (['groupBy', 'agg', 'sortBy', 'compare', 'trend', 'target', 'presetFilter', 'dateField', 'series', 'columns', 'sort'] as const)
       .filter(k => next[k] != null)
     const dropped = lost.length ? ['data settings'] : []
     if (next.drillTo != null) dropped.push('click target')
@@ -2701,7 +2987,7 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     if (kind === 'text' && next.text) kept.text = next.text
     if (kind === 'links') kept.pages = next.pages ?? []
     if (next.span != null && next.span !== defaultSpan(kind)) kept.span = next.span
-    const lost = (['groupBy', 'agg', 'limit', 'sortBy', 'compare', 'target', 'presetFilter', 'dateField', 'series'] as const)
+    const lost = (['groupBy', 'agg', 'limit', 'sortBy', 'compare', 'trend', 'target', 'presetFilter', 'dateField', 'series'] as const)
       .filter(k => next[k] != null)
     const dropped = lost.length ? ['data settings'] : []
     if (next.drillTo != null) dropped.push('click target')
@@ -2747,8 +3033,12 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
     drop(['sortBy'], 'sort')
   }
   if (kind !== 'kpi') drop(['compare'], 'period comparison')
+  if (kind !== 'kpi') drop(['trend'], 'trend line')
+  if (kind === 'kpi' && next.trend && dateFields(entity).length === 0) drop(['trend'], 'trend line')
   if (kind !== 'progress') drop(['target'], 'target')
-  if (next.dateField != null && !filterableDateFields(entity).some(f => f.name === next.dateField)) drop(['dateField'], 'period date')
+  // A trend may name any date; the period picker only a filterable one.
+  const dated = kind === 'kpi' && next.trend ? dateFields(entity) : filterableDateFields(entity)
+  if (next.dateField != null && !dated.some(f => f.name === next.dateField)) drop(['dateField'], 'period date')
   if (next.presetFilter) {
     const kept = keptPresetFilter(next.presetFilter, entity)
     if (Object.keys(kept ?? {}).length < Object.keys(next.presetFilter).length) dropped.push('filter')

@@ -25,6 +25,9 @@ All component code uses relative paths — no hardcoded backend URL anywhere.
 
 ## Component Map
 
+The original skeleton, kept for orientation — the app is now TypeScript (`.tsx`) with Tailwind v4; see the
+sections below for what each area holds today.
+
 ```
 src/
 ├── main.jsx                      React root
@@ -66,7 +69,141 @@ a clickable issue count that jumps to the first problem (`#fs-meta`/`[data-entit
 (`shareLink.ts`, base64url JSON, debounced; `writeShareToLocation` returns `too-large` when it can't
 fit, which the sticky bar reports) so the header's Share button reproduces the model; on load `?fs=`
 beats localStorage, `App.tsx` keeps `?tab=fullstack` in step and strips `fs` when leaving the tab.
-**Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`, section `#fs-pages`): the layout the request
+**Layout designer** (`designer/`, the Fullstack tab's `#fs-pages`): `PagesSection` takes `PagesEditor`'s props and
+renders a card (the layout as a sitemap of page chips — each chip's title is `describePage` — its problem count,
+the server issue, Start from my entities / a template, Use classic layout) that opens `LayoutDesigner`, a
+full-screen portal dialog (`role="dialog" aria-modal`, body scroll lock, Tab loop, focus back to the opener):
+`DesignerLibrary` (page types, suggestions, My templates, widgets grouped Numbers/Charts/Lists/Other with the
+`widgetKindDisabledReason` shown, whole-layout templates), `PageStrip` over the canvas (`LayoutPreview` at
+`CANVAS_ZOOM`, `narrow` for the Mobile switch) and `DesignerInspector` (a widget: `WidgetCard bare`; a page:
+Basics `PageBasicsFields` / Layout `PageTypeForm widgetsOnCanvas` / Access `RolesField`), plus `IssuesPanel` and
+`SitemapView` (nav sections via `GroupChip`, page moves via the `pages` drag list, nav style). Library cards drag
+with `dragPayload.ts` (`LibraryDrag`, kept in designer state; the event carries it too): widgets onto
+`LayoutPreview`'s `widgetDrop` (before/after the widget under the pointer, or the end slot), pages into the strip.
+The palette's page actions and Generate's jump to an error open the designer (`DesignerTarget`). Every change goes
+through `pages/usePagesModel.ts`, which `PagesEditor` uses too — the admin examples form keeps the inline editor.
+The page forms use container queries (`@sm:` etc., `@container` on the hosts) so they stack in the 22rem
+inspector. Designer keys (`/`, Delete, Alt+←/→, Alt+Shift+←/→, Esc) are in `FULLSTACK_SHORTCUTS`. A third view,
+**Appearance** (`AppearanceView` + `FrontendSettings`), holds the generated app's look — frontend template set
+(radio cards with a shell sketch), palette (`PalettePicker`), language, RTL and the classic dashboard heading —
+beside the live preview (the classic `seedLayout` shell when there are no pages). The values stay in
+`FullstackView` (snapshot, undo, share links) and reach the designer as one `FrontendAppearance` bundle via
+`PagesSection`'s `appearance` prop; the Setup panel's `#fs-frontend` is now a one-row summary whose *Edit in
+designer* (and the frontend setup chips) bump `designerRequest` to open Appearance. Parity with the
+inline editor and canvas tools: the Tabs card opens the shared `pages/NewTabsForm` (which pages, title,
+hide) instead of picking for the user; Ctrl/⌘-click and Shift-click on strip chips pick pages
+(`pickedAfterClick`) for the shared `BulkPageBar`; a chip's right-click / Shift+F10 opens a
+`DesignerMenu` (open, start page, hide, duplicate, move, pick, delete) and Delete / Alt+←/→ on a focused
+chip remove or move its page. The canvas `LayoutPreview` takes `problems` (`validation.byPage`): every
+`Editable` whose `previewPartOf` matches a control with a problem is ringed and names it. The issues
+sheet's **Fix all** runs `fixAllProblems` (pageLayout.ts — re-validates after each fix, since fixes are
+index-based, and skips one that does not reduce the problems) as one undo step. The header's history
+button lists `history.undoEntries`/`redoEntries` and jumps through `onJump` (`FullstackView.jumpHistory`
+→ `undo.ts` `stepMany`). The canvas has a zoom (`ZoomControl`, `ZOOM_LEVELS`), a Tablet width, and the
+library/inspector panes fold away; zoom and panes persist in `localStorage` `fullstack:designerView`
+(a canvas click or `/` reopens the pane it needs). **Play mode** (the canvas bar's Design/Play switch, or `P`)
+walks the layout as the generated app would: `playLinks.ts` `buildPlayLinks` resolves each page's click
+targets with the generator's own lookups (`pageLinks` mirrors `EntityScaffoldContext.PageLinks`: record
+page, first visible list, home, wizard) — list/calendar/board rows → the record page (or a note: drawer,
+side pane), New → the wizard, dashboard cards → `drillTo` else the list, link tiles, recent rows, a
+record's Back → its home and related rows → their record page, a wizard's Save → the new row's page, a
+report chart → its list, search matches, content page links. `LayoutPreview` takes `play` (a context):
+`Editable` drops its edit overlay and `playLink` makes parts links (`data-play-link`). The designer keeps a
+trail of row keys (Back, crumbs); the page walked to is the selected page, so Esc / `P` resumes editing
+there. Pinned by `designer/LayoutDesigner.test.tsx` and `playLinks.test.ts`. The library's Widgets tab
+opens with **Suggested for <entity>** (the "New widgets read" entity): `pageLayout.ts` `suggestWidgets`
+builds a count, a total of the entity's money (else first number) column, a donut by its first
+enum/boolean, a monthly trend over its first date, a top list by its first relation and its latest rows,
+drops any the dashboard already shows (`widgetShape`: kind with bar ≈ donut, entity, resolved grouping,
+aggregate, field) and any the validator rejects on that dashboard. A suggestion drags with its settings
+(`LibraryDrag` `def`) and lands through `usePagesModel.addWidgetDef`. Pinned by `widgetSuggestions.test.ts`. The Sitemap view's
+**Page flow** switch draws `PageFlowMap`: `pageFlow.ts` `buildPageFlow` turns the menu, header search,
+tabs and every Play-mode link (`buildPlayLinks`, plus content page links) into one edge per page pair with
+its kinds, lays pages out in columns by clicks from the menu (breadth first) and puts the pages nothing
+leads to in a last, red-dashed column. Edges are SVG under absolutely placed page buttons; hovering or
+focusing a page lights its edges, a click opens it in Design, and the menu edges can be hidden. Pinned by
+`pageFlow.test.ts`. On a tabs, report, record or wizard page the library's Widgets tab becomes **Parts**
+(`pageParts.ts` `pageParts`): pages to embed, a chart per groupable field/relation, related lists and
+their counts, the wizard's fields (each with a step picker). A card drags onto the canvas (`LibraryDrag`
+`part`; `LayoutPreview` `partDrop` → drop lines on the tab strip, beside a chart, on the record's tabs or
+number row, onto a wizard step or a "New step" slot) or clicks in at the end; a page chip dragged from the
+strip drops onto a tabs page too (`PageStrip` `onChipDrag`). `placePart` applies the inspector's rules
+(caps, nothing twice, the record's default tabs/tiles written out first, a step a field leaves empty
+dropped) and `usePagesModel.placePart` files it as one labelled undo step; a refusal shows in the notice.
+Pinned by `pageParts.test.ts`. The page inspector's **Code** tab (`designer/PageCode.tsx`, only when the
+host passes `codeRequest` — `FullstackView` hands its `buildBody`; the admin form does not) posts the request
+to `/starter-fullstack.preview` on opening and again `PAGE_CODE_DEBOUNCE_MS` after each edit (not while the
+layout has problems), keeps the last answer dimmed meanwhile and shows `pageCode.ts` `pageCodeFiles`: the
+page's `src/app/screens/<PascalId>Screen.tsx` (the backend's `Naming.toPascalCase`, mirrored by
+`naming.ts`), the screens a tabs page embeds, the entity pages it draws, then `App.tsx`/`route.ts`. Its own
+fetch, not the Explore preview — Explore opens the file-tree modal. Pinned by `pageCode.test.ts`.
+**Widget clipboard** (`widgetClipboard.ts`): Ctrl+C copies the selected widget (none selected: every widget
+of the dashboard), Ctrl+X cuts it, Ctrl+V pastes after the selected widget or at the end (design mode only;
+not in a field or with text selected — the browser's copy wins). The copy lives in `sessionStorage`
+(`fullstack:widgetClipboard`), so it outlives the designer; the library shows it as a Clipboard card. The
+widget inspector adds Copy, **Move to…** (another dashboard, one undo step, `usePagesModel.moveWidgetTo`) and
+**Save as widget** (`localStorage` `fullstack:widgetTemplates`, the library's "My widgets", with Forget).
+Every pasted, moved or saved widget goes through `fitWidget` first (its entity must exist; links and a
+`drillTo` to pages that are gone are dropped) and `pasteWidgets` stops at `MAX_WIDGETS`, naming what it
+left out. Pinned by `widgetClipboard.test.ts`.
+**Team templates** (`hooks/useTeamTemplates.ts`, backend `/metadata/fullstack/templates` — see *Team
+templates* in `backend/CLAUDE.md`): the designer lists them once on opening. The library's Pages tab has
+"Team templates" (click or drag — `LibraryDrag` `team-template` — through `pageFromTemplate`, like My
+templates) and the dashboard Widgets tab "Team widgets" (fitted by `fitWidget`, so one naming a missing
+entity is disabled with the reason). Share from the page inspector's header (`data-share-page`), the widget
+inspector ("Share with team") or a My templates / My widgets card; sharing under a name the team already
+has (same kind, ignoring case) PUTs over it, and the button says "Update". Deleting asks for a second
+click, since it removes it for everyone. Pinned by `useTeamTemplates.test.ts` and the designer's
+"team templates" tests.
+**Designer round 3 (2026-10).** *Canvas:* a widget reorders along the row (`rowProps(…, 'x')`; a phone's
+single column still flows down) and the grid shows its four columns while one moves or resizes (a resize
+badges the width); the hover bar adds Duplicate (also Ctrl+D) and a kind menu (`widgetTools` prop →
+the designer's fixed `DesignerMenu`, reasons from `widgetKindDisabledReason`, applied by
+`retargetWidgetAt`). Double-click (or F2) renames a title in place — the page's, a widget's, a tab's, a
+wizard step's, a record header number's: `LayoutPreview` `onRename` with a `Rename` context, `RenameSlot`
+marks the text (`data-rename`), `Editable`/tab/step buttons start it (`renameFrom`, the slot under the
+pointer), Enter/blur saves, Escape cancels, focus returns via `data-rename-owner`; the model side is
+`pageParts.ts` `renamePart` (writes out dealt steps / default numbers first) and `usePagesModel.renamePart`
+(`retitle` for the page). `reveal` skips focusing the inspector while a rename input has focus. *Preview:*
+sample rows come from `previewSample.ts` (`sampleRaw` — name/entity heuristics, en/he words, min/max,
+default on row 1, dates around `today`; `cellText` = what the generated table prints, `detailText` = the
+details' formatting), so lists show raw ISO dates and `true`/`false` like the app. The canvas bar's
+**Data · Empty · Loading · Error** switch (`DataStateSwitch`, prefs `dataState`) sets `LayoutPreview`
+`dataState` (a `DataState` context: `StateNote`, `ListState`, `WidgetState`) in the generated app's words
+(`preview.strings.states`). Under the Menora skin the canvas uses Assistant (`@fontsource/assistant`,
+imported in `src/fonts.css`), lavender chips for enum cells, end-aligned numbers (`PreviewTable.kinds`) and
+yellow discs for a links widget; import steps, Export, calendar view names and activity times use the app's
+en/he strings (designer prompts stay English). *Advice:* `collectWarnings` adds crowded-nav (fix: groups by
+`adviceGroup`), crowded-dashboard, wide-list (fix: first 6 columns), duplicate-list (fix: remove),
+entity-without-page (only an entity nothing mentions or links to) and pivot-dead-end; thresholds in
+`ADVICE`. *Tour:* `designer/DesignerTour.tsx` (six steps on existing `data-*` anchors, skipping hidden
+ones), once per browser (`fullstack:designerTour`), again from the header's help menu. *Spec sheet:* the
+header's Export spec builds one offline HTML file — `specSnapshot.tsx` renders each page's
+`LayoutPreview` and the `PageFlowMap` into detached roots (`staticMarkup`, icons and edit overlays
+removed) and inlines the app's own CSS without fonts or urls (`collectAppCss`); `specSheet.ts`
+`buildSpecSheet` lays out cover, navigation, flow and one print page per screen (`html.light`). Pinned by
+`previewSample.test.ts`, `LayoutPreviewStates.test.tsx`, `LayoutPreviewSkin.test.tsx`,
+`pageLayoutAdvice.test.ts`, `designer/specSheet.test.tsx`, `pageParts.test.ts` and the designer tests.
+**Generator round 8 (2026-10)** — the editor side of *Round 8* in `backend/CLAUDE.md`. *KPI trend:* `WidgetCard`'s
+"Trend line" select sets a kpi's `trend`; `pageLayout.ts` `trendDateField` mirrors the generator's date choice,
+`retargetWidget` drops the trend (named) when the kind changes, and the preview draws a seeded `Sparkline`. *Form
+page:* `pages/FormPageForm.tsx`; `createsRows` (wizard or form) is what a hidden page may still be (reachable
+by New), a form and a wizard of one entity are mutually exclusive in `validatePages` and `newPageChoices`, Play's
+New goes to the form, and the preview draws `FormScreen` with the entity's form sections. *Workflow:* a fifth
+entity panel, `WorkflowPanel.tsx` (status/assignee/due pickers and a transitions list; roles are disabled
+without ldap-auth, with an "Add ldap-auth-rest" shortcut). `workflow.ts` holds the rules — `workflowProblem`
+(the validator's mirror, also run by `validation.ts`), `syncWorkflow` (follows field and enum renames like
+`syncFormSections`), and `openStates`/`finalStates`/`unreachableStates`/`ambiguousMoves`. `lint.ts` adds
+`workflow-unreachable` (info), `workflow-ambiguous` and `workflow-roles` (fix: add ldap-auth-rest). `summary.ts`
+lists the transition/claim/release endpoints. *Inbox page:* `pages/InboxForm.tsx`, `newPageTypes.ts`
+(`INBOX_QUEUES`, `hasInbox`, `defaultInboxFields`, `checkInbox`; "No workflow with an assignee" in the chooser),
+and the preview's `InboxScreen` (queue tabs, chips, an overdue row, the first moves). *Approvals* is in the
+fixture. `examples.test.ts` validates every example's own layout — no problems and no warnings, so an example
+never opens on advice to fix (Tickets, Inventory and Sales reporting were adjusted for it) — and the fixture lint check runs
+with `ldap-auth-rest`, the sets' default. The layout templates open a wide entity's list on its first six
+columns (`narrowColumns`, the wide-list fix). Pinned by `pageLayoutKpiTrend.test.ts`,
+`pageLayoutFormPage.test.ts`, `workflow.test.tsx` and `pageLayoutInbox.test.ts`.
+**Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;
 *Use classic layout* drops it again (undoable). Pages are added from a type gallery (dashboard,
@@ -278,8 +415,10 @@ validated like the server's `canonicalEnumLabels` (key must be a value, non-blan
 
 ## Styling
 
-Plain CSS custom properties — no framework. Key variables in `App.css`:
-- `--menora-navy: #003366` — header, active pills, chips, generate button
-- `--menora-accent: #0066cc` — focus rings, group headers
-- Two-column grid: left = ProjectForm + OptionsPanel, right = DependencySelector (sticky)
-- Sticky bottom bar for the Generate button
+Tailwind v4 (`@import "tailwindcss"` + `@theme` in `src/index.css`) with Material 3 token names
+(`bg-surface-container-lowest`, `text-on-surface`, `border-outline-variant`, `text-primary`…). Dark is the
+`@theme` default; `html.light` overrides it (toggled in `App.tsx`, pre-paint script in `index.html`), and in
+light mode `text-primary` is remapped to the tertiary blue because gold text on white is unreadable. Fonts
+(Geist) and icons (Material Symbols) are bundled from node_modules via `src/fonts.css` — the deployed UI is
+offline, never add a CDN link. Container queries (`@container` / `@sm:`) are used where a form must stack
+by its column's width rather than the window's (the page forms in the layout designer's inspector).
