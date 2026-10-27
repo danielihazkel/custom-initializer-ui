@@ -31,7 +31,7 @@ import { buildUiPreview, fieldLabel } from './uiPreview'
 import { parseContent, type ContentBlock } from './contentMarkdown'
 import { auditText, cellText, detailText, sampleRaw, seeded } from './previewSample'
 import {
-  CALENDAR_MODES, cardFieldOptions, defaultCardFields, defaultLaneField, defaultSearchEntities, laneValues,
+  CALENDAR_MODES, DEFAULT_INBOX_QUEUES, cardFieldOptions, defaultCardFields, defaultInboxFields, defaultLaneField, defaultSearchEntities, laneValues,
 } from './newPageTypes'
 
 /**
@@ -148,6 +148,16 @@ export type PreviewScreen =
     stats: { title: string; value: string }[]
   }
   | {
+    type: 'inbox'; title: string; description?: string
+    /** The queue tabs, the first open. */
+    queues: string[]
+    /** The row cells' headings, then the status, assignee and (with one) due date. */
+    columns: string[]
+    rows: { cells: string[]; status: string; assignee: string; due: string | null; late: boolean }[]
+    /** The moves a row offers, as button labels (Claim first, when rows are assigned). */
+    actions: string[]
+  }
+  | {
     type: 'form'; title: string; description?: string
     /** The form's field labels, in its sections (one untitled group without sections). */
     groups: { title?: string; fields: string[] }[]
@@ -253,7 +263,7 @@ const STRINGS = {
     xReport: '{x} report', total: 'Total', aggSum: 'Total {x}', aggAvg: 'Average {x}', aggMin: 'Lowest {x}',
     aggMax: 'Highest {x}', viewAll: 'View all', back: 'Back', exportCsv: 'Export CSV', newX: 'New {x}',
     xDetails: '{x} details', search: 'Search…', filters: 'Filters', trueLabel: 'True', falseLabel: 'False',
-    count: 'Count', startPage: 'Start page', stepX: 'Step {x}', review: 'Review', next: 'Next', save: 'Save', cancel: 'Cancel', refresh: 'Refresh', topXByY: 'Top {x} by {y}', vsPrevious: 'vs previous period',
+    count: 'Count', startPage: 'Start page', stepX: 'Step {x}', review: 'Review', next: 'Next', save: 'Save', cancel: 'Cancel', myTasks: 'My tasks', unassignedTasks: 'Unassigned', allOpenTasks: 'All open', overdue: 'Overdue', nobody: 'Nobody', refresh: 'Refresh', topXByY: 'Top {x} by {y}', vsPrevious: 'vs previous period',
     percentOfTarget: '{x}% of target', periodAll: 'All time', period7d: 'Last 7 days',
     period30d: 'Last 30 days', period90d: 'Last 90 days', periodYtd: 'This year', period12m: 'Last 12 months',
     perPage: '{n} per page', opensRecord: 'rows open their page', opensDrawer: 'rows open in a drawer', newestBy: 'Newest by {x}',
@@ -272,7 +282,7 @@ const STRINGS = {
     xReport: 'דוח {x}', total: 'סך הכול', aggSum: 'סך {x}', aggAvg: '{x} ממוצע', aggMin: '{x} מינימלי',
     aggMax: '{x} מקסימלי', viewAll: 'הצג הכל', back: 'חזרה', exportCsv: 'ייצוא ל-CSV', newX: '{x} חדש',
     xDetails: 'פרטי {x}', search: 'חיפוש…', filters: 'מסננים', trueLabel: 'כן', falseLabel: 'לא',
-    count: 'כמות', startPage: 'דף פתיחה', stepX: 'שלב {x}', review: 'סקירה', next: 'הבא', save: 'שמירה', cancel: 'ביטול', refresh: 'רענון', topXByY: '{x} מובילים לפי {y}', vsPrevious: 'לעומת התקופה הקודמת',
+    count: 'כמות', startPage: 'דף פתיחה', stepX: 'שלב {x}', review: 'סקירה', next: 'הבא', save: 'שמירה', cancel: 'ביטול', myTasks: 'המשימות שלי', unassignedTasks: 'לא מוקצות', allOpenTasks: 'כל הפתוחות', overdue: 'באיחור', nobody: 'אף אחד', refresh: 'רענון', topXByY: '{x} מובילים לפי {y}', vsPrevious: 'לעומת התקופה הקודמת',
     percentOfTarget: '{x}% מהיעד', periodAll: 'כל הזמן', period7d: '7 הימים האחרונים',
     period30d: '30 הימים האחרונים', period90d: '90 הימים האחרונים', periodYtd: 'מתחילת השנה',
     period12m: '12 החודשים האחרונים',
@@ -949,6 +959,44 @@ export function buildLayoutPreview(
         })
         return { type: 'board', title: page.title || labels(e).plural, description, lanes }
       }
+      case 'inbox': {
+        const e = entityOf(page.entity)
+        if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
+        const wf = e.workflow
+        if (!wf?.assigneeField) return { type: 'broken', title: page.title || page.id, message: `${e.name} has no workflow with an assignee` }
+        const names = (page.cardFields ?? defaultInboxFields(e)).filter(n => cardFieldOptions(e).includes(n))
+        const labelFor = (name: string) => {
+          const f = fieldOf(e, name)
+          return f ? fieldLabel(f) : humanize(name)
+        }
+        const valueOf = (name: string, row: number) => {
+          const f = fieldOf(e, name)
+          if (f) return detail(e, f, row)
+          const r = (e.relations ?? []).find(x => x.fieldName === name)
+          const target = r ? entityOf(r.targetEntity) : undefined
+          return target ? rowLabel(target, row) : `#${row}`
+        }
+        const status = fieldOf(e, wf.statusField)
+        const open = [...new Set(wf.transitions.flatMap(tr => tr.from.map(s => s.toUpperCase())))]
+        const due = wf.dueField ? fieldOf(e, wf.dueField) : undefined
+        const people = ['dev-user', '', 'dana.levi']
+        return {
+          type: 'inbox',
+          title: page.title || t('myTasks'),
+          description,
+          queues: (page.queues ?? DEFAULT_INBOX_QUEUES).map(q => t(q === 'mine' ? 'myTasks' : q === 'unassigned' ? 'unassignedTasks' : 'allOpenTasks')),
+          columns: [...names.map(labelFor), status ? fieldLabel(status) : wf.statusField, labelFor(wf.assigneeField), ...(due ? [fieldLabel(due)] : [])],
+          rows: [1, 2, 3].map(row => ({
+            cells: names.map(n => valueOf(n, row)),
+            status: status && open.length ? enumLabel(status, open[(row - 1) % open.length]) : '—',
+            assignee: people[row - 1] || t('nobody'),
+            due: due ? detail(e, due, row) : null,
+            // The first row is late, so the canvas shows how the app flags it.
+            late: Boolean(due) && row === 1,
+          })),
+          actions: wf.transitions.filter(tr => tr.from.some(s => s.toUpperCase() === open[0])).slice(0, 2).map(tr => tr.label || humanize(tr.name)),
+        }
+      }
       case 'content':
         return { type: 'content', title: page.title || page.id, description, blocks: parseContent(page.body ?? '') }
       case 'import': {
@@ -989,6 +1037,7 @@ export function buildLayoutPreview(
       case 'report': return e ? t('xReport', { x: labels(e).plural }) : p.id
       case 'wizard':
       case 'form': return e ? t('newX', { x: labels(e).singular }) : p.id
+      case 'inbox': return t('myTasks')
       case 'record': return e ? labels(e).singular : p.id
       case 'calendar':
       case 'board': return e ? labels(e).plural : p.id

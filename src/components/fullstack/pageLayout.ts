@@ -17,7 +17,7 @@ import type {
   FullstackWidgetDef,
 } from '../../types'
 import {
-  blankNewTypePage, checkBoard, checkCalendar, checkContent, checkImport, checkSearch, describeNewTypePage,
+  blankNewTypePage, checkBoard, checkCalendar, checkContent, checkImport, checkInbox, checkSearch, describeNewTypePage,
   newSearchReason, newTypeReason, renameEntityInNewPages, renameEnumValueInNewPages, renameFieldInNewPages,
   renamePageIdInBody, renameRelationInNewPages,
 } from './newPageTypes'
@@ -255,6 +255,7 @@ export const DEFAULT_NAV_ICON: Record<FullstackPageType, FullstackNavIcon> = {
   content: 'FileText',
   import: 'Upload',
   search: 'Search',
+  inbox: 'Inbox',
 }
 
 /** Whether a page is listed in the generated nav (a record page never is). */
@@ -856,7 +857,7 @@ export const ADVICE = {
 function adviceGroup(type: FullstackPageType): string {
   switch (type) {
     case 'dashboard': case 'report': return 'Insights'
-    case 'wizard': case 'form': case 'import': case 'content': case 'search': return 'Tools'
+    case 'wizard': case 'form': case 'import': case 'content': case 'search': case 'inbox': return 'Tools'
     default: return 'Data'
   }
 }
@@ -1822,6 +1823,7 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
       }
       case 'calendar':
       case 'board':
+      case 'inbox':
       case 'import': {
         const e = entityOf(page.entity)
         if (!e) {
@@ -1836,6 +1838,10 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         } else if (page.type === 'board') {
           checkPresetFilter(page.presetFilter, e, entityOf, add, where)
           checkBoard(page, e, add, where)
+          if (page.sort) checkListPresentation({ id: page.id, type: 'entity-list', entity: e.name, sort: page.sort }, e, add, where, scaffoldOpts)
+        } else if (page.type === 'inbox') {
+          checkPresetFilter(page.presetFilter, e, entityOf, add, where)
+          checkInbox(page, e, add, where)
           if (page.sort) checkListPresentation({ id: page.id, type: 'entity-list', entity: e.name, sort: page.sort }, e, add, where, scaffoldOpts)
         } else {
           checkImport(page, e, pages, add, where)
@@ -2097,6 +2103,7 @@ export const PAGE_TYPE_META: Record<FullstackPageType, { icon: string; label: st
   content: { icon: 'description', label: 'Content', blurb: 'A page of text — headings, lists, notes and links to other pages or the web.' },
   import: { icon: 'upload_file', label: 'Import', blurb: 'Upload a CSV file, match its columns, check every row, then create them all at once.' },
   search: { icon: 'search', label: 'Search', blurb: 'One search box over several entities, results grouped by entity — optionally in the app’s header.' },
+  inbox: { icon: 'inbox', label: 'Inbox', blurb: 'A workflow’s tasks — mine, unassigned, all open — with each row’s next steps, Claim and Release.' },
 }
 
 // ── Defaults the generator resolves ─────────────────────────────────────────
@@ -2703,6 +2710,7 @@ export function blankPage(type: FullstackPageType, entities: FullstackEntityDef[
     }
     case 'calendar':
     case 'board':
+    case 'inbox':
     case 'import': {
       // The picked entity, else the first one the type fits.
       const e = picked ?? entities.find(x => !newTypeReason(type, x, pages)) ?? entities[0]
@@ -2752,6 +2760,7 @@ export function newPageChoices(type: FullstackPageType, entities: FullstackEntit
       return masterDetailPairs(named).map(p => ({ value: pairKey(p), label: `${p.parent} → ${p.child}${p.via ? ` (via ${p.via})` : ''}` }))
     case 'calendar':
     case 'board':
+    case 'inbox':
     case 'import':
       return named.map(e => one(e, newTypeReason(type, e, pages)))
     case 'content':
@@ -2833,7 +2842,7 @@ export function retargetPage(page: FullstackPageDef, type: FullstackPageType, en
     } else if (type === 'form' && !e.readOnly) {
       next.entity = e.name
       if (!page.title?.trim()) next.title = `New ${e.name}`
-    } else if ((type === 'calendar' || type === 'board' || type === 'import') && !newTypeReason(type, e, pages.filter(p => p.id !== page.id))) {
+    } else if ((type === 'calendar' || type === 'board' || type === 'inbox' || type === 'import') && !newTypeReason(type, e, pages.filter(p => p.id !== page.id))) {
       // The entity follows, with its own date / lane field.
       const { id: _id, title: _title, ...fitted } = blankNewTypePage(type, e, named, () => page.id)
       Object.assign(next, fitted)

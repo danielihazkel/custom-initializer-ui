@@ -17,6 +17,7 @@ import { CalendarForm } from './CalendarForm'
 import { BoardForm } from './BoardForm'
 import { ContentForm } from './ContentForm'
 import { FormPageForm } from './FormPageForm'
+import { InboxForm } from './InboxForm'
 import { ImportForm } from './ImportForm'
 import { SearchForm } from './SearchForm'
 
@@ -176,6 +177,8 @@ export function PageTypeForm({ page, index, pages, named, errors, update, lossy,
       return <ReportForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} removed={removed} dnd={dnd} />
     case 'wizard':
       return <WizardForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} removed={removed} dnd={dnd} />
+    case 'inbox':
+      return <InboxForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} />
     case 'form':
       return <FormPageForm page={page} index={index} entities={named} pages={pages} errors={errors} update={update} />
     case 'calendar':

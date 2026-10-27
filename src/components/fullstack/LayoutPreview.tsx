@@ -690,6 +690,8 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
       )
     case 'record':
       return <RecordScreen screen={screen} link={link} preview={preview} accent={accent} menora={menora} parts={parts} />
+    case 'inbox':
+      return <InboxScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} />
     case 'form':
       return <FormScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} />
     case 'wizard':
@@ -1072,6 +1074,57 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
         <p className="text-[10px] text-error">This tab lists no entity.</p>
       )}
       </>)}
+    </div>
+  )
+}
+
+/** An inbox: its queue tabs over the tasks, each with its status, assignee, due date and moves. */
+function InboxScreen({ screen, link, heading, accent, menora }: {
+  screen: Extract<PreviewScreen, { type: 'inbox' }>
+  link: LinkProps
+  heading: ReactNode
+  accent: string
+  menora: boolean
+}) {
+  const [queue, setQueue] = useState(0)
+  // In Play mode a row opens where the generated inbox opens it: its record page, else a quick look.
+  const play = useContext(Play)
+  const rowTo = play?.links[link.page]?.row
+  return (
+    <div className="space-y-2">
+      {heading}
+      <div className="flex gap-2 border-b border-outline-variant text-[9px]" role="tablist" data-preview-queues>
+        {screen.queues.map((q, i) => (
+          <button key={q} type="button" role="tab" aria-selected={i === queue} onClick={() => setQueue(i)}
+                  className="-mb-px border-b-2 px-1 py-0.5 font-semibold"
+                  style={i === queue ? { borderColor: accent, color: accent } : { borderColor: 'transparent' }}>
+            {q}
+          </button>
+        ))}
+      </div>
+      <table className="w-full text-[9px]" data-preview-inbox>
+        <thead>
+          <tr className="text-start text-secondary" style={menora ? { background: MENORA_HEAD } : undefined}>
+            {screen.columns.map(c => <th key={c} className="px-1 py-0.5 text-start font-semibold">{c}</th>)}
+            <th className="px-1 py-0.5" />
+          </tr>
+        </thead>
+        <tbody>
+          {screen.rows.map((r, i) => (
+            <tr key={i} className="border-t border-outline-variant"
+                onClick={() => (rowTo != null ? play?.go(rowTo) : play?.note('A row opens in a quick look — add a record page to open a page'))}
+                data-play-link={play ? rowTo ?? 'note' : undefined}>
+              {r.cells.map((c, j) => <td key={j} className={`truncate px-1 py-0.5 ${j === 0 ? 'font-semibold text-on-surface' : 'text-secondary'}`}>{c}</td>)}
+              <td className="px-1 py-0.5"><span className="rounded-full px-1" style={menora ? MENORA_CHIP : { background: `${accent}1a`, color: accent }}>{r.status}</span></td>
+              <td className="px-1 py-0.5 text-secondary">{r.assignee}</td>
+              {r.due != null && <td className={`px-1 py-0.5 tabular-nums ${r.late ? 'font-semibold text-error' : 'text-secondary'}`} data-preview-late={r.late || undefined}>{r.due}</td>}
+              <td className="px-1 py-0.5 text-end">
+                {screen.actions.map(a => <span key={a} className="ms-0.5 inline-block rounded border border-outline-variant px-1 text-[8px]">{a}</span>)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

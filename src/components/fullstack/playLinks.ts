@@ -89,7 +89,8 @@ export function buildPlayLinks(pages: FullstackPageDef[], entities: FullstackEnt
         }
       }
       case 'calendar':
-      case 'board': {
+      case 'board':
+      case 'inbox': {
         const record = links.recordOf(page.entity)
         return { ...base, row: record, rowNote: record == null ? 'A card opens in a quick-look drawer' : undefined, create: links.createOf(page.entity) }
       }

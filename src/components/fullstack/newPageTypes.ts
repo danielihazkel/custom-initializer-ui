@@ -1,4 +1,4 @@
-import type { FullstackCalendarMode, FullstackEntityDef, FullstackFieldDef, FullstackPageDef, FullstackPageType } from '../../types'
+import type { FullstackCalendarMode, FullstackEntityDef, FullstackFieldDef, FullstackInboxQueue, FullstackPageDef, FullstackPageType } from '../../types'
 import { contentLinks, isExternalLink } from './contentMarkdown'
 
 /**
@@ -21,6 +21,22 @@ export const MAX_SEARCH_ENTITIES = 8
 export const MIN_PER_ENTITY = 3
 export const MAX_PER_ENTITY = 10
 export const DEFAULT_PER_ENTITY = 5
+export const INBOX_QUEUES: { value: FullstackInboxQueue; label: string }[] = [
+  { value: 'mine', label: 'My tasks' },
+  { value: 'unassigned', label: 'Unassigned' },
+  { value: 'open', label: 'All open' },
+]
+export const DEFAULT_INBOX_QUEUES: FullstackInboxQueue[] = ['mine', 'unassigned']
+
+/** Whether an entity can have an inbox: a workflow that assigns its rows to users. */
+export const hasInbox = (e: FullstackEntityDef | undefined) => Boolean(e?.workflow?.assigneeField)
+
+/** An inbox's columns when the page names none: the card defaults without the status, assignee and due date (they have their own). */
+export function defaultInboxFields(e: FullstackEntityDef | undefined): string[] {
+  const wf = e?.workflow
+  const own = [wf?.statusField, wf?.assigneeField, wf?.dueField]
+  return defaultCardFields(e, wf?.statusField).filter(n => !own.includes(n))
+}
 
 const eq = (a: string | undefined, b: string | undefined) => a != null && b != null && a.trim().toLowerCase() === b.trim().toLowerCase()
 const isDate = (f: FullstackFieldDef) => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'
@@ -87,6 +103,8 @@ export function newTypeReason(type: FullstackPageType, e: FullstackEntityDef, pa
       return calendarDateFields(e).length === 0 ? 'No filterable date field to place rows by' : undefined
     case 'board':
       return laneFields(e).length === 0 ? 'No filterable enum or boolean field for lanes' : undefined
+    case 'inbox':
+      return !hasInbox(e) ? 'No workflow with an assignee' : undefined
     case 'import':
       return !importable(e) ? 'Read-only — nothing to import'
         : e.opts?.csvImport === false ? 'Its CSV import option is off'
@@ -104,7 +122,7 @@ export function newSearchReason(entities: FullstackEntityDef[], pages: Fullstack
 }
 
 /** A new page of one of these types, filled in so it is valid on sight. */
-export function blankNewTypePage(type: 'calendar' | 'board' | 'content' | 'import' | 'search', entity: FullstackEntityDef | undefined,
+export function blankNewTypePage(type: 'calendar' | 'board' | 'content' | 'import' | 'search' | 'inbox', entity: FullstackEntityDef | undefined,
   entities: FullstackEntityDef[], id: (base: string) => string): FullstackPageDef {
   const name = entity?.name ?? ''
   switch (type) {
@@ -114,6 +132,8 @@ export function blankNewTypePage(type: 'calendar' | 'board' | 'content' | 'impor
       return { id: id(`${name || 'board'}-board`), type, entity: name, title: `${name} board`, laneField: defaultLaneField(entity) }
     case 'import':
       return { id: id(`import-${name || 'rows'}`), type, entity: name, title: `Import ${name}`, group: undefined }
+    case 'inbox':
+      return { id: id(`${name || 'my'}-tasks`), type, entity: name, title: 'My tasks' }
     case 'search':
       return { id: id('search'), type, title: 'Search', entities: defaultSearchEntities(entities), shellSearch: true }
     case 'content':
@@ -166,15 +186,32 @@ export function checkBoard(page: FullstackPageDef, e: FullstackEntityDef, add: A
     if (!lanes.some(v => eq(v, key))) add('wipLimits', `“${key}” is not one of its lanes`)
     else if (!Number.isInteger(limit) || limit < 1 || limit > MAX_WIP_LIMIT) add('wipLimits', `a lane holds 1 to ${MAX_WIP_LIMIT} cards`)
   }
-  if (page.cardFields) {
-    const options = cardFieldOptions(e)
-    if (page.cardFields.length === 0 || page.cardFields.length > MAX_CARD_FIELDS) add('cardFields', `shows 1 to ${MAX_CARD_FIELDS} fields`)
-    const unknown = page.cardFields.filter(n => !options.some(o => eq(o, n)))
-    if (unknown.length) add('cardFields', `${e.name} has no field or relation ${unknown.map(n => `“${n}”`).join(', ')}`)
-    if (new Set(page.cardFields).size !== page.cardFields.length) add('cardFields', 'lists a field twice')
-  }
+  checkCardFields(page, e, add)
   if (page.laneSize != null && !LANE_SIZES.includes(page.laneSize)) add('laneSize', `loads ${LANE_SIZES.join(', ')} cards at a time`)
   if (Object.keys(page.presetFilter ?? {}).some(k => eq(k, lane))) add(`presetFilter.${lane}`, 'the lanes already split by it')
+}
+
+function checkCardFields(page: FullstackPageDef, e: FullstackEntityDef, add: Add): void {
+  if (!page.cardFields) return
+  const options = cardFieldOptions(e)
+  if (page.cardFields.length === 0 || page.cardFields.length > MAX_CARD_FIELDS) add('cardFields', `shows 1 to ${MAX_CARD_FIELDS} fields`)
+  const unknown = page.cardFields.filter(n => !options.some(o => eq(o, n)))
+  if (unknown.length) add('cardFields', `${e.name} has no field or relation ${unknown.map(n => `“${n}”`).join(', ')}`)
+  if (new Set(page.cardFields).size !== page.cardFields.length) add('cardFields', 'lists a field twice')
+}
+
+/** An inbox page's rules: an entity whose workflow assigns rows, its queues and its columns. */
+export function checkInbox(page: FullstackPageDef, e: FullstackEntityDef, add: Add, where: string): void {
+  if (!hasInbox(e)) {
+    add('entity', `${e.name} has no workflow with an assignee`, `${where} lists ${e.name}, whose rows are not assigned to anyone`)
+    return
+  }
+  if (page.queues) {
+    if (page.queues.length === 0) add('queues', 'needs at least one queue')
+    if (page.queues.some(q => !INBOX_QUEUES.some(x => x.value === q))) add('queues', 'has an unknown queue')
+    if (new Set(page.queues).size !== page.queues.length) add('queues', 'lists a queue twice')
+  }
+  checkCardFields(page, e, add)
 }
 
 /** A content page's rules (FullstackPageValidator.body): a title, a body, and links that can open. */
@@ -243,6 +280,10 @@ export function describeNewTypePage(page: FullstackPageDef, entities: FullstackE
     }
     case 'import':
       return `CSV import of ${page.entity ?? '?'}`
+    case 'inbox': {
+      const queues = (page.queues ?? DEFAULT_INBOX_QUEUES).map(q => INBOX_QUEUES.find(x => x.value === q)?.label ?? q)
+      return `${page.entity ?? '?'} tasks · ${queues.join(', ')}`
+    }
     case 'search': {
       const names = page.entities ?? defaultSearchEntities(entities)
       return `Searches ${names.join(', ') || 'nothing'}${page.shellSearch ? ' · header box' : ''}`
@@ -262,14 +303,16 @@ export function renameFieldInNewPages(page: FullstackPageDef, entity: string, fr
   }
   if (page.type === 'board') {
     if (page.laneField === from) out.laneField = to
-    if (page.cardFields?.includes(from)) out.cardFields = page.cardFields.map(n => (n === from ? to : n))
+  }
+  if ((page.type === 'board' || page.type === 'inbox') && page.cardFields?.includes(from)) {
+    out.cardFields = page.cardFields.map(n => (n === from ? to : n))
   }
   return out
 }
 
 /** Follows a relation rename into a board's cards. */
 export function renameRelationInNewPages(page: FullstackPageDef, child: string, from: string, to: string): FullstackPageDef {
-  if (page.type !== 'board' || !eq(page.entity, child) || !page.cardFields?.includes(from)) return page
+  if ((page.type !== 'board' && page.type !== 'inbox') || !eq(page.entity, child) || !page.cardFields?.includes(from)) return page
   return { ...page, cardFields: page.cardFields.map(n => (n === from ? to : n)) }
 }
 

@@ -565,7 +565,10 @@ export interface ExampleModel {
 
 /** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
 export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record' | 'report' | 'wizard'
-  | 'form' | 'calendar' | 'board' | 'content' | 'import' | 'search'
+  | 'form' | 'calendar' | 'board' | 'content' | 'import' | 'search' | 'inbox'
+
+/** An inbox page's queues: the user's own open rows, nobody's, or every open one. */
+export type FullstackInboxQueue = 'mine' | 'unassigned' | 'open'
 
 /** The views a calendar page offers (FullstackPageValidator.calendar). */
 export type FullstackCalendarMode = 'month' | 'week' | 'agenda' | 'timeline'
@@ -768,6 +771,8 @@ export interface FullstackPageDef {
   lanes?: string[]
   /** board: what a card shows — 1–4 field or relation names, the first as its heading. */
   cardFields?: string[]
+  /** inbox: the queues it offers as tabs, the first opening (default: mine, unassigned). */
+  queues?: FullstackInboxQueue[]
   /** board: lane value → the most cards it should hold. */
   wipLimits?: Record<string, number>
   /** board: the cards a lane loads at a time — 10, 20 or 50 (default 20). */
