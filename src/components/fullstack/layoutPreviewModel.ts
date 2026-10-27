@@ -136,6 +136,8 @@ export type PreviewScreen =
     type: 'master-detail'; title: string; description?: string; parentTitle: string; parentItems: string[]; child: PreviewTable; childTitle: string
     /** The selected parent's card above the child rows: its first fields, labelled; null without the card. */
     parentDetails: { label: string; value: string }[] | null
+    /** The parent list's New (a writable parent), else null. */
+    parentNew: string | null
   }
   | {
     type: 'record'; title: string; description?: string; heading: string; back: string | null; tabs: string[]
@@ -764,7 +766,7 @@ export function buildLayoutPreview(
           return { type: 'broken', title: page.title || page.id, message: `Pick a parent and a child entity` }
         }
         const via = page.via ?? relationsTo(child, parent.name)[0]
-        const { plural: parentPlural } = labels(parent)
+        const { plural: parentPlural, singular: parentSingular } = labels(parent)
         return {
           type: 'master-detail',
           title: page.title || parentPlural,
@@ -776,6 +778,7 @@ export function buildLayoutPreview(
           parentDetails: page.showParent
             ? parent.fields.filter(f => !f.primaryKey).slice(0, 4).map(f => ({ label: fieldLabel(f), value: detail(parent, f, 1) }))
             : null,
+          parentNew: buildUiPreview(parent, { projectOpts: ctx.projectOpts, entities: named }).canCreate ? t('newX', { x: parentSingular }) : null,
         }
       }
       case 'record': {

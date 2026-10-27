@@ -203,6 +203,15 @@ never opens on advice to fix (Tickets, Inventory and Sales reporting were adjust
 with `ldap-auth-rest`, the sets' default. The layout templates open a wide entity's list on its first six
 columns (`narrowColumns`, the wide-list fix). Pinned by `pageLayoutKpiTrend.test.ts`,
 `pageLayoutFormPage.test.ts`, `workflow.test.tsx` and `pageLayoutInbox.test.ts`.
+
+*Uncreatable entities:* `collectWarnings` raises a layout-level `uncreatable:<entity>` warning when a writable entity has no page that creates it, but an entity the layout does create needs it through a required `MANY_TO_ONE`. The message reads "No page creates Customer rows — Order needs one, so it cannot be saved either", and the fix is `addListPage`. These count as creating:
+- a reachable list page that keeps New;
+- a form, wizard, import or calendar page;
+- either side of a master-detail page (the generated parent list has New);
+- a record page's related tab;
+- a list widget.
+
+The preview's master-detail screen shows the parent's New (`parentNew`). Pinned by `pageLayoutWarnings.test.ts`.
 **Frontend pages** (`PagesEditor.tsx` + `pageLayout.ts`): the layout the request
 sends as `pages`. Empty means the classic shell (a dashboard plus one list page per entity), and
 *Start from my entities* (`seedLayout`) materializes exactly that as an editable starting point;
