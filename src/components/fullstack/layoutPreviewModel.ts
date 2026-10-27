@@ -206,7 +206,26 @@ export interface LayoutPreview {
   sections: PreviewNavSection[]
   /** One per page, index-aligned with the layout. */
   screens: PreviewScreen[]
-  strings: { viewAll: string; search: string; filters: string; total: string; startPage: string }
+  strings: { viewAll: string; search: string; filters: string; total: string; startPage: string; states: PreviewStateStrings }
+}
+
+/** What the canvas draws its data parts as: sample rows, or the generated app's empty, loading
+ *  or failed state. */
+export type PreviewDataState = 'data' | 'empty' | 'loading' | 'error'
+
+/** The generated app's own words for its empty and failed states (i18n-strings.ts.mustache). */
+export interface PreviewStateStrings {
+  noRecordsTitle: string
+  noRecordsHint: string
+  noRecordsYet: string
+  noActivity: string
+  couldNotLoad: string
+  retry: string
+  errorServer: string
+  nothingScheduled: string
+  emptyLane: string
+  /** `{q}`: the words searched for. */
+  nothingMatches: string
 }
 
 // ── Chrome strings (a subset of i18n-strings.ts.mustache) ──────────────────
@@ -223,6 +242,10 @@ const STRINGS = {
     perPage: '{n} per page', opensRecord: 'rows open their page', opensDrawer: 'rows open in a drawer', newestBy: 'Newest by {x}',
     recentActivity: 'Recent activity', activityCreated: 'created', activityUpdated: 'updated',
     created: 'Created', updated: 'Updated',
+    noRecordsTitle: 'No records yet', noRecordsHint: 'Create your first record to see it here.', noRecordsYetDot: 'No records yet.',
+    noActivity: 'Nothing has changed yet.', couldNotLoad: 'Couldn’t load data.', retry: 'Try again',
+    errorServer: 'Something went wrong on the server. Try again in a moment.', nothingScheduled: 'Nothing in this period.',
+    emptyLane: 'Empty', nothingMatches: 'Nothing matches “{q}”.',
   },
   he: {
     dashboard: 'לוח בקרה', xByY: '{x} לפי {y}', xByYAndZ: '{x} לפי {y} ו{z}', recentX: '{x} – אחרונים', xOverTime: '{x} לאורך זמן',
@@ -236,6 +259,10 @@ const STRINGS = {
     perPage: '{n} בעמוד', opensRecord: 'שורה נפתחת בעמוד שלה', opensDrawer: 'שורה נפתחת במגירה', newestBy: 'החדשים לפי {x}',
     recentActivity: 'פעילות אחרונה', activityCreated: 'נוצר', activityUpdated: 'עודכן',
     created: 'נוצר', updated: 'עודכן',
+    noRecordsTitle: 'אין רשומות עדיין', noRecordsHint: 'צרו את הרשומה הראשונה כדי לראות אותה כאן.', noRecordsYetDot: 'אין רשומות עדיין.',
+    noActivity: 'עדיין לא היו שינויים.', couldNotLoad: 'לא ניתן לטעון נתונים.', retry: 'נסו שוב',
+    errorServer: 'משהו השתבש בשרת. נסו שוב בעוד רגע.', nothingScheduled: 'אין דבר בתקופה הזו.',
+    emptyLane: 'ריק', nothingMatches: 'אין תוצאות עבור “{q}”.',
   },
 } as const
 
@@ -935,7 +962,14 @@ export function buildLayoutPreview(
     nav: sections.flatMap(section => section.items),
     sections,
     screens,
-    strings: { viewAll: t('viewAll'), search: t('search'), filters: t('filters'), total: t('total'), startPage: t('startPage') },
+    strings: {
+      viewAll: t('viewAll'), search: t('search'), filters: t('filters'), total: t('total'), startPage: t('startPage'),
+      states: {
+        noRecordsTitle: t('noRecordsTitle'), noRecordsHint: t('noRecordsHint'), noRecordsYet: t('noRecordsYetDot'),
+        noActivity: t('noActivity'), couldNotLoad: t('couldNotLoad'), retry: t('retry'), errorServer: t('errorServer'),
+        nothingScheduled: t('nothingScheduled'), emptyLane: t('emptyLane'), nothingMatches: t('nothingMatches', { q: '{q}' }),
+      },
+    },
   }
 }
 

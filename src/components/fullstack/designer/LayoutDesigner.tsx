@@ -26,7 +26,8 @@ import { IssuesPanel } from './IssuesPanel'
 import { PageStrip } from './PageStrip'
 import { SitemapView } from './SitemapView'
 import { AppearanceView } from './AppearanceView'
-import { CANVAS_ZOOM, CanvasFrame, DeviceSwitch, ZOOM_LEVELS, ZoomControl, type PreviewDevice } from './CanvasFrame'
+import { CANVAS_ZOOM, CanvasFrame, DATA_STATES, DataStateSwitch, DeviceSwitch, ZOOM_LEVELS, ZoomControl, type PreviewDevice } from './CanvasFrame'
+import type { PreviewDataState } from '../layoutPreviewModel'
 import { DesignerMenu, type MenuItem } from './DesignerMenu'
 import type { FrontendAppearance } from './FrontendSettings'
 
@@ -44,14 +45,16 @@ type DesignerProps = Omit<PagesEditorProps, 'revealRequest' | 'addRequest' | 'pr
   onClose: () => void
 }
 
-/** How the designer was last laid out in this browser: the canvas zoom and which side panes show. */
+/** How the designer was last laid out in this browser: the canvas zoom, which side panes show, and
+ *  which data state the canvas draws. */
 interface DesignerPrefs {
   zoom: number
   library: boolean
   inspector: boolean
+  dataState: PreviewDataState
 }
 const PREFS_KEY = 'fullstack:designerView'
-const DEFAULT_PREFS: DesignerPrefs = { zoom: CANVAS_ZOOM, library: true, inspector: true }
+const DEFAULT_PREFS: DesignerPrefs = { zoom: CANVAS_ZOOM, library: true, inspector: true, dataState: 'data' }
 
 function readPrefs(): DesignerPrefs {
   try {
@@ -61,6 +64,7 @@ function readPrefs(): DesignerPrefs {
       zoom: ZOOM_LEVELS.includes(raw.zoom as number) ? raw.zoom as number : DEFAULT_PREFS.zoom,
       library: raw.library !== false,
       inspector: raw.inspector !== false,
+      dataState: DATA_STATES.includes(raw.dataState as PreviewDataState) ? raw.dataState as PreviewDataState : 'data',
     }
   } catch {
     return DEFAULT_PREFS
@@ -786,6 +790,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                   </nav>
                   <ZoomControl zoom={prefs.zoom} onChange={zoom => setPrefs(p => ({ ...p, zoom }))} />
                   <DeviceSwitch device={device} onChange={setDevice} />
+                  <DataStateSwitch state={prefs.dataState} onChange={dataState => setPrefs(p => ({ ...p, dataState }))} />
                 </>
               ) : page ? (
                 <>
@@ -795,6 +800,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                   <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · double-click a title to rename · drag to move · drag its edge to resize' : takesParts ? 'Click a part to edit it · double-click a title to rename · drag parts in from the library' : 'Click a part to edit it · double-click a title to rename'}</span>
                   <ZoomControl zoom={prefs.zoom} onChange={zoom => setPrefs(p => ({ ...p, zoom }))} />
                   <DeviceSwitch device={device} onChange={setDevice} />
+                  <DataStateSwitch state={prefs.dataState} onChange={dataState => setPrefs(p => ({ ...p, dataState }))} />
                   <button
                     type="button"
                     onClick={() => setSelectedWidget(null)}
@@ -840,6 +846,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                       collapsibleGroups={nav?.collapsibleGroups}
                       narrow={device === 'mobile'}
                       play={{ links: playLinks, go: playGo, note: setPlayNote }}
+                      dataState={prefs.dataState}
                     />
                   ) : (
                   <LayoutPreview
@@ -858,6 +865,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     navStyle={nav?.style}
                     collapsibleGroups={nav?.collapsibleGroups}
                     narrow={device === 'mobile'}
+                    dataState={prefs.dataState}
                     problems={validation.byPage}
                     widgetDrop={widgetDrag ? {
                       span: defaultSpan(widgetDrag.widget),

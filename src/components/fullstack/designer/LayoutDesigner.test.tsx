@@ -570,6 +570,39 @@ describe('Layout designer — pages, problems and the canvas', () => {
     fireEvent.keyDown(designer, { key: '/' })
     expect(document.activeElement).toBe(within(designer).getByLabelText('Search the library'))
   })
+
+  it('draws the canvas empty, loading or failed as the generated app would, remembering the choice', () => {
+    render(<Harness initial={desk} />)
+    let designer = openDesigner()
+    const preview = () => designer.querySelector('[data-layout-preview]') as HTMLElement
+    const widget = (i: number) => designer.querySelector(`[data-preview-widget="${i}"]`) as HTMLElement
+    expect(preview().getAttribute('data-preview-data-state')).toBe('data')
+
+    fireEvent.click(within(designer).getByRole('radio', { name: 'Empty' }))
+    // An empty count reads 0; a chart says there are no records.
+    expect(widget(0).querySelector('[data-preview-state="empty"]')?.textContent).toBe('0')
+    expect(widget(1).textContent).toContain('No records yet.')
+    // An empty list: the generated empty state, with its New action.
+    fireEvent.click(chip(designer, 'orders'))
+    const empty = preview().querySelector('[data-preview-state="empty"]') as HTMLElement
+    expect(empty.textContent).toContain('No records yet')
+    expect(empty.textContent).toContain('Create your first record to see it here.')
+    expect(empty.textContent).toContain('New Order')
+
+    fireEvent.click(within(designer).getByRole('radio', { name: 'Error' }))
+    expect(preview().querySelector('[data-preview-state="error"]')?.textContent).toBe('Something went wrong on the server. Try again in a moment. Try again')
+    fireEvent.click(within(designer).getByRole('radio', { name: 'Loading' }))
+    expect(preview().querySelector('[data-preview-state="loading"]')).toBeTruthy()
+    expect(preview().querySelectorAll('tbody tr')).toHaveLength(0)
+
+    // Closed and opened again, the canvas still shows the loading state.
+    fireEvent.click(within(designer).getByRole('button', { name: 'Done' }))
+    designer = openDesigner()
+    expect(within(designer).getByRole('radio', { name: 'Loading' }).getAttribute('aria-checked')).toBe('true')
+    expect(preview().getAttribute('data-preview-data-state')).toBe('loading')
+    fireEvent.click(within(designer).getByRole('radio', { name: 'Data' }))
+    expect(widget(1).querySelector('[data-preview-state]')).toBeNull()
+  })
 })
 
 describe('Layout designer — widget suggestions', () => {

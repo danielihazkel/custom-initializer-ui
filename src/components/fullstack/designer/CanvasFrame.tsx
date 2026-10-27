@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { PreviewDataState } from '../layoutPreviewModel'
 
 export type PreviewDevice = 'desktop' | 'tablet' | 'mobile'
 
@@ -36,6 +37,37 @@ export function DeviceSwitch({ device, onChange }: { device: PreviewDevice; onCh
           title={`${label} width`}
           onClick={() => onChange(value)}
           className={`px-1.5 py-0.5 ${device === value ? 'bg-primary/15 text-on-surface' : 'text-secondary hover:text-on-surface'}`}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">{icon}</span>
+        </button>
+      ))}
+    </span>
+  )
+}
+
+export const DATA_STATES: readonly PreviewDataState[] = ['data', 'empty', 'loading', 'error']
+
+/** The Data / Empty / Loading / Error switch over a designer canvas: sample rows, or how the
+ *  generated app draws its lists, charts and tiles with no rows, while they load, or on a failure. */
+export function DataStateSwitch({ state, onChange }: { state: PreviewDataState; onChange: (state: PreviewDataState) => void }) {
+  const options = [
+    ['data', 'Data', 'table_rows', 'Sample rows'],
+    ['empty', 'Empty', 'inbox', 'No rows yet'],
+    ['loading', 'Loading', 'hourglass_empty', 'While the rows load'],
+    ['error', 'Error', 'error', 'When the rows fail to load'],
+  ] as const
+  return (
+    <span role="radiogroup" aria-label="Data state" className="inline-flex overflow-hidden rounded-md border border-outline-variant" data-canvas-data-state>
+      {options.map(([value, label, icon, hint]) => (
+        <button
+          key={value}
+          type="button"
+          role="radio"
+          aria-checked={state === value}
+          aria-label={label}
+          title={`${label} — ${hint}`}
+          onClick={() => onChange(value)}
+          className={`px-1.5 py-0.5 ${state === value ? 'bg-primary/15 text-on-surface' : 'text-secondary hover:text-on-surface'}`}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">{icon}</span>
         </button>

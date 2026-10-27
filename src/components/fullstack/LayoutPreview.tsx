@@ -1,6 +1,6 @@
 import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import type { ContentBlock, ContentRun } from './contentMarkdown'
-import { highlights, previewPartOf, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewScreen, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
+import { highlights, previewPartOf, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewDataState, type PreviewScreen, type PreviewStateStrings, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
 import { dropIndicatorClass, useDragReorder, type DragReorder } from './useDragReorder'
 import type { PagePlayLinks } from './playLinks'
 import { MAX_STEPS, MAX_TITLE } from './pageLayout'
@@ -51,6 +51,9 @@ interface Props {
    *  (`widget.N.title`), a tab's (`tabs.N.title`), a step's (`steps.N.title`) or a record header
    *  number's (`headerStats.N.title`). Blank means back to the default. Absent: no renaming. */
   onRename?: (target: EditTarget, value: string) => void
+  /** Draw the data parts with sample rows (default), or as the generated app does when there are
+   *  no rows, while they load, or when the load failed. */
+  dataState?: PreviewDataState
 }
 
 /** Play mode: where the parts of each page lead (`buildPlayLinks`), and how to go there. */
@@ -62,6 +65,32 @@ export interface PlayNavigation {
 }
 
 const Play = createContext<PlayNavigation | undefined>(undefined)
+
+/** What the data parts draw: sample rows, or the generated app's empty, loading or failed state. */
+const DataState = createContext<PreviewDataState>('data')
+
+/** A data part outside the Data state: skeleton bars while loading, the generated "Couldn't load
+ *  data. Try again" on a failure, and `empty` (the part's own empty text) with no rows. */
+function StateNote({ states, empty, lines = 3 }: { states: PreviewStateStrings; empty: ReactNode; lines?: number }) {
+  const state = useContext(DataState)
+  if (state === 'loading') {
+    return (
+      <div className="mt-0.5 space-y-1" role="status" aria-label="Loading" data-preview-state="loading">
+        {Array.from({ length: lines }, (_, i) => (
+          <div key={i} className="h-1.5 animate-pulse rounded bg-surface-container-high" style={{ width: `${[92, 74, 84, 64][i % 4]}%` }} />
+        ))}
+      </div>
+    )
+  }
+  if (state === 'error') {
+    return (
+      <p className="mt-0.5 text-[9px] text-error" data-preview-state="error">
+        {states.couldNotLoad} <span className="font-semibold underline underline-offset-2">{states.retry}</span>
+      </p>
+    )
+  }
+  return <div className="mt-0.5 text-[9px] text-secondary" data-preview-state="empty">{empty}</div>
+}
 
 /** A title being renamed on the canvas: which one, its text when it started, and the part that
  *  opened it (focused again after Enter or Escape). */
@@ -267,7 +296,7 @@ const WIDGET_LIST = 'preview-widgets:'
  * nav, and the selected screen with sample data. Everything is drawn from `buildLayoutPreview`;
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
-export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, widgetTools, navStyle, collapsibleGroups, palette, widgetDrop, partDrop, narrow, problems, play, onRename }: Props) {
+export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, widgetTools, navStyle, collapsibleGroups, palette, widgetDrop, partDrop, narrow, problems, play, onRename, dataState = 'data' }: Props) {
   // The title being renamed in place, and the part to focus again once Enter or Escape ends it.
   const [renaming, setRenaming] = useState<RenameEdit | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -382,8 +411,10 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
     <Play.Provider value={play}>
     <Problems.Provider value={problems}>
     <Rename.Provider value={rename}>
+    <DataState.Provider value={dataState}>
     <div
       ref={rootRef}
+      data-preview-data-state={dataState}
       dir={preview.rtl ? 'rtl' : 'ltr'}
       className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest shadow-sm"
       data-layout-preview
@@ -443,6 +474,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         </div>
       )}
     </div>
+    </DataState.Provider>
     </Rename.Provider>
     </Problems.Provider>
     </Play.Provider>
@@ -476,6 +508,8 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
   // In Play mode, where this screen's parts lead instead.
   const play = useContext(Play)
   const here = play?.links[page]
+  const state = useContext(DataState)
+  const states = preview.strings.states
   // The dashboard grid, measured while a widget's edge is dragged to a new width.
   const gridRef = useRef<HTMLDivElement>(null)
   // A widget's edge being dragged: the grid shows its columns.
@@ -614,7 +648,8 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
             <Editable {...link} control="parent" label="Edit the parent entity" className="w-[34%] shrink-0">
               <div className="rounded border border-outline-variant p-1">
                 <p className="px-1 pb-0.5 text-[9px] font-semibold uppercase tracking-wide text-secondary">{screen.parentTitle}</p>
-                {screen.parentItems.map((item, i) => (
+                {state !== 'data' && <div className="px-1"><StateNote states={states} empty={states.noRecordsYet} /></div>}
+                {state === 'data' && screen.parentItems.map((item, i) => (
                   <p
                     key={i}
                     className={`truncate rounded px-1 py-0.5 text-[10px] ${i === 0 ? 'font-semibold text-white' : 'text-on-surface'}`}
@@ -626,7 +661,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               </div>
             </Editable>
             <div className="min-w-0 flex-1 space-y-1">
-              {screen.parentDetails && (
+              {screen.parentDetails && state === 'data' && (
                 <Editable {...link} control="showParent" label="Edit the parent card" className="block w-full">
                   <div className="rounded border border-outline-variant px-1.5 py-1 text-[8px]" data-preview-parent-card>
                     <p className="mb-0.5 text-[9px] font-semibold text-on-surface">{screen.parentItems[0]}</p>
@@ -661,11 +696,13 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
             <Editable {...link} control="chart.groupBy" label="Edit the chart" className="block w-full">
               <div {...playLink(play, here?.drill, `Open the ${screen.chartTitle} rows`).props} className={`rounded border border-outline-variant p-2 ${playLink(play, here?.drill, '').cls}`}>
                 <p className="mb-1 text-[10px] font-semibold text-on-surface">{screen.chartTitle}</p>
-                <ReportChartShape kind={screen.chart.kind} line={screen.chart.line} bars={screen.chart.bars} accent={accent} />
+                {state === 'data'
+                  ? <ReportChartShape kind={screen.chart.kind} line={screen.chart.line} bars={screen.chart.bars} accent={accent} />
+                  : <StateNote states={states} empty={states.noRecordsYet} />}
               </div>
             </Editable>
           </div>
-          {screen.chartTable && <TotalsTable bars={screen.chart.bars} group={screen.groupLabel} value={screen.valueLabel} total={screen.totalLabel} />}
+          {screen.chartTable && state === 'data' && <TotalsTable bars={screen.chart.bars} group={screen.groupLabel} value={screen.valueLabel} total={screen.totalLabel} />}
           {screen.moreCharts.length > 0 && (
             <div className="grid grid-cols-2 gap-1.5">
               {screen.moreCharts.map((c, ci) => (
@@ -673,8 +710,10 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                   <Editable {...link} control={`chart${ci + 2}.groupBy`} label={`Edit chart ${ci + 2}`} className="block min-w-0">
                     <div className="rounded border border-outline-variant p-1.5" data-preview-chart={ci + 1}>
                       <p className="mb-1 truncate text-[9px] font-semibold text-on-surface">{c.title}</p>
-                      <ReportChartShape kind={c.kind} line={c.line} bars={c.line ? c.bars : c.bars.slice(0, 4)} accent={accent} />
-                      {c.table && <TotalsTable bars={c.bars} value={screen.valueLabel} total={screen.totalLabel} />}
+                      {state === 'data'
+                        ? <ReportChartShape kind={c.kind} line={c.line} bars={c.line ? c.bars : c.bars.slice(0, 4)} accent={accent} />
+                        : <StateNote states={states} empty={states.noRecordsYet} lines={2} />}
+                      {c.table && state === 'data' && <TotalsTable bars={c.bars} value={screen.valueLabel} total={screen.totalLabel} />}
                     </div>
                   </Editable>
                 </div>
@@ -705,7 +744,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               {screen.days.map((d, i) => (
                 <div key={i} className="min-h-9 border-b border-e border-outline-variant/60 p-0.5">
                   <span className="block text-end text-[8px] text-secondary">{d.day}</span>
-                  {d.events.slice(0, 2).map((ev, j) => {
+                  {state === 'data' && d.events.slice(0, 2).map((ev, j) => {
                     const go = playLink(play, here?.row, `Open ${ev}`, here?.rowNote)
                     return <span key={j} {...go.props} className={`mt-0.5 block truncate rounded px-0.5 text-[8px] ${go.cls}`} style={{ background: `color-mix(in srgb, ${accent} 13%, transparent)`, color: accent }}>{ev}</span>
                   })}
@@ -713,6 +752,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               ))}
             </div>
           </Editable>
+          {state !== 'data' && <StateNote states={states} empty={states.nothingScheduled} lines={2} />}
           {screen.creates && <p className="text-[9px] text-secondary">Click a day to add a row on it</p>}
         </div>
       )
@@ -728,9 +768,12 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                   <div key={i} className="w-28 shrink-0 space-y-1 rounded border border-outline-variant bg-surface-container-low p-1">
                     <div className="flex items-center justify-between gap-1 text-[9px] font-semibold text-on-surface">
                       <span className="truncate">{lane.label}</span>
-                      <span className={`tabular-nums ${over ? 'text-error' : 'text-secondary'}`}>{lane.limit != null ? `${lane.count}/${lane.limit}` : lane.count}</span>
+                      <span className={`tabular-nums ${over && state === 'data' ? 'text-error' : 'text-secondary'}`}>
+                        {state === 'data' ? (lane.limit != null ? `${lane.count}/${lane.limit}` : lane.count) : state === 'empty' ? (lane.limit != null ? `0/${lane.limit}` : 0) : '…'}
+                      </span>
                     </div>
-                    {lane.cards.map((card, j) => {
+                    {state === 'empty' && <p className="px-0.5 text-[8px] text-secondary" data-preview-state="empty">{states.emptyLane}</p>}
+                    {state === 'data' && lane.cards.map((card, j) => {
                       const go = playLink(play, here?.row, `Open ${card.heading}`, here?.rowNote)
                       return (
                         <div key={j} {...go.props} className={`rounded border border-outline-variant bg-surface p-1 ${go.cls}`}>
@@ -744,6 +787,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               })}
             </div>
           </Editable>
+          {(state === 'loading' || state === 'error') && <StateNote states={states} empty={null} lines={2} />}
         </div>
       )
     case 'content':
@@ -786,7 +830,8 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           <div className="rounded-full border border-outline-variant px-2 py-1 text-[10px] text-secondary">{screen.words}</div>
           <Editable {...link} control="entities" label="Edit the searched entities" className="block w-full">
             <div className="space-y-1">
-              {screen.groups.map((g, i) => (
+              {state !== 'data' && <StateNote states={states} empty={states.nothingMatches.replace('{q}', screen.words)} />}
+              {state === 'data' && screen.groups.map((g, i) => (
                 <div key={i} className="rounded border border-outline-variant">
                   <p className="border-b border-outline-variant px-1.5 py-0.5 text-[9px] font-semibold text-on-surface">
                     {g.title} <span className="font-normal text-secondary">{g.total}</span>
@@ -938,6 +983,9 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
   const play = useContext(Play)
   const here = play?.links[link.page]
   const back = playLink(play, here?.back, 'Back')
+  // Loading or failed, the record is not there yet: only its heading shows above the state.
+  const state = useContext(DataState)
+  const held = state === 'loading' || state === 'error'
   const tabParts = parts?.slot === 'child-tab' ? parts : undefined
   const statParts = parts?.slot === 'header-stat' ? parts : undefined
   // The related tabs come after the details tab: tab i is related list i - 1.
@@ -948,6 +996,7 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
       <Editable {...link} control="entity" label="Edit the record entity" className="block text-start">
         <h3 className="text-[13px] font-bold text-on-surface">{screen.heading}</h3>
       </Editable>
+      {held ? <StateNote states={preview.strings.states} empty={null} lines={4} /> : (<>
       {screen.stats.length > 0 && (
         <div {...(statParts ? partDropProps(statParts, e => statSlot(e, screen.stats.length)) : {})}>
         <Editable {...link} control="headerStats" label="Edit the header numbers" className="block w-full">
@@ -957,7 +1006,7 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
                 <p className="truncate text-[8px] text-secondary">
                   <RenameSlot page={link.page} control={`headerStats.${i}.title`} value={s.title}>{s.title}</RenameSlot>
                 </p>
-                <p className="text-[12px] font-bold tabular-nums text-on-surface">{s.value}</p>
+                <p className="text-[12px] font-bold tabular-nums text-on-surface" data-preview-state={state === 'empty' ? 'empty' : undefined}>{state === 'empty' ? '0' : s.value}</p>
               </div>
             ))}
           </div>
@@ -1010,6 +1059,7 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
       ) : (
         <p className="text-[10px] text-error">This tab lists no entity.</p>
       )}
+      </>)}
     </div>
   )
 }
@@ -1175,6 +1225,25 @@ const SPAN = ['col-span-1', 'col-span-2', 'col-span-3', 'col-span-4']
 const MAX_SPAN = SPAN.length
 /** The widgets whose whole card drills into the rows behind it. */
 const DRILLS = new Set<PreviewWidget['kind']>(['kpi', 'progress', 'bar', 'donut', 'stacked', 'pivot', 'line', 'top'])
+/** The widgets that read rows, and so have an empty, loading and failed state of their own (a list
+ *  widget's table draws its own). */
+const STATEFUL = new Set<PreviewWidget['kind']>(['kpi', 'progress', 'top', 'bar', 'donut', 'stacked', 'pivot', 'activity', 'line', 'recent'])
+
+/** A data widget outside the Data state: an empty count reads 0, a progress bar 0 of its target. */
+function WidgetState({ widget, states }: { widget: PreviewWidget; states: PreviewStateStrings }) {
+  const state = useContext(DataState)
+  if (state === 'empty' && widget.kind === 'kpi') return <p className="text-[15px] font-bold tabular-nums text-on-surface" data-preview-state="empty">0</p>
+  if (state === 'empty' && widget.kind === 'progress') {
+    return (
+      <div data-preview-state="empty">
+        <p className="text-[13px] font-bold tabular-nums text-on-surface">0 <span className="text-[9px] font-normal text-secondary">/ {widget.target}</span></p>
+        <div className="mt-0.5 h-1 rounded-full bg-surface-container" />
+      </div>
+    )
+  }
+  return <StateNote states={states} empty={widget.kind === 'activity' ? states.noActivity : states.noRecordsYet} />
+}
+
 const TOOL = 'rounded px-1 text-[10px] font-semibold leading-4 text-secondary hover:bg-primary/10 hover:text-primary disabled:opacity-30'
 
 function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, onResize, onResizing, onDuplicate, onKindMenu, newDrop, last, narrow, ...link }: LinkProps & {
@@ -1200,6 +1269,7 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
 }) {
   // While the end edge is dragged the card follows the pointer; the width is committed on release.
   const [liveSpan, setLiveSpan] = useState<number | null>(null)
+  const state = useContext(DataState)
   const play = useContext(Play)
   const goes = play?.links[link.page]?.widgets[widget.index]
   // A chart, number or ranked list drills into its rows; lists, notes and link tiles link part by part.
@@ -1269,6 +1339,7 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
         {widget.filters.length > 0 && (
           <p className="truncate text-[8px] text-secondary" data-preview-widget-filter>{widget.filters.join(' · ')}</p>
         )}
+        {state !== 'data' && STATEFUL.has(widget.kind) ? <WidgetState widget={widget} states={preview.strings.states} /> : (<>
         {widget.kind === 'kpi' && <p className="text-[15px] font-bold tabular-nums text-on-surface">{widget.value}</p>}
         {widget.kind === 'kpi' && widget.delta && (
           <p className={`text-[8px] font-semibold ${widget.delta.startsWith('▲') ? 'text-emerald-600' : 'text-error'}`} data-preview-delta>{widget.delta}</p>
@@ -1378,6 +1449,7 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
             <li {...playLink(play, goes?.open, viewAll).props} className={`w-fit text-[9px] font-semibold ${playLink(play, goes?.open, viewAll).cls}`} style={{ color: accent }}>{viewAll}</li>
           </ul>
         )}
+        </>)}
         {widget.kind === 'broken' && <p className="text-[10px] text-error">{widget.message}</p>}
       </div>
     </Editable>
@@ -1542,6 +1614,38 @@ function FakeButton({ children, outline, style }: { children: ReactNode; outline
   )
 }
 
+/** A list outside the Data state, as the generated list draws it: skeleton rows while loading,
+ *  the server's error with Try again above an empty list, and the empty state with its New
+ *  action (outlined in the Menora set — the New pill is the view's one yellow). */
+function ListState({ table, states, primary, menora, compact }: {
+  table: PreviewTable
+  states: PreviewStateStrings
+  primary: React.CSSProperties
+  menora: boolean
+  compact?: boolean
+}) {
+  const state = useContext(DataState)
+  if (state === 'loading') return <StateNote states={states} empty={null} lines={compact ? 2 : 3} />
+  if (state === 'error') {
+    return (
+      <p className="rounded border border-error/40 bg-error/5 px-1.5 py-1 text-[9px] text-error" data-preview-state="error">
+        {states.errorServer} <span className="font-semibold underline underline-offset-2">{states.retry}</span>
+      </p>
+    )
+  }
+  return (
+    <div className="rounded border border-dashed border-outline-variant px-2 py-2 text-center" data-preview-state="empty">
+      <p className="text-[10px] font-semibold text-on-surface">{states.noRecordsTitle}</p>
+      {!compact && <p className="text-[9px] text-secondary">{states.noRecordsHint}</p>}
+      {table.newLabel && (
+        <span className="mt-1 inline-flex">
+          {menora ? <FakeButton outline>{table.newLabel}</FakeButton> : <FakeButton style={primary}>{table.newLabel}</FakeButton>}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNote, newTo }: {
   table: PreviewTable
   preview: LayoutPreviewModel
@@ -1563,6 +1667,8 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
   const play = useContext(Play)
   const rowLink = (row: string[]) => playLink(play, rowTo, `Open ${row[0] ?? 'the row'}`, rowNote)
   const create = playLink(play, newTo, table.newLabel ?? 'New', 'New opens the form in a drawer')
+  const state = useContext(DataState)
+  const sidePane = state === 'data' ? table.sidePane : null
   return (
     <div className="space-y-1 text-start">
       <div className="flex items-center gap-1">
@@ -1588,7 +1694,7 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
       ) : (
         <FilterRow filters={table.filters} chips={[...table.presetChips, ...(table.sort ? [table.sort] : [])]} label={preview.strings.filters} />
       )}
-      <div className={table.sidePane ? 'grid grid-cols-[minmax(0,1fr)_6rem] gap-1' : ''}>
+      <div className={sidePane ? 'grid grid-cols-[minmax(0,1fr)_6rem] gap-1' : ''}>
       <div className="min-w-0 space-y-0.5">
       {link && table.view !== 'cards' && table.view !== 'kanban' && table.view !== 'calendar' && part('columns', 'Edit the columns', (
         <div className="grid gap-x-1 text-start text-[9px] font-semibold text-secondary" style={{ gridTemplateColumns: `repeat(${Math.max(1, table.columns.length)}, minmax(0, 1fr))` }} data-preview-columns>
@@ -1597,7 +1703,9 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
       ))}
       {part('entity', 'Edit the listed entity', (
       <>
-      {table.view === 'cards' ? (
+      {state !== 'data' ? (
+        <ListState table={table} states={preview.strings.states} primary={primary} menora={menora} compact={compact} />
+      ) : table.view === 'cards' ? (
         <div className="grid grid-cols-3 gap-1" data-preview-view="cards">
           {table.rows.map((row, i) => (
             <div key={i} {...rowLink(row).props} className={`rounded border border-outline-variant/60 px-1.5 py-1 text-[9px] ${rowLink(row).cls}`}>
@@ -1649,9 +1757,9 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
       </>
       ))}
       </div>
-      {table.sidePane && part('detail', 'Edit where rows open', (
+      {sidePane && part('detail', 'Edit where rows open', (
         <aside className="rounded border border-outline-variant px-1.5 py-1 text-start text-[8px]" data-preview-side-pane>
-          {table.sidePane.map(item => (
+          {sidePane.map(item => (
             <p key={item.label} className="truncate"><span className="text-secondary">{item.label}:</span> <span className="text-on-surface">{item.value}</span></p>
           ))}
         </aside>
