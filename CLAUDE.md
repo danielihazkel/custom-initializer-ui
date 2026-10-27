@@ -402,6 +402,27 @@ goes (`enumLabels.ts` `pruneLabels`), mirrored by `quickAdd` `values="OPEN:Open|
 the UI mock (`enumLabel` = explicit else `humanizeConstant`, mirroring `EntityScaffoldContext`) and
 validated like the server's `canonicalEnumLabels` (key must be a value, non-blank, ≤ 80 chars, ENUM only). The tickets example carries labels so the path is exercised.
 
+## Performance rules
+
+- **Catalog lists are fetched once per session.** `useMetadata` (`getMetadata`) and `hooks/catalogCache.ts`
+  (`useCatalog`, behind `useCompatibility`, `useStarterTemplates`, `useFrontendMetadata`, `useSqlDialects`,
+  `useExtensions`, `useModuleTemplates`, `useOpenApiCapable`, `useSoapCapable`) share one promise per URL.
+  `invalidateCatalog()` runs on every admin write (`adminFetch` non-GET) and from `invalidateMetadata()`
+  (refresh/import); `src/test/setup.ts` clears it between tests. Team models/templates stay live.
+- **Admin tabs, grammars and the relation graph are lazy.** `AdminPage` lazy-loads each tab
+  (`TAB_LOADERS`) and prefetches the rest on idle; `lang-from-path.ts` loads one CodeMirror grammar per
+  language (`useLanguage`); React and framer-motion are their own chunks (`vite.config.ts` `manualChunks`).
+- **The entity editor is memoized per card.** `EntitiesEditor` is `memo`, and each card is the memoized
+  `EntityCard`, whose handlers come through one stable `api` object that forwards to the editor's latest
+  helpers — a card that skipped a render must never edit the list it last saw (pinned by
+  `EntitiesEditor.test.tsx` "memoized cards"). Props handed to the editor from `FullstackView` must keep their
+  identity (`useStableCallback`, memoized objects); a new inline arrow or object there re-renders every card.
+  The shared relation-target list (`entityNames`) is a deferred value.
+- **Draw-only data trails the input.** `useDrawnPages` (`pages/usePagesModel.ts`) feeds the canvas preview and
+  the suggestion lists a render behind while the layout keeps its shape; validation is never deferred.
+  Snapshots compare through `snapshotKey` (JSON cached per snapshot object — never mutate a snapshot), and the
+  big Fullstack drafts persist through `usePersistThrottled` (at most every 400 ms, flushed on pagehide).
+
 ## Data Flow
 
 1. `useMetadata` fetches `/metadata/client` → raw Initializr metadata JSON
@@ -428,6 +449,11 @@ Tailwind v4 (`@import "tailwindcss"` + `@theme` in `src/index.css`) with Materia
 (`bg-surface-container-lowest`, `text-on-surface`, `border-outline-variant`, `text-primary`…). Dark is the
 `@theme` default; `html.light` overrides it (toggled in `App.tsx`, pre-paint script in `index.html`), and in
 light mode `text-primary` is remapped to the tertiary blue because gold text on white is unreadable. Fonts
-(Geist) and icons (Material Symbols) are bundled from node_modules via `src/fonts.css` — the deployed UI is
-offline, never add a CDN link. Container queries (`@container` / `@sm:`) are used where a form must stack
+(Geist) and icons (Material Symbols) are bundled via `src/fonts.css` — the deployed UI is
+offline, never add a CDN link. The icon font is **not** the package's 4 MB variable font: it is
+`src/assets/fonts/material-symbols-outlined.woff2` (~1.4 MB), built by `scripts/instance-material-symbols.py`
+(fontTools), which keeps every glyph (admins type free icon names) and the `opsz` axis but pins FILL/GRAD and
+cuts `wght` to 400–700. Rerun it after upgrading `material-symbols`; an icon weight outside 400–700 needs the
+script changed first. `index.html` preloads it. The backdrop (grid, blobs, pipes, conveyor, gears) is drawn
+still — looping it kept the CPU busy on an idle page — so don't add `infinite` decorative animations back. Container queries (`@container` / `@sm:`) are used where a form must stack
 by its column's width rather than the window's (the page forms in the layout designer's inspector).

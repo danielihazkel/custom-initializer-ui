@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { InitializrMetadata, UseMetadataResult } from '../types'
+import { invalidateCatalog } from './catalogCache'
 
 // One in-flight/resolved promise shared by every useMetadata() caller (App, the
 // fullstack picker, the admin tabs) so the catalog is downloaded once per session.
@@ -21,9 +22,11 @@ export function getMetadata(): Promise<InitializrMetadata> {
   return cached
 }
 
-/** Drop the memoised catalog (call after /admin/refresh or a config import). */
+/** Drop the memoised catalog (call after /admin/refresh or a config import) — and the cached
+ *  catalog lists with it. */
 export function invalidateMetadata(): void {
   cached = null
+  invalidateCatalog()
 }
 
 export function useMetadata(): UseMetadataResult {

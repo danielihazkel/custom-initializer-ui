@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { invalidateCatalog } from './catalogCache'
 
 function getAuthHeaders(): Record<string, string> {
   const token = sessionStorage.getItem('adminToken')
@@ -47,6 +48,8 @@ async function adminFetch(method: string, url: string, body?: unknown): Promise<
     try { errorBody = await res.json() } catch { /* ignore */ }
     throw new AdminApiError(res.status, errorBody)
   }
+  // Any admin write may change what the generator tabs list (templates, rules, palettes, …).
+  if (method !== 'GET') invalidateCatalog()
   if (res.status === 204 || res.headers.get('content-length') === '0') return null
   return res.json()
 }

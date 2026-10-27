@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense, type ComponentType, type LazyExoticComponent } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { AdminTab } from '../../types'
 import { AdminLogin } from './AdminLogin'
@@ -7,21 +7,57 @@ import { AdminSidebar } from './AdminSidebar'
 import { AdminGlobalActions } from './AdminGlobalActions'
 import { AdminKindProvider, useAdminKind } from './AdminKindContext'
 
-import { OverviewTab } from './overview/OverviewTab'
-import { ActivityTab } from './activity/ActivityTab'
-import { DependencyGroupsTab } from './dependency-groups/DependencyGroupsTab'
-import { DependencyEntriesTab } from './dependency-entries/DependencyEntriesTab'
-import { FileContributionsTab } from './file-contributions/FileContributionsTab'
-import { BuildCustomizationsTab } from './build-customizations/BuildCustomizationsTab'
-import { SubOptionsTab } from './sub-options/SubOptionsTab'
-import { CompatibilityTab } from './compatibility/CompatibilityTab'
-import { StarterTemplatesTab } from './starter-templates/StarterTemplatesTab'
-import { ModuleTemplatesTab } from './module-templates/ModuleTemplatesTab'
-import { ColorPalettesTab } from './color-palettes/ColorPalettesTab'
-import { EntityTemplatesTab } from './entity-templates/EntityTemplatesTab'
-import { FullstackExamplesTab } from './fullstack-examples/FullstackExamplesTab'
-import { VersionsTab } from './versions/VersionsTab'
-import { DepartmentsTab } from './departments/DepartmentsTab'
+// Each tab is its own chunk, so the login form doesn't wait for every CRUD tab — nor for the
+// code editor and the layout editor some of them carry. They are fetched in the background
+// once the admin shell is up (see prefetchTabs), so switching tabs stays instant.
+const TAB_LOADERS: Record<AdminTab, () => Promise<{ default: ComponentType }>> = {
+  'overview': () => import('./overview/OverviewTab').then(m => ({ default: m.OverviewTab })),
+  'activity': () => import('./activity/ActivityTab').then(m => ({ default: m.ActivityTab })),
+  'groups': () => import('./dependency-groups/DependencyGroupsTab').then(m => ({ default: m.DependencyGroupsTab })),
+  'entries': () => import('./dependency-entries/DependencyEntriesTab').then(m => ({ default: m.DependencyEntriesTab })),
+  'files': () => import('./file-contributions/FileContributionsTab').then(m => ({ default: m.FileContributionsTab })),
+  'builds': () => import('./build-customizations/BuildCustomizationsTab').then(m => ({ default: m.BuildCustomizationsTab })),
+  'suboptions': () => import('./sub-options/SubOptionsTab').then(m => ({ default: m.SubOptionsTab })),
+  'compatibility': () => import('./compatibility/CompatibilityTab').then(m => ({ default: m.CompatibilityTab })),
+  'templates': () => import('./starter-templates/StarterTemplatesTab').then(m => ({ default: m.StarterTemplatesTab })),
+  'modules': () => import('./module-templates/ModuleTemplatesTab').then(m => ({ default: m.ModuleTemplatesTab })),
+  'palettes': () => import('./color-palettes/ColorPalettesTab').then(m => ({ default: m.ColorPalettesTab })),
+  'entity-templates': () => import('./entity-templates/EntityTemplatesTab').then(m => ({ default: m.EntityTemplatesTab })),
+  'fullstack-examples': () => import('./fullstack-examples/FullstackExamplesTab').then(m => ({ default: m.FullstackExamplesTab })),
+  'versions': () => import('./versions/VersionsTab').then(m => ({ default: m.VersionsTab })),
+  'departments': () => import('./departments/DepartmentsTab').then(m => ({ default: m.DepartmentsTab })),
+}
+
+const TABS = Object.fromEntries(
+  Object.entries(TAB_LOADERS).map(([id, load]) => [id, lazy(load)]),
+) as Record<AdminTab, LazyExoticComponent<ComponentType>>
+
+/** Loads every tab's chunk (and with it the code and layout editors) while the browser is idle. */
+function prefetchTabs() {
+  const load = () => {
+    for (const loader of Object.values(TAB_LOADERS)) loader().catch(() => {})
+    import('./file-contributions/CodeEditor').catch(() => {})
+    import('../fullstack/PagesEditor').catch(() => {})
+  }
+  if ('requestIdleCallback' in window) {
+    const id = window.requestIdleCallback(load, { timeout: 3000 })
+    return () => window.cancelIdleCallback(id)
+  }
+  const id = setTimeout(load, 500)
+  return () => clearTimeout(id)
+}
+
+/** What a tab shows while its chunk arrives — the same spinner the tables show while loading. */
+function TabFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-24 text-secondary">
+      <span className="material-symbols-outlined animate-spin text-primary" style={{ fontSize: '28px' }}>
+        progress_activity
+      </span>
+      <span className="text-xs font-medium uppercase tracking-widest text-primary/80">Loading</span>
+    </div>
+  )
+}
 
 export function AdminPage() {
   const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('adminToken'))
@@ -77,6 +113,9 @@ function AdminPageInner({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview')
   const [reloadKey, setReloadKey] = useState(0)
   const { kind } = useAdminKind()
+  const ActiveTab = TABS[activeTab]
+
+  useEffect(prefetchTabs, [])
 
   useEffect(() => {
     if (activeTab === 'modules' && kind === 'FRONTEND') setActiveTab('overview')
@@ -111,21 +150,9 @@ function AdminPageInner({ onLogout }: { onLogout: () => void }) {
               exit={{ opacity: 0, y: 10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeTab === 'overview'   && <OverviewTab />}
-              {activeTab === 'activity'   && <ActivityTab />}
-              {activeTab === 'groups'     && <DependencyGroupsTab />}
-              {activeTab === 'entries'    && <DependencyEntriesTab />}
-              {activeTab === 'files'      && <FileContributionsTab />}
-              {activeTab === 'builds'     && <BuildCustomizationsTab />}
-              {activeTab === 'suboptions' && <SubOptionsTab />}
-              {activeTab === 'compatibility' && <CompatibilityTab />}
-              {activeTab === 'templates'  && <StarterTemplatesTab />}
-              {activeTab === 'modules'    && <ModuleTemplatesTab />}
-              {activeTab === 'palettes'   && <ColorPalettesTab />}
-              {activeTab === 'entity-templates' && <EntityTemplatesTab />}
-              {activeTab === 'fullstack-examples' && <FullstackExamplesTab />}
-              {activeTab === 'versions'   && <VersionsTab />}
-              {activeTab === 'departments' && <DepartmentsTab />}
+              <Suspense fallback={<TabFallback />}>
+                <ActiveTab />
+              </Suspense>
             </motion.div>
           </AnimatePresence>
         </main>

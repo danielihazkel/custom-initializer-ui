@@ -4,8 +4,7 @@ import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
 } from '../../types'
-import { EntitiesEditor, countEntityErrors, newEntity, type EditorDensity } from './EntitiesEditor'
-import { EntityRelationGraph } from './EntityRelationGraph'
+import { EntitiesEditor, countEntityErrors, newEntity, type EditorDensity, type NoticeAction } from './EntitiesEditor'
 import { EntityNavigator, entityMatches, useActiveEntity } from './EntityNavigator'
 import { SectionNav } from './SectionNav'
 import { focusWithoutClipping, scrollToElement } from './scroll'
@@ -47,9 +46,12 @@ import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
 import { useCompatibility } from '../../hooks/useCompatibility'
 import { registerCommands } from '../../commands'
+import { useStableCallback } from '../../hooks/useStableCallback'
 
 // The preview modal drags in CodeMirror + every language grammar; load it on first Explore.
 const ProjectPreview = lazy(() => import('../ProjectPreview').then(m => ({ default: m.ProjectPreview })))
+// The relation graph (d3-force, drag, zoom) is shown only when it is switched on.
+const EntityRelationGraph = lazy(() => import('./EntityRelationGraph').then(m => ({ default: m.EntityRelationGraph })))
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
 import { readStoredPresetSnapshots, useFullstackPresets } from '../../hooks/useFullstackPresets'
 import { TeamModelError, useTeamModels } from '../../hooks/useTeamModels'
@@ -110,6 +112,38 @@ function persist(key: string, value: string): boolean {
   } catch {
     return false
   }
+}
+
+/** Calls `write(value)` whenever `value` changes — at once when nothing was written in the last
+ *  `ms`, else once per `ms` while the edits keep coming — and always on pagehide and unmount, so a
+ *  reload or a tab switch never loses the last keystrokes. The entity list and the layout are
+ *  serialized whole, which on every keystroke made typing in a big model stutter. Returns a
+ *  flush for callers that need the latest value on disk right now. */
+function usePersistThrottled<T>(value: T, write: (value: T) => void, ms = 400): () => void {
+  const latest = useRef({ value, write })
+  latest.current = { value, write }
+  const pending = useRef(false)
+  const lastWrite = useRef(0)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flush = useCallback(() => {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null }
+    if (!pending.current) return
+    pending.current = false
+    lastWrite.current = Date.now()
+    latest.current.write(latest.current.value)
+  }, [])
+  useEffect(() => {
+    pending.current = true
+    if (timer.current) return
+    const wait = lastWrite.current + ms - Date.now()
+    if (wait <= 0) flush()
+    else timer.current = setTimeout(flush, wait)
+  }, [value, ms, flush])
+  useEffect(() => {
+    window.addEventListener('pagehide', flush)
+    return () => { window.removeEventListener('pagehide', flush); flush() }
+  }, [flush])
+  return flush
 }
 
 /** The stock entity model, normalized like a snapshot so "still untouched" is a plain compare. */
@@ -293,14 +327,14 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // Persist form state so a refresh doesn't lose the user's work (mirrors useProjectState).
   // The model itself (meta + entities) is what matters for the storage-full notice; the small
   // UI-state keys just try their luck.
-  useEffect(() => { setPersistFailedKeys(prev => trackPersist(prev, LS.meta, persist(LS.meta, JSON.stringify(meta)))) }, [meta])
+  usePersistThrottled(meta, m => setPersistFailedKeys(prev => trackPersist(prev, LS.meta, persist(LS.meta, JSON.stringify(m)))))
   // `sourceSql` (the imported DDL) stays in memory only: it is the one prop big enough to blow
   // the quota, and the server discards it anyway. The uids do persist — `collapsed` keys on them.
-  useEffect(() => {
-    const json = JSON.stringify(entities.map(({ sourceSql: _s, ...e }) => e))
+  const flushEntities = usePersistThrottled(entities, list => {
+    const json = JSON.stringify(list.map(({ sourceSql: _s, ...e }) => e))
     lastWrittenEntitiesRef.current = json
     setPersistFailedKeys(prev => trackPersist(prev, LS.entities, persist(LS.entities, json)))
-  }, [entities])
+  })
   // Two tabs on this page share the draft keys, and the last one to type used to win silently.
   // A write we did not make ourselves surfaces as a banner with both drafts on offer — never an
   // automatic merge.
@@ -321,7 +355,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   useEffect(() => { persist(LS.frontendSet, frontendSet) }, [frontendSet])
   useEffect(() => { persist(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
   useEffect(() => { persist(LS.palette, colorPalette) }, [colorPalette])
-  useEffect(() => { persist(LS.pages, JSON.stringify(pages)) }, [pages])
+  usePersistThrottled(pages, ps => { persist(LS.pages, JSON.stringify(ps)) })
   useEffect(() => { persist(LS.nav, JSON.stringify(nav ?? null)) }, [nav])
   useEffect(() => { persist(LS.dismissed, JSON.stringify(dismissedWarnings)) }, [dismissedWarnings])
   useEffect(() => { persist(LS.collapsed, JSON.stringify([...collapsed])) }, [collapsed])
@@ -1092,6 +1126,18 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     if (!entityFilter.trim()) return undefined
     return new Set(entities.filter(e => e.uid && entityMatches(e, entityFilter)).map(e => e.uid!))
   }, [entities, entityFilter])
+  // Stable identities for the entity editor's props, so it (memoized) skips rendering every
+  // card when something else on the page changes — the layout designer above all.
+  const editorCallbacks = {
+    toggleCollapsed: useStableCallback(toggleCollapsed),
+    revealRow: useStableCallback(revealRow),
+    showLintFor: useStableCallback(showLintFor),
+    notice: useStableCallback((message: string, action?: NoticeAction) => setToast({ message, type: 'success', action })),
+    goToOptions: useStableCallback(() => jumpToSection('fs-options')),
+    addDep: useStableCallback((dep: string) => setSelectedDeps(prev => (prev.includes(dep) ? prev : [...prev, dep]))),
+  }
+  const entityPreviewRtl = scaffoldOpts.includes('rtl')
+  const entityPreviewCtx = useMemo(() => ({ locale: meta.locale, rtl: entityPreviewRtl }), [meta.locale, entityPreviewRtl])
   const entityErrorCounts = useMemo(() => {
     const counts: Record<number, number> = {}
     for (const [idx, err] of Object.entries(entityErrors.entities)) counts[Number(idx)] = countEntityErrors(err)
@@ -1127,12 +1173,15 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     (entity: FullstackEntityDef) => entityCodeFiles(entity, preview?.files),
     [preview],
   )
+  const codeStale = Boolean(previewSnapshotRef.current) && !snapshotsEqual(previewSnapshotRef.current!, currentSnapshot)
+  const stableExplore = useStableCallback(explore)
+  // A boolean, not the snapshot, in the deps: the entity cards re-render only when staleness flips.
   const codeState = useMemo(() => ({
     hasPreview: Boolean(preview),
     loading: previewLoading,
-    stale: Boolean(previewSnapshotRef.current) && !snapshotsEqual(previewSnapshotRef.current!, currentSnapshot),
-    onExplore: explore,
-  }), [preview, previewLoading, currentSnapshot, explore])
+    stale: codeStale,
+    onExplore: stableExplore,
+  }), [preview, previewLoading, codeStale, stableExplore])
 
   // Everything that decides the generated app's look, for the layout designer's Appearance view.
   const frontendAppearance: FrontendAppearance = {
@@ -1326,6 +1375,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         }}
         onKeepMine={() => {
           setExternalDraft(null)
+          flushEntities()
           if (lastWrittenEntitiesRef.current !== null) persist(LS.entities, lastWrittenEntitiesRef.current)
           persist(LS.meta, JSON.stringify(meta))
         }}
@@ -1443,13 +1493,15 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
           entityName={uid => entities.find(e => e.uid === uid)?.name.trim() ?? ''}
         />
         {showGraph && entities.length > 0 && (
-          <EntityRelationGraph
-            entities={entities}
-            showInverse={scaffoldOpts.includes('inverseCollections')}
-            onSelect={uid => { setShowGraph(false); revealRow(uid) }}
-            onCreateRelation={createRelationFromGraph}
-            onRefuseRelation={message => setToast({ message, type: 'error' })}
-          />
+          <Suspense fallback={null}>
+            <EntityRelationGraph
+              entities={entities}
+              showInverse={scaffoldOpts.includes('inverseCollections')}
+              onSelect={uid => { setShowGraph(false); revealRow(uid) }}
+              onCreateRelation={createRelationFromGraph}
+              onRefuseRelation={message => setToast({ message, type: 'error' })}
+            />
+          </Suspense>
         )}
         {/* The outline is always beside the cards on a wide screen. It used to appear only past
             four entities, which reflowed the whole workspace the moment a fourth was added. */}
@@ -1472,21 +1524,21 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
               errors={entityErrors.entities}
               noEntities={entityErrors.noEntities}
               collapsed={collapsed}
-              onToggleCollapsed={toggleCollapsed}
+              onToggleCollapsed={editorCallbacks.toggleCollapsed}
               onDestructive={pushUndoEntry}
               projectOpts={scaffoldOpts}
-              onNotice={(message, action) => setToast({ message, type: 'success', action })}
-              onRowAdded={revealRow}
+              onNotice={editorCallbacks.notice}
+              onRowAdded={editorCallbacks.revealRow}
               lintCounts={lintCounts}
-              onShowLint={showLintFor}
+              onShowLint={editorCallbacks.showLintFor}
               density={density}
               visibleUids={visibleUids}
-              previewCtx={{ locale: meta.locale, rtl: scaffoldOpts.includes('rtl') }}
+              previewCtx={entityPreviewCtx}
               onCodeFiles={codeFilesFor}
               codeState={codeState}
-              onGoToOptions={() => jumpToSection('fs-options')}
+              onGoToOptions={editorCallbacks.goToOptions}
               ldapAuth={ldapAuth}
-              onAddDep={dep => setSelectedDeps(prev => (prev.includes(dep) ? prev : [...prev, dep]))}
+              onAddDep={editorCallbacks.addDep}
             />
           </div>
         </div>

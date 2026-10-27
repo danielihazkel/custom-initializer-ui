@@ -254,3 +254,32 @@ describe('EntitiesEditor — removals and type changes are undoable from the not
     expect(onRowAdded).toHaveBeenCalledWith(next[1].uid)
   })
 })
+
+describe('EntitiesEditor — memoized cards', () => {
+  const two: FullstackEntityDef[] = withUids([
+    { name: 'User', fields: [{ name: 'id', type: 'LONG', primaryKey: true, generated: true }, { name: 'email', type: 'STRING' }] },
+    { name: 'Role', fields: [{ name: 'id', type: 'LONG', primaryKey: true, generated: true }, { name: 'title', type: 'STRING' }] },
+  ])
+  let latest: FullstackEntityDef[] = []
+  function Stateful({ initial }: { initial: FullstackEntityDef[] }) {
+    const [entities, setEntities] = useState(initial)
+    latest = entities
+    return <EntitiesEditor entities={entities} onChange={setEntities} />
+  }
+
+  // A card that skipped a render (its own entity did not change) must still edit the current
+  // list — not the one it last rendered with — or an edit in it would undo the other card's.
+  it('keeps every card\'s edits when cards are edited one after another', () => {
+    render(<Stateful initial={two} />)
+    const names = () => screen.getAllByLabelText('Field name') as HTMLInputElement[]
+    fireEvent.change(names()[1], { target: { value: 'mail' } })
+    fireEvent.change(names()[3], { target: { value: 'label' } })
+    fireEvent.click(screen.getAllByLabelText('Required (not null)')[1])
+    fireEvent.change(screen.getAllByLabelText('Entity name')[1], { target: { value: 'Group' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Duplicate field' })[0])
+    expect(latest.map(e => e.name)).toEqual(['User', 'Group'])
+    expect(latest[0].fields.map(f => f.name)).toEqual(['id', 'idCopy', 'mail'])
+    expect(latest[0].fields[2].required).toBe(true)
+    expect(latest[1].fields.map(f => f.name)).toEqual(['id', 'label'])
+  })
+})

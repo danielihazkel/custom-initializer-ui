@@ -323,8 +323,15 @@ export function navSymbol(page: FullstackPageDef): string {
 
 const between = (rand: () => number, lo: number, hi: number) => Math.round(lo + rand() * (hi - lo))
 
+// Building an Intl.NumberFormat is far costlier than using one, and the preview formats every
+// tile and table cell on each edit: one formatter per locale.
+const NUMBER_FORMATS = {
+  en: new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }),
+  he: new Intl.NumberFormat('he-IL', { maximumFractionDigits: 1 }),
+}
+
 function formatNumber(n: number, locale: 'en' | 'he'): string {
-  return new Intl.NumberFormat(locale === 'he' ? 'he-IL' : 'en-US', { maximumFractionDigits: 1 }).format(n)
+  return (locale === 'he' ? NUMBER_FORMATS.he : NUMBER_FORMATS.en).format(n)
 }
 
 /** The rough size of one value of an aggregated field — a count is small, a sum of money is not. */

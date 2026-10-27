@@ -466,12 +466,12 @@ export default function App() {
 
       {/* Main Content */}
       <main className="pt-20 pb-8 min-h-screen bg-background relative overflow-clip">
-        {/* Blueprint factory-floor grid, slowly panning behind the glow blobs */}
+        {/* Blueprint factory-floor grid behind the glow blobs */}
         <div className="factory-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
-        {/* Decorative ambient background blobs — slowly drift/breathe (see index.css) */}
-        <div className="ambient-blob-a absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
-        <div className="ambient-blob-b absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-tertiary/10 rounded-full blur-[120px] pointer-events-none" />
-        <div className="ambient-blob-c absolute top-[30%] right-[15%] w-[28%] h-[28%] bg-secondary/10 rounded-full blur-[120px] pointer-events-none" />
+        {/* Decorative ambient background blobs */}
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-tertiary/10 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute top-[30%] right-[15%] w-[28%] h-[28%] bg-secondary/10 rounded-full blur-[120px] pointer-events-none" />
 
         {view === 'frontend' ? (
           <div className="relative z-10 animate-fade-in-up">

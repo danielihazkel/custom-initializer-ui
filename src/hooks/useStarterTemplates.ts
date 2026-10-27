@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
 import type { StarterTemplate } from '../types'
+import { useCatalog } from './catalogCache'
 
 export interface UseStarterTemplatesResult {
   templates: StarterTemplate[]
@@ -9,35 +9,12 @@ export interface UseStarterTemplatesResult {
 
 export type ProjectKind = 'BACKEND' | 'FRONTEND'
 
+const NO_TEMPLATES: StarterTemplate[] = []
+
 export function useStarterTemplates(projectKind?: ProjectKind): UseStarterTemplatesResult {
-  const [templates, setTemplates] = useState<StarterTemplate[]>([])
-  const [loading, setLoading] = useState<boolean>(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    const url = projectKind
-      ? `/metadata/starter-templates?projectKind=${projectKind}`
-      : '/metadata/starter-templates'
-    setLoading(true)
-    setError(null)
-    fetch(url)
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
-      .then(data => {
-        if (cancelled) return
-        setTemplates(data as StarterTemplate[])
-        setLoading(false)
-      })
-      .catch((err: Error) => {
-        if (cancelled) return
-        setError(err.message)
-        setLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [projectKind])
-
-  return { templates, loading, error }
+  const url = projectKind
+    ? `/metadata/starter-templates?projectKind=${projectKind}`
+    : '/metadata/starter-templates'
+  const { data, loading, error } = useCatalog<StarterTemplate[]>(url, NO_TEMPLATES)
+  return { templates: data, loading, error }
 }
