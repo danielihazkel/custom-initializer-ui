@@ -20,14 +20,11 @@ describe('example models', () => {
   const layoutOf = (model: ExampleModel) =>
     validatePages(model.pages!, model.entities, { ldapAuth: true, scaffoldOpts: model.settings?.scaffold })
 
-  it.each(EXAMPLES.filter(m => m.pages?.length).map(m => [m.name, m] as const))('%s opens on a layout with no problems', (_name, model) => {
+  it.each(EXAMPLES.filter(m => m.pages?.length).map(m => [m.name, m] as const))('%s opens on a layout with no problems or warnings', (_name, model) => {
     const v = layoutOf(model)
     expect(v.problems).toEqual([])
     expect(Object.values(v.byPage).flatMap(controls => Object.values(controls))).toEqual([])
-  })
-
-  it('Approvals opens on a layout with no warnings either', () => {
-    expect(layoutOf(EXAMPLES.find(m => m.id === 'approvals')!).warnings.map(w => w.summary)).toEqual([])
+    expect(v.warnings.map(w => w.summary)).toEqual([])
   })
 
   it('has unique ids and at least two entities each', () => {

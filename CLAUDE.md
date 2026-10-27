@@ -198,8 +198,8 @@ without ldap-auth, with an "Add ldap-auth-rest" shortcut). `workflow.ts` holds t
 lists the transition/claim/release endpoints. *Inbox page:* `pages/InboxForm.tsx`, `newPageTypes.ts`
 (`INBOX_QUEUES`, `hasInbox`, `defaultInboxFields`, `checkInbox`; "No workflow with an assignee" in the chooser),
 and the preview's `InboxScreen` (queue tabs, chips, an overdue row, the first moves). *Approvals* is in the
-fixture. `examples.test.ts` validates every example's own layout (no problems; Approvals has no warnings
-either — Tickets, Inventory and Sales reporting still carry dead-end warnings), and the fixture lint check runs
+fixture. `examples.test.ts` validates every example's own layout — no problems and no warnings, so an example
+never opens on advice to fix (Tickets, Inventory and Sales reporting were adjusted for it) — and the fixture lint check runs
 with `ldap-auth-rest`, the sets' default. The layout templates open a wide entity's list on its first six
 columns (`narrowColumns`, the wide-list fix). Pinned by `pageLayoutKpiTrend.test.ts`,
 `pageLayoutFormPage.test.ts`, `workflow.test.tsx` and `pageLayoutInbox.test.ts`.

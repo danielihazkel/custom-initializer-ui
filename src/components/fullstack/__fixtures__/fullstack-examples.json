@@ -778,8 +778,9 @@
       {
         "id": "tickets-all",
         "type": "entity-list",
-        "entity": "Ticket",
-        "hidden": true
+        "group": "Work",
+        "title": "All tickets",
+        "entity": "Ticket"
       },
       {
         "id": "agents",
@@ -797,6 +798,12 @@
         "parent": "Team",
         "child": "Ticket",
         "via": "team"
+      },
+      {
+        "id": "ticket",
+        "type": "record",
+        "entity": "Ticket",
+        "hidden": true
       }
     ],
     "settings": {
@@ -935,14 +942,14 @@
         "dateRange": "30d",
         "widgets": [
           {
-            "kind": "kpi",
-            "entity": "Item",
-            "title": "Items"
-          },
-          {
-            "kind": "kpi",
-            "entity": "Warehouse",
-            "title": "Warehouses"
+            "kind": "links",
+            "title": "Catalog",
+            "pages": [
+              "items",
+              "warehouses",
+              "new-item"
+            ],
+            "span": 2
           },
           {
             "kind": "kpi",
@@ -1072,6 +1079,17 @@
             "title": "Units moved"
           }
         ]
+      },
+      {
+        "id": "movement-log",
+        "type": "entity-list",
+        "group": "Reports",
+        "title": "Movement log",
+        "entity": "StockMovement",
+        "sort": {
+          "field": "movedOn",
+          "dir": "desc"
+        }
       }
     ],
     "settings": {
@@ -1389,6 +1407,12 @@
         "roles": [
           "ADMIN"
         ]
+      },
+      {
+        "id": "sale",
+        "type": "record",
+        "entity": "Sale",
+        "hidden": true
       }
     ],
     "settings": {
