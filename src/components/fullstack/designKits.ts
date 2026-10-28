@@ -28,13 +28,50 @@ export type KitStatus =
   | { kind: 'current' }
   /** A newer version is published; the model keeps its own until the user switches. */
   | { kind: 'upgrade'; latest: number }
+  /** The pinned version is deprecated: it still generates, but its kit asks to move on. */
+  | { kind: 'deprecated'; latest: number; note: string | null }
   /** The pinned kit is gone (deleted, disabled) — Generate would answer 400. */
   | { kind: 'missing' }
 
 export function kitStatus(pin: DesignKitPin, kits: DesignKitSummary[]): KitStatus {
   const kit = kits.find(k => k.key === pin.key)
   if (!kit || kit.latestVersion == null || pin.version > kit.latestVersion) return { kind: 'missing' }
+  const deprecated = kit.deprecated?.find(d => d.version === pin.version)
+  if (deprecated) return { kind: 'deprecated', latest: kit.latestVersion, note: deprecated.note }
   return kit.latestVersion > pin.version ? { kind: 'upgrade', latest: kit.latestVersion } : { kind: 'current' }
+}
+
+/**
+ * The kit a model generates with: the one it pins; else the kit its frontend set stands for (the
+ * Menora Digital set); else the house kit on its set. `via` says which — only a pin keeps a
+ * version, the others follow their kit's latest. Null without kits (offline, older backend).
+ */
+export function effectiveKit(pin: DesignKitPin | null | undefined, frontendSet: string, kits: DesignKitSummary[]):
+  { kit: DesignKitSummary; version: number; via: 'pinned' | 'set' | 'house' } | null {
+  if (pin) {
+    const kit = kits.find(k => k.key === pin.key)
+    return kit ? { kit, version: pin.version, via: 'pinned' } : null
+  }
+  const alias = kits.find(k => k.aliases?.includes(frontendSet))
+  if (alias?.latestVersion) return { kit: alias, version: alias.latestVersion, via: 'set' }
+  const house = kits.find(k => k.defaultKit && k.baseSetKey === frontendSet)
+  return house?.latestVersion ? { kit: house, version: house.latestVersion, via: 'house' } : null
+}
+
+/** The sketch the layout designer draws a kit with until the real app compiles. */
+export function kitSketch(kit: DesignKitSummary | undefined): 'tailwind' | 'menora' {
+  return kit?.traits?.sketch === 'menora' ? 'menora' : 'tailwind'
+}
+
+/** Whether the kit's shell honours the layout's nav options (sidebar/top bar, folding groups). */
+export function kitHasNavOptions(kit: DesignKitSummary | undefined): boolean {
+  return kit?.traits?.navOptions !== false
+}
+
+/** A swatch colour of a kit, `{palette.*}` filled in from the palette in force. */
+export function swatchColor(kit: DesignKitSummary, name: string, palette: FeColorPalette | undefined): string | undefined {
+  const value = kit.swatch?.[name]
+  return value ? resolveToken([{ name, value }], name, palette) : undefined
 }
 
 /** What picking a kit switches on — its declared defaults (Menora Digital: Hebrew, right-to-left). */

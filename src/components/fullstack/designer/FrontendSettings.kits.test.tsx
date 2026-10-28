@@ -57,7 +57,35 @@ describe('FrontendSettings — design kits', () => {
     const a = appearance({ designKit: { key: 'gone', version: 2 } })
     render(<FrontendSettings appearance={a} hasPages={false} />)
     expect(document.querySelector('[data-kit-missing]')!.textContent).toContain('gone')
-    fireEvent.click(screen.getByRole('button', { name: "Use the set's look" }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use the house look' }))
     expect(a.clearDesignKit).toHaveBeenCalled()
+  })
+
+  it('shows the house kit a model without a pin is made with, and hides the set that stands for a kit', () => {
+    const house = { ...kit('tailwind-default', 'Menora default', 'react-tailwind-crud', 2), defaultKit: true }
+    const menora = { ...kit('menora-digital', 'Menora Digital', 'react-tailwind-crud', 4), aliases: ['react-menora-digital-crud'],
+      traits: { sketch: 'menora' as const, navOptions: false }, swatch: { 'color-brand': '#684eed' } }
+    const a = appearance({
+      frontendSets: [set('react-tailwind-crud', 'Tailwind CRUD'), set('react-menora-digital-crud', 'Menora Digital')],
+      designKits: [house, menora],
+      usedKit: { kit: house, version: 2, via: 'house' },
+    })
+    render(<FrontendSettings appearance={a} hasPages={false} />)
+    expect(document.querySelector('[data-design-kit="tailwind-default"]')!.getAttribute('aria-checked')).toBe('true')
+    expect(document.querySelector('[data-design-kit="tailwind-default"] [data-house-kit]')).toBeTruthy()
+    expect(document.querySelector('[data-kit-follows]')!.textContent).toContain('house kit, Menora default')
+    expect(document.querySelector('[data-frontend-set="react-menora-digital-crud"]')).toBeNull()
+    // The Menora kit is drawn as its top-bar sketch, in its own colours.
+    expect(document.querySelector('[data-design-kit="menora-digital"] [style*="rgb(104, 78, 237)"]')).toBeTruthy()
+  })
+
+  it('says a pinned version is deprecated, and offers the latest', () => {
+    const acme = { ...kit('acme', 'Acme', 'react-tailwind-crud', 3), deprecated: [{ version: 1, note: 'The old logo' }] }
+    const a = appearance({ designKit: { key: 'acme', version: 1 }, designKits: [acme], currentKit: acme, usedKit: { kit: acme, version: 1, via: 'pinned' } })
+    render(<FrontendSettings appearance={a} hasPages={false} />)
+    expect(document.querySelector('[data-kit-deprecated]')!.textContent).toContain('Acme v1 is deprecated: The old logo')
+    expect(document.querySelector('[data-kit-upgrade]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Use v3' }))
+    expect(a.pickDesignKit).toHaveBeenCalledWith(acme, 3)
   })
 })

@@ -156,9 +156,9 @@ describe('PagesEditor', () => {
       <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} nav={{ collapsibleGroups: true }} />,
     )
     expect(document.querySelectorAll('[data-preview-fold]')).toHaveLength(2)
-    // The Menora shell is a top bar already: no row.
+    // A kit whose shell lays out its own menu (Menora Digital): no row.
     rerender(
-      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} previewSettings={{ locale: 'en', projectOpts: [], skin: 'menora' }} />,
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} previewSettings={{ locale: 'en', projectOpts: [], skin: 'menora', navOptions: false }} />,
     )
     expect(document.querySelector('[data-nav-options]')).toBeNull()
   })

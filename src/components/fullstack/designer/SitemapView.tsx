@@ -120,7 +120,7 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
         )}
       </main>
       <aside className="space-y-4 border-outline-variant bg-surface-container-lowest p-5 lg:w-[22rem] lg:shrink-0 lg:overflow-y-auto lg:border-s" aria-label="Navigation style">
-        {onNavChange && settings.skin === 'tailwind' ? (
+        {onNavChange && settings.navOptions !== false ? (
           <div className="space-y-3" data-nav-options>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Menu style</p>
             <div role="radiogroup" aria-label="Navigation style" className="grid grid-cols-2 gap-2">
@@ -157,7 +157,7 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
             </label>
           </div>
         ) : (
-          <p className="text-[11px] text-secondary">The Menora Digital set always draws its own top bar.</p>
+          <p className="text-[11px] text-secondary">This look always lays out its own menu.</p>
         )}
         {pages.length > 0 && (
           <div className="space-y-1">

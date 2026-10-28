@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { DesignKitSummary, DesignKitVersion } from '../../types'
 import type { FeColorPalette } from '../../hooks/useFrontendMetadata'
-import { kitDefaults, kitPreviewPalette, kitRef, kitStatus, parseKitRef, pinFromRef, resolveToken } from './designKits'
+import { effectiveKit, kitDefaults, kitHasNavOptions, kitPreviewPalette, kitRef, kitSketch, kitStatus, parseKitRef, pinFromRef, resolveToken, swatchColor } from './designKits'
 import { describeSnapshotChange, isSnapshot, makeSnapshot, parseExportedModel, snapshotChangeKey, DEFAULT_PROJECT_META, REQUEST_MODEL_FORMAT, type FullstackSnapshot } from './snapshot'
 
 const kit = (key: string, latestVersion: number | null, extra: Partial<DesignKitSummary> = {}): DesignKitSummary => ({
@@ -31,6 +31,26 @@ describe('kit references', () => {
     expect(kitStatus({ key: 'acme', version: 1 }, KITS)).toEqual({ kind: 'upgrade', latest: 3 })
     expect(kitStatus({ key: 'gone', version: 1 }, KITS)).toEqual({ kind: 'missing' })
     expect(kitStatus({ key: 'acme', version: 9 }, KITS)).toEqual({ kind: 'missing' })
+  })
+
+  it('marks a deprecated pin, which still generates', () => {
+    const kits = [kit('acme', 3, { deprecated: [{ version: 2, note: 'old logo' }] })]
+    expect(kitStatus({ key: 'acme', version: 2 }, kits)).toEqual({ kind: 'deprecated', latest: 3, note: 'old logo' })
+    expect(kitStatus({ key: 'acme', version: 1 }, kits)).toEqual({ kind: 'upgrade', latest: 3 })
+  })
+
+  it('finds the kit a model is made with: its pin, the kit its set stands for, else the house kit', () => {
+    const house = kit('tailwind-default', 2, { defaultKit: true })
+    const menora = kit('menora-digital', 5, { aliases: ['react-menora-digital-crud'], traits: { sketch: 'menora', navOptions: false } })
+    const kits = [house, menora, kit('acme', 3)]
+    expect(effectiveKit({ key: 'acme', version: 1 }, 'react-tailwind-crud', kits)).toEqual({ kit: kits[2], version: 1, via: 'pinned' })
+    expect(effectiveKit(null, 'react-menora-digital-crud', kits)).toEqual({ kit: menora, version: 5, via: 'set' })
+    expect(effectiveKit(null, 'react-tailwind-crud', kits)).toEqual({ kit: house, version: 2, via: 'house' })
+    expect(effectiveKit(null, 'react-other', kits)).toBeNull()
+    expect(effectiveKit({ key: 'gone', version: 1 }, 'react-tailwind-crud', kits)).toBeNull()
+    expect([kitSketch(menora), kitSketch(house), kitSketch(undefined)]).toEqual(['menora', 'tailwind', 'tailwind'])
+    expect([kitHasNavOptions(menora), kitHasNavOptions(house)]).toEqual([false, true])
+    expect(swatchColor(kit('k', 1, { swatch: { 'color-brand': '{palette.primary}' } }), 'color-brand', PALETTE)).toBe('#111111')
   })
 
   it("applies a kit's declared defaults", () => {

@@ -791,7 +791,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         <div className={!showPreview ? '' : layout === 'stacked' ? 'space-y-3' : 'grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]'}>
           {/* The left column: the navigation strips over the page list. One grid cell, so the preview keeps its own. */}
           <div className="min-w-0 space-y-2">
-          {onNavChange && settings.skin === 'tailwind' && (
+          {onNavChange && settings.navOptions !== false && (
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant px-2 py-1" data-nav-options>
               <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary" title="How the generated app lays out its navigation">Nav style</span>
               <span role="radiogroup" aria-label="Navigation style" className="inline-flex overflow-hidden rounded border border-outline-variant">

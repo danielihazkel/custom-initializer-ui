@@ -27,6 +27,8 @@ export interface PagesPreviewSettings {
   locale: 'en' | 'he'
   projectOpts: string[]
   skin: 'tailwind' | 'menora'
+  /** The kit's shell honours the layout's nav options (sidebar/top bar, folding groups); absent = it does. */
+  navOptions?: boolean
   /** The colour palette the generator will use — the tailwind shell and accents follow it. */
   palette?: PreviewPalette
   /** The setup panel's dashboard heading — "Start from my entities" puts it on the dashboard page. */

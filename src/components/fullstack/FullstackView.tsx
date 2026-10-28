@@ -34,13 +34,13 @@ import { ShortcutsOverlay } from './ShortcutsOverlay'
 import { draftHasUnsavedWork } from './shareGuard'
 import { summarizeEntity } from './summary'
 import { frontendSetDefaults } from './frontendSetDefaults'
-import { kitDefaults, kitPreviewPalette, kitRef, parseKitRef, useDesignKits, useDesignKitVersion } from './designKits'
+import { effectiveKit, kitDefaults, kitHasNavOptions, kitPreviewPalette, kitRef, kitSketch, parseKitRef, useDesignKits, useDesignKitVersion } from './designKits'
 import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { emptyHistory, isTypingTarget, record, redoStep, stepMany, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesSection } from './designer/PagesSection'
 import type { DesignerTarget } from './designer/LayoutDesigner'
-import type { FrontendAppearance } from './designer/FrontendSettings'
+import { isMenoraSet, type FrontendAppearance } from './designer/FrontendSettings'
 import { pageOfServerError, renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
@@ -304,19 +304,24 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const effectivePalette = colorPalette || setDefaultPalette
   const { kits: designKits } = useDesignKits()
   const currentKit = designKit ? designKits.find(k => k.key === designKit.key) : undefined
-  const kitVersion = useDesignKitVersion(designKit)
+  // The kit the zip is made with: the pinned one, else the set's own kit, else the house kit.
+  const usedKit = effectiveKit(designKit, frontendSet, designKits)
+  const usedPin = usedKit ? { key: usedKit.kit.key, version: usedKit.version } : null
+  const kitVersion = useDesignKitVersion(usedPin)
   // A kit draws with its own brand/gold tokens (palette references resolved), else the palette's.
   const previewPalette = kitPreviewPalette(kitVersion, palettes.find(p => p.id === effectivePalette))
-  // The layout preview draws the shell of the chosen frontend set, in the chosen chrome language
-  // and colour palette.
+  // The layout preview draws the kit's sketch, in the chosen chrome language and colour palette;
+  // without kits (an older or unreachable backend) the set says which.
+  const usedKitInfo = usedKit?.kit
   const pagesPreviewSettings = useMemo(() => ({
     locale: meta.locale,
     projectOpts: scaffoldOpts,
-    skin: (currentFrontendSet?.designSystem === 'MENORA_DIGITAL' || frontendSet.includes('menora') ? 'menora' : 'tailwind') as 'menora' | 'tailwind',
+    skin: usedKitInfo ? kitSketch(usedKitInfo) : (isMenoraSet(currentFrontendSet, frontendSet) ? 'menora' : 'tailwind') as 'menora' | 'tailwind',
+    navOptions: usedKitInfo ? kitHasNavOptions(usedKitInfo) : !isMenoraSet(currentFrontendSet, frontendSet),
     palette: previewPalette,
     dashboardTitle: meta.dashboardTitle,
     dashboardOverview: meta.dashboardOverview,
-  }), [meta.locale, meta.dashboardTitle, meta.dashboardOverview, scaffoldOpts, currentFrontendSet, frontendSet, previewPalette])
+  }), [meta.locale, meta.dashboardTitle, meta.dashboardOverview, scaffoldOpts, currentFrontendSet, frontendSet, previewPalette, usedKitInfo])
 
   // Validation — mirrors the backend FullstackRequestValidator so problems surface inline
   // before submit. The server stays the source of truth.
@@ -1213,7 +1218,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       setDesignKit(null)
       setFrontendSet(setKey)
     },
-    designKits, designKit, currentKit,
+    designKits, designKit, currentKit, usedKit: usedKit ?? undefined,
     pickDesignKit: (kit, version) => {
       const pin = { key: kit.key, version: version ?? kit.latestVersion ?? 1 }
       setDesignKit(pin)

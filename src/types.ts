@@ -511,6 +511,16 @@ export interface DesignKitSummary {
   paletteAware: boolean
   /** What picking the kit switches on. */
   defaults: { locale?: 'en' | 'he'; rtl?: boolean } | null
+  /** The house kit: a model that names no kit (and no set standing for one) generates with it. */
+  defaultKit?: boolean
+  /** Which sketch the designer draws the kit with, and whether its shell honours the nav options (absent = it does). */
+  traits?: { sketch?: 'tailwind' | 'menora'; navOptions?: boolean } | null
+  /** Frontend sets that stand for this kit and generate as it (Menora Digital's own set). */
+  aliases?: string[]
+  /** The light values of its ink, brand, primary and canvas tokens (`{palette.*}` left in). */
+  swatch?: Record<string, string>
+  /** Published versions that still generate but are no longer offered. */
+  deprecated?: { version: number; note: string | null }[]
 }
 
 /** The kit version a model is built with — kept in the model so a later kit release never changes it unasked. */
