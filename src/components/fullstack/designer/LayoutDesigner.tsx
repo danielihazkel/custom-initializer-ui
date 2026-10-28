@@ -10,6 +10,8 @@ import { pageFromTemplate } from '../layoutTemplates'
 import { buildPlayLinks } from '../playLinks'
 import { pageIdOfHash } from '../../../designRuntime/payload'
 import { AppCanvas } from './AppCanvas'
+import type { DesignIntent } from '../../../designRuntime/PreviewFrame'
+import type { Rect } from '../../../designRuntime/protocol'
 import { PAGE_TYPE_META, defaultSpan, newPageChoices, widgetKindDisabledReason, pageFromSuggestion, pageLabel, pagesEmbedding } from '../pageLayout'
 import type { PagesEditorProps } from '../PagesEditor'
 import { handleRadioKeys, syncRadioTabStops } from '../rovingRadios'
@@ -56,9 +58,11 @@ interface DesignerPrefs {
   library: boolean
   inspector: boolean
   dataState: PreviewDataState
+  /** Design mode's canvas: the generated app (when the model can be generated) or the sketch. */
+  canvas: 'app' | 'sketch'
 }
 const PREFS_KEY = 'fullstack:designerView'
-const DEFAULT_PREFS: DesignerPrefs = { zoom: CANVAS_ZOOM, library: true, inspector: true, dataState: 'data' }
+const DEFAULT_PREFS: DesignerPrefs = { zoom: CANVAS_ZOOM, library: true, inspector: true, dataState: 'data', canvas: 'app' }
 
 function readPrefs(): DesignerPrefs {
   try {
@@ -69,6 +73,7 @@ function readPrefs(): DesignerPrefs {
       library: raw.library !== false,
       inspector: raw.inspector !== false,
       dataState: DATA_STATES.includes(raw.dataState as PreviewDataState) ? raw.dataState as PreviewDataState : 'data',
+      canvas: raw.canvas === 'sketch' ? 'sketch' : 'app',
     }
   } catch {
     return DEFAULT_PREFS
@@ -217,7 +222,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
 
   /** Opens a page in the inspector on one of its controls (or its first invalid one), from the
    *  canvas, a problem or a jump. A widget control selects that widget. */
-  function reveal(t: EditTarget) {
+  function reveal(t: EditTarget, focus = true) {
     const key = keys[t.page]
     if (!key) return
     setSelectedKey(key)
@@ -228,6 +233,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
       setSelectedWidget(null)
       setInspectorTab(tabOfControl(t.control?.split('.')[0]))
     }
+    if (!focus) return
     const attempt = (triesLeft: number) => {
       // A double-click renames in place: the click before it must not pull the focus away.
       if ((document.activeElement as HTMLElement | null)?.matches?.('[data-preview-rename]')) return
@@ -530,6 +536,94 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   const widgetDrag = drag?.kind === 'widget' ? drag : null
   const partDrag = drag?.kind === 'part' && page && (PAGE_SLOTS[page.type] ?? []).includes(drag.part.kind) ? drag : null
   const takesParts = page != null && (PAGE_SLOTS[page.type] ?? []).length > 0
+
+  // Design mode on the generated app: the runtime's editing layer picks parts and reports gestures,
+  // applied here as the sketch's would be. A part dragged from the library has no drop target in
+  // the app, so the sketch takes the canvas while one is held.
+  const designOnApp = mode === 'design' && prefs.canvas === 'app' && codeRequest != null && !partDrag
+  const designRequest = designOnApp && validation.issues.length === 0 ? codeRequest() : null
+  // The library's drag ends (dragend) before the runtime's drop message arrives: keep the widget.
+  const lastWidgetDrag = useRef<typeof widgetDrag>(null)
+  if (widgetDrag) lastWidgetDrag.current = widgetDrag
+  function designFollowRoute(hash: string) {
+    const id = pageIdOfHash(hash)
+    const index = id ? pages.findIndex(p => p.id === id) : -1
+    if (index >= 0 && index !== selectedIndex) selectPage(index)
+  }
+  function onDesignIntent(intent: DesignIntent, anchor: (rect: Rect) => HTMLElement) {
+    switch (intent.type) {
+      case 'pick':
+        // The app's own click does not pull the focus into the inspector: a double-click renames in place.
+        if (intent.control) reveal({ page: selectedIndex, control: intent.control }, false)
+        else setSelectedWidget(null)
+        break
+      case 'pickPage': {
+        const index = pages.findIndex(p => p.id === pageIdOfHash(intent.hash))
+        if (index >= 0) selectPage(index)
+        break
+      }
+      case 'rename':
+        model.renamePart(selectedIndex, intent.control, intent.value)
+        break
+      case 'reorder':
+        reorderWidget(selectedIndex, intent.from, intent.to)
+        break
+      case 'resize':
+        model.resizeWidget(selectedIndex, intent.index, intent.span)
+        break
+      case 'drop': {
+        const held = lastWidgetDrag.current
+        setDrag(null)
+        lastWidgetDrag.current = null
+        if (held) addWidget(held.widget, widgetEntity, intent.at, held.def)
+        break
+      }
+      case 'tool':
+        if (intent.action === 'duplicate') duplicateWidget(selectedIndex, intent.index)
+        else setKindMenu({ page: selectedIndex, index: intent.index, anchor: anchor(intent.rect) })
+        break
+    }
+  }
+
+  // The sketch canvas (the hand-drawn preview with its own editing): Design mode's canvas when
+  // "Sketch" is picked, while the generated app starts, and the fallback when it cannot run.
+  const designSketch = page ? (
+    <CanvasFrame device={device} zoom={prefs.zoom}>
+      <LayoutPreview
+        preview={preview}
+        selected={selectedIndex}
+        onSelect={selectPage}
+        onEdit={reveal}
+        highlight={widget != null ? { page: selectedIndex, control: `widget.${widget}` } : null}
+        skin={settings.skin}
+        palette={settings.palette}
+        offNavNote={offNavNoteFor(page)}
+        onReorderWidget={reorderWidget}
+        onResizeWidget={model.resizeWidget}
+        onRename={(t, value) => model.renamePart(t.page, t.control ?? '', value)}
+        widgetTools={{ duplicate: duplicateWidget, kindMenu: (pageIndex, index, anchor) => setKindMenu({ page: pageIndex, index, anchor }) }}
+        navStyle={nav?.style}
+        collapsibleGroups={nav?.collapsibleGroups}
+        narrow={device === 'mobile'}
+        dataState={prefs.dataState}
+        problems={validation.byPage}
+        widgetDrop={widgetDrag ? {
+          span: defaultSpan(widgetDrag.widget),
+          onDrop: (pageIndex, at) => {
+            setDrag(null)
+            if (pageIndex === selectedIndex) addWidget(widgetDrag.widget, widgetEntity, at, widgetDrag.def)
+          },
+        } : null}
+        partDrop={partDrag ? {
+          slot: partDrag.part.kind,
+          onDrop: (pageIndex, at) => {
+            setDrag(null)
+            if (pageIndex === selectedIndex) placePart(partDrag.part, at)
+          },
+        } : null}
+      />
+    </CanvasFrame>
+  ) : null
 
   return createPortal(
     <EntityOptions.Provider value={model.entityOptions}>
@@ -871,6 +965,23 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                   <ZoomControl zoom={prefs.zoom} onChange={zoom => setPrefs(p => ({ ...p, zoom }))} />
                   <DeviceSwitch device={device} onChange={setDevice} />
                   <DataStateSwitch state={prefs.dataState} onChange={dataState => setPrefs(p => ({ ...p, dataState }))} />
+                  {codeRequest && (
+                    <span role="radiogroup" aria-label="Canvas" className="inline-flex overflow-hidden rounded-md border border-outline-variant" data-canvas-engine>
+                      {([['app', 'App', 'The generated app itself, run in your browser'], ['sketch', 'Sketch', 'The quick sketch: every part of every page type is editable']] as const).map(([value, label, hint]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={prefs.canvas === value}
+                          title={hint}
+                          onClick={() => setPrefs(p => ({ ...p, canvas: value }))}
+                          className={`px-2 py-0.5 font-semibold ${prefs.canvas === value ? 'bg-primary/15 text-on-surface' : 'text-secondary hover:text-on-surface'}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => setSelectedWidget(null)}
@@ -930,45 +1041,27 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                       </CanvasFrame>
                     }
                   />
-                ) : (
-                <CanvasFrame device={device} zoom={prefs.zoom}>
-                  {(
-                  <LayoutPreview
-                    preview={preview}
-                    selected={selectedIndex}
-                    onSelect={selectPage}
-                    onEdit={reveal}
-                    highlight={widget != null ? { page: selectedIndex, control: `widget.${widget}` } : null}
-                    skin={settings.skin}
-                    palette={settings.palette}
-                    offNavNote={offNavNoteFor(page)}
-                    onReorderWidget={reorderWidget}
-                    onResizeWidget={model.resizeWidget}
-                    onRename={(t, value) => model.renamePart(t.page, t.control ?? '', value)}
-                    widgetTools={{ duplicate: duplicateWidget, kindMenu: (pageIndex, index, anchor) => setKindMenu({ page: pageIndex, index, anchor }) }}
-                    navStyle={nav?.style}
-                    collapsibleGroups={nav?.collapsibleGroups}
-                    narrow={device === 'mobile'}
+                ) : designOnApp ? (
+                  <AppCanvas
+                    request={designRequest}
+                    device={device}
+                    zoom={prefs.zoom}
+                    hash={`#/${page.id}`}
                     dataState={prefs.dataState}
-                    problems={validation.byPage}
-                    widgetDrop={widgetDrag ? {
-                      span: defaultSpan(widgetDrag.widget),
-                      onDrop: (pageIndex, at) => {
-                        setDrag(null)
-                        if (pageIndex === selectedIndex) addWidget(widgetDrag.widget, widgetEntity, at, widgetDrag.def)
+                    onRoute={designFollowRoute}
+                    emptyReason="fix the layout’s problems to run the generated app"
+                    design={{
+                      state: {
+                        pageType: page.type,
+                        selected: widget != null ? `widget.${widget}` : null,
+                        problems: validation.byPage[selectedIndex] ?? {},
+                        drag: widgetDrag ? { span: defaultSpan(widgetDrag.widget) } : null,
                       },
-                    } : null}
-                    partDrop={partDrag ? {
-                      slot: partDrag.part.kind,
-                      onDrop: (pageIndex, at) => {
-                        setDrag(null)
-                        if (pageIndex === selectedIndex) placePart(partDrag.part, at)
-                      },
-                    } : null}
+                      onIntent: onDesignIntent,
+                    }}
+                    fallback={designSketch}
                   />
-                  )}
-                </CanvasFrame>
-                )
+                ) : designSketch
               ) : (
               <div className="min-h-0 flex-1 overflow-auto bg-background p-6" data-designer-canvas>
                 <div className="mx-auto flex max-w-xl flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-outline px-8 py-14 text-center" data-designer-empty>

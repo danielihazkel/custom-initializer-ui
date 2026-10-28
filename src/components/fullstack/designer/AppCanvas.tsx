@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { FullstackStarterRequest } from '../../../types'
 import type { PreviewDataState } from '../layoutPreviewModel'
-import { PreviewFrame, type Compiled } from '../../../designRuntime/PreviewFrame'
+import { PreviewFrame, type Compiled, type DesignIntent } from '../../../designRuntime/PreviewFrame'
+import type { DesignState, Rect } from '../../../designRuntime/protocol'
 import { useAppPreview } from '../../../designRuntime/useAppPreview'
 import { CANVAS_ZOOM, type PreviewDevice } from './CanvasFrame'
 
@@ -15,10 +16,20 @@ export const APP_VIEWPORT: Record<PreviewDevice, number> = { desktop: 1280, tabl
  * preview runtime against sample data, at a device's window width scaled to fit. Every click,
  * save and transition does what the app does. `fallback` (the sketch) is drawn until the app
  * has compiled once — so the canvas is never empty while it starts — and instead of it when the
- * app cannot run here: no request (the layout has problems), a generator error before any app,
- * or no runtime (with the reason).
+ * app cannot run here: no request and no app yet (the layout has problems), a generator error
+ * before any app, or no runtime (with the reason). Once an app has run, a request that cannot be
+ * made (problems to fix) or fails keeps it on screen, marked as the last one that generated.
+ *
+ * With `design`, the runtime's editing layer is on: the app's clicks pick parts, and the
+ * gestures come back as intents. `anchor` turns a rect of the runtime's (a widget toolbar) into
+ * an element on this page, for a menu to open under.
  */
-export function AppCanvas({ request, device, zoom = CANVAS_ZOOM, hash, dataState = 'data', onRoute, fallback, emptyReason }: {
+export interface CanvasDesign {
+  state: DesignState
+  onIntent: (intent: DesignIntent, anchor: (rect: Rect) => HTMLElement) => void
+}
+
+export function AppCanvas({ request, device, zoom = CANVAS_ZOOM, hash, dataState = 'data', onRoute, fallback, emptyReason, design }: {
   request: FullstackStarterRequest | null
   device: PreviewDevice
   zoom?: number
@@ -28,15 +39,17 @@ export function AppCanvas({ request, device, zoom = CANVAS_ZOOM, hash, dataState
   fallback: ReactNode
   /** Why there is no request, shown over the fallback. */
   emptyReason?: string
+  design?: CanvasDesign
 }) {
   const preview = useAppPreview(request)
   const [unavailable, setUnavailable] = useState<string | null>(null)
   const [compiled, setCompiled] = useState<Compiled | null>(null)
   const [crash, setCrash] = useState<string | null>(null)
   const box = useRef<HTMLDivElement>(null)
+  const anchorRef = useRef<HTMLSpanElement>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
 
-  const reason = unavailable ?? (request == null ? emptyReason ?? null : !preview.app && preview.error ? preview.error : null)
+  const reason = unavailable ?? (preview.app ? null : request == null ? emptyReason ?? null : preview.error)
   // The sketch stays on the canvas until the app has compiled once; the runtime starts under it.
   const live = reason == null && compiled != null
   useEffect(() => {
@@ -66,7 +79,22 @@ export function AppCanvas({ request, device, zoom = CANVAS_ZOOM, hash, dataState
           ? `${compiled.errors.length} file${compiled.errors.length === 1 ? '' : 's'} did not compile — ${compiled.errors[0].path}: ${compiled.errors[0].message}`
           : preview.error
             ? `Showing the last app that generated — ${preview.error}`
-            : null
+            : request == null && emptyReason
+              ? `Showing the last app that generated — ${emptyReason}`
+              : null
+
+  /** A fixed element over the runtime's `rect` (its viewport px, scaled onto this page). */
+  function anchor(rect: Rect): HTMLElement {
+    const el = anchorRef.current!
+    const frame = box.current?.querySelector('iframe')?.getBoundingClientRect()
+    Object.assign(el.style, {
+      left: `${(frame?.left ?? 0) + rect.x * scale}px`,
+      top: `${(frame?.top ?? 0) + rect.y * scale}px`,
+      width: `${rect.w * scale}px`,
+      height: `${rect.h * scale}px`,
+    })
+    return el
+  }
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" data-app-canvas={live ? 'app' : 'sketch'}>
@@ -76,6 +104,7 @@ export function AppCanvas({ request, device, zoom = CANVAS_ZOOM, hash, dataState
         </p>
       )}
       {!live && <div className="flex min-h-0 flex-1 flex-col">{fallback}</div>}
+      <span ref={anchorRef} aria-hidden="true" className="pointer-events-none fixed" data-app-canvas-anchor />
       {reason == null && (
         <div
           ref={box}
@@ -94,6 +123,8 @@ export function AppCanvas({ request, device, zoom = CANVAS_ZOOM, hash, dataState
               onCompiled={setCompiled}
               onRuntimeError={message => setCrash(message)}
               onUnavailable={setUnavailable}
+              design={design?.state ?? null}
+              onDesign={design ? intent => design.onIntent(intent, anchor) : undefined}
               title="The generated app"
               style={{ width: viewport, height, transform: `scale(${scale})`, transformOrigin: '0 0', background: 'white' }}
             />

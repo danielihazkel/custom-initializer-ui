@@ -61,6 +61,36 @@ describe('AppCanvas', () => {
     expect(refused.container.querySelector('[data-sketch]')).toBeTruthy()
   })
 
+  it('passes the editing layer’s intents on, with an anchor over a toolbar for a menu', async () => {
+    const onIntent = vi.fn()
+    const view = render(<AppCanvas request={request} device="desktop" hash="#/desk" fallback={<div data-sketch>sketch</div>}
+      design={{ state: { pageType: 'dashboard', selected: null, problems: {}, drag: null }, onIntent }} />)
+    const iframe = view.container.querySelector('iframe')!
+    const sent: HostMessage[] = []
+    vi.spyOn(iframe.contentWindow!, 'postMessage').mockImplementation((m: unknown) => { sent.push(m as HostMessage) })
+    const fromRuntime = (data: unknown) => act(() => { window.dispatchEvent(new MessageEvent('message', { data, source: iframe.contentWindow })) })
+    fromRuntime({ type: 'ready', protocol: PROTOCOL_VERSION, selfCheck: {} })
+    await waitFor(() => expect(sent.some(m => m.type === 'load')).toBe(true))
+    expect(sent.find(m => m.type === 'design')).toEqual({ type: 'design', design: { pageType: 'dashboard', selected: null, problems: {}, drag: null } })
+    fromRuntime({ type: 'tool', action: 'kind', index: 3, rect: { x: 100, y: 40, w: 112, h: 26 } })
+    expect(onIntent).toHaveBeenCalledTimes(1)
+    const [intent, anchor] = onIntent.mock.calls[0]
+    expect(intent).toEqual({ type: 'tool', action: 'kind', index: 3, rect: { x: 100, y: 40, w: 112, h: 26 } })
+    const el = anchor(intent.rect) as HTMLElement
+    expect(el.matches('[data-app-canvas-anchor]')).toBe(true)
+    expect(el.style.width).toBe('112px')
+  })
+
+  it('keeps the last app on screen while the model cannot be generated', async () => {
+    const view = mount(request)
+    view.fromRuntime({ type: 'ready', protocol: PROTOCOL_VERSION, selfCheck: {} })
+    await waitFor(() => expect(view.sent.some(m => m.type === 'load')).toBe(true))
+    view.fromRuntime({ type: 'compiled', ref: 'x', ok: true, errors: [], ms: { modules: 1, tailwind: 1, total: 2 }, files: 2, cssBytes: 10 })
+    view.rerender(<AppCanvas request={null} device="desktop" hash="#/desk" fallback={<div data-sketch>sketch</div>} emptyReason="no model" />)
+    expect(view.container.querySelector('[data-app-canvas]')?.getAttribute('data-app-canvas')).toBe('app')
+    expect(view.container.querySelector('[data-app-canvas-status]')?.textContent).toBe('Showing the last app that generated — no model')
+  })
+
   it('asks nothing without a request', () => {
     const { container } = mount(null)
     expect(container.querySelector('[data-sketch]')).toBeTruthy()

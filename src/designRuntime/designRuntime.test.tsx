@@ -103,6 +103,33 @@ describe('PreviewFrame', () => {
     expect(handlers.onRuntimeError).toHaveBeenCalledWith('boom', 'src/app/App.tsx')
   })
 
+  it('sets up the editing layer with the first load, sends its changes, and hands its intents over', () => {
+    const onDesign = vi.fn()
+    const design = { pageType: 'dashboard', selected: 'widget.1', problems: {}, drag: null }
+    const { sent, fromRuntime, rerender, handlers } = mount({ design, onDesign })
+    fromRuntime({ type: 'ready', protocol: PROTOCOL_VERSION, selfCheck: {} })
+    expect(sent.map(m => m.type)).toEqual(['design', 'load'])
+    expect(sent[0]).toEqual({ type: 'design', design })
+    // An equal state is not sent again; a new one is; null hands the clicks back to the app.
+    rerender(<PreviewFrame app={app} hash="#/desk" design={{ ...design }} onDesign={onDesign} {...handlers} />)
+    expect(sent).toHaveLength(2)
+    rerender(<PreviewFrame app={app} hash="#/desk" design={{ ...design, selected: null }} onDesign={onDesign} {...handlers} />)
+    expect(sent[sent.length - 1]).toEqual({ type: 'design', design: { ...design, selected: null } })
+    rerender(<PreviewFrame app={app} hash="#/desk" onDesign={onDesign} {...handlers} />)
+    expect(sent[sent.length - 1]).toEqual({ type: 'design', design: null })
+
+    fromRuntime({ type: 'pick', control: 'widget.2' })
+    fromRuntime({ type: 'reorder', from: 0, to: 2 })
+    expect(onDesign.mock.calls.map(c => c[0])).toEqual([{ type: 'pick', control: 'widget.2' }, { type: 'reorder', from: 0, to: 2 }])
+    expect(handlers.onRoute).not.toHaveBeenCalled()
+
+    // A key pressed in the app comes back out of the frame element, for the host's shortcuts.
+    const keys: string[] = []
+    document.addEventListener('keydown', e => keys.push(`${e.ctrlKey ? 'Ctrl+' : ''}${e.key}`), { once: true })
+    fromRuntime({ type: 'key', key: 'z', code: 'KeyZ', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false })
+    expect(keys).toEqual(['Ctrl+z'])
+  })
+
   it('ignores messages from anything but its own runtime', () => {
     const { sent, fromRuntime } = mount()
     fromRuntime({ type: 'ready', protocol: PROTOCOL_VERSION, selfCheck: {} }, window)

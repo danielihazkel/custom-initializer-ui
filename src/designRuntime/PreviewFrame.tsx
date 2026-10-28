@@ -1,5 +1,5 @@
 import { useEffect, useRef, type CSSProperties } from 'react'
-import { PROTOCOL_VERSION, type AppPayload, type CompileError, type DataState, type HostMessage, type RuntimeMessage } from './protocol'
+import { PROTOCOL_VERSION, type AppPayload, type CompileError, type DataState, type DesignState, type HostMessage, type RuntimeMessage } from './protocol'
 import { RUNTIME_URL, pageIdOfHash } from './payload'
 
 /** How long the runtime may take to say it is ready before the host gives up on it. */
@@ -11,6 +11,10 @@ export interface Compiled {
   ms: { modules: number; tailwind: number; total: number }
   files: number
 }
+
+/** What the runtime's editing layer reports: the gestures of design mode. */
+export type DesignIntent = Extract<RuntimeMessage, { type: 'pick' | 'pickPage' | 'rename' | 'reorder' | 'resize' | 'drop' | 'tool' }>
+const DESIGN_INTENTS = new Set<string>(['pick', 'pickPage', 'rename', 'reorder', 'resize', 'drop', 'tool'])
 
 export interface PreviewFrameProps {
   app: AppPayload | null
@@ -26,6 +30,9 @@ export interface PreviewFrameProps {
   onRuntimeError?: (message: string, path?: string) => void
   /** The runtime did not come up (no answer in time, or another protocol version). */
   onUnavailable?: (reason: string) => void
+  /** Design mode's editing layer over the app (null or absent: the app takes its own clicks). */
+  design?: DesignState | null
+  onDesign?: (intent: DesignIntent) => void
   title?: string
   className?: string
   style?: CSSProperties
@@ -37,14 +44,14 @@ export interface PreviewFrameProps {
  * backend's CSP gives it no network) that compiles and runs the app's own files. Talks to it
  * only through the postMessage protocol in ./protocol.ts.
  */
-export function PreviewFrame({ app, hash, dataState = 'data', dark, css, onRoute, onCompiled, onRuntimeError, onUnavailable, title = 'App preview', className, style }: PreviewFrameProps) {
+export function PreviewFrame({ app, hash, dataState = 'data', dark, css, onRoute, onCompiled, onRuntimeError, onUnavailable, design = null, onDesign, title = 'App preview', className, style }: PreviewFrameProps) {
   const frame = useRef<HTMLIFrameElement>(null)
   const ready = useRef(false)
   const loaded = useRef<string | null>(null)
   const route = useRef('')
-  const sent = useRef<{ hash?: string; dataState: DataState; dark?: boolean; css?: string }>({ dataState })
-  const latest = useRef({ app, hash, dataState, dark, css, onRoute, onCompiled, onRuntimeError, onUnavailable })
-  latest.current = { app, hash, dataState, dark, css, onRoute, onCompiled, onRuntimeError, onUnavailable }
+  const sent = useRef<{ hash?: string; dataState: DataState; dark?: boolean; css?: string; design: string }>({ dataState, design: 'null' })
+  const latest = useRef({ app, hash, dataState, dark, css, design, onRoute, onCompiled, onRuntimeError, onUnavailable, onDesign })
+  latest.current = { app, hash, dataState, dark, css, design, onRoute, onCompiled, onRuntimeError, onUnavailable, onDesign }
 
   const post = (message: HostMessage) => frame.current?.contentWindow?.postMessage(message, '*')
 
@@ -54,7 +61,10 @@ export function PreviewFrame({ app, hash, dataState = 'data', dark, css, onRoute
     loaded.current = next.ref
     // Keep the page the app is on across a reload of the same layout.
     const open = route.current && (!h || pageIdOfHash(h) === pageIdOfHash(route.current)) ? route.current : h ?? ''
-    sent.current = { hash: h, dataState: state, dark: d, css: c }
+    const designState = JSON.stringify(latest.current.design)
+    // The editing layer outlives loads; the first one sets it up.
+    if (sent.current.design !== designState) post({ type: 'design', design: latest.current.design })
+    sent.current = { hash: h, dataState: state, dark: d, css: c, design: designState }
     post({ type: 'load', app: next, hash: open, dataState: state, dark: d, css: c })
   }
 
@@ -63,6 +73,16 @@ export function PreviewFrame({ app, hash, dataState = 'data', dark, css, onRoute
       if (!frame.current || event.source !== frame.current.contentWindow) return
       const message = event.data as RuntimeMessage
       const cb = latest.current
+      if (message?.type === 'key') {
+        // The host's shortcuts listen on its own document: replay the key from the frame element.
+        const { key, code, ctrlKey, metaKey, shiftKey, altKey } = message
+        frame.current.dispatchEvent(new KeyboardEvent('keydown', { key, code, ctrlKey, metaKey, shiftKey, altKey, bubbles: true, cancelable: true }))
+        return
+      }
+      if (message && DESIGN_INTENTS.has(message.type)) {
+        cb.onDesign?.(message as DesignIntent)
+        return
+      }
       switch (message?.type) {
         case 'ready':
           if (message.protocol !== PROTOCOL_VERSION) {
@@ -115,7 +135,12 @@ export function PreviewFrame({ app, hash, dataState = 'data', dark, css, onRoute
       last.css = css
       post({ type: 'css', css })
     }
-  }, [hash, dataState, dark, css])
+    const designState = JSON.stringify(design)
+    if (designState !== last.design) {
+      last.design = designState
+      post({ type: 'design', design })
+    }
+  }, [hash, dataState, dark, css, design])
 
   return (
     <iframe
