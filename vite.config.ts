@@ -34,6 +34,8 @@ export default defineConfig({
       '/starter-wizard.detect-services': 'http://localhost:8080',
       '/actuator': 'http://localhost:8080',
       '/admin': 'http://localhost:8080',
+      // The design preview runtime (sandboxed iframe), served by the backend with its own CSP.
+      '/design-runtime': 'http://localhost:8080',
       '/frontend': 'http://localhost:8080',
       '/starter-fullstack.zip': 'http://localhost:8080',
       '/starter-fullstack.preview': 'http://localhost:8080'

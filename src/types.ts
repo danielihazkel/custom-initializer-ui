@@ -970,6 +970,8 @@ export interface DiffResult {
 export interface PreviewFile {
   path: string
   content: string
+  /** A binary's bytes — only in a fullstack preview asked with `assets=true` (the design runtime). */
+  base64?: string
 }
 
 export interface TreeNode {

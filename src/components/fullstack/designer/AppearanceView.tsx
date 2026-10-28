@@ -1,19 +1,22 @@
 import { useMemo, useState } from 'react'
-import type { FullstackEntityDef, FullstackNav, FullstackPageDef } from '../../../types'
+import type { FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackStarterRequest } from '../../../types'
 import { buildLayoutPreview } from '../layoutPreviewModel'
 import { LayoutPreview, type EditTarget } from '../LayoutPreview'
 import { seedLayout } from '../pageLayout'
 import { offNavNoteFor, type PagesModel } from '../pages/usePagesModel'
+import { pageIdOfHash } from '../../../designRuntime/payload'
+import { AppCanvas } from './AppCanvas'
 import { CanvasFrame, DeviceSwitch, ZoomControl, type PreviewDevice } from './CanvasFrame'
 import { FrontendSettings, type FrontendAppearance } from './FrontendSettings'
 
 /**
- * The generated app's look, beside the app itself: template set, colours, language and
- * direction, and the classic dashboard's heading on the left; a live preview on the right that
- * follows every change. Without a page layout the preview is the classic shell those settings
- * dress.
+ * The generated app's look, beside the app itself: template set, design kit, colours, language
+ * and direction, and the classic dashboard's heading on the left; on the right the generated app
+ * itself (AppCanvas), regenerated a moment after every change, so a kit or palette restyles the
+ * real components. Without a page layout it is the classic shell those settings dress. When the
+ * app cannot run (no request, a layout with problems, no runtime) the sketch stands in.
  */
-export function AppearanceView({ pages, entities, model, appearance, nav, selected, onSelectPage, onEdit, device, onDevice, zoom, onZoom, onEditStartDashboard }: {
+export function AppearanceView({ pages, entities, model, appearance, nav, selected, onSelectPage, onEdit, device, onDevice, zoom, onZoom, onEditStartDashboard, request = null }: {
   pages: FullstackPageDef[]
   entities: FullstackEntityDef[]
   model: PagesModel
@@ -29,6 +32,8 @@ export function AppearanceView({ pages, entities, model, appearance, nav, select
   zoom?: number
   onZoom?: (zoom: number) => void
   onEditStartDashboard?: () => void
+  /** The request for the model as it stands; null shows the sketch. */
+  request?: FullstackStarterRequest | null
 }) {
   const { settings, preview } = model
   const hasPages = pages.length > 0
@@ -55,38 +60,51 @@ export function AppearanceView({ pages, entities, model, appearance, nav, select
       <main className="flex min-h-[28rem] min-w-0 flex-1 flex-col" aria-label="Appearance preview">
         <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container-lowest px-4 py-1.5 text-[11px] text-secondary">
           <span className="font-semibold text-on-surface" data-appearance-caption>{caption}</span>
-          <span className="ms-auto">{hasPages ? 'Click the menu to see another page; click a part to edit it' : 'Classic layout — the app you get without pages'}</span>
+          <span className="ms-auto">{hasPages ? (request ? 'The generated app — use its menu to see another page' : 'Click the menu to see another page; click a part to edit it') : 'Classic layout — the app you get without pages'}</span>
           {zoom != null && onZoom && <ZoomControl zoom={zoom} onChange={onZoom} />}
           <DeviceSwitch device={device} onChange={onDevice} />
         </div>
-        <CanvasFrame device={device} zoom={zoom}>
-          {classic ? (
-            <LayoutPreview
-              preview={classic}
-              selected={classicSelected}
-              onSelect={setClassicSelected}
-              onEdit={() => {}}
-              skin={settings.skin}
-              palette={settings.palette}
-              navStyle={nav?.style}
-              collapsibleGroups={nav?.collapsibleGroups}
-              narrow={device === 'mobile'}
-            />
-          ) : (
-            <LayoutPreview
-              preview={preview}
-              selected={selected}
-              onSelect={onSelectPage}
-              onEdit={onEdit}
-              skin={settings.skin}
-              palette={settings.palette}
-              offNavNote={offNavNoteFor(pages[selected])}
-              navStyle={nav?.style}
-              collapsibleGroups={nav?.collapsibleGroups}
-              narrow={device === 'mobile'}
-            />
-          )}
-        </CanvasFrame>
+        <AppCanvas
+          request={request}
+          device={device}
+          zoom={zoom}
+          hash={hasPages && pages[selected] ? `#/${pages[selected].id}` : undefined}
+          onRoute={hash => {
+            const index = pages.findIndex(p => p.id === pageIdOfHash(hash))
+            if (index >= 0 && index !== selected) onSelectPage(index)
+          }}
+          emptyReason="the model has problems to fix first"
+          fallback={
+            <CanvasFrame device={device} zoom={zoom}>
+              {classic ? (
+                <LayoutPreview
+                  preview={classic}
+                  selected={classicSelected}
+                  onSelect={setClassicSelected}
+                  onEdit={() => {}}
+                  skin={settings.skin}
+                  palette={settings.palette}
+                  navStyle={nav?.style}
+                  collapsibleGroups={nav?.collapsibleGroups}
+                  narrow={device === 'mobile'}
+                />
+              ) : (
+                <LayoutPreview
+                  preview={preview}
+                  selected={selected}
+                  onSelect={onSelectPage}
+                  onEdit={onEdit}
+                  skin={settings.skin}
+                  palette={settings.palette}
+                  offNavNote={offNavNoteFor(pages[selected])}
+                  navStyle={nav?.style}
+                  collapsibleGroups={nav?.collapsibleGroups}
+                  narrow={device === 'mobile'}
+                />
+              )}
+            </CanvasFrame>
+          }
+        />
       </main>
     </div>
   )
