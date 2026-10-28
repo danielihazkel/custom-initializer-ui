@@ -1,13 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { KitNavIcons } from '../pages/kitNavIcons'
 import { createPortal } from 'react-dom'
 import type { FullstackPageType, FullstackWidgetDef } from '../../../types'
 import { useTeamTemplates, type TeamShare } from '../../../hooks/useTeamTemplates'
 import { ConfirmDialog } from '../../ConfirmDialog'
 import { cssEscape } from '../focus'
 import { isTypingTarget } from '../undo'
-import { LayoutPreview, type EditTarget } from '../LayoutPreview'
 import { pageFromTemplate } from '../layoutTemplates'
-import { buildPlayLinks } from '../playLinks'
 import { pageIdOfHash } from '../../../designRuntime/payload'
 import { AppCanvas } from './AppCanvas'
 import type { DesignIntent } from '../../../designRuntime/PreviewFrame'
@@ -30,12 +29,16 @@ import { IssuesPanel } from './IssuesPanel'
 import { PageStrip } from './PageStrip'
 import { SitemapView } from './SitemapView'
 import { AppearanceView } from './AppearanceView'
-import { CANVAS_ZOOM, CanvasFrame, DATA_STATES, DataStateSwitch, DeviceSwitch, ZOOM_LEVELS, ZoomControl, type PreviewDevice } from './CanvasFrame'
-import type { PreviewDataState } from '../layoutPreviewModel'
+import { CANVAS_ZOOM, DATA_STATES, DataStateSwitch, DeviceSwitch, ZOOM_LEVELS, ZoomControl, type PreviewDevice } from './CanvasFrame'
+import type { EditTarget, PreviewDataState } from '../layoutPreviewModel'
+import { CanvasNotice } from './CanvasNotice'
+import { designTexts } from './designTexts'
 import { DesignerMenu, type MenuItem } from './DesignerMenu'
 import { DesignerTour, tourSeen } from './DesignerTour'
 import { downloadLayoutSpec } from './specSnapshot'
 import type { FrontendAppearance } from './FrontendSettings'
+
+const NO_KIT_ICONS: readonly string[] = []
 
 /** Where the designer opens: a page (and control), and which panel is showing. */
 export interface DesignerTarget {
@@ -58,11 +61,9 @@ interface DesignerPrefs {
   library: boolean
   inspector: boolean
   dataState: PreviewDataState
-  /** Design mode's canvas: the generated app (when the model can be generated) or the sketch. */
-  canvas: 'app' | 'sketch'
 }
 const PREFS_KEY = 'fullstack:designerView'
-const DEFAULT_PREFS: DesignerPrefs = { zoom: CANVAS_ZOOM, library: true, inspector: true, dataState: 'data', canvas: 'app' }
+const DEFAULT_PREFS: DesignerPrefs = { zoom: CANVAS_ZOOM, library: true, inspector: true, dataState: 'data' }
 
 function readPrefs(): DesignerPrefs {
   try {
@@ -73,7 +74,6 @@ function readPrefs(): DesignerPrefs {
       library: raw.library !== false,
       inspector: raw.inspector !== false,
       dataState: DATA_STATES.includes(raw.dataState as PreviewDataState) ? raw.dataState as PreviewDataState : 'data',
-      canvas: raw.canvas === 'sketch' ? 'sketch' : 'app',
     }
   } catch {
     return DEFAULT_PREFS
@@ -118,7 +118,6 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   // (row keys, so a reorder does not lose it); `playNote` says why a click opened no page.
   const [mode, setMode] = useState<'design' | 'play'>('design')
   const [trail, setTrail] = useState<string[]>([])
-  const [playNote, setPlayNote] = useState<string | null>(null)
   // A page type more than one entity fits: which one, and where it goes.
   const [entityForm, setEntityForm] = useState<{ type: FullstackPageType; pick: string; at?: number } | null>(null)
   const [confirmTemplate, setConfirmTemplate] = useState<{ label: string; built: typeof pages } | null>(null)
@@ -176,8 +175,6 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     setSelectedWidget(null)
   }
 
-  // Only the play canvas follows links; design mode never reads them.
-  const playLinks = useMemo(() => (mode === 'play' ? buildPlayLinks(pages, entities) : null), [mode, pages, entities])
   // The walked pages that still exist, as indexes; the last is the one on the canvas.
   const trailIndexes = trail.map(k => keys.indexOf(k)).filter(i => i >= 0)
   function startPlay() {
@@ -185,11 +182,9 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     setMode('play')
     setTrail([keys[selectedIndex]])
     setSelectedWidget(null)
-    setPlayNote(null)
   }
   function stopPlay() {
     setMode('design')
-    setPlayNote(null)
   }
   /** Follows a link in Play mode: the page opens on the canvas (and in the inspector). */
   function playGo(index: number) {
@@ -198,7 +193,6 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     setTrail(t => (t[t.length - 1] === key ? t : [...t, key].slice(-30)))
     setSelectedKey(key)
     setSelectedWidget(null)
-    setPlayNote(null)
   }
   /** Back to the `at`-th page of the trail (default: the one before this). */
   function playBackTo(at = trailIndexes.length - 2) {
@@ -206,7 +200,6 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     const kept = trail.filter(k => keys.includes(k)).slice(0, at + 1)
     setTrail(kept)
     setSelectedKey(kept[kept.length - 1] ?? null)
-    setPlayNote(null)
   }
 
   /** The running app moved to another route: its page joins the trail, as a followed link does.
@@ -216,8 +209,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     const index = id ? pages.findIndex(p => p.id === id) : preview.nav[0]?.index ?? -1
     if (index >= 0 && index !== selectedIndex) playGo(index)
   }
-  // Play runs the generated app when the model can be generated (the Code tab's request), else
-  // the sketch. The request is only built while playing; a layout with problems is not sent.
+  // Play runs the generated app (the Code tab's request). The request is only built while
+  // playing; a layout with problems is not sent.
   const playRequest = mode === 'play' && codeRequest && validation.issues.length === 0 ? codeRequest() : null
 
   /** Opens a page in the inspector on one of its controls (or its first invalid one), from the
@@ -235,8 +228,6 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     }
     if (!focus) return
     const attempt = (triesLeft: number) => {
-      // A double-click renames in place: the click before it must not pull the focus away.
-      if ((document.activeElement as HTMLElement | null)?.matches?.('[data-preview-rename]')) return
       const root = inspectorRef.current
       const scope = t.control
         ? root?.querySelector<HTMLElement>(`[data-control="${cssEscape(t.control)}"]`)
@@ -477,15 +468,17 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     setSelectedKey(keys[toIndex] ?? null)
     setSelectedWidget(at)
   }
-  /** The layout as a spec sheet for its reviewers: one offline HTML file, downloaded. */
-  function exportSpec() {
+  /** The layout as a spec sheet for its reviewers: one offline HTML file with every page as the
+   *  generated app draws it, downloaded. */
+  async function exportSpec() {
     if (pages.length === 0) return
-    const request = codeRequest?.()
+    const request = codeRequest?.() ?? null
     const project = request?.name?.trim() || request?.artifactId?.trim() || 'Layout'
+    model.setNotice('Building the spec sheet — the generated app draws each page…')
     try {
-      const name = downloadLayoutSpec({
-        project, pages, entities, preview, skin: settings.skin, palette: settings.palette,
-        locale: previewSettings?.locale ?? 'en', navStyle: nav?.style,
+      const name = await downloadLayoutSpec({
+        project, pages, entities, preview, look: appearance?.usedKit?.kit.name ?? appearance?.currentFrontendSet?.name ?? 'Tailwind',
+        request: validation.issues.length === 0 ? request : null, locale: previewSettings?.locale ?? 'en',
       })
       model.setNotice(`Downloaded ${name} — open it in a browser to read it, or print it to PDF`)
     } catch {
@@ -538,13 +531,16 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   const takesParts = page != null && (PAGE_SLOTS[page.type] ?? []).length > 0
 
   // Design mode on the generated app: the runtime's editing layer picks parts and reports gestures,
-  // applied here as the sketch's would be. A part dragged from the library has no drop target in
-  // the app, so the sketch takes the canvas while one is held.
-  const designOnApp = mode === 'design' && prefs.canvas === 'app' && codeRequest != null && !partDrag
-  const designRequest = designOnApp && validation.issues.length === 0 ? codeRequest() : null
-  // The library's drag ends (dragend) before the runtime's drop message arrives: keep the widget.
-  const lastWidgetDrag = useRef<typeof widgetDrag>(null)
-  if (widgetDrag) lastWidgetDrag.current = widgetDrag
+  // applied here to the model; the app is then generated again.
+  const designRequest = mode === 'design' && codeRequest && validation.issues.length === 0 ? codeRequest() : null
+  // The library's drag ends (dragend) before the runtime's drop message arrives: keep what it held.
+  const lastDrag = useRef<LibraryDrag | null>(null)
+  if (widgetDrag || partDrag) lastDrag.current = widgetDrag ?? partDrag
+  const texts = useMemo(() => designTexts(preview.screens[selectedIndex]), [preview, selectedIndex])
+  /** What the canvas shows while the app is not on it (starting, or why it cannot be shown). */
+  const notice = (reason: string | null) => (
+    <CanvasNotice reason={reason} problems={validation.issues.length} onShowProblems={() => setIssuesOpen(true)} />
+  )
   function designFollowRoute(hash: string) {
     const id = pageIdOfHash(hash)
     const index = id ? pages.findIndex(p => p.id === id) : -1
@@ -572,10 +568,11 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
         model.resizeWidget(selectedIndex, intent.index, intent.span)
         break
       case 'drop': {
-        const held = lastWidgetDrag.current
+        const held = lastDrag.current
         setDrag(null)
-        lastWidgetDrag.current = null
-        if (held) addWidget(held.widget, widgetEntity, intent.at, held.def)
+        lastDrag.current = null
+        if (held?.kind === 'widget') addWidget(held.widget, widgetEntity, intent.at, held.def)
+        else if (held?.kind === 'part') placePart(held.part, intent.at)
         break
       }
       case 'tool':
@@ -585,48 +582,9 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     }
   }
 
-  // The sketch canvas (the hand-drawn preview with its own editing): Design mode's canvas when
-  // "Sketch" is picked, while the generated app starts, and the fallback when it cannot run.
-  const designSketch = page ? (
-    <CanvasFrame device={device} zoom={prefs.zoom}>
-      <LayoutPreview
-        preview={preview}
-        selected={selectedIndex}
-        onSelect={selectPage}
-        onEdit={reveal}
-        highlight={widget != null ? { page: selectedIndex, control: `widget.${widget}` } : null}
-        skin={settings.skin}
-        palette={settings.palette}
-        offNavNote={offNavNoteFor(page)}
-        onReorderWidget={reorderWidget}
-        onResizeWidget={model.resizeWidget}
-        onRename={(t, value) => model.renamePart(t.page, t.control ?? '', value)}
-        widgetTools={{ duplicate: duplicateWidget, kindMenu: (pageIndex, index, anchor) => setKindMenu({ page: pageIndex, index, anchor }) }}
-        navStyle={nav?.style}
-        collapsibleGroups={nav?.collapsibleGroups}
-        narrow={device === 'mobile'}
-        dataState={prefs.dataState}
-        problems={validation.byPage}
-        widgetDrop={widgetDrag ? {
-          span: defaultSpan(widgetDrag.widget),
-          onDrop: (pageIndex, at) => {
-            setDrag(null)
-            if (pageIndex === selectedIndex) addWidget(widgetDrag.widget, widgetEntity, at, widgetDrag.def)
-          },
-        } : null}
-        partDrop={partDrag ? {
-          slot: partDrag.part.kind,
-          onDrop: (pageIndex, at) => {
-            setDrag(null)
-            if (pageIndex === selectedIndex) placePart(partDrag.part, at)
-          },
-        } : null}
-      />
-    </CanvasFrame>
-  ) : null
-
   return createPortal(
     <EntityOptions.Provider value={model.entityOptions}>
+    <KitNavIcons.Provider value={settings.kitNavIcons ?? NO_KIT_ICONS}>
       <div
         ref={dialogRef}
         role="dialog"
@@ -771,13 +729,11 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
         {view === 'appearance' && appearance ? (
           <AppearanceView
             pages={pages}
-            entities={entities}
             model={model}
             appearance={appearance}
-            nav={nav}
             selected={selectedIndex}
             onSelectPage={selectPage}
-            onEdit={t => { setView('design'); reveal(t) }}
+            onShowProblems={() => { setView('design'); setIssuesOpen(true) }}
             device={device}
             onDevice={setDevice}
             zoom={prefs.zoom}
@@ -790,7 +746,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             }}
           />
         ) : view === 'sitemap' ? (
-          <SitemapView pages={pages} model={model} nav={nav} onNavChange={onNavChange} onOpenPage={i => { selectPage(i); setView('design') }} />
+          <SitemapView pages={pages} model={model} nav={nav} onNavChange={onNavChange} onOpenPage={i => { selectPage(i); setView('design') }}
+            request={codeRequest && validation.issues.length === 0 ? codeRequest() : null} />
         ) : (
         <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
           {prefs.library && (
@@ -961,27 +918,11 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                   <span className="font-semibold text-on-surface">{pageLabel(page)}</span>
                   <span>{PAGE_TYPE_META[page.type]?.label}</span>
                   <span className="font-mono">#/{page.id || '…'}</span>
+                  {offNavNoteFor(page) && <span className="text-amber-600" data-off-nav-note>{offNavNoteFor(page)}</span>}
                   <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · double-click a title to rename · drag to move · drag its edge to resize' : takesParts ? 'Click a part to edit it · double-click a title to rename · drag parts in from the library' : 'Click a part to edit it · double-click a title to rename'}</span>
                   <ZoomControl zoom={prefs.zoom} onChange={zoom => setPrefs(p => ({ ...p, zoom }))} />
                   <DeviceSwitch device={device} onChange={setDevice} />
                   <DataStateSwitch state={prefs.dataState} onChange={dataState => setPrefs(p => ({ ...p, dataState }))} />
-                  {codeRequest && (
-                    <span role="radiogroup" aria-label="Canvas" className="inline-flex overflow-hidden rounded-md border border-outline-variant" data-canvas-engine>
-                      {([['app', 'App', 'The generated app itself, run in your browser'], ['sketch', 'Sketch', 'The quick sketch: every part of every page type is editable']] as const).map(([value, label, hint]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          role="radio"
-                          aria-checked={prefs.canvas === value}
-                          title={hint}
-                          onClick={() => setPrefs(p => ({ ...p, canvas: value }))}
-                          className={`px-2 py-0.5 font-semibold ${prefs.canvas === value ? 'bg-primary/15 text-on-surface' : 'text-secondary hover:text-on-surface'}`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </span>
-                  )}
                   <button
                     type="button"
                     onClick={() => setSelectedWidget(null)}
@@ -1006,8 +947,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             </div>
             {mode === 'play' && page && (
               <p className="flex items-center gap-1.5 border-b border-outline-variant bg-primary/5 px-4 py-1 text-[11px] text-secondary" role="status" data-play-status>
-                <span className="material-symbols-outlined text-primary" style={{ fontSize: '14px' }} aria-hidden="true">{playNote ? 'info' : 'touch_app'}</span>
-                {playNote ?? (playRequest ? 'Playing the generated app: its own code, run in your browser against sample rows — saves last until it is generated again. Esc or P to edit again.' : 'Playing: rows, tiles, charts, Back and Save go where the generated app goes. Esc or P to edit again.')}
+                <span className="material-symbols-outlined text-primary" style={{ fontSize: '14px' }} aria-hidden="true">touch_app</span>
+                Playing the generated app: its own code, run in your browser against sample rows — saves last until it is generated again. Esc or P to edit again.
               </p>
             )}
             {page ? (
@@ -1020,28 +961,9 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     dataState={prefs.dataState}
                     onRoute={playFollowRoute}
                     emptyReason={!codeRequest ? 'the generated app needs the whole model' : 'fix the layout’s problems to run the generated app'}
-                    fallback={
-                      <CanvasFrame device={device} zoom={prefs.zoom}>
-                        <LayoutPreview
-                          // A new page remounts the screen, so tabs and wizard steps start at the first.
-                          key={keys[selectedIndex]}
-                          preview={preview}
-                          selected={selectedIndex}
-                          onSelect={playGo}
-                          onEdit={() => {}}
-                          skin={settings.skin}
-                          palette={settings.palette}
-                          offNavNote={offNavNoteFor(page)}
-                          navStyle={nav?.style}
-                          collapsibleGroups={nav?.collapsibleGroups}
-                          narrow={device === 'mobile'}
-                          play={{ links: playLinks!, go: playGo, note: setPlayNote }}
-                          dataState={prefs.dataState}
-                        />
-                      </CanvasFrame>
-                    }
+                    fallback={notice}
                   />
-                ) : designOnApp ? (
+                ) : codeRequest ? (
                   <AppCanvas
                     request={designRequest}
                     device={device}
@@ -1055,13 +977,14 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                         pageType: page.type,
                         selected: widget != null ? `widget.${widget}` : null,
                         problems: validation.byPage[selectedIndex] ?? {},
-                        drag: widgetDrag ? { span: defaultSpan(widgetDrag.widget) } : null,
+                        drag: widgetDrag ? { span: defaultSpan(widgetDrag.widget) } : partDrag ? { span: 0, slot: partDrag.part.kind } : null,
+                        texts,
                       },
                       onIntent: onDesignIntent,
                     }}
-                    fallback={designSketch}
+                    fallback={notice}
                   />
-                ) : designSketch
+                ) : <CanvasNotice reason="The preview runs the generated app, and this editor cannot generate one (it is not the Fullstack tab's)." />
               ) : (
               <div className="min-h-0 flex-1 overflow-auto bg-background p-6" data-designer-canvas>
                 <div className="mx-auto flex max-w-xl flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-outline px-8 py-14 text-center" data-designer-empty>
@@ -1165,6 +1088,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
           onCancel={() => setConfirmTemplate(null)}
         />
       )}
+    </KitNavIcons.Provider>
     </EntityOptions.Provider>,
     document.body,
   )

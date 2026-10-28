@@ -1,5 +1,5 @@
 import type { FullstackPageDef } from '../../../types'
-import type { EditTarget } from '../LayoutPreview'
+import type { EditTarget } from '../layoutPreviewModel'
 import type { PageLayoutValidation } from '../pageLayout'
 import { ICON_BUTTON } from '../pages/constants'
 import { LayoutWarnings } from '../pages/LayoutWarnings'

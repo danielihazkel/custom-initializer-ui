@@ -521,6 +521,10 @@ export interface DesignKitSummary {
   swatch?: Record<string, string>
   /** Published versions that still generate but are no longer offered. */
   deprecated?: { version: number; note: string | null }[]
+  /** The kit's picture (its `kit/thumbnail.*` asset's URL), else null. */
+  thumbnail?: string | null
+  /** Nav icons the kit's latest version adds to the lucide ones (`<Name>Icon`). */
+  navIcons?: string[]
 }
 
 /** The kit version a model is built with — kept in the model so a later kit release never changes it unasked. */
@@ -550,6 +554,9 @@ export interface DesignKitVersion {
     imports: string[]
     fonts?: { package: string; version: string; weights: number[]; comment?: string }
     defaults?: { locale?: 'en' | 'he'; rtl?: boolean }
+    traits?: { sketch?: 'tailwind' | 'menora'; navOptions?: boolean }
+    /** Icons the kit adds to the nav icons: components its helper `module` exports. */
+    navIcons?: { module: string; names: string[] }
   }
   css: string
   assets: { targetPath: string; role: string; contentType: string; sizeBytes: number; sha256: string; meta: string | null; url: string }[]
@@ -767,7 +774,8 @@ export interface FullstackPageDef {
   /** Nav section (visible pages only): pages sharing a group are listed together under its name. */
   group?: string
   /** Nav icon (visible pages only); default: the page type's own. */
-  icon?: FullstackNavIcon
+  /** A lucide nav icon, or one the model's design kit adds (`<Name>Icon`). */
+  icon?: FullstackNavIcon | (string & {})
   /** entity-list */
   entity?: string
   /** entity-list / report: field → value the page opens filtered on. An enum constant or

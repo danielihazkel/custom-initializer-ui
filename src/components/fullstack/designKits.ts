@@ -79,21 +79,6 @@ export function kitDefaults(kit: DesignKitSummary | undefined): { locale?: 'en' 
   return { ...(kit?.defaults?.locale ? { locale: kit.defaults.locale } : {}), ...(kit?.defaults?.rtl ? { rtl: true } : {}) }
 }
 
-/**
- * The two colours today's layout preview draws with, from a kit's tokens: `color-brand` and
- * `color-gold`, palette references resolved against the palette in force. Null when the kit
- * version is not loaded yet (the preview keeps the palette's own colours).
- */
-export function kitPreviewPalette(version: DesignKitVersion | null, palette: FeColorPalette | undefined): FeColorPalette | undefined {
-  if (!version) return palette
-  const tokens = version.tokens.tokens
-  const brand = resolveToken(tokens, 'color-brand', palette)
-  const gold = resolveToken(tokens, 'color-gold', palette)
-  if (!brand && !gold) return palette
-  const base: FeColorPalette = palette ?? { id: version.key, name: version.key, primary: '#2B2F4C', secondary: '#FEDB41', isDefault: false, sortOrder: 0 }
-  return { ...base, primary: brand ?? base.primary, secondary: gold ?? base.secondary }
-}
-
 /** A token's light value with `{palette.*}` references filled in (a missing accent/error takes its fallback). */
 export function resolveToken(tokens: DesignToken[], name: string, palette: FeColorPalette | undefined): string | undefined {
   const value = tokens.find(t => t.name === name)?.value

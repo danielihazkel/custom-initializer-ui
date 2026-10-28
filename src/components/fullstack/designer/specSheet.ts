@@ -2,12 +2,13 @@ import type { FullstackEntityDef, FullstackPageDef, FullstackWidgetDef } from '.
 import { PAGE_TYPE_META, describePage, describePresetValue, pageLabel } from '../pageLayout'
 import { WIDGET_KINDS } from '../pages/constants'
 import type { PreviewNavSection } from '../layoutPreviewModel'
+import type { ScreenCapture } from '../../../designRuntime/capture'
 
 /**
  * The layout as a spec sheet for the people who will review it: one self-contained HTML file
  * (no request leaves it — the deployed UI and its readers may be offline) that prints one page
- * per section. The builder is pure; the canvas snapshots and the stylesheet are made by the
- * caller (`specSnapshot.tsx`) and passed in as markup.
+ * per section. The builder is pure; the screens (snapshots of the generated app) and the page
+ * flow's stylesheet are made by the caller (`specSnapshot.tsx`) and passed in.
  */
 export interface SpecSheetInput {
   project: string
@@ -21,10 +22,17 @@ export interface SpecSheetInput {
   sections: PreviewNavSection[]
   /** The page-flow map, as static markup (empty when it could not be drawn). */
   flowHtml: string
-  /** Per page, its canvas as static markup (null: none). */
-  canvasHtml: (string | null)[]
-  /** The app's stylesheet, inlined so the snapshots look as they do in the designer. */
+  /** Per page, the generated app's screen (null: none). */
+  canvases: (ScreenCapture | null)[]
+  /** Why the pages are not pictured, when they are not. */
+  canvasNote?: string
+  /** The designer's stylesheet, inlined so the page flow looks as it does there. */
   css: string
+}
+
+/** A screen as a document of its own: the app's markup and stylesheet, nothing that runs. */
+export function screenDocument(c: ScreenCapture): string {
+  return `<!doctype html><html lang="${escapeHtml(c.lang)}" dir="${escapeHtml(c.dir)}"><head><meta charset="utf-8"><style>${c.css.replace(/<\/style/gi, '<\\/style')}</style></head><body><div id="root">${c.html}</div></body></html>`
 }
 
 const escapeMap: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
@@ -80,7 +88,7 @@ export function buildSpecSheet(input: SpecSheetInput): string {
   const pageSections = pages.map((page, i) => {
     const widgets = page.type === 'dashboard' && (page.widgets?.length ?? 0) > 0
       ? `<h3>Widgets</h3><ol class="widgets">${(page.widgets ?? []).map(w => `<li>${e(widgetLine(w))}</li>`).join('')}</ol>` : ''
-    const canvas = input.canvasHtml[i]
+    const canvas = input.canvases[i]
     return `
   <section class="page" id="page-${i}">
     <p class="eyebrow">Page ${i + 1} of ${pages.length}</p>
@@ -88,7 +96,7 @@ export function buildSpecSheet(input: SpecSheetInput): string {
     ${page.description ? `<p class="lead">${e(page.description)}</p>` : ''}
     <div class="cols">
       <dl>${pageSettings(page, pages, input.entities).map(([k, v]) => `<dt>${e(k)}</dt><dd>${e(v)}</dd>`).join('')}</dl>
-      ${canvas ? `<figure class="canvas"><div class="snapshot">${canvas}</div><figcaption>As the designer previews it, with sample rows</figcaption></figure>` : ''}
+      ${canvas ? `<figure class="canvas"><div class="screen"><iframe sandbox="" tabindex="-1" title="${e(pageLabel(page))}" srcdoc="${e(screenDocument(canvas))}"></iframe></div><figcaption>The generated app, with sample rows</figcaption></figure>` : ''}
     </div>
     ${widgets}
   </section>`
@@ -124,7 +132,9 @@ ${input.css}
   .spec dd { margin: 0; overflow-wrap: anywhere; }
   .spec figure { margin: 0; }
   .spec figcaption { margin-top: 6px; font-size: 11px; color: #6b7080; }
-  .spec .snapshot { pointer-events: none; }
+  .spec .screen { position: relative; width: 640px; max-width: 100%; aspect-ratio: 1280 / 900; overflow: hidden; border: 1px solid #e3e5ec; border-radius: 12px; }
+  .spec .screen iframe { position: absolute; top: 0; inset-inline-start: 0; width: 1280px; height: 900px; border: 0; pointer-events: none; transform-origin: 0 0; transform: scale(var(--screen-scale, .5)); }
+  [dir="rtl"] .spec .screen iframe { transform-origin: 100% 0; }
   .spec .flow { overflow: auto; border: 1px solid #e3e5ec; border-radius: 12px; padding: 12px; }
   .spec .widgets { margin: 0; padding-inline-start: 20px; font-size: 13px; }
   @media (max-width: 760px) { .spec .cols { grid-template-columns: 1fr; } }
@@ -155,6 +165,7 @@ ${input.css}
     ${offNav.length ? `<p class="lead">Opened from other pages: ${offNav.map(({ p, i }) => `<a href="#page-${i}">${e(pageLabel(p))}</a>`).join(', ')}</p>` : ''}
   </section>
   ${input.flowHtml ? `<section><h2>How the pages connect</h2><div class="flow">${input.flowHtml}</div></section>` : ''}
+  ${input.canvasNote ? `<p class="lead">${e(input.canvasNote)}</p>` : ''}
   ${pageSections}
 </main>
 </body>

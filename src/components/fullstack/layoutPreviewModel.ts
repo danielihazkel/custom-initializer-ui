@@ -1,4 +1,4 @@
-import type { FullstackAgg, FullstackBucket, FullstackChartKind, FullstackEntityDef, FullstackFieldDef, FullstackListDetail, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
+import type { FullstackAgg, FullstackBucket, FullstackChartKind, FullstackEntityDef, FullstackFieldDef, FullstackListDetail, FullstackListSort, FullstackListView, FullstackNavIcon, FullstackPageDef, FullstackPageType } from '../../types'
 import { enumLabel } from './enumLabels'
 import { humanize } from './naming'
 import { describePresetValue, pageLabel as linkLabel } from './pageLayout'
@@ -315,7 +315,9 @@ const PERIOD_KEYS = {
 
 /** The Material Symbol that stands in for a page's (lucide) nav icon. */
 export function navSymbol(page: FullstackPageDef): string {
-  const icon = page.icon && page.icon in NAV_ICONS ? page.icon : DEFAULT_NAV_ICON[page.type as FullstackPageType]
+  // A kit's own icon (not a lucide name) draws as a generic glyph.
+  if (page.icon && !(page.icon in NAV_ICONS)) return 'interests'
+  const icon = (page.icon as FullstackNavIcon | undefined) ?? DEFAULT_NAV_ICON[page.type as FullstackPageType]
   return icon ? NAV_ICONS[icon].symbol : 'web_asset'
 }
 
@@ -1095,12 +1097,12 @@ function sameName(a: string | undefined, b: string | undefined): boolean {
 // ── Editor ↔ preview linking ────────────────────────────────────────────────
 
 /** A page, and optionally one control on it — the same keys validatePages reports errors under.
- *  A click in the preview asks the editor to open one; an editor part hovered lights one. */
+ *  A part clicked in the app asks the editor to open one; an editor part hovered rings one. */
 export interface EditTarget { page: number; control?: string }
 
 /**
- * The preview part an editor control belongs to, so the two sides agree through one rule: the
- * editor's `data-control` keys are finer than the preview's parts (a widget card holds
+ * The part of the app an editor control belongs to, so the two sides agree through one rule (the
+ * runtime's design layer rings it): the editor's `data-control` keys are finer than the parts (a widget card holds
  * `widget.2.presetFilter.status`, a report chart card `chart2.bucket`, a record's tiles
  * `headerStat.1`). `undefined` is the page itself — its nav item.
  */
@@ -1120,9 +1122,4 @@ export function previewPartOf(control: string | undefined): string | undefined {
   if (head === 'presetFilter' || head === 'view' || head === 'pageSize') return 'entity'
   if (head === 'id' || head === 'group' || head === 'icon' || head === 'roles') return undefined
   return head
-}
-
-/** Whether a hovered editor part (`hover`) is the preview part drawn for `target`. */
-export function highlights(hover: EditTarget | null | undefined, target: EditTarget): boolean {
-  return hover != null && hover.page === target.page && previewPartOf(hover.control) === previewPartOf(target.control)
 }

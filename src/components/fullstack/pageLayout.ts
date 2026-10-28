@@ -778,12 +778,19 @@ export interface PageLayoutContext {
   scaffoldOpts?: string[]
   /** Keys of the warnings the user dismissed (they move to `dismissedWarnings`). */
   dismissed?: string[]
+  /** Nav icons the model's design kit adds (a page may name one). */
+  kitIcons?: string[]
+}
+
+/** A kit nav icon `icon` names, matched ignoring case like the server does. */
+export function kitIconOf(icon: string | undefined, kitIcons: readonly string[] = []): string | undefined {
+  return icon ? kitIcons.find(k => k.toLowerCase() === icon.toLowerCase()) : undefined
 }
 
 export const PAGE_ROLES: FullstackPageRole[] = ['ADMIN', 'USER']
 
 export function validatePages(pages: FullstackPageDef[], entities: FullstackEntityDef[], context: PageLayoutContext = {}): PageLayoutValidation {
-  const issues = collect(pages, entities, context.scaffoldOpts ?? [])
+  const issues = collect(pages, entities, context.scaffoldOpts ?? [], context.kitIcons ?? [])
   issues.push(...roleIssues(pages, context))
   const byPage: Record<number, Record<string, string>> = {}
   const general: string[] = []
@@ -1182,7 +1189,7 @@ function checkDashboardFilters(page: FullstackPageDef, entities: FullstackEntity
   })
 }
 
-function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaffoldOpts: string[] = []): Issue[] {
+function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaffoldOpts: string[] = [], kitIcons: string[] = []): Issue[] {
   if (pages.length === 0) return []
   const issues: Issue[] = []
   const byLower = new Map(entities.map(e => [e.name.trim().toLowerCase(), e]))
@@ -1285,7 +1292,9 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           `${where} is not in the navigation, so it takes no nav ${page.group?.trim() ? 'group' : 'icon'}`)
       }
       if ((page.group ?? '').trim().length > MAX_GROUP) add('group', `is longer than ${MAX_GROUP} characters`)
-      if (page.icon && !(page.icon in NAV_ICONS)) add('icon', `“${page.icon}” is not a nav icon`)
+      if (page.icon && !(page.icon in NAV_ICONS) && !kitIconOf(page.icon, kitIcons)) {
+        add('icon', kitIcons.length ? `“${page.icon}” is not a nav icon, nor one the design kit adds` : `“${page.icon}” is not a nav icon`)
+      }
     }
     if (page.type !== 'dashboard' && (page.filters?.length ?? 0) > 0) {
       add('filters', 'only a dashboard takes filters — a list or report page has its own filter bar',

@@ -1,15 +1,44 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useState } from 'react'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { EntityTemplateSetSummary, FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackStarterRequest } from '../../../types'
 import type { FeColorPalette } from '../../../hooks/useFrontendMetadata'
 import { validatePages } from '../pageLayout'
 import { PagesSection } from './PagesSection'
 import { pickedAfterClick } from './PageStrip'
 import { nextZoom } from './CanvasFrame'
+import type { DesignIntent } from '../../../designRuntime/PreviewFrame'
 
 // CodeMirror does not run in jsdom; the Code tab's viewer is a plain block here.
 vi.mock('../../ReadOnlyCodeViewer', () => ({ ReadOnlyCodeViewer: ({ code }: { code: string }) => <pre data-code-viewer>{code}</pre> }))
+
+// The canvas runs the generated app in a sandboxed frame, which jsdom cannot: a stand-in records
+// what the designer hands it, and plays the runtime's design-mode gestures back to it (the
+// runtime's own tests and runtime-check.mjs cover the gestures themselves).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CanvasProps = Record<string, any>
+const canvas = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }))
+vi.mock('./AppCanvas', () => ({
+  APP_VIEWPORT: { desktop: 1280, tablet: 820, mobile: 390 },
+  AppCanvas: (props: Record<string, unknown>) => {
+    canvas.props.push(props)
+    return <div data-designer-canvas data-test-canvas={props.design ? 'design' : 'app'} />
+  },
+}))
+// No runtime frame starts in jsdom: the spec sheet's snapshots fail at once (and the sheet says so).
+vi.mock('../../../designRuntime/capture', async original => ({
+  ...(await original<typeof import('../../../designRuntime/capture')>()),
+  captureScreens: async () => { throw new Error('no preview runtime here') },
+}))
+/** The props of the canvas drawn last. */
+const lastCanvas = () => canvas.props[canvas.props.length - 1] as CanvasProps
+/** The element a toolbar's menu anchors to (the runtime reports the toolbar's rect). */
+let anchor: HTMLButtonElement
+/** A gesture of the runtime's editing layer, as the frame reports it. */
+function gesture(intent: DesignIntent) {
+  act(() => lastCanvas().design.onIntent(intent, () => anchor))
+}
+const rect = { x: 0, y: 0, w: 112, h: 26 }
 
 const entities: FullstackEntityDef[] = [
   { name: 'Customer', fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'name', type: 'STRING' }] },
@@ -72,13 +101,18 @@ const chip = (designer: HTMLElement, id: string) =>
   (designer.querySelector(`[data-strip-page="${id}"]`) as HTMLElement).querySelector('button') as HTMLElement
 
 beforeEach(() => {
+  canvas.props.length = 0
+  anchor = document.body.appendChild(Object.assign(document.createElement('button'), { textContent: 'toolbar' }))
   pushUndo.mockClear()
   localStorage.clear()
   // The tour opens by itself on a first visit; its own tests clear this.
   localStorage.setItem('fullstack:designerTour', 'done')
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { cb(0); return 0 })
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  anchor.remove()
+})
 
 describe('Layout designer', () => {
   it('opens from the Pages card on the start page, and Escape closes it back to the button', () => {
@@ -122,34 +156,34 @@ describe('Layout designer', () => {
     expect(inspector(designer).getAttribute('data-inspector')).toBe('page')
   })
 
-  it('drops a library widget onto the dashboard where it lands', () => {
-    render(<Harness initial={desk} />)
+  it('drops a library widget onto the dashboard where the app’s editing layer says it lands', () => {
+    render(<Harness initial={desk} code />)
     const designer = openDesigner()
     const card = within(designer).getByRole('button', { name: 'Add trend over time' })
     const dt = dataTransfer()
     fireEvent.dragStart(card, { dataTransfer: dt })
-    const end = designer.querySelector('[data-preview-drop-end]')!
-    expect(end).toBeTruthy()
-    fireEvent.dragOver(end, { dataTransfer: dt })
-    fireEvent.drop(end, { dataTransfer: dt })
+    // The runtime is told what is held, to draw where it lands.
+    expect(lastCanvas().design.state.drag).toEqual({ span: 2 })
+    // The library's dragend arrives before the runtime's drop message.
+    fireEvent.dragEnd(card, { dataTransfer: dt })
+    gesture({ type: 'drop', at: 2 })
     expect(latest[0].widgets?.map(w => w.kind)).toEqual(['kpi', 'bar', 'line'])
-    expect(designer.querySelector('[data-preview-drop-end]')).toBeNull()
+    expect(lastCanvas().design.state.drag).toBeNull()
 
-    // Over a widget, the half under the pointer decides: here, after the first one.
     fireEvent.dragStart(within(designer).getByRole('button', { name: 'Add text note' }), { dataTransfer: dt })
-    const first = designer.querySelector('[data-preview-widget-slot="0"]')!
-    fireEvent.dragOver(first, { dataTransfer: dt })
-    fireEvent.drop(first, { dataTransfer: dt })
+    gesture({ type: 'drop', at: 1 })
     expect(latest[0].widgets?.map(w => w.kind)).toEqual(['kpi', 'text', 'bar', 'line'])
     expect(within(inspector(designer)).getByText('Widget 2')).toBeTruthy()
   })
 
   it('selects a widget on the canvas, and removes it with an undo entry', () => {
-    render(<Harness initial={desk} />)
+    render(<Harness initial={desk} code />)
     const designer = openDesigner()
-    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 2' }))
+    gesture({ type: 'pick', control: 'widget.1' })
     const panel = inspector(designer)
     expect(within(panel).getByText('Widget 2')).toBeTruthy()
+    // The runtime rings what is selected.
+    expect(lastCanvas().design.state.selected).toBe('widget.1')
     fireEvent.click(within(panel).getByRole('button', { name: /Remove widget$/ }))
     expect(latest[0].widgets?.map(w => w.kind)).toEqual(['kpi'])
     expect(pushUndo).toHaveBeenCalledWith(expect.stringContaining('Removed widget 2'))
@@ -221,9 +255,9 @@ describe('Layout designer', () => {
   })
 
   it('moves, resizes and removes the selected widget from the keyboard', () => {
-    render(<Harness initial={desk} />)
+    render(<Harness initial={desk} code />)
     const designer = openDesigner()
-    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    gesture({ type: 'pick', control: 'widget.0' })
     fireEvent.keyDown(designer, { key: 'ArrowRight', altKey: true })
     expect(latest[0].widgets?.map(w => w.kind)).toEqual(['bar', 'kpi'])
     // The selection follows the widget.
@@ -237,50 +271,33 @@ describe('Layout designer', () => {
     expect(document.activeElement).toBe(within(designer).getByLabelText('Search the library'))
   })
 
-  it('previews the page at phone width, one widget per row', () => {
-    render(<Harness initial={desk} />)
+  it('runs the app at the width of the device picked, on the page selected', () => {
+    render(<Harness initial={desk} code />)
     const designer = openDesigner()
-    const grid = () => designer.querySelector('[data-preview-widget-slot="0"]')!.parentElement!
-    expect(grid().className).toContain('grid-cols-4')
+    expect(lastCanvas()).toMatchObject({ device: 'desktop', hash: '#/desk' })
+    expect(lastCanvas().request).toMatchObject({ pages: desk })
     fireEvent.click(within(designer).getByRole('radio', { name: 'Mobile' }))
-    expect(grid().className).toContain('grid-cols-1')
-    expect(designer.querySelector('[data-preview-topbar]')).toBeTruthy()
+    expect(lastCanvas().device).toBe('mobile')
+    fireEvent.click(chip(designer, 'orders'))
+    expect(lastCanvas()).toMatchObject({ hash: '#/orders' })
+    expect(lastCanvas().design.state.pageType).toBe('entity-list')
   })
 
-  it('reorders widgets along the row, showing the columns while one moves or resizes', () => {
-    render(<Harness initial={desk} />)
+  it('moves and resizes a widget dragged on the canvas, keeping it selected', () => {
+    render(<Harness initial={desk} code />)
     const designer = openDesigner()
-    const dt = dataTransfer()
-    const guides = () => designer.querySelector('[data-preview-grid-guides]')
-    expect(guides()).toBeNull()
-    fireEvent.dragStart(within(designer).getByRole('button', { name: 'Drag widget 1' }), { dataTransfer: dt })
-    expect(guides()).toBeTruthy()
-    const second = designer.querySelector('[data-preview-widget-slot="1"]') as HTMLElement
-    fireEvent.dragOver(second, { dataTransfer: dt })
-    // The grid flows sideways: the drop line is on the widget's end edge, not under it.
-    expect(second.className).toContain('border-e-2')
-    expect(second.className).not.toContain('border-b-2')
-    fireEvent.drop(second, { dataTransfer: dt })
+    gesture({ type: 'pick', control: 'widget.0' })
+    gesture({ type: 'reorder', from: 0, to: 1 })
     expect(latest[0].widgets?.map(w => w.kind)).toEqual(['bar', 'kpi'])
-    expect(guides()).toBeNull()
-
-    // Dragging an edge shows the columns and the width it would take.
-    const capture = Element.prototype.setPointerCapture
-    Element.prototype.setPointerCapture = vi.fn()
-    const edge = designer.querySelector('[data-preview-widget-slot="0"] [data-preview-widget-resize]')!
-    fireEvent.pointerDown(edge, { pointerId: 1, clientX: 0 })
-    expect(guides()).toBeTruthy()
-    expect(designer.querySelector('[data-preview-span-badge]')?.textContent).toBe('2 / 4')
-    fireEvent.pointerUp(edge, { pointerId: 1 })
-    expect(guides()).toBeNull()
-    expect(designer.querySelector('[data-preview-span-badge]')).toBeNull()
-    Element.prototype.setPointerCapture = capture
+    expect(within(inspector(designer)).getByText('Widget 2')).toBeTruthy()
+    gesture({ type: 'resize', index: 1, span: 3 })
+    expect(latest[0].widgets?.[1].span).toBe(3)
   })
 
-  it('duplicates a widget from its hover bar or with Ctrl+D, and switches its kind from a menu', () => {
-    render(<Harness initial={desk} />)
+  it('duplicates a widget from its toolbar or with Ctrl+D, and switches its kind from a menu', () => {
+    render(<Harness initial={desk} code />)
     const designer = openDesigner()
-    fireEvent.click(within(designer).getByRole('button', { name: 'Duplicate widget 1' }))
+    gesture({ type: 'tool', action: 'duplicate', index: 0, rect })
     expect(latest[0].widgets?.map(w => w.kind)).toEqual(['kpi', 'kpi', 'bar'])
     // The copy is selected, so Ctrl+D copies it again.
     expect(within(inspector(designer)).getByText('Widget 2')).toBeTruthy()
@@ -288,8 +305,7 @@ describe('Layout designer', () => {
     expect(latest[0].widgets?.map(w => w.kind)).toEqual(['kpi', 'kpi', 'kpi', 'bar'])
     expect(within(inspector(designer)).getByText('Widget 3')).toBeTruthy()
 
-    const opener = within(designer).getByRole('button', { name: 'Change the kind of widget 4' })
-    fireEvent.click(opener)
+    gesture({ type: 'tool', action: 'kind', index: 3, rect })
     const menu = within(designer).getByRole('menu', { name: 'Kind of widget 4' })
     expect((within(menu).getByRole('menuitem', { name: /Breakdown chart \(now\)/ }) as HTMLButtonElement).disabled).toBe(true)
     // Activity reads audited rows; the audit option is off here.
@@ -297,69 +313,49 @@ describe('Layout designer', () => {
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Donut chart' }))
     expect(latest[0].widgets?.[3]).toMatchObject({ kind: 'donut', entity: 'Order', groupBy: 'status' })
     expect(within(designer).queryByRole('menu')).toBeNull()
-    expect(document.activeElement).toBe(opener)
     expect(within(inspector(designer)).getByText('Widget 4')).toBeTruthy()
   })
 
-  it('renames the page and a widget in place: Enter saves, Escape cancels, blank goes back to the default', () => {
-    render(<Harness initial={desk} />)
-    const designer = openDesigner()
-    const renameInput = () => designer.querySelector('[data-preview-rename]') as HTMLInputElement | null
-    const heading = within(designer).getByRole('button', { name: 'Edit the page title' })
-    fireEvent.doubleClick(heading)
-    expect(document.activeElement).toBe(renameInput())
-    expect(renameInput()?.value).toBe('Desk')
-    fireEvent.change(renameInput()!, { target: { value: 'Front desk' } })
-    fireEvent.keyDown(renameInput()!, { key: 'Enter' })
-    // A dashboard keeps its id; the focus goes back to the part.
+  it('renames the page, its description and a widget from the canvas; a blank title goes back to the default', () => {
+    render(<Harness initial={desk} code />)
+    openDesigner()
+    // The runtime starts a rename from the page's words.
+    expect(lastCanvas().design.state.texts).toMatchObject({ title: 'Desk' })
+    gesture({ type: 'rename', control: 'title', value: 'Front desk' })
+    // A dashboard keeps its id.
     expect(latest[0]).toMatchObject({ id: 'desk', title: 'Front desk' })
     expect(pushUndo).toHaveBeenCalledWith('Renamed “Desk” to “Front desk”')
-    expect(renameInput()).toBeNull()
-    expect(document.activeElement).toBe(within(designer).getByRole('button', { name: 'Edit the page title' }))
+    expect(lastCanvas().design.state.texts.title).toBe('Front desk')
+    gesture({ type: 'rename', control: 'description', value: 'Today at a glance' })
+    expect(latest[0].description).toBe('Today at a glance')
+    expect(lastCanvas().design.state.texts.description).toBe('Today at a glance')
 
-    // F2 on a focused widget; Escape leaves it as it was, and the designer open.
-    const second = within(designer).getByRole('button', { name: 'Edit widget 2' })
-    fireEvent.keyDown(second, { key: 'F2' })
-    fireEvent.change(renameInput()!, { target: { value: 'Mix' } })
-    fireEvent.keyDown(renameInput()!, { key: 'Escape' })
-    expect(latest[0].widgets?.[1].title).toBeUndefined()
-    expect(screen.getByRole('dialog', { name: 'Layout designer' })).toBeTruthy()
-
-    fireEvent.doubleClick(within(designer).getByRole('button', { name: 'Edit widget 2' }))
-    fireEvent.change(renameInput()!, { target: { value: 'Mix' } })
-    fireEvent.blur(renameInput()!)
+    gesture({ type: 'rename', control: 'widget.1.title', value: 'Mix' })
     expect(latest[0].widgets?.[1].title).toBe('Mix')
-    fireEvent.doubleClick(within(designer).getByRole('button', { name: 'Edit widget 2' }))
-    expect(renameInput()?.value).toBe('Mix')
-    fireEvent.change(renameInput()!, { target: { value: '  ' } })
-    fireEvent.keyDown(renameInput()!, { key: 'Enter' })
+    gesture({ type: 'rename', control: 'widget.1.title', value: '  ' })
     expect(latest[0].widgets?.[1].title).toBeUndefined()
   })
 
   it('renames a tab and a wizard step in place, writing the dealt steps out', () => {
-    render(<Harness initial={[
+    render(<Harness code initial={[
       ...desk,
       { id: 'queue', type: 'tabs', title: 'Queue', tabs: [{ page: 'orders' }, { page: 'customers' }] },
       { id: 'new-order', type: 'wizard', entity: 'Order' },
     ]} />)
     const designer = openDesigner()
-    const renameInput = () => designer.querySelector('[data-preview-rename]') as HTMLInputElement
     fireEvent.click(chip(designer, 'queue'))
-    fireEvent.doubleClick(designer.querySelector('[data-rename-owner="3:tabs.0.title"]')!)
-    fireEvent.change(renameInput(), { target: { value: 'Open' } })
-    fireEvent.keyDown(renameInput(), { key: 'Enter' })
+    expect(lastCanvas().design.state.texts['tabs.0.title']).toBeTruthy()
+    gesture({ type: 'rename', control: 'tabs.0.title', value: 'Open' })
     expect(latest[3].tabs).toEqual([{ page: 'orders', title: 'Open' }, { page: 'customers' }])
-    expect(designer.querySelector('[data-rename-owner="3:tabs.0.title"]')?.textContent).toBe('Open')
+    expect(lastCanvas().design.state.texts['tabs.0.title']).toBe('Open')
 
     fireEvent.click(chip(designer, 'new-order'))
-    fireEvent.doubleClick(designer.querySelector('[data-rename-owner="4:steps.0.title"]')!)
-    fireEvent.change(renameInput(), { target: { value: 'Basics' } })
-    fireEvent.keyDown(renameInput(), { key: 'Enter' })
+    gesture({ type: 'rename', control: 'steps.0.title', value: 'Basics' })
     expect(latest[4].steps?.[0].title).toBe('Basics')
     expect(latest[4].steps?.length).toBeGreaterThan(0)
-    // The review is not a step to rename.
-    const steps = designer.querySelectorAll('[data-preview-steps] button')
-    expect(steps[steps.length - 1].getAttribute('data-rename-owner')).toBeNull()
+    // The review is not a step to rename: the words stop before it.
+    const steps = Object.keys(lastCanvas().design.state.texts).filter(k => k.startsWith('steps.'))
+    expect(steps).toHaveLength(latest[4].steps!.length)
   })
 
   it('starts a layout from the entities on an empty card and opens the designer', () => {
@@ -401,11 +397,10 @@ describe('Layout designer — Appearance', () => {
         previewSettings={{
           locale: meta.locale,
           projectOpts: rtl ? ['rtl'] : [],
-          skin: current?.designSystem === 'MENORA_DIGITAL' ? 'menora' : 'tailwind',
-          palette: palettes.find(p => p.id === effective),
           dashboardTitle: meta.dashboardTitle,
           dashboardOverview: meta.dashboardOverview,
         }}
+        codeRequest={() => ({ entities, pages, frontendTemplateSet: frontendSet, colorPalette: effective, dashboardTitle: meta.dashboardTitle } as FullstackStarterRequest)}
         appearance={{
           frontendSets: sets, frontendSet, setFrontendSet, currentFrontendSet: current,
           setsLoading: false, setsError: null, loadTemplateSets: () => {},
@@ -427,35 +422,36 @@ describe('Layout designer — Appearance', () => {
     return designer
   }
 
-  it('switches the shell, colours, language and direction, with the preview following', () => {
+  it('switches the shell, colours, language and direction, with the generated app following', () => {
     render(<AppearanceHarness initial={desk} />)
     const designer = openAppearance()
-    const preview = () => designer.querySelector('[data-layout-preview]') as HTMLElement
-    expect(preview().querySelector('[data-preview-shell]')).toBeTruthy()
+    expect(designer.querySelector('[data-test-canvas]')).toBeTruthy()
+    expect(lastCanvas().request).toMatchObject({ frontendTemplateSet: 'react-tailwind-crud', colorPalette: 'ocean' })
 
     fireEvent.click(within(designer).getByRole('radio', { name: /Menora Digital/ }))
-    expect(preview().querySelector('[data-preview-shell]')).toBeNull()
     expect(designer.querySelector('[data-appearance-caption]')?.textContent).toContain('Menora Digital')
+    expect(lastCanvas().request).toMatchObject({ frontendTemplateSet: 'react-menora-digital-crud' })
 
     fireEvent.click(within(designer).getByRole('radio', { name: 'Forest' }))
     expect(designer.querySelector('[data-appearance-caption]')?.textContent).toContain('Forest palette')
+    expect(lastCanvas().request).toMatchObject({ colorPalette: 'forest' })
 
     fireEvent.click(within(designer).getByLabelText(/right-to-left/i))
-    expect(preview().getAttribute('dir')).toBe('rtl')
+    expect(designer.querySelector('[data-appearance-caption]')?.textContent).toContain('right-to-left')
     // A page with a layout has no classic heading to set.
     expect(document.getElementById('fs-dashboardTitle')).toBeNull()
     expect(designer.querySelector('[data-dashboard-meta-note]')).toBeTruthy()
-    // Clicking a part of the preview goes to the design view to edit it.
-    fireEvent.click(within(preview()).getByRole('button', { name: 'Edit widget 1' }))
-    expect(designer.querySelector('[data-designer-appearance]')).toBeNull()
-    expect(within(inspector(designer)).getByText('Widget 1')).toBeTruthy()
+    // The app's menu moves the designer to the page it opens.
+    act(() => lastCanvas().onRoute('#/orders'))
+    expect(lastCanvas().hash).toBe('#/orders')
   })
 
-  it('previews the classic shell without pages, with the heading as it is typed', () => {
+  it('runs the classic shell without pages, with the heading as it is typed', () => {
     render(<AppearanceHarness initial={[]} />)
     const designer = openAppearance()
     fireEvent.change(document.getElementById('fs-dashboardTitle')!, { target: { value: 'Support desk' } })
-    expect(designer.querySelector('[data-layout-preview]')?.textContent).toContain('Support desk')
+    expect(lastCanvas().request).toMatchObject({ pages: [], dashboardTitle: 'Support desk' })
+    expect(lastCanvas().hash).toBeUndefined()
     expect(within(designer).getByText(/Classic layout — the app you get without pages/)).toBeTruthy()
   })
 })
@@ -512,22 +508,26 @@ describe('Layout designer — pages, problems and the canvas', () => {
     expect(pushUndo).toHaveBeenCalledWith('Removed the “Customer” page')
   })
 
-  it('rings the parts of the canvas with a problem, and fixes them all in one step', () => {
-    render(<Harness initial={[
+  it('hands the canvas its problems to ring, waits to generate until they are fixed, and fixes them all in one step', () => {
+    render(<Harness code initial={[
       { id: 'desk', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Product' }, { kind: 'kpi', entity: 'Order' }, { kind: 'kpi', entity: 'Invoice' }] },
       { id: 'customers', type: 'entity-list', entity: 'Customer' },
     ]} />)
     const designer = openDesigner()
-    expect(designer.querySelector('[data-preview-widget-slot="0"] [data-preview-problem]')).toBeTruthy()
-    expect(designer.querySelector('[data-preview-widget-slot="1"] [data-preview-problem]')).toBeNull()
-    expect(within(designer).getByRole('button', { name: /Edit widget 3 \(problem:/ })).toBeTruthy()
+    const ringed = () => Object.keys(lastCanvas().design.state.problems)
+    expect(ringed().some(k => k.startsWith('widget.0'))).toBe(true)
+    expect(ringed().some(k => k.startsWith('widget.1'))).toBe(false)
+    expect(ringed().some(k => k.startsWith('widget.2'))).toBe(true)
+    // A layout with problems is not sent to the generator.
+    expect(lastCanvas().request).toBeNull()
 
     fireEvent.click(designer.querySelector('[data-designer-issues-toggle]')!)
     fireEvent.click(designer.querySelector('[data-page-fix-all]')!)
     expect(latest[0].widgets).toEqual([{ kind: 'kpi', entity: 'Order' }])
     expect(pushUndo).toHaveBeenCalledTimes(1)
     expect(pushUndo).toHaveBeenCalledWith('Applied 2 fixes')
-    expect(designer.querySelector('[data-preview-problem]')).toBeNull()
+    expect(ringed()).toEqual([])
+    expect(lastCanvas().request).toMatchObject({ pages: latest })
   })
 
   it('jumps several steps back from the history list', () => {
@@ -548,69 +548,53 @@ describe('Layout designer — pages, problems and the canvas', () => {
   })
 
   it('zooms the canvas, offers a tablet width and hides the side panes, remembering them', () => {
-    render(<Harness initial={desk} />)
+    render(<Harness initial={desk} code />)
     let designer = openDesigner()
-    const frame = () => designer.querySelector('[data-canvas-device]') as HTMLElement
-    expect(frame().style.zoom).toBe('1.35')
+    expect(lastCanvas().zoom).toBe(1.35)
     fireEvent.click(within(designer).getByRole('button', { name: 'Zoom in' }))
-    expect(frame().style.zoom).toBe('1.6')
+    expect(lastCanvas().zoom).toBe(1.6)
     fireEvent.click(within(designer).getByRole('radio', { name: 'Tablet' }))
-    expect(frame().getAttribute('data-canvas-device')).toBe('tablet')
+    expect(lastCanvas().device).toBe('tablet')
 
     fireEvent.click(designer.querySelector('[data-toggle-library]')!)
     expect(designer.querySelector('[data-designer-library]')).toBeNull()
     fireEvent.click(designer.querySelector('[data-toggle-inspector]')!)
     expect(within(designer).queryByRole('complementary', { name: 'Inspector' })).toBeNull()
     // Clicking a part of the canvas brings the settings back to edit it.
-    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    gesture({ type: 'pick', control: 'widget.0' })
     expect(within(inspector(designer)).getByText('Widget 1')).toBeTruthy()
 
     // Closed and opened again: the zoom and the hidden library stay; `/` brings the library back.
     fireEvent.click(within(designer).getByRole('button', { name: 'Done' }))
     designer = openDesigner()
-    expect(frame().style.zoom).toBe('1.6')
+    expect(lastCanvas().zoom).toBe(1.6)
     expect(designer.querySelector('[data-designer-library]')).toBeNull()
     fireEvent.keyDown(designer, { key: '/' })
     expect(document.activeElement).toBe(within(designer).getByLabelText('Search the library'))
   })
 
-  it('draws the canvas empty, loading or failed as the generated app would, remembering the choice', () => {
-    render(<Harness initial={desk} />)
+  it('runs the app empty, loading or failed, remembering the choice', () => {
+    render(<Harness initial={desk} code />)
     let designer = openDesigner()
-    const preview = () => designer.querySelector('[data-layout-preview]') as HTMLElement
-    const widget = (i: number) => designer.querySelector(`[data-preview-widget="${i}"]`) as HTMLElement
-    expect(preview().getAttribute('data-preview-data-state')).toBe('data')
-
+    expect(lastCanvas().dataState).toBe('data')
     fireEvent.click(within(designer).getByRole('radio', { name: 'Empty' }))
-    // An empty count reads 0; a chart says there are no records.
-    expect(widget(0).querySelector('[data-preview-state="empty"]')?.textContent).toBe('0')
-    expect(widget(1).textContent).toContain('No records yet.')
-    // An empty list: the generated empty state, with its New action.
-    fireEvent.click(chip(designer, 'orders'))
-    const empty = preview().querySelector('[data-preview-state="empty"]') as HTMLElement
-    expect(empty.textContent).toContain('No records yet')
-    expect(empty.textContent).toContain('Create your first record to see it here.')
-    expect(empty.textContent).toContain('New Order')
-
+    expect(lastCanvas().dataState).toBe('empty')
     fireEvent.click(within(designer).getByRole('radio', { name: 'Error' }))
-    expect(preview().querySelector('[data-preview-state="error"]')?.textContent).toBe('Something went wrong on the server. Try again in a moment. Try again')
+    expect(lastCanvas().dataState).toBe('error')
     fireEvent.click(within(designer).getByRole('radio', { name: 'Loading' }))
-    expect(preview().querySelector('[data-preview-state="loading"]')).toBeTruthy()
-    expect(preview().querySelectorAll('tbody tr')).toHaveLength(0)
+    expect(lastCanvas().dataState).toBe('loading')
 
     // Closed and opened again, the canvas still shows the loading state.
     fireEvent.click(within(designer).getByRole('button', { name: 'Done' }))
     designer = openDesigner()
     expect(within(designer).getByRole('radio', { name: 'Loading' }).getAttribute('aria-checked')).toBe('true')
-    expect(preview().getAttribute('data-preview-data-state')).toBe('loading')
-    fireEvent.click(within(designer).getByRole('radio', { name: 'Data' }))
-    expect(widget(1).querySelector('[data-preview-state]')).toBeNull()
+    expect(lastCanvas().dataState).toBe('loading')
   })
 })
 
 describe('Layout designer — widget suggestions', () => {
   it('suggests ready-made widgets for the picked entity, by click or by drag', () => {
-    render(<Harness initial={desk} />)
+    render(<Harness initial={desk} code />)
     const designer = openDesigner()
     const list = () => designer.querySelector('[data-widget-suggestions]') as HTMLElement
     // Desk already counts orders and breaks them down by status: neither is offered again.
@@ -624,9 +608,7 @@ describe('Layout designer — widget suggestions', () => {
 
     const dt = dataTransfer()
     fireEvent.dragStart(list().querySelector('[data-widget-suggestion="line:placedOn"]')!, { dataTransfer: dt })
-    const first = designer.querySelector('[data-preview-widget-slot="0"]')!
-    fireEvent.dragOver(first, { dataTransfer: dt })
-    fireEvent.drop(first, { dataTransfer: dt })
+    gesture({ type: 'drop', at: 1 })
     expect(latest[0].widgets?.[1]).toEqual({ kind: 'line', entity: 'Order', groupBy: 'placedOn', bucket: 'month' })
 
     // Another entity, other suggestions.
@@ -672,14 +654,14 @@ describe('Layout designer — widget clipboard', () => {
   beforeEach(() => sessionStorage.clear())
 
   it('copies a widget with Ctrl+C and pastes it on another dashboard with Ctrl+V, after the selected one', () => {
-    render(<Harness initial={two} />)
+    render(<Harness initial={two} code />)
     const designer = openDesigner()
-    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 2' }))
+    gesture({ type: 'pick', control: 'widget.1' })
     fireEvent.keyDown(designer, { key: 'c', ctrlKey: true })
     expect(notice(designer)).toContain('Copied “Breakdown chart · Order”')
 
     fireEvent.click(chip(designer, 'board'))
-    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    gesture({ type: 'pick', control: 'widget.0' })
     fireEvent.keyDown(designer, { key: 'v', ctrlKey: true })
     expect(latest[3].widgets?.map(w => w.kind)).toEqual(['text', 'bar'])
     expect(pushUndo).toHaveBeenLastCalledWith('Pasted “Breakdown chart · Order” into “Board”')
@@ -692,13 +674,13 @@ describe('Layout designer — widget clipboard', () => {
   })
 
   it('cuts with Ctrl+X, copies a whole dashboard with nothing selected, and refuses a page that is not a dashboard', () => {
-    render(<Harness initial={two} />)
+    render(<Harness initial={two} code />)
     const designer = openDesigner()
     fireEvent.keyDown(designer, { key: 'c', ctrlKey: true })
     expect(notice(designer)).toContain('Copied 2 widgets')
     expect(designer.querySelector('[data-library-clipboard]')?.textContent).toContain('2 widgets')
 
-    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    gesture({ type: 'pick', control: 'widget.0' })
     fireEvent.keyDown(designer, { key: 'x', ctrlKey: true })
     expect(latest[0].widgets?.map(w => w.kind)).toEqual(['bar'])
     expect(notice(designer)).toContain('Cut “Number tile · Order”')
@@ -709,9 +691,9 @@ describe('Layout designer — widget clipboard', () => {
   })
 
   it('moves a widget to another dashboard, and keeps one as a saved widget in the library', () => {
-    render(<Harness initial={two} />)
+    render(<Harness initial={two} code />)
     const designer = openDesigner()
-    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    gesture({ type: 'pick', control: 'widget.0' })
     fireEvent.click(within(inspector(designer)).getByRole('button', { name: 'Save as widget' }))
     expect(notice(designer)).toContain('Saved “Number tile · Order”')
 
@@ -755,7 +737,7 @@ describe('Layout designer — team templates', () => {
   const notice = (designer: HTMLElement) => designer.querySelector('[data-pages-notice]')?.textContent ?? ''
 
   it('adds a shared page and a shared widget, refusing one whose entity this model lacks', async () => {
-    render(<Harness initial={two} />)
+    render(<Harness initial={two} code />)
     const designer = openDesigner()
     const widgets = await waitFor(() => {
       const el = designer.querySelector('[data-team-widgets]')
@@ -774,7 +756,7 @@ describe('Layout designer — team templates', () => {
   })
 
   it('shares a page and a widget, updating the team’s one of the same name, and deletes on a second click', async () => {
-    render(<Harness initial={two} />)
+    render(<Harness initial={two} code />)
     const designer = openDesigner()
     await waitFor(() => expect(designer.querySelector('[data-team-widgets]')).toBeTruthy())
 
@@ -783,7 +765,7 @@ describe('Layout designer — team templates', () => {
     expect(calls[calls.length - 1]).toMatchObject({ url: '/metadata/fullstack/templates', method: 'POST', body: { kind: 'page', name: 'Desk', content: { id: 'desk', type: 'dashboard' } } })
 
     // A widget titled like a team widget replaces it.
-    fireEvent.click(within(designer).getByRole('button', { name: 'Edit widget 1' }))
+    gesture({ type: 'pick', control: 'widget.0' })
     fireEvent.change(within(inspector(designer)).getByLabelText('Widget title'), { target: { value: 'open count' } })
     fireEvent.click(within(inspector(designer)).getByRole('button', { name: 'Update for team' }))
     await waitFor(() => expect(notice(designer)).toContain('Updated “Open count” for the team'))
@@ -799,7 +781,7 @@ describe('Layout designer — team templates', () => {
 
   it('says when the team’s templates did not load', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json(500, { error: 'boom' })))
-    render(<Harness initial={two} />)
+    render(<Harness initial={two} code />)
     const designer = openDesigner()
     fireEvent.click(within(library(designer)).getByRole('tab', { name: 'pages' }))
     await waitFor(() => expect(designer.querySelector('[data-team-error]')?.textContent).toContain('boom'))
@@ -902,10 +884,9 @@ describe('Layout designer — page parts', () => {
     { id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ fields: ['id', 'status', 'total'] }, { fields: ['placedOn', 'customer'] }] },
   ]
   const part = (designer: HTMLElement, key: string) => designer.querySelector(`[data-library-part="${key}"]`) as HTMLElement
-  const preview = (designer: HTMLElement) => designer.querySelector('[data-layout-preview]') as HTMLElement
 
   it('embeds a page as a tab: a library card or a strip chip dropped on the tab strip', () => {
-    render(<Harness initial={parted} />)
+    render(<Harness initial={parted} code />)
     const designer = openDesigner()
     fireEvent.click(chip(designer, 'queue'))
     expect(within(designer).getByRole('tab', { name: 'parts' })).toBeTruthy()
@@ -913,26 +894,24 @@ describe('Layout designer — page parts', () => {
 
     let dt = dataTransfer()
     fireEvent.dragStart(part(designer, 'tab:desk'), { dataTransfer: dt })
-    const end = preview(designer).querySelector('[data-preview-part-drop]') as HTMLElement
-    fireEvent.dragOver(end, { dataTransfer: dt })
-    expect(end.className).toContain('border-primary')
-    fireEvent.drop(end, { dataTransfer: dt })
+    // The runtime is told which kind of part is held, to show where it lands among the tabs.
+    expect(lastCanvas().design.state.drag).toEqual({ span: 0, slot: 'tab' })
+    gesture({ type: 'drop', at: 2 })
     expect(latest[3].tabs).toEqual([{ page: 'orders' }, { page: 'customers' }, { page: 'desk' }])
     expect(pushUndo).toHaveBeenLastCalledWith('Added “Desk” as a tab of “Queue”')
 
-    // A page chip dragged from the strip onto a tab goes in beside it.
+    // A page chip dragged from the strip onto the tab strip goes in where it lands.
     dt = dataTransfer()
     fireEvent.dragStart(chip(designer, 'sales'), { dataTransfer: dt })
-    const firstTab = within(preview(designer)).getAllByRole('tab')[0]
-    fireEvent.dragOver(firstTab, { dataTransfer: dt })
-    fireEvent.drop(firstTab, { dataTransfer: dt })
+    expect(lastCanvas().design.state.drag).toEqual({ span: 0, slot: 'tab' })
+    gesture({ type: 'drop', at: 1 })
     fireEvent.dragEnd(chip(designer, 'sales'))
     expect(latest[3].tabs?.map(t => t.page)).toEqual(['orders', 'sales', 'customers', 'desk'])
-    expect(preview(designer).querySelector('[data-preview-part-drop]')).toBeNull()
+    expect(lastCanvas().design.state.drag).toBeNull()
   })
 
   it('adds a related list and a header number to a record page', () => {
-    render(<Harness initial={parted} />)
+    render(<Harness initial={parted} code />)
     const designer = openDesigner()
     fireEvent.click(chip(designer, 'customer'))
     fireEvent.click(part(designer, 'child-tab:Order'))
@@ -941,36 +920,32 @@ describe('Layout designer — page parts', () => {
 
     const dt = dataTransfer()
     fireEvent.dragStart(part(designer, 'header-stat:Order'), { dataTransfer: dt })
-    const end = preview(designer).querySelector('[data-preview-part-drop]') as HTMLElement
-    expect(end.textContent).toContain('number above the tabs')
-    fireEvent.dragOver(end, { dataTransfer: dt })
-    fireEvent.drop(end, { dataTransfer: dt })
+    expect(lastCanvas().design.state.drag).toEqual({ span: 0, slot: 'header-stat' })
+    gesture({ type: 'drop', at: 0 })
     expect(latest[4].headerStats).toEqual([{ child: 'Order' }])
-    expect(preview(designer).querySelector('[data-preview-stats]')?.textContent).toContain('Order')
+    expect(lastCanvas().design.state.texts['headerStats.0.title']).toBeTruthy()
   })
 
   it('adds a report chart where it was dropped', () => {
-    render(<Harness initial={parted} />)
+    render(<Harness initial={parted} code />)
     const designer = openDesigner()
     fireEvent.click(chip(designer, 'sales'))
     const dt = dataTransfer()
     fireEvent.dragStart(part(designer, 'chart:placedOn'), { dataTransfer: dt })
-    const end = preview(designer).querySelector('[data-preview-part-drop="1"]') as HTMLElement
-    fireEvent.dragOver(end, { dataTransfer: dt })
-    fireEvent.drop(end, { dataTransfer: dt })
+    expect(lastCanvas().design.state.drag).toEqual({ span: 0, slot: 'chart' })
+    gesture({ type: 'drop', at: 1 })
     expect(latest[5].charts).toEqual([{}, { groupBy: 'placedOn' }])
-    expect(preview(designer).querySelector('[data-preview-chart="1"]')).toBeTruthy()
   })
 
   it('moves a wizard field onto another step, or into a new one from its picker', () => {
-    render(<Harness initial={parted} />)
+    render(<Harness initial={parted} code />)
     const designer = openDesigner()
     fireEvent.click(chip(designer, 'new-order'))
     const dt = dataTransfer()
     fireEvent.dragStart(part(designer, 'step-field:placedOn'), { dataTransfer: dt })
-    const first = preview(designer).querySelector('[data-preview-step-drop="0"]') as HTMLElement
-    fireEvent.dragOver(first, { dataTransfer: dt })
-    fireEvent.drop(first, { dataTransfer: dt })
+    expect(lastCanvas().design.state.drag).toEqual({ span: 0, slot: 'step-field' })
+    // Dropped onto the first step.
+    gesture({ type: 'drop', at: 0 })
     expect(latest[6].steps).toEqual([{ fields: ['id', 'status', 'total', 'placedOn'] }, { fields: ['customer'] }])
     expect(pushUndo).toHaveBeenLastCalledWith('Moved Placed on to step 1 of “Order”')
 
@@ -984,50 +959,49 @@ describe('Layout designer — Play mode', () => {
     ...desk,
     { id: 'order', type: 'record', entity: 'Order', hidden: true },
   ]
-  const screenType = (designer: HTMLElement) => designer.querySelector('[data-preview-screen]')?.getAttribute('data-preview-screen')
   const trail = (designer: HTMLElement) => (designer.querySelector('[data-play-trail]') as HTMLElement).textContent
 
-  it('walks the app: a chart drills into its list, a row opens its page, Back returns', () => {
-    render(<Harness initial={walkable} />)
+  it('walks the generated app: the page it opens follows, Back and the trail return', () => {
+    render(<Harness initial={walkable} code />)
     const designer = openDesigner()
     fireEvent.click(within(designer).getByRole('radio', { name: 'Play' }))
     expect(designer.querySelector('[data-play-status]')).toBeTruthy()
-    // Nothing on the canvas opens an editor while playing.
-    expect(within(designer.querySelector('[data-layout-preview]') as HTMLElement).queryByRole('button', { name: /^Edit / })).toBeNull()
+    // The app takes its own clicks while playing: no editing layer.
+    expect(lastCanvas().design).toBeUndefined()
+    expect(lastCanvas().request).toMatchObject({ pages: walkable })
 
-    fireEvent.click(designer.querySelector('[data-preview-widget="1"]')!)
-    expect(screenType(designer)).toBe('entity-list')
+    // A chart drilling into its list: the app's route moves the designer there.
+    act(() => lastCanvas().onRoute('#/orders?status=OPEN'))
     expect(within(inspector(designer)).getByRole('heading', { name: /Order/ })).toBeTruthy()
-
-    fireEvent.click(designer.querySelector('tr[data-play-link]')!)
-    expect(screenType(designer)).toBe('record')
+    // A row opening its record page.
+    act(() => lastCanvas().onRoute('#/order/3'))
     expect(trail(designer)).toMatch(/Desk.*Order.*Order/)
 
     fireEvent.click(designer.querySelector('[data-play-back]')!)
-    expect(screenType(designer)).toBe('entity-list')
+    expect(lastCanvas().hash).toBe('#/orders')
     // A crumb goes back further, dropping what came after it.
     fireEvent.click(within(designer.querySelector('[data-play-trail]') as HTMLElement).getByRole('button', { name: 'Desk' }))
-    expect(screenType(designer)).toBe('dashboard')
+    expect(lastCanvas().hash).toBe('#/desk')
     expect(designer.querySelector('[data-play-back]')?.hasAttribute('disabled')).toBe(true)
   })
 
-  it('says where a click lands when it opens no page, and Escape goes back to editing', () => {
-    render(<Harness initial={walkable} />)
+  it('plays from P, and Escape goes back to editing on the page the walk ended on', () => {
+    render(<Harness initial={walkable} code />)
     const designer = openDesigner()
     fireEvent.keyDown(designer, { key: 'p' })
-    // The menu works as in the app.
-    fireEvent.click(designer.querySelector('[data-preview-nav="2"]')!)
+    // The app's menu works as in the app.
+    act(() => lastCanvas().onRoute('#/customers'))
     expect(trail(designer)).toMatch(/Customer/)
-    fireEvent.click(designer.querySelector('tr[data-play-link]')!)
-    expect(designer.querySelector('[data-play-status]')?.textContent).toMatch(/quick-look drawer/)
-    expect(screenType(designer)).toBe('entity-list')
+    // A route that names no page of the layout leaves the walk where it is.
+    act(() => lastCanvas().onRoute('#/nowhere'))
+    expect(trail(designer)).toMatch(/Customer$/)
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(designer.querySelector('[data-play-status]')).toBeNull()
     expect(screen.getByRole('dialog', { name: 'Layout designer' })).toBeTruthy()
-    // Editing picks up on the page the walk ended on.
+    // Editing picks up on the page the walk ended on, with the editing layer back.
     expect(within(inspector(designer)).getByRole('heading', { name: /Customer/ })).toBeTruthy()
-    expect(within(designer).getByRole('button', { name: 'Edit the page title' })).toBeTruthy()
+    expect(lastCanvas().design.state.pageType).toBe('entity-list')
   })
 })
 
@@ -1097,15 +1071,19 @@ describe('Layout designer — tour', () => {
 })
 
 describe('Layout designer — spec sheet', () => {
-  it('downloads the layout as an HTML spec named after the project', async () => {
+  it('downloads the layout as an HTML spec named after the project, each page as the app draws it', async () => {
     const created: Blob[] = []
     vi.stubGlobal('URL', Object.assign(Object.create(URL), { createObjectURL: (b: Blob) => { created.push(b); return 'blob:spec' }, revokeObjectURL: vi.fn() }))
+    // The generator answers; the runtime is not here, so the pages go unpictured and the sheet says so.
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.startsWith('/starter-fullstack.preview')
+      ? new Response(JSON.stringify({ files: [{ path: 'menora-model.json', content: '{"entities":[]}' }, { path: 'frontend/src/main.tsx', content: 'export {}' }] }), { status: 200 })
+      : new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })))
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     try {
       render(<Harness initial={desk} code />)
       const designer = openDesigner()
       fireEvent.click(within(designer).getByRole('button', { name: 'Export the layout as a spec sheet' }))
-      expect(click).toHaveBeenCalledTimes(1)
+      await waitFor(() => expect(click).toHaveBeenCalledTimes(1), { timeout: 4000 })
       expect(created).toHaveLength(1)
       const html = await created[0].text()
       expect(html).toContain('<title>Layout — page layout</title>')

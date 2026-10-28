@@ -345,9 +345,10 @@ describe('FullstackView — page layouts', () => {
     fireEvent.click(document.querySelector('[data-edit-frontend]')!)
     let designer = screen.getByRole('dialog', { name: 'Layout designer' })
     expect(designer.querySelector('[data-designer-appearance]')).toBeTruthy()
-    // Without pages the preview is the classic shell, with the heading as it is typed.
+    // Without pages the preview is the generated classic shell, with the heading as it is typed.
+    expect(designer.querySelector('[data-app-canvas]')).toBeTruthy()
     fireEvent.change(document.getElementById('fs-dashboardTitle')!, { target: { value: 'Support desk' } })
-    expect(designer.querySelector('[data-layout-preview]')?.textContent).toContain('Support desk')
+    expect((document.getElementById('fs-dashboardTitle') as HTMLInputElement).value).toBe('Support desk')
     // The language is one undo step.
     fireEvent.click(within(designer).getByRole('radio', { name: 'עברית' }))
     expect(designer.querySelector('[data-appearance-caption]')?.textContent).toContain('עברית')

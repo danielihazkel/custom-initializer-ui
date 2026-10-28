@@ -23,7 +23,7 @@ afterEach(() => {
 })
 
 function mount(req: FullstackStarterRequest | null) {
-  const view = render(<AppCanvas request={req} device="desktop" hash="#/desk" fallback={<div data-sketch>sketch</div>} emptyReason="no model" />)
+  const view = render(<AppCanvas request={req} device="desktop" hash="#/desk" fallback={reason => <div data-waiting>{reason ?? 'starting'}</div>} emptyReason="no model" />)
   const iframe = view.container.querySelector('iframe')
   const sent: HostMessage[] = []
   if (iframe) vi.spyOn(iframe.contentWindow!, 'postMessage').mockImplementation((m: unknown) => { sent.push(m as HostMessage) })
@@ -32,38 +32,37 @@ function mount(req: FullstackStarterRequest | null) {
 }
 
 describe('AppCanvas', () => {
-  it('draws the sketch while the generated app starts, then the app once it has compiled', async () => {
+  it('says the app is starting until it has compiled, then shows it', async () => {
     const { container, sent, fromRuntime } = mount(request)
-    expect(container.querySelector('[data-sketch]')).toBeTruthy()
-    expect(container.querySelector('[data-app-canvas]')?.getAttribute('data-app-canvas')).toBe('sketch')
+    expect(container.querySelector('[data-waiting]')?.textContent).toBe('starting')
+    expect(container.querySelector('[data-app-canvas]')?.getAttribute('data-app-canvas')).toBe('starting')
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/starter-fullstack.preview?assets=true', expect.objectContaining({ method: 'POST', body: JSON.stringify(request) })))
     fromRuntime({ type: 'ready', protocol: PROTOCOL_VERSION, selfCheck: {} })
     await waitFor(() => expect(sent.some(m => m.type === 'load')).toBe(true))
     fromRuntime({ type: 'compiled', ref: 'x', ok: true, errors: [], ms: { modules: 1, tailwind: 1, total: 2 }, files: 2, cssBytes: 10 })
-    expect(container.querySelector('[data-sketch]')).toBeNull()
+    expect(container.querySelector('[data-waiting]')).toBeNull()
     expect(container.querySelector('[data-app-canvas]')?.getAttribute('data-app-canvas')).toBe('app')
     // A file that did not compile is named.
     fromRuntime({ type: 'compiled', ref: 'x', ok: false, errors: [{ path: 'src/app/App.tsx', message: 'Unexpected token' }], ms: { modules: 1, tailwind: 1, total: 2 }, files: 2, cssBytes: 10 })
     expect(container.querySelector('[data-app-canvas-status]')?.textContent).toContain('src/app/App.tsx: Unexpected token')
   })
 
-  it('keeps the sketch, with the reason, when the runtime is unavailable or the generator refuses', async () => {
+  it('says why, instead of the app, when the runtime is unavailable or the generator refuses', async () => {
     const other = mount(request)
     other.fromRuntime({ type: 'ready', protocol: PROTOCOL_VERSION + 1, selfCheck: {} })
-    expect(other.container.querySelector('[data-sketch]')).toBeTruthy()
-    expect(other.container.querySelector('[data-app-canvas-status]')?.textContent).toContain('Showing the sketch')
+    expect(other.container.querySelector('[data-waiting]')?.textContent).toContain('protocol')
+    expect(other.container.querySelector('[data-app-canvas]')?.getAttribute('data-app-canvas')).toBe('waiting')
     cleanup()
 
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Bad request', detail: "Page 'x': unknown entity" }), { status: 400 })))
     clearAppPreviewCache()
     const refused = mount(request)
-    await waitFor(() => expect(refused.container.querySelector('[data-app-canvas-status]')?.textContent).toContain("Page 'x': unknown entity"))
-    expect(refused.container.querySelector('[data-sketch]')).toBeTruthy()
+    await waitFor(() => expect(refused.container.querySelector('[data-waiting]')?.textContent).toContain("Page 'x': unknown entity"))
   })
 
   it('passes the editing layer’s intents on, with an anchor over a toolbar for a menu', async () => {
     const onIntent = vi.fn()
-    const view = render(<AppCanvas request={request} device="desktop" hash="#/desk" fallback={<div data-sketch>sketch</div>}
+    const view = render(<AppCanvas request={request} device="desktop" hash="#/desk" fallback={reason => <div data-waiting>{reason ?? 'starting'}</div>}
       design={{ state: { pageType: 'dashboard', selected: null, problems: {}, drag: null }, onIntent }} />)
     const iframe = view.container.querySelector('iframe')!
     const sent: HostMessage[] = []
@@ -86,14 +85,14 @@ describe('AppCanvas', () => {
     view.fromRuntime({ type: 'ready', protocol: PROTOCOL_VERSION, selfCheck: {} })
     await waitFor(() => expect(view.sent.some(m => m.type === 'load')).toBe(true))
     view.fromRuntime({ type: 'compiled', ref: 'x', ok: true, errors: [], ms: { modules: 1, tailwind: 1, total: 2 }, files: 2, cssBytes: 10 })
-    view.rerender(<AppCanvas request={null} device="desktop" hash="#/desk" fallback={<div data-sketch>sketch</div>} emptyReason="no model" />)
+    view.rerender(<AppCanvas request={null} device="desktop" hash="#/desk" fallback={reason => <div data-waiting>{reason ?? 'starting'}</div>} emptyReason="no model" />)
     expect(view.container.querySelector('[data-app-canvas]')?.getAttribute('data-app-canvas')).toBe('app')
     expect(view.container.querySelector('[data-app-canvas-status]')?.textContent).toBe('Showing the last app that generated — no model')
   })
 
   it('asks nothing without a request', () => {
     const { container } = mount(null)
-    expect(container.querySelector('[data-sketch]')).toBeTruthy()
+    expect(container.querySelector('[data-waiting]')?.textContent).toBe('no model')
     expect(container.querySelector('iframe')).toBeNull()
     expect(fetch).not.toHaveBeenCalled()
   })

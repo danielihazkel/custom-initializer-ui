@@ -34,7 +34,7 @@ import { ShortcutsOverlay } from './ShortcutsOverlay'
 import { draftHasUnsavedWork } from './shareGuard'
 import { summarizeEntity } from './summary'
 import { frontendSetDefaults } from './frontendSetDefaults'
-import { effectiveKit, kitDefaults, kitHasNavOptions, kitPreviewPalette, kitRef, kitSketch, parseKitRef, useDesignKits, useDesignKitVersion } from './designKits'
+import { effectiveKit, kitDefaults, kitHasNavOptions, kitRef, parseKitRef, useDesignKits, useDesignKitVersion } from './designKits'
 import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { emptyHistory, isTypingTarget, record, redoStep, stepMany, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
@@ -308,20 +308,19 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const usedKit = effectiveKit(designKit, frontendSet, designKits)
   const usedPin = usedKit ? { key: usedKit.kit.key, version: usedKit.version } : null
   const kitVersion = useDesignKitVersion(usedPin)
-  // A kit draws with its own brand/gold tokens (palette references resolved), else the palette's.
-  const previewPalette = kitPreviewPalette(kitVersion, palettes.find(p => p.id === effectivePalette))
-  // The layout preview draws the kit's sketch, in the chosen chrome language and colour palette;
-  // without kits (an older or unreachable backend) the set says which.
+  // The layout's view-model follows the chrome language and what the kit allows (its nav options
+  // and icons); without kits (an older or unreachable backend) the set says which.
   const usedKitInfo = usedKit?.kit
+  // Nav icons the kit adds: the pinned version's own list when it has loaded, else the latest's.
+  const kitNavIcons = useMemo(() => kitVersion?.manifest.navIcons?.names ?? usedKitInfo?.navIcons ?? [], [kitVersion, usedKitInfo])
   const pagesPreviewSettings = useMemo(() => ({
     locale: meta.locale,
     projectOpts: scaffoldOpts,
-    skin: usedKitInfo ? kitSketch(usedKitInfo) : (isMenoraSet(currentFrontendSet, frontendSet) ? 'menora' : 'tailwind') as 'menora' | 'tailwind',
     navOptions: usedKitInfo ? kitHasNavOptions(usedKitInfo) : !isMenoraSet(currentFrontendSet, frontendSet),
-    palette: previewPalette,
+    kitNavIcons,
     dashboardTitle: meta.dashboardTitle,
     dashboardOverview: meta.dashboardOverview,
-  }), [meta.locale, meta.dashboardTitle, meta.dashboardOverview, scaffoldOpts, currentFrontendSet, frontendSet, previewPalette, usedKitInfo])
+  }), [meta.locale, meta.dashboardTitle, meta.dashboardOverview, scaffoldOpts, currentFrontendSet, frontendSet, usedKitInfo, kitNavIcons])
 
   // Validation — mirrors the backend FullstackRequestValidator so problems surface inline
   // before submit. The server stays the source of truth.
@@ -333,8 +332,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   )
   // A layout outlives the entities it names (rename / delete) — flagged here, not as a 400 later.
   // Page roles are enforced by the generated backend's LDAP groups, so they need an LDAP auth variant (ldap-auth-rest, the sets' default, or ldap-auth).
-  const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth, scaffoldOpts, dismissed: dismissedWarnings }),
-    [pages, entities, ldapAuth, scaffoldOpts, dismissedWarnings])
+  const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth, scaffoldOpts, dismissed: dismissedWarnings, kitIcons: kitNavIcons }),
+    [pages, entities, ldapAuth, scaffoldOpts, dismissedWarnings, kitNavIcons])
   const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageValidation.count
   const hasErrors = errorCount > 0
 

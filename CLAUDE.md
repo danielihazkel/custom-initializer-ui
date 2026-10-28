@@ -74,19 +74,19 @@ renders a card (the layout as a sitemap of page chips — each chip's title is `
 the server issue, Start from my entities / a template, Use classic layout) that opens `LayoutDesigner`, a
 full-screen portal dialog (`role="dialog" aria-modal`, body scroll lock, Tab loop, focus back to the opener):
 `DesignerLibrary` (page types, suggestions, My templates, widgets grouped Numbers/Charts/Lists/Other with the
-`widgetKindDisabledReason` shown, whole-layout templates), `PageStrip` over the canvas (`LayoutPreview` at
-`CANVAS_ZOOM`, `narrow` for the Mobile switch) and `DesignerInspector` (a widget: `WidgetCard bare`; a page:
+`widgetKindDisabledReason` shown, whole-layout templates), `PageStrip` over the canvas (`AppCanvas`: the
+generated app itself at the device's width, scaled by `CANVAS_ZOOM` — see *Design preview runtime* below) and `DesignerInspector` (a widget: `WidgetCard bare`; a page:
 Basics `PageBasicsFields` / Layout `PageTypeForm widgetsOnCanvas` / Access `RolesField`), plus `IssuesPanel` and
 `SitemapView` (nav sections via `GroupChip`, page moves via the `pages` drag list, nav style). Library cards drag
-with `dragPayload.ts` (`LibraryDrag`, kept in designer state; the event carries it too): widgets onto
-`LayoutPreview`'s `widgetDrop` (before/after the widget under the pointer, or the end slot), pages into the strip.
+with `dragPayload.ts` (`LibraryDrag`, kept in designer state; the event carries it too): widgets onto the app (the
+runtime shows where one lands and reports `drop {at}`), pages into the strip.
 The palette's page actions and Generate's jump to an error open the designer (`DesignerTarget`). Every change goes
 through `pages/usePagesModel.ts`, which `PagesEditor` uses too — the admin examples form keeps the inline editor.
 The page forms use container queries (`@sm:` etc., `@container` on the hosts) so they stack in the 22rem
 inspector. Designer keys (`/`, Delete, Alt+←/→, Alt+Shift+←/→, Esc) are in `FULLSTACK_SHORTCUTS`. A third view,
 **Appearance** (`AppearanceView` + `FrontendSettings`), holds the generated app's look — frontend template set
-(radio cards with a shell sketch), palette (`PalettePicker`), language, RTL and the classic dashboard heading —
-beside the live preview (the classic `seedLayout` shell when there are no pages). The values stay in
+(radio cards: a kit's thumbnail, else a shell sketch in its swatch), palette (`PalettePicker`), language, RTL and the
+classic dashboard heading — beside the generated app (the classic shell when there are no pages). The values stay in
 `FullstackView` (snapshot, undo, share links) and reach the designer as one `FrontendAppearance` bundle via
 `PagesSection`'s `appearance` prop; the Setup panel's `#fs-frontend` is now a one-row summary whose *Edit in
 designer* (and the frontend setup chips) bump `designerRequest` to open Appearance. Parity with the
@@ -94,21 +94,21 @@ inline editor and canvas tools: the Tabs card opens the shared `pages/NewTabsFor
 hide) instead of picking for the user; Ctrl/⌘-click and Shift-click on strip chips pick pages
 (`pickedAfterClick`) for the shared `BulkPageBar`; a chip's right-click / Shift+F10 opens a
 `DesignerMenu` (open, start page, hide, duplicate, move, pick, delete) and Delete / Alt+←/→ on a focused
-chip remove or move its page. The canvas `LayoutPreview` takes `problems` (`validation.byPage`): every
-`Editable` whose `previewPartOf` matches a control with a problem is ringed and names it. The issues
+chip remove or move its page. The canvas hands the runtime `problems` (`validation.byPage`): it rings the part
+each problem's control belongs to (`partOfControl`: `tab.1` → the tab strip) and names it. The issues
 sheet's **Fix all** runs `fixAllProblems` (pageLayout.ts — re-validates after each fix, since fixes are
 index-based, and skips one that does not reduce the problems) as one undo step. The header's history
 button lists `history.undoEntries`/`redoEntries` and jumps through `onJump` (`FullstackView.jumpHistory`
 → `undo.ts` `stepMany`). The canvas has a zoom (`ZoomControl`, `ZOOM_LEVELS`), a Tablet width, and the
 library/inspector panes fold away; zoom and panes persist in `localStorage` `fullstack:designerView`
 (a canvas click or `/` reopens the pane it needs). **Play mode** (the canvas bar's Design/Play switch, or `P`)
-walks the layout as the generated app would: `playLinks.ts` `buildPlayLinks` resolves each page's click
+runs the generated app with its own clicks; each route it opens moves the designer there. `playLinks.ts` `buildPlayLinks`
+(used by the page flow map) resolves each page's click
 targets with the generator's own lookups (`pageLinks` mirrors `EntityScaffoldContext.PageLinks`: record
 page, first visible list, home, wizard) — list/calendar/board rows → the record page (or a note: drawer,
 side pane), New → the wizard, dashboard cards → `drillTo` else the list, link tiles, recent rows, a
 record's Back → its home and related rows → their record page, a wizard's Save → the new row's page, a
-report chart → its list, search matches, content page links. `LayoutPreview` takes `play` (a context):
-`Editable` drops its edit overlay and `playLink` makes parts links (`data-play-link`). The designer keeps a
+report chart → its list, search matches, content page links. The designer keeps a
 trail of row keys (Back, crumbs); the page walked to is the selected page, so Esc / `P` resumes editing
 there. Pinned by `designer/LayoutDesigner.test.tsx` and `playLinks.test.ts`. The library's Widgets tab
 opens with **Suggested for <entity>** (the "New widgets read" entity): `pageLayout.ts` `suggestWidgets`
@@ -125,8 +125,9 @@ focusing a page lights its edges, a click opens it in Design, and the menu edges
 `pageFlow.test.ts`. On a tabs, report, record or wizard page the library's Widgets tab becomes **Parts**
 (`pageParts.ts` `pageParts`): pages to embed, a chart per groupable field/relation, related lists and
 their counts, the wizard's fields (each with a step picker). A card drags onto the canvas (`LibraryDrag`
-`part`; `LayoutPreview` `partDrop` → drop lines on the tab strip, beside a chart, on the record's tabs or
-number row, onto a wizard step or a "New step" slot) or clicks in at the end; a page chip dragged from the
+`part`: the runtime is told the `slot` and shows where it lands — among the tabs, beside a chart, on the
+record's tabs or number row, onto a wizard step or past the last for a new one — and reports `drop {at}`) or
+clicks in at the end; a page chip dragged from the
 strip drops onto a tabs page too (`PageStrip` `onChipDrag`). `placePart` applies the inspector's rules
 (caps, nothing twice, the record's default tabs/tiles written out first, a step a field leaves empty
 dropped) and `usePagesModel.placePart` files it as one labelled undo step; a refusal shows in the notice.
@@ -155,35 +156,28 @@ inspector ("Share with team") or a My templates / My widgets card; sharing under
 has (same kind, ignoring case) PUTs over it, and the button says "Update". Deleting asks for a second
 click, since it removes it for everyone. Pinned by `useTeamTemplates.test.ts` and the designer's
 "team templates" tests.
-**Designer round 3 (2026-10).** *Canvas:* a widget reorders along the row (`rowProps(…, 'x')`; a phone's
-single column still flows down) and the grid shows its four columns while one moves or resizes (a resize
-badges the width); the hover bar adds Duplicate (also Ctrl+D) and a kind menu (`widgetTools` prop →
-the designer's fixed `DesignerMenu`, reasons from `widgetKindDisabledReason`, applied by
-`retargetWidgetAt`). Double-click (or F2) renames a title in place — the page's, a widget's, a tab's, a
-wizard step's, a record header number's: `LayoutPreview` `onRename` with a `Rename` context, `RenameSlot`
-marks the text (`data-rename`), `Editable`/tab/step buttons start it (`renameFrom`, the slot under the
-pointer), Enter/blur saves, Escape cancels, focus returns via `data-rename-owner`; the model side is
-`pageParts.ts` `renamePart` (writes out dealt steps / default numbers first) and `usePagesModel.renamePart`
-(`retitle` for the page). `reveal` skips focusing the inspector while a rename input has focus. *Preview:*
-sample rows come from `previewSample.ts` (`sampleRaw` — name/entity heuristics, en/he words, min/max,
-default on row 1, dates around `today`; `cellText` = what the generated table prints, `detailText` = the
-details' formatting), so lists show raw ISO dates and `true`/`false` like the app. The canvas bar's
-**Data · Empty · Loading · Error** switch (`DataStateSwitch`, prefs `dataState`) sets `LayoutPreview`
-`dataState` (a `DataState` context: `StateNote`, `ListState`, `WidgetState`) in the generated app's words
-(`preview.strings.states`). Under the Menora skin the canvas uses Assistant (`@fontsource/assistant`,
-imported in `src/fonts.css`), lavender chips for enum cells, end-aligned numbers (`PreviewTable.kinds`) and
-yellow discs for a links widget; import steps, Export, calendar view names and activity times use the app's
-en/he strings (designer prompts stay English). *Advice:* `collectWarnings` adds crowded-nav (fix: groups by
+**Designer round 3 (2026-10).** *Canvas:* a widget reorders along the row and resizes by its end edge, its
+toolbar has Duplicate (also Ctrl+D) and a kind menu (the designer's fixed `DesignerMenu`, reasons from
+`widgetKindDisabledReason`, applied by `retargetWidgetAt`). Double-click renames a title in place — the page's,
+its description, a widget's, a tab's, a wizard step's, a record header number's (the runtime's editing layer
+draws the input, starting from the `texts` the designer passes — `designer/designTexts.ts`); the `rename`
+intent goes to `usePagesModel.renamePart` (`retitle` for the page, the description, else `pageParts.ts`
+`renamePart`, which writes out dealt steps / default numbers first). The canvas bar's
+**Data · Empty · Loading · Error** switch (`DataStateSwitch`, prefs `dataState`) restarts the app with every read
+answered that way. `previewSample.ts` still feeds the layout's view-model (`layoutPreviewModel.ts`: the titles,
+nav and labels the designer shows and hands the runtime). *Advice:* `collectWarnings` adds crowded-nav (fix: groups by
 `adviceGroup`), crowded-dashboard, wide-list (fix: first 6 columns), duplicate-list (fix: remove),
 entity-without-page (only an entity nothing mentions or links to) and pivot-dead-end; thresholds in
 `ADVICE`. *Tour:* `designer/DesignerTour.tsx` (six steps on existing `data-*` anchors, skipping hidden
 ones), once per browser (`fullstack:designerTour`), again from the header's help menu. *Spec sheet:* the
-header's Export spec builds one offline HTML file — `specSnapshot.tsx` renders each page's
-`LayoutPreview` and the `PageFlowMap` into detached roots (`staticMarkup`, icons and edit overlays
-removed) and inlines the app's own CSS without fonts or urls (`collectAppCss`); `specSheet.ts`
-`buildSpecSheet` lays out cover, navigation, flow and one print page per screen (`html.light`). Pinned by
-`previewSample.test.ts`, `LayoutPreviewStates.test.tsx`, `LayoutPreviewSkin.test.tsx`,
-`pageLayoutAdvice.test.ts`, `designer/specSheet.test.tsx`, `pageParts.test.ts` and the designer tests.
+header's Export spec builds one offline HTML file — `specSnapshot.tsx` generates the app
+(`designRuntime/capture.ts` `fetchAppPayload`), runs it once in an offscreen runtime frame and takes each page's
+`snapshot` (`captureScreens`: its markup without scripts, images inlined, the stylesheet without fonts — a record
+page opens its first sample row), draws the `PageFlowMap` into a detached root (`staticMarkup`) and inlines the
+designer's CSS for it (`collectAppCss`); `specSheet.ts` `buildSpecSheet` lays out cover, navigation, flow and one
+print page per screen, each screen a `sandbox=""` iframe of its own (`screenDocument`), or a note saying why there
+are none (problems to fix, no runtime). Pinned by `previewSample.test.ts`, `pageLayoutAdvice.test.ts`,
+`designer/specSheet.test.tsx`, `pageParts.test.ts` and the designer tests.
 **Generator round 8 (2026-10)** — the editor side of *Round 8* in `backend/CLAUDE.md`. *KPI trend:* `WidgetCard`'s
 "Trend line" select sets a kpi's `trend`; `pageLayout.ts` `trendDateField` mirrors the generator's date choice,
 `retargetWidget` drops the trend (named) when the kind changes, and the preview draws a seeded `Sparkline`. *Form
@@ -247,11 +241,11 @@ shortcut calls `onAddDep`. A dashboard with four or more widgets opens its cards
 summary line each (Expand/Collapse all; a new or re-kinded widget and the card a problem points at
 open — `expandRequest`). Wizard steps and record tabs have "Reset to default" buttons; the setup
 panel disables Dashboard Title/Overview once a layout exists (`hasPages`).
-Beside the list sits a **layout preview** (`LayoutPreview.tsx`, model in `layoutPreviewModel.ts` —
-not `layoutPreview.ts`, which collides with the component on Windows' case-insensitive FS): a
-wireframe of the generated shell (dark sidebar, or the Menora top bar when the frontend set is
-`MENORA_DIGITAL`) with seeded sample data and titles that mirror `EntityScaffoldContext`'s defaults
-in en/he; clicking a part of it opens that control. The add gallery also offers `suggestPages`
+Beside the list sits the **generated app** (`pages/PagesAppPreview.tsx` → `AppCanvas`, when the host passes
+`codeRequest`), on the page being edited, in design mode: hovering or focusing an editor control rings its part
+(`previewPartOf`), clicking a part opens its control, the app's menu moves the list. The layout's view-model
+(`layoutPreviewModel.ts`: titles and labels that mirror `EntityScaffoldContext`'s defaults in en/he) names the
+pages and hands the runtime the page's words. The add gallery also offers `suggestPages`
 (master-detail/record where relations exist, a report, a trend dashboard). The admin examples form
 reuses `PagesEditor` (`layout="stacked"`) with a JSON fallback. A nav page can take a **group** and an
 **icon** (`NavFields`; `NAV_ICONS` maps the backend's lucide whitelist to look-alike Material Symbols,
@@ -404,13 +398,13 @@ validated like the server's `canonicalEnumLabels` (key must be a value, non-blan
 
 ### Design kits (`designKits.ts`)
 
-A design kit (backend `design/`, see `../DESIGN_STUDIO_PLAN.md`) is the look of the generated frontend on top of one frontend set. `useDesignKits()` lists the published kits (`/metadata/design/kits`, catalog cache); when there are any, the Appearance view's Look group (`designer/FrontendSettings.tsx`) offers them instead of the bare sets they restyle (a set no kit covers is still offered bare). Picking a kit pins `{key, version}` (`FullstackSnapshot.designKit`, persisted as `fullstack:designKit`), switches `frontendSet` to the kit's `baseSetKey` and applies the kit's `defaults` (locale/RTL); picking a bare set clears the pin. The request sends `designKit: "key@version"`, so a model keeps its look until the user takes a newer version from the upgrade notice (`kitStatus`: `upgrade` / `missing`). Examples may name `settings.designKit`. The sketch (`LayoutPreview`) takes the kit's `color-brand`/`color-gold` tokens (`kitPreviewPalette`, palette references resolved); the Appearance view and Play show the real app (below). `designContract.test.ts` pins `NAV_ICONS`, `WIDGET_KINDS` and `PAGE_TYPE_META` against `__fixtures__/design-contract.json`, which the backend's `DesignContractSnapshotTest -Ddesign.contract.update=true` writes — never edit it by hand.
+A design kit (backend `design/`, see `../DESIGN_STUDIO_PLAN.md`) is the look of the generated frontend on top of one frontend set. `useDesignKits()` lists the published kits (`/metadata/design/kits`, catalog cache); when there are any, the Appearance view's Look group (`designer/FrontendSettings.tsx`) offers them instead of the bare sets they restyle (a set no kit covers is still offered bare). Picking a kit pins `{key, version}` (`FullstackSnapshot.designKit`, persisted as `fullstack:designKit`), switches `frontendSet` to the kit's `baseSetKey` and applies the kit's `defaults` (locale/RTL); picking a bare set clears the pin. The request sends `designKit: "key@version"`, so a model keeps its look until the user takes a newer version from the upgrade notice (`kitStatus`: `upgrade` / `missing`). Examples may name `settings.designKit`. Every canvas shows the real app (below), so a kit's look needs no mirror here. P4: the kit a model is made with is `effectiveKit` (pinned → the set's kit → the house kit); its `traits.navOptions` hides the nav options, its `navIcons` (the pinned version's manifest, else the summary's) join the page icon picker (`pages/kitNavIcons.ts`, a context the editors provide) and `validatePages` (`kitIcons`), and a kit's `thumbnail` replaces its swatch sketch in the Look group. `designContract.test.ts` pins `NAV_ICONS`, `WIDGET_KINDS` and `PAGE_TYPE_META` against `__fixtures__/design-contract.json`, which the backend's `DesignContractSnapshotTest -Ddesign.contract.update=true` writes — never edit it by hand.
 
 ### The generated app on the canvas (`src/designRuntime/`, `designer/AppCanvas.tsx`)
 
-The layout designer's **Design** and **Play** modes and its **Appearance** view run the *generated frontend itself*: `useAppPreview(request)` asks `POST /starter-fullstack.preview?assets=true` for the model as it stands (the inspector's Code-tab request, `codeRequest`; not while the layout has problems; debounced, last 4 cached), `payloadFromPreview` turns the answer into the runtime's payload, and `PreviewFrame` runs it in the design preview runtime — `<iframe sandbox="allow-scripts allow-forms" src="/design-runtime/index.html">`, served by the backend (built in the `design-studio` repo; the Vite proxy forwards `/design-runtime`, and **a deployment must route it to the backend like `/metadata`**). The runtime answers the app's `/api` calls from sample rows built from the model, so clicks, saves and workflow moves behave as in the shipped app. `AppCanvas` lays the app out at a device's window width (`APP_VIEWPORT`: 1280/820/390 — the shells switch layout at lg) scaled to the canvas, keeps **the sketch on screen until the app has compiled once**, and falls back to it (with the reason) when there is no request, the generator refuses the model, or the runtime does not answer within `READY_TIMEOUT_MS` or speaks another `PROTOCOL_VERSION`. The app's route changes follow into the designer (Play's trail, Appearance's page), and the designer's page/data-state switches go to the app (`navigate` only when the page differs, so the app's own record ids and tabs survive). Once an app has run, a model that cannot be generated (problems to fix) or a failed request keeps it on screen, marked as the last one that generated.
+The layout designer's **Design** and **Play** modes and its **Appearance** view run the *generated frontend itself*: `useAppPreview(request)` asks `POST /starter-fullstack.preview?assets=true` for the model as it stands (the inspector's Code-tab request, `codeRequest`; not while the layout has problems; debounced, last 4 cached), `payloadFromPreview` turns the answer into the runtime's payload, and `PreviewFrame` runs it in the design preview runtime — `<iframe sandbox="allow-scripts allow-forms" src="/design-runtime/index.html">`, served by the backend (built in the `design-studio` repo; the Vite proxy forwards `/design-runtime`, and **a deployment must route it to the backend like `/metadata`**). The runtime answers the app's `/api` calls from sample rows built from the model, so clicks, saves and workflow moves behave as in the shipped app. `AppCanvas` lays the app out at a device's window width (`APP_VIEWPORT`: 1280/820/390 — the shells switch layout at lg) scaled to the canvas, and draws `fallback(reason)` — `designer/CanvasNotice.tsx` — until the app has compiled once (reason null: starting) and instead of it when there is no request (the layout's problems, with a button to them), the generator refuses the model, or the runtime does not answer within `READY_TIMEOUT_MS` or speaks another `PROTOCOL_VERSION`. **There is no hand-drawn sketch any more** (`LayoutPreview.tsx` was retired on 2026-10-28; older notes above that say "the preview draws …" describe it). The app's route changes follow into the designer (Play's trail, Appearance's page), and the designer's page/data-state switches go to the app (`navigate` only when the page differs, so the app's own record ids and tabs survive). Once an app has run, a model that cannot be generated (problems to fix) or a failed request keeps it on screen, marked as the last one that generated.
 
-**Design mode on the app** (protocol v3). `AppCanvas`'s `design` prop sends the runtime a `DesignState` — page type, the selected part (`widget.<i>` or null), the page's problems by control, and a library widget drag in progress — and the runtime's editing layer stops the app's own clicks and keys, rings the parts (title, description, a dashboard's widgets: hover, selected, problem with its message), shows a widget toolbar (move, duplicate, change kind) and a resize handle, renames the title/description in place on double-click, and shows where a dragged library widget lands. Its gestures come back as intents that `LayoutDesigner.onDesignIntent` applies like the sketch's: `pick` → `reveal(…, false)` (no focus pull, so a double-click can rename), `pickPage` (an app nav link) → select that page, `rename` → `renamePart`, `reorder`/`resize`, `drop` (the library drag is kept in `lastWidgetDrag`, because its dragend arrives before the runtime's drop), `tool` (the kind menu opens under `anchor(rect)`, a fixed element over the runtime's toolbar). Keys pressed in the app are replayed on the frame element, so undo and the designer's shortcuts work after a click in the canvas. The model then regenerates (~1 s) and the app reloads at the same scroll. The toolbar's **App | Sketch** switch (`prefs.canvas`, default app) keeps the sketch one click away — it is the only canvas that edits a list's columns, tabs, record tabs, wizard steps and the other per-type parts — and the sketch takes the canvas by itself while a page *part* is dragged from the library (it has no drop target in the app). Playwright note: element boxes inside the scaled frame ignore its CSS scale; map coordinates through the iframe's box and scale. `protocol.ts` is a verbatim copy of `design-studio/runtime/src/protocol.ts` (that repo's tests compare them); `designRuntime.test.tsx` pins `PROTOCOL_VERSION` to the contract fixture's `runtimeProtocol`. In jsdom the runtime never starts, so tests see the sketch.
+**Design mode on the app** (protocol v4). `AppCanvas`'s `design` prop sends the runtime a `DesignState` — page type, the selected part, the page's problems by control, a library drag in progress (`{span}` for a widget, `{span: 0, slot}` for a page part) and the page's words (`texts`, from `designTexts`) — and the runtime's editing layer stops the app's own clicks and keys and rings every part the inspector edits: the title and description, a dashboard's widgets, period picker, refresh and filter bar, a report's charts, a tabs page's strip and tabs, a record's details, header numbers and related tabs, a wizard's steps, a master-detail's panes and parent card, a calendar and its views, a board's lanes, an inbox's queues and rows, a form, a list's columns and rows, a content page's text, a search page's results (found by markers the runtime wraps around slot exports — no hooks in the generated code). It shows a widget toolbar (move, duplicate, change kind) and a resize handle, renames titles in place on double-click, and shows where a dragged widget or part lands. Its gestures come back as intents that `LayoutDesigner.onDesignIntent` (and the Pages card's `previewIntent`) apply to the model: `pick` → `reveal(…, false)` (no focus pull, so a double-click can rename), `pickPage` (an app nav link) → select that page, `rename` → `renamePart`, `reorder`/`resize`, `drop` (the library drag is kept in `lastDrag`, because its dragend arrives before the runtime's drop; a widget → `addWidget`, a part → `placePart`), `tool` (the kind menu opens under `anchor(rect)`, a fixed element over the runtime's toolbar). Keys pressed in the app are replayed on the frame element, so undo and the designer's shortcuts work after a click in the canvas. The model then regenerates (~1 s) and the app reloads at the same scroll. Playwright note: element boxes inside the scaled frame ignore its CSS scale; map coordinates through the iframe's box and scale. `protocol.ts` is a verbatim copy of `design-studio/runtime/src/protocol.ts` (that repo's tests compare them); `designRuntime.test.tsx` pins `PROTOCOL_VERSION` to the contract fixture's `runtimeProtocol`. In jsdom the runtime never starts: the designer and Pages-card tests replace `AppCanvas` with a stand-in that records its props and plays the runtime's intents back; the gestures themselves are pinned by the runtime's own tests (`design-studio/runtime/src/designParts.test.ts`) and walked in Chromium by `design-studio/scripts/runtime-check.mjs`.
 
 ## Performance rules
 

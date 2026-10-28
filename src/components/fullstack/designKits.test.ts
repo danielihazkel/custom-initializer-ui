@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import type { DesignKitSummary, DesignKitVersion } from '../../types'
+import type { DesignKitSummary } from '../../types'
 import type { FeColorPalette } from '../../hooks/useFrontendMetadata'
-import { effectiveKit, kitDefaults, kitHasNavOptions, kitPreviewPalette, kitRef, kitSketch, kitStatus, parseKitRef, pinFromRef, resolveToken, swatchColor } from './designKits'
+import { effectiveKit, kitDefaults, kitHasNavOptions, kitRef, kitSketch, kitStatus, parseKitRef, pinFromRef, resolveToken, swatchColor } from './designKits'
 import { describeSnapshotChange, isSnapshot, makeSnapshot, parseExportedModel, snapshotChangeKey, DEFAULT_PROJECT_META, REQUEST_MODEL_FORMAT, type FullstackSnapshot } from './snapshot'
 
 const kit = (key: string, latestVersion: number | null, extra: Partial<DesignKitSummary> = {}): DesignKitSummary => ({
@@ -59,24 +59,13 @@ describe('kit references', () => {
   })
 })
 
-describe('kit colours in the preview', () => {
-  const version = (tokens: { name: string; value: string }[]): DesignKitVersion => ({
-    key: 'acme', version: 1, status: 'PUBLISHED', checksum: 'x', notes: null,
-    tokens: { $schema: 'menora-design-tokens/1', tokens }, manifest: { imports: [] }, css: '', assets: [],
-  })
-
+describe('kit colours', () => {
   it('resolves palette references with their fallbacks', () => {
     const tokens = [{ name: 'color-success', value: '{palette.accent|#16a34a}' }, { name: 'color-danger', value: '{palette.error|#dc2626}' },
       { name: 'color-brand-deep', value: 'color-mix(in srgb, {palette.primary} 85%, black)' }]
     expect(resolveToken(tokens, 'color-success', PALETTE)).toBe('#16a34a')
     expect(resolveToken(tokens, 'color-danger', PALETTE)).toBe('#ff0000')
     expect(resolveToken(tokens, 'color-brand-deep', PALETTE)).toBe('color-mix(in srgb, #111111 85%, black)')
-  })
-
-  it("draws a kit's own brand and gold, else the palette's", () => {
-    expect(kitPreviewPalette(version([{ name: 'color-brand', value: '#0f766e' }, { name: 'color-gold', value: '{palette.secondary}' }]), PALETTE))
-      .toMatchObject({ id: 'p', primary: '#0f766e', secondary: '#222222' })
-    expect(kitPreviewPalette(null, PALETTE)).toBe(PALETTE)
   })
 })
 

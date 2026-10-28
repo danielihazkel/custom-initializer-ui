@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
-import { buildLayoutPreview, highlights, previewPartOf } from './layoutPreviewModel'
+import { buildLayoutPreview, previewPartOf } from './layoutPreviewModel'
 
 const entities: FullstackEntityDef[] = [
   { name: 'Customer', fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'name', type: 'STRING' }] },
@@ -245,13 +245,6 @@ describe('previewPartOf', () => {
       [undefined, undefined],
     ]
     for (const [control, part] of table) expect(previewPartOf(control), control ?? '(page)').toBe(part)
-  })
-
-  it('lights a part only for the same page and part', () => {
-    expect(highlights({ page: 0, control: 'widget.1.presetFilter.status' }, { page: 0, control: 'widget.1' })).toBe(true)
-    expect(highlights({ page: 1, control: 'widget.1' }, { page: 0, control: 'widget.1' })).toBe(false)
-    expect(highlights({ page: 0, control: 'widget.0' }, { page: 0, control: 'widget.1' })).toBe(false)
-    expect(highlights(null, { page: 0, control: 'title' })).toBe(false)
   })
 
   it('draws a report grouped by a relation with one bar per related record', () => {

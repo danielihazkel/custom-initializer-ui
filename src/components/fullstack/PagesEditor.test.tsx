@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useState } from 'react'
-import { createEvent, fireEvent, render, screen, within } from '@testing-library/react'
-import type { FullstackEntityDef, FullstackPageDef } from '../../types'
+import { act, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
+import type { FullstackEntityDef, FullstackPageDef, FullstackStarterRequest } from '../../types'
+import type { DesignIntent } from '../../designRuntime/PreviewFrame'
 import { PagesEditor } from './PagesEditor'
 import { validatePages } from './pageLayout'
 
@@ -25,6 +26,27 @@ const entities: FullstackEntityDef[] = [
 const pushUndo = vi.fn()
 let latest: FullstackPageDef[] = []
 
+// The preview runs the generated app in a sandboxed frame, which jsdom cannot: a stand-in records
+// what the editor hands it and plays the runtime's design-mode gestures back.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CanvasProps = Record<string, any>
+const canvas = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }))
+vi.mock('./designer/AppCanvas', () => ({
+  APP_VIEWPORT: { desktop: 1280, tablet: 820, mobile: 390 },
+  AppCanvas: (props: Record<string, unknown>) => {
+    canvas.props.push(props)
+    return <div data-test-canvas />
+  },
+}))
+const lastCanvas = () => canvas.props[canvas.props.length - 1] as CanvasProps
+function gesture(intent: DesignIntent) {
+  act(() => lastCanvas().design.onIntent(intent, () => document.body))
+}
+beforeEach(() => {
+  canvas.props.length = 0
+  localStorage.setItem('fullstack:layoutPreview', 'open')
+})
+
 /** The editor is controlled; the harness holds the layout the way FullstackView does. */
 function Harness({ initial, onClear = () => {}, entities: model = entities }: { initial: FullstackPageDef[]; onClear?: () => void; entities?: FullstackEntityDef[] }) {
   const [pages, setPages] = useState(initial)
@@ -37,6 +59,7 @@ function Harness({ initial, onClear = () => {}, entities: model = entities }: { 
       onChange={setPages}
       pushUndo={pushUndo}
       onClear={onClear}
+      codeRequest={() => ({ entities: model, pages } as FullstackStarterRequest)}
     />
   )
 }
@@ -86,10 +109,8 @@ describe('PagesEditor', () => {
 
     // Two relations point at Customer, so the page says which one it links through from the start.
     expect(latest).toEqual([{ id: 'customer', type: 'master-detail', parent: 'Customer', child: 'Order', via: 'customer', showParent: true }])
-    expect(document.querySelector('[data-preview-parent-card]')).toBeTruthy()
     fireEvent.click(screen.getByLabelText("Show the selected parent's details"))
     expect(latest[0].showParent).toBeUndefined()
-    expect(document.querySelector('[data-preview-parent-card]')).toBeNull()
     expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
 
     fireEvent.change(screen.getByLabelText('Relation to link through'), { target: { value: 'billTo' } })
@@ -133,7 +154,7 @@ describe('PagesEditor', () => {
     expect(screen.queryByRole('button', { name: 'Open the guide on frontend pages' })).toBeNull()
   })
 
-  it('offers the tailwind shell’s navigation variants and previews them', () => {
+  it('offers the tailwind shell’s navigation variants, and none for a kit whose shell lays out its own menu', () => {
     const onNavChange = vi.fn()
     const pages: FullstackPageDef[] = [
       { id: 'orders', type: 'entity-list', entity: 'Order', group: 'Sales' },
@@ -142,68 +163,33 @@ describe('PagesEditor', () => {
     const { rerender } = render(
       <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} />,
     )
-    expect(document.querySelector('[data-preview-topbar]')).toBeNull()
     fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Navigation style' })).getByRole('radio', { name: 'Top bar' }))
     expect(onNavChange).toHaveBeenCalledWith({ style: 'topbar' })
     fireEvent.click(screen.getByLabelText('Collapsible groups'))
     expect(onNavChange).toHaveBeenCalledWith({ collapsibleGroups: true })
-
-    rerender(
-      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} nav={{ style: 'topbar' }} />,
-    )
-    expect(document.querySelector('[data-preview-topbar]')).toBeTruthy()
-    rerender(
-      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} nav={{ collapsibleGroups: true }} />,
-    )
-    expect(document.querySelectorAll('[data-preview-fold]')).toHaveLength(2)
     // A kit whose shell lays out its own menu (Menora Digital): no row.
     rerender(
-      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} previewSettings={{ locale: 'en', projectOpts: [], skin: 'menora', navOptions: false }} />,
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} previewSettings={{ locale: 'en', projectOpts: [], navOptions: false }} />,
     )
     expect(document.querySelector('[data-nav-options]')).toBeNull()
   })
 
-  it('draws the tailwind preview in the chosen colour palette, and the Menora one in its own', () => {
-    const pages: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }]
-    const palette = { primary: '#123456', secondary: '#abcdef' }
-    const props = { pages, entities, validation: validatePages(pages, entities), onChange: () => {}, pushUndo, onClear: () => {} }
-    const { rerender } = render(<PagesEditor {...props} previewSettings={{ locale: 'en', projectOpts: [], skin: 'tailwind', palette }} />)
-    const shell = document.querySelector<HTMLElement>('[data-layout-preview] [data-preview-shell]')!
-    expect(shell.style.background).toContain('rgb(18, 52, 86)')
-    expect(shell.style.background).toContain('rgb(171, 205, 239)')
-    const active = document.querySelector<HTMLElement>('[data-layout-preview] [aria-current="page"]')!
-    expect(active.style.borderColor).toBe('rgb(171, 205, 239)')
-    const accented = Array.from(document.querySelectorAll<HTMLElement>('[data-layout-preview] [style]'))
-      .filter(el => el.style.background === 'rgb(18, 52, 86)' || el.style.backgroundColor === 'rgb(18, 52, 86)')
-    expect(accented.length).toBeGreaterThan(0)
-
-    rerender(<PagesEditor {...props} previewSettings={{ locale: 'en', projectOpts: [], skin: 'menora', palette }} />)
-    expect(document.querySelector('[data-layout-preview]')!.innerHTML).not.toContain('rgb(18, 52, 86)')
+  it('runs no app beside a layout with problems, and the one it can generate when they are fixed', () => {
+    render(<Harness initial={[{ id: 'orders', type: 'entity-list', entity: 'Product' }]} />)
+    expect(lastCanvas().request).toBeNull()
+    openRow('orders')
+    fireEvent.change(screen.getByLabelText('List entity'), { target: { value: 'Order' } })
+    expect(lastCanvas().request).toMatchObject({ pages: [{ id: 'orders', type: 'entity-list', entity: 'Order' }] })
   })
 
-  it('reorders and resizes widgets from the preview', () => {
+  it('reorders and resizes widgets dragged in the app', () => {
     render(<Harness initial={[
       { id: 'home', type: 'dashboard', title: 'Home', widgets: [{ kind: 'kpi', entity: 'Order', title: 'A' }, { kind: 'kpi', entity: 'Customer', title: 'B' }] },
       { id: 'orders', type: 'entity-list', entity: 'Order' },
     ]} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Wider: widget 1' }))
+    gesture({ type: 'resize', index: 0, span: 2 })
     expect(latest[0].widgets?.[0].span).toBe(2)
-    fireEvent.click(screen.getByRole('button', { name: 'Narrower: widget 1' }))
-    expect(latest[0].widgets?.[0].span).toBeUndefined()
-    expect((screen.getByRole('button', { name: 'Narrower: widget 1' }) as HTMLButtonElement).disabled).toBe(true)
-
-    // Widget 2 dragged onto the first half of widget 1's slot lands first — the grid flows along
-    // the row. jsdom has no DragEvent, so the pointer position (before a zero-width rect) is set
-    // on the event by hand.
-    fireEvent.dragStart(screen.getByLabelText('Drag widget 2'), { dataTransfer: { setData: vi.fn(), effectAllowed: '' } })
-    const first = document.querySelector('[data-preview-widget-slot="0"]') as HTMLElement
-    const above = (type: 'dragOver' | 'drop') => {
-      const event = createEvent[type](first, { dataTransfer: { dropEffect: '' } })
-      Object.defineProperty(event, 'clientX', { value: -1 })
-      return event
-    }
-    fireEvent(first, above('dragOver'))
-    fireEvent(first, above('drop'))
+    gesture({ type: 'reorder', from: 1, to: 0 })
     expect(latest[0].widgets?.map(w => w.title)).toEqual(['B', 'A'])
   })
 
@@ -272,30 +258,19 @@ describe('PagesEditor', () => {
     expect(document.activeElement).toBe(toggles[0])
   })
 
-  it('steps through a wizard and a record page’s tabs in the preview, and jumps from a list’s headings to its columns', () => {
+  it('jumps from a list’s headings in the app to its columns, and tells the app the words it may rename', () => {
     render(<Harness initial={[
       { id: 'orders', type: 'entity-list', entity: 'Order', sort: { field: 'total' } },
-      { id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ fields: ['status'] }, { fields: ['customer', 'billTo', 'id'] }] },
-      { id: 'customer', type: 'record', entity: 'Customer', hidden: true, childTabs: [{ entity: 'Order', via: 'customer' }] },
+      { id: 'new-order', type: 'wizard', entity: 'Order', steps: [{ title: 'Basics', fields: ['status'] }, { fields: ['customer', 'billTo', 'id'] }] },
     ]} />)
-    const preview = () => document.querySelector('[data-layout-preview]') as HTMLElement
-
-    // The headings and the sort chip are parts of their own: a click opens the page at them.
     expect(document.querySelector('[data-page-id="orders"] [data-control="columns"]')).toBeNull()
-    fireEvent.click(within(preview()).getByRole('button', { name: 'Edit the columns' }))
+    gesture({ type: 'pick', control: 'columns' })
     expect(document.querySelector('[data-page-id="orders"] [data-control="columns"]')).toBeTruthy()
-    expect(within(preview()).getByRole('button', { name: 'Edit the sort' }).parentElement!.textContent).toContain('Total ↑')
 
     openRow('new-order')
-    expect(preview().querySelector('[data-preview-step]')?.getAttribute('data-preview-step')).toBe('0')
-    fireEvent.click(within(preview()).getByRole('button', { name: 'Next step' }))
-    expect(preview().querySelector('[data-preview-step]')?.getAttribute('data-preview-step')).toBe('1')
-    fireEvent.click(within(preview()).getByRole('button', { name: 'Next step' }))
-    expect(preview().querySelector('[data-preview-step]')?.getAttribute('data-preview-step')).toBe('review')
-
-    openRow('customer')
-    fireEvent.click(within(preview()).getByRole('tab', { name: 'Orders' }))
-    expect(preview().querySelector('[data-preview-record-tab="1"]')).toBeTruthy()
+    expect(lastCanvas().design.state).toMatchObject({ pageType: 'wizard', texts: { 'steps.0.title': 'Basics' } })
+    gesture({ type: 'rename', control: 'steps.1.title', value: 'Links' })
+    expect(latest[1].steps?.[1].title).toBe('Links')
   })
 
   it('starts a layout from a template, and adds a page again from one saved as a template', () => {
@@ -330,7 +305,6 @@ describe('PagesEditor', () => {
     expect((within(group).getByRole('radio', { name: 'Record page' }) as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(within(group).getByRole('radio', { name: 'Side pane' }))
     expect(latest[0].detail).toBe('side')
-    expect(document.querySelector('[data-preview-side-pane]')).toBeTruthy()
     fireEvent.click(within(group).getByRole('radio', { name: 'Drawer' }))
     expect(latest[0].detail).toBeUndefined()
   })
@@ -364,7 +338,6 @@ describe('PagesEditor', () => {
     expect(latest[0].widgets?.[0].sort).toEqual({ field: 'total', dir: 'desc' })
     fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Rows per page' })).getByRole('radio', { name: '20' }))
     expect(latest[0].widgets?.[0].limit).toBe(20)
-    expect(document.querySelector('[data-preview-list]')).toBeTruthy()
     expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
   })
 
@@ -380,7 +353,6 @@ describe('PagesEditor', () => {
     expect(within(links).getAllByRole('checkbox').map(el => el.getAttribute('aria-label'))).toEqual(['Link to Orders', 'Link to Customers'])
     fireEvent.click(within(links).getByLabelText('Link to Customers'))
     expect(latest[0].widgets?.[0].pages).toEqual(['orders', 'customers'])
-    expect(document.querySelector('[data-preview-links]')?.textContent).toContain('Customers')
     expect(document.querySelector('[data-page-layout-problems]')).toBeNull()
   })
 
@@ -798,23 +770,25 @@ describe('PagesEditor', () => {
     expect(screen.getByLabelText('Relation to link through')).toBeTruthy()
   })
 
-  it('previews the layout and jumps from the preview to the editor', () => {
+  it('runs the generated app beside the list, on the page being edited, and a part clicked opens its control', () => {
     render(<Harness initial={[
       { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'bar', entity: 'Order' }] },
       { id: 'orders', type: 'entity-list', entity: 'Order', presetFilter: { status: 'PAID' } },
     ]} />)
-    const preview = document.querySelector('[data-layout-preview]') as HTMLElement
-    expect(preview.querySelectorAll('[data-preview-widget]')).toHaveLength(2)
+    expect(lastCanvas()).toMatchObject({ hash: '#/home' })
+    expect(lastCanvas().request).toMatchObject({ pages: latest })
+    openRow('orders')
+    expect(lastCanvas().hash).toBe('#/orders')
+    expect(lastCanvas().design.state.pageType).toBe('entity-list')
 
-    fireEvent.click(within(preview).getByRole('button', { name: /Orders/ }))
-    expect(preview.querySelector('[data-preview-screen="entity-list"]')).toBeTruthy()
-    expect(preview.querySelector('[data-preview-chip]')?.textContent).toBe('Status: Paid')
-
-    fireEvent.click(within(preview).getByRole('button', { name: 'Edit the listed entity' }))
+    gesture({ type: 'pick', control: 'entity' })
     expect(screen.getByLabelText('List entity')).toBeTruthy()
+    // The app's own menu moves the preview.
+    act(() => lastCanvas().onRoute('#/home'))
+    expect(lastCanvas().hash).toBe('#/home')
 
     fireEvent.click(screen.getByRole('button', { name: /Hide preview/ }))
-    expect(document.querySelector('[data-layout-preview]')).toBeNull()
+    expect(document.querySelector('[data-pages-app-preview]')).toBeNull()
   })
 
   it('places a nav page in a group with an icon, and drops both when the page is hidden', () => {
@@ -1327,48 +1301,44 @@ describe('PagesEditor', () => {
       expect(screen.getByLabelText('Relation to link through')).toBeTruthy()
     })
   })
-  it('rings the previewed part while its editor control is hovered or focused', () => {
-    localStorage.setItem('fullstack:layoutPreview', 'open') // an earlier test hid it
+  it('rings the part in the app while its editor control is hovered or focused', () => {
     render(<Harness initial={[
       { id: 'home', type: 'dashboard', widgets: [{ kind: 'kpi', entity: 'Order' }, { kind: 'bar', entity: 'Order' }] },
       { id: 'customer', type: 'record', entity: 'Customer', headerStats: [{ child: 'Order' }] },
     ]} />)
-    const preview = document.querySelector('[data-layout-preview]') as HTMLElement
-    const lit = () => [...preview.querySelectorAll('[data-preview-highlight]')]
-    expect(lit()).toHaveLength(0)
+    const ring = () => lastCanvas().design.state.selected as string | null
+    expect(ring()).toBeNull()
 
     const home = openRow('home') as HTMLElement
     const list = home.parentElement!
     fireEvent.mouseOver(home.querySelector('[data-widget="1"]')!)
-    expect(lit()).toHaveLength(1)
-    expect(lit()[0].querySelector('[data-preview-widget="1"]')).toBeTruthy()
-    // Any control on the page maps onto a drawn part — the title field onto the heading.
+    expect(ring()).toMatch(/^widget\.1/)
+    // Any control on the page maps onto its part — the title field onto the heading.
     const title = within(home).getByLabelText('Page title')
     fireEvent.mouseOver(title)
-    expect(lit().map(el => el.querySelector(':scope > button')?.getAttribute('aria-label'))).toEqual(['Edit the page title'])
-    // The row itself, outside any control, is the page: its nav entry.
+    expect(ring()).toBe('title')
+    // The row itself, outside any control, is the page as a whole.
     fireEvent.mouseOver(home.querySelector('button[aria-expanded]')!)
-    expect(lit().map(el => el.getAttribute('data-preview-nav'))).toEqual(['0'])
+    expect(ring()).toBeNull()
     fireEvent.mouseLeave(list)
-    expect(lit()).toHaveLength(0)
+    expect(ring()).toBeNull()
 
-    // Keyboard focus lights a part too, and the mouse passing over does not lose it.
+    // Keyboard focus rings a part too, and the mouse passing over does not lose it.
     title.focus()
     fireEvent.focus(title)
-    expect(lit().map(el => el.querySelector(':scope > button')?.getAttribute('aria-label'))).toEqual(['Edit the page title'])
+    expect(ring()).toBe('title')
     fireEvent.mouseOver(home.querySelector('[data-widget="0"]')!)
-    expect(lit()[0].querySelector('[data-preview-widget="0"]')).toBeTruthy()
+    expect(ring()).toMatch(/^widget\.0/)
     fireEvent.mouseLeave(list)
-    expect(lit().map(el => el.querySelector(':scope > button')?.getAttribute('aria-label'))).toEqual(['Edit the page title'])
+    expect(ring()).toBe('title')
     title.blur()
     fireEvent.blur(title)
-    expect(lit()).toHaveLength(0)
+    expect(ring()).toBeNull()
 
-    // A record's tile row: the editor keys one tile, the preview draws the tiles as one part.
+    // A record's tile: the app rings the row of tiles.
     const record = openRow('customer')
     fireEvent.mouseOver(record.querySelector('[data-header-stat="0"]')!)
-    expect(lit()).toHaveLength(1)
-    expect(lit()[0].querySelector('[data-preview-stats]')).toBeTruthy()
+    expect(ring()).toMatch(/^headerStat/)
   })
 
   it('lists warnings apart from problems, marks the page and the preview, and applies their fix', () => {
@@ -1377,13 +1347,11 @@ describe('PagesEditor', () => {
     const warnings = document.querySelector('[data-page-layout-warnings]')!
     expect(warnings.textContent).toContain('clicking a bar of the Order chart goes nowhere')
     expect(document.querySelector('[data-page-warnings]')?.textContent).toBe('1 warning')
-    expect(document.querySelector('[data-preview-nav="0"] [data-preview-warning]')).toBeTruthy()
 
     fireEvent.click(within(warnings as HTMLElement).getByRole('button', { name: /Fix: Add a Orders list page/ }))
     expect(pushUndo).toHaveBeenCalledWith('Add a Orders list page')
     expect(latest.map(p => p.id)).toEqual(['home', 'orders'])
     expect(document.querySelector('[data-page-layout-warnings]')).toBeNull()
-    expect(document.querySelector('[data-preview-warning]')).toBeNull()
   })
 
   it('makes a page the start page by moving it first, and keeps the start page open to everyone', () => {
@@ -1424,7 +1392,6 @@ describe('PagesEditor dashboard filters and click targets', () => {
     fireEvent.click(within(chips).getByLabelText('Filter by Status'))
     fireEvent.click(within(chips).getByLabelText('Filter by Customer'))
     expect(latest[0].filters).toEqual(['status', 'customer'])
-    expect(document.querySelector('[data-preview-dashboard-filters]')?.textContent).toContain('Status')
     fireEvent.click(within(chips).getByLabelText('Filter by Status'))
     expect(latest[0].filters).toEqual(['customer'])
 

@@ -11,8 +11,13 @@
  * editing layer over it (rings, a widget toolbar, resize handles, drop lines, in-place rename);
  * what the user does there comes back as intents (`pick`, `rename`, `reorder`, …) for the host
  * to apply to the model — the app is then generated again.
+ *
+ * v4: every part the layout designer edits is a part (period picker, filters, charts, tab
+ * strips, header numbers, steps, lanes, list columns, …), titles of tabs, steps and header
+ * numbers rename in place, a page part from the library drops among its kind (`drag.slot`), the
+ * host passes the page's words (`texts`), and `snapshot` returns the screen as static markup.
  */
-export const PROTOCOL_VERSION = 3
+export const PROTOCOL_VERSION = 4
 
 export type DataState = 'data' | 'empty' | 'loading' | 'error'
 
@@ -36,16 +41,21 @@ export interface AppPayload {
 }
 
 /** The editing layer's inputs. Controls are the layout designer's `data-control` keys:
- *  `title`, `description`, `widget.<i>` (a deeper key such as `widget.2.field` marks its widget). */
+ *  `title`, `description`, `widget.<i>` (a deeper key such as `widget.2.field` marks its widget),
+ *  `dateRange`, `filters`, `chart.groupBy`, `tabs`, `tabs.<i>.title`, `headerStats`, `steps`, … */
 export interface DesignState {
-  /** The page on screen's type — only a dashboard's widgets are parts. */
+  /** The page on screen's type: which parts it has. */
   pageType: string
   /** The selected part, or null for the page itself. */
   selected: string | null
   /** Problems by control: their parts get a red ring and the message as a tooltip. */
   problems: Record<string, string>
-  /** A widget being dragged in from the host's library (its span for the placeholder), or null. */
-  drag: { span: number } | null
+  /** Something dragged in from the host's library: a widget (its span for the placeholder), or a
+   *  page part (`slot`: `tab`, `chart`, `child-tab`, `header-stat`, `step-field`); else null. */
+  drag: { span: number; slot?: string } | null
+  /** The page's words by control (`title`, `description`, `tabs.0.title`, …): the description is
+   *  told from other text by them, and a rename starts from them. */
+  texts?: Record<string, string>
 }
 
 export interface Rect { x: number; y: number; w: number; h: number }
@@ -66,6 +76,8 @@ export type HostMessage =
   | { type: 'reset' }
   /** Edit (a state) or use (null) the app. Kept across loads. */
   | { type: 'design'; design: DesignState | null }
+  /** The screen on show as static markup, once its data has arrived (answered by `snapshot`). */
+  | { type: 'snapshot'; id: string }
 
 export interface CompileError { path: string; message: string }
 
@@ -80,12 +92,15 @@ export type RuntimeMessage =
   | { type: 'pick'; control: string | null }
   /** Design mode: one of the app's own page links was clicked. */
   | { type: 'pickPage'; hash: string }
-  | { type: 'rename'; control: 'title' | 'description'; value: string }
+  /** A title renamed in place: the page's (`title`, `description`) or a part's (`tabs.1.title`, …). */
+  | { type: 'rename'; control: string; value: string }
   /** A widget dragged to another place: it ends up at index `to`. */
   | { type: 'reorder'; from: number; to: number }
   | { type: 'resize'; index: number; span: number }
-  /** The library's widget dropped: insert it at `at`. */
+  /** The library's widget or page part dropped: insert it at `at` (a wizard field: onto step `at`). */
   | { type: 'drop'; at: number }
+  /** The screen as markup with its stylesheet, images inlined, no scripts (a host's spec sheet). */
+  | { type: 'snapshot'; id: string; html: string; css: string; lang: string; dir: string }
   /** A widget toolbar button; `rect` (viewport px of the runtime) anchors a host menu. */
   | { type: 'tool'; action: 'duplicate' | 'kind'; index: number; rect: Rect }
   /** Design mode: a key pressed while the app had the focus, for the host's own shortcuts

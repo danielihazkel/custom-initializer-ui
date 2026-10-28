@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
-import type { FullstackEntityDef, FullstackPageDef } from '../../../types'
-import { LayoutPreview, type PreviewPalette } from '../LayoutPreview'
+import type { FullstackEntityDef, FullstackPageDef, FullstackStarterRequest } from '../../../types'
 import type { LayoutPreview as LayoutPreviewModel } from '../layoutPreviewModel'
+import { captureScreens, fetchAppPayload, type ScreenCapture } from '../../../designRuntime/capture'
 import { PageFlowMap } from './PageFlowMap'
 import { buildSpecSheet, specFileName } from './specSheet'
 
@@ -18,8 +18,6 @@ export function staticMarkup(node: ReactNode): string {
   try {
     flushSync(() => root.render(node))
     host.querySelectorAll('.material-symbols-outlined').forEach(el => el.remove())
-    // The edit overlays are transparent buttons: nothing to press on paper.
-    host.querySelectorAll('button[data-rename-owner]').forEach(el => el.remove())
     return host.innerHTML
   } finally {
     root.unmount()
@@ -52,24 +50,33 @@ export interface SpecExportInput {
   project: string
   pages: FullstackPageDef[]
   entities: FullstackEntityDef[]
+  /** The layout's view-model: the navigation as the generated shell lists it. */
   preview: LayoutPreviewModel
-  skin: 'tailwind' | 'menora'
-  palette?: PreviewPalette
+  /** The generator request for the model, for the screens' snapshots (null: none to take). */
+  request: FullstackStarterRequest | null
+  /** The look's name on the cover ("Menora Digital"). */
+  look: string
   locale: 'en' | 'he'
-  navStyle?: 'sidebar' | 'topbar'
 }
 
-/** The whole spec sheet for the layout as it stands. */
-export function buildLayoutSpec(input: SpecExportInput, now = new Date()): string {
-  const canvasHtml = input.pages.map((_, i) => {
-    try {
-      return staticMarkup(
-        <LayoutPreview preview={input.preview} selected={i} onSelect={() => {}} onEdit={() => {}} skin={input.skin} palette={input.palette} navStyle={input.navStyle} />,
-      )
-    } catch {
-      return null
-    }
-  })
+/** The route a page's snapshot is taken on: a record page opens its first sample row. */
+export const snapshotHash = (page: FullstackPageDef) => page.type === 'record' ? `#/${page.id}/1` : `#/${page.id}`
+
+/** Every page as the generated app draws it, or why there are none. */
+async function screens(input: SpecExportInput, capture: typeof captureScreens): Promise<{ shots: (ScreenCapture | null)[]; note?: string }> {
+  const none = input.pages.map(() => null)
+  if (!input.request) return { shots: none, note: 'The pages are not pictured: the model has problems to fix before the app can be generated.' }
+  try {
+    const app = await fetchAppPayload(input.request)
+    return { shots: await capture(app, input.pages.map(snapshotHash)) }
+  } catch (e) {
+    return { shots: none, note: `The pages are not pictured: ${e instanceof Error ? e.message : String(e)}` }
+  }
+}
+
+/** The whole spec sheet for the layout as it stands, with each page as the generated app draws it. */
+export async function buildLayoutSpec(input: SpecExportInput, now = new Date(), capture = captureScreens): Promise<string> {
+  const { shots, note } = await screens(input, capture)
   let flowHtml = ''
   try {
     flowHtml = staticMarkup(<PageFlowMap pages={input.pages} entities={input.entities} onOpenPage={() => {}} />)
@@ -79,20 +86,21 @@ export function buildLayoutSpec(input: SpecExportInput, now = new Date()): strin
   return buildSpecSheet({
     project: input.project,
     date: now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
-    frontendSet: input.skin === 'menora' ? 'Menora Digital' : 'Tailwind',
+    frontendSet: input.look,
     locale: input.locale,
     pages: input.pages,
     entities: input.entities,
     sections: input.preview.sections,
     flowHtml,
-    canvasHtml,
+    canvases: shots,
+    canvasNote: note,
     css: collectAppCss(),
   })
 }
 
-/** Builds the spec and hands it to the browser as a download. */
-export function downloadLayoutSpec(input: SpecExportInput): string {
-  const html = buildLayoutSpec(input)
+/** Builds the spec and hands it to the browser as a download; resolves to the file's name. */
+export async function downloadLayoutSpec(input: SpecExportInput): Promise<string> {
+  const html = await buildLayoutSpec(input)
   const name = specFileName(input.project)
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
   const a = document.createElement('a')

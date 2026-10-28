@@ -123,8 +123,11 @@ function ShellSketch({ menora, colors = menora ? MENORA_SKETCH : SET_SKETCH }: {
   )
 }
 
-/** A kit's thumbnail: its sketch, in its own swatch (palette references filled in). */
+/** A kit's thumbnail: its own picture when it has one, else its sketch in its own swatch (palette references filled in). */
 function KitSketch({ kit, palette }: { kit: DesignKitSummary; palette?: FeColorPalette }) {
+  if (kit.thumbnail) {
+    return <img src={kit.thumbnail} alt="" aria-hidden="true" className="h-12 w-16 shrink-0 rounded border border-outline-variant bg-white object-cover" data-kit-thumbnail />
+  }
   const menora = kitSketch(kit) === 'menora'
   const base = menora ? MENORA_SKETCH : SET_SKETCH
   const color = (name: string, fallback: string) => swatchColor(kit, name, palette) ?? fallback

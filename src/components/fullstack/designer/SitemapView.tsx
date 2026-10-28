@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import type { FullstackNav, FullstackPageDef } from '../../../types'
-import { LayoutPreview } from '../LayoutPreview'
+import type { FullstackNav, FullstackPageDef, FullstackStarterRequest } from '../../../types'
+import { AppCanvas } from './AppCanvas'
+import { CanvasNotice } from './CanvasNotice'
 import { PAGE_TYPE_META, inNav, pageLabel } from '../pageLayout'
 import { dropIndicatorClass } from '../useDragReorder'
 import { GroupChip, MoveButtons } from '../pages/fields'
@@ -12,13 +13,15 @@ import { PageFlowMap } from './PageFlowMap'
  * (drag one into another section to move it there), the pages off the navigation, and the shell's
  * navigation style beside a preview of it.
  */
-export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
+export function SitemapView({ pages, model, nav, onNavChange, onOpenPage, request = null }: {
   pages: FullstackPageDef[]
   model: PagesModel
   nav?: FullstackNav
   onNavChange?: (nav: FullstackNav | undefined) => void
   /** Back to the design view, on this page. */
   onOpenPage: (index: number) => void
+  /** The model's request, for the generated app's menu beside the map (null: it cannot be generated). */
+  request?: FullstackStarterRequest | null
 }) {
   const { dnd, keys, preview, settings, navGroupSections } = model
   const startIndex = preview.nav[0]?.index
@@ -162,16 +165,16 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
         {pages.length > 0 && (
           <div className="space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Preview</p>
-            <LayoutPreview
-              preview={preview}
-              selected={startIndex ?? 0}
-              onSelect={onOpenPage}
-              onEdit={t => onOpenPage(t.page)}
-              skin={settings.skin}
-              palette={settings.palette}
-              navStyle={nav?.style}
-              collapsibleGroups={nav?.collapsibleGroups}
-            />
+            <div className="flex h-80 flex-col overflow-hidden rounded-lg border border-outline-variant" data-sitemap-app>
+              <AppCanvas
+                request={request}
+                device="desktop"
+                hash={startIndex != null ? `#/${pages[startIndex]?.id}` : undefined}
+                emptyReason="the model has problems to fix first"
+                fallback={reason => <CanvasNotice reason={reason} problems={model.issues.length} />}
+              />
+            </div>
+            <p className="text-[11px] text-secondary">The generated app's menu, as it ships.</p>
           </div>
         )}
       </aside>

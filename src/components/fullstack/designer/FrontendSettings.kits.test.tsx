@@ -88,4 +88,12 @@ describe('FrontendSettings — design kits', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use v3' }))
     expect(a.pickDesignKit).toHaveBeenCalledWith(acme, 3)
   })
+
+  it('pictures a kit by its thumbnail when it has one', () => {
+    const acme = { ...kit('acme', 'Acme', 'react-tailwind-crud', 3), thumbnail: '/metadata/design/assets/abc' }
+    render(<FrontendSettings appearance={appearance({ designKits: [kit('tailwind-default', 'Menora default', 'react-tailwind-crud', 1), acme] })} hasPages={false} />)
+    const thumbs = document.querySelectorAll<HTMLImageElement>('[data-kit-thumbnail]')
+    expect(thumbs.length).toBe(1)
+    expect(thumbs[0].getAttribute('src')).toBe('/metadata/design/assets/abc')
+  })
 })

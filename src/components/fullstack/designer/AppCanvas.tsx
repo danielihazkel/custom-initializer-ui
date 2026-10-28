@@ -14,11 +14,11 @@ export const APP_VIEWPORT: Record<PreviewDevice, number> = { desktop: 1280, tabl
  * The generated app itself on the designer's canvas: the model is generated (the same
  * `/starter-fullstack.preview` the zip comes from) and its frontend runs in the sandboxed
  * preview runtime against sample data, at a device's window width scaled to fit. Every click,
- * save and transition does what the app does. `fallback` (the sketch) is drawn until the app
- * has compiled once — so the canvas is never empty while it starts — and instead of it when the
- * app cannot run here: no request and no app yet (the layout has problems), a generator error
- * before any app, or no runtime (with the reason). Once an app has run, a request that cannot be
- * made (problems to fix) or fails keeps it on screen, marked as the last one that generated.
+ * save and transition does what the app does. `fallback(reason)` is drawn until the app has
+ * compiled once (reason null: it is starting) and instead of it when the app cannot run here: no
+ * request and no app yet (the layout has problems), a generator error before any app, or no
+ * runtime. Once an app has run, a request that cannot be made (problems to fix) or fails keeps it
+ * on screen, marked as the last one that generated.
  *
  * With `design`, the runtime's editing layer is on: the app's clicks pick parts, and the
  * gestures come back as intents. `anchor` turns a rect of the runtime's (a widget toolbar) into
@@ -36,8 +36,9 @@ export function AppCanvas({ request, device, zoom = CANVAS_ZOOM, hash, dataState
   hash?: string
   dataState?: PreviewDataState
   onRoute?: (hash: string) => void
-  fallback: ReactNode
-  /** Why there is no request, shown over the fallback. */
+  /** Drawn while the app starts (null) or instead of it (why it cannot run). */
+  fallback: (reason: string | null) => ReactNode
+  /** Why there is no request. */
   emptyReason?: string
   design?: CanvasDesign
 }) {
@@ -69,11 +70,9 @@ export function AppCanvas({ request, device, zoom = CANVAS_ZOOM, hash, dataState
   const scale = fit * (zoom / CANVAS_ZOOM)
   const height = Math.max(480, Math.round((size.h > 0 ? size.h : 720) / scale))
 
-  const status = reason && request != null
-    ? `Showing the sketch: ${reason}`
-    : !live
-      ? null
-      : crash
+  const status = !live
+    ? null
+    : crash
         ? `The app stopped: ${crash}`
         : !compiled.ok
           ? `${compiled.errors.length} file${compiled.errors.length === 1 ? '' : 's'} did not compile — ${compiled.errors[0].path}: ${compiled.errors[0].message}`
@@ -97,13 +96,13 @@ export function AppCanvas({ request, device, zoom = CANVAS_ZOOM, hash, dataState
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col" data-app-canvas={live ? 'app' : 'sketch'}>
+    <div className="relative flex min-h-0 flex-1 flex-col" data-app-canvas={live ? 'app' : reason == null ? 'starting' : 'waiting'}>
       {status && (
         <p aria-live="polite" className="border-b border-outline-variant bg-surface-container-low px-4 py-1 text-[11px] text-secondary" data-app-canvas-status>
           {status}
         </p>
       )}
-      {!live && <div className="flex min-h-0 flex-1 flex-col">{fallback}</div>}
+      {!live && <div className="flex min-h-0 flex-1 flex-col">{fallback(reason)}</div>}
       <span ref={anchorRef} aria-hidden="true" className="pointer-events-none fixed" data-app-canvas-anchor />
       {reason == null && (
         <div
