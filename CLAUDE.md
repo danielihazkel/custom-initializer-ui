@@ -402,6 +402,10 @@ goes (`enumLabels.ts` `pruneLabels`), mirrored by `quickAdd` `values="OPEN:Open|
 the UI mock (`enumLabel` = explicit else `humanizeConstant`, mirroring `EntityScaffoldContext`) and
 validated like the server's `canonicalEnumLabels` (key must be a value, non-blank, ≤ 80 chars, ENUM only). The tickets example carries labels so the path is exercised.
 
+### Design kits (`designKits.ts`)
+
+A design kit (backend `design/`, see `../DESIGN_STUDIO_PLAN.md`) is the look of the generated frontend on top of one frontend set. `useDesignKits()` lists the published kits (`/metadata/design/kits`, catalog cache); when there are any, the Appearance view's Look group (`designer/FrontendSettings.tsx`) offers them instead of the bare sets they restyle (a set no kit covers is still offered bare). Picking a kit pins `{key, version}` (`FullstackSnapshot.designKit`, persisted as `fullstack:designKit`), switches `frontendSet` to the kit's `baseSetKey` and applies the kit's `defaults` (locale/RTL); picking a bare set clears the pin. The request sends `designKit: "key@version"`, so a model keeps its look until the user takes a newer version from the upgrade notice (`kitStatus`: `upgrade` / `missing`). Examples may name `settings.designKit`. The layout preview takes the kit's `color-brand`/`color-gold` tokens (`kitPreviewPalette`, palette references resolved) until P2 renders the real components. `designContract.test.ts` pins `NAV_ICONS`, `WIDGET_KINDS` and `PAGE_TYPE_META` against `__fixtures__/design-contract.json`, which the backend's `DesignContractSnapshotTest -Ddesign.contract.update=true` writes — never edit it by hand.
+
 ## Performance rules
 
 - **Catalog lists are fetched once per session.** `useMetadata` (`getMetadata`) and `hooks/catalogCache.ts`

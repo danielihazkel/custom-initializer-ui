@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import type { EntityTemplateSetSummary } from '../../../types'
+import type { DesignKitPin, DesignKitSummary, EntityTemplateSetSummary } from '../../../types'
+import { kitStatus } from '../designKits'
 import type { FeColorPalette } from '../../../hooks/useFrontendMetadata'
 import { PalettePicker } from '../../shared/PalettePicker'
 import { SetDescription, SetLabel, inputClass } from '../controls'
@@ -17,6 +18,14 @@ export interface FrontendAppearance {
   setsLoading: boolean
   setsError: string | null
   loadTemplateSets: () => void
+  /** The published design kits; when there are any, the Look group offers them in place of bare sets. */
+  designKits: DesignKitSummary[]
+  /** The pinned kit version, or null for the set's own look. */
+  designKit: DesignKitPin | null
+  currentKit?: DesignKitSummary
+  /** Picks a kit (its latest version unless one is given) and its frontend set. */
+  pickDesignKit: (kit: DesignKitSummary, version?: number) => void
+  clearDesignKit: () => void
   palettes: FeColorPalette[]
   feError: string | null
   reloadFe: () => void
@@ -50,6 +59,29 @@ function Group({ title, hint, children }: { title: string; hint: string; childre
       </div>
       {children}
     </section>
+  )
+}
+
+/** The pinned kit's state: a newer version to switch to, or a kit that is gone. */
+function KitNotice({ appearance: a, pin }: { appearance: FrontendAppearance; pin: DesignKitPin }) {
+  if (a.designKits.length === 0) return null
+  const status = kitStatus(pin, a.designKits)
+  if (status.kind === 'current') return null
+  if (status.kind === 'missing') {
+    return (
+      <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-[11px] text-on-surface" data-kit-missing>
+        <span>This model uses design kit <b>{pin.key}</b> v{pin.version}, which is no longer available. Generate would fail.</span>
+        <button type="button" onClick={a.clearDesignKit} className="shrink-0 rounded-lg border border-error/40 px-2.5 py-1 text-xs font-medium text-error hover:bg-error/10">Use the set's look</button>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] text-on-surface" data-kit-upgrade>
+      <span>{a.currentKit?.name ?? pin.key} v{status.latest} is available — this model uses v{pin.version}.</span>
+      <button type="button" onClick={() => a.currentKit && a.pickDesignKit(a.currentKit, status.latest)} className="shrink-0 rounded-lg border border-primary/40 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10">
+        Use v{status.latest}
+      </button>
+    </div>
   )
 }
 
@@ -91,7 +123,52 @@ export function FrontendSettings({ appearance: a, hasPages, onEditStartDashboard
             </button>
           </div>
         )}
-        {a.setsLoading ? (
+        {a.designKit && <KitNotice appearance={a} pin={a.designKit} />}
+        {a.designKits.length > 0 && !a.setsLoading ? (
+          <div role="radiogroup" aria-label="Design kit" className="space-y-1.5" id="fs-designKit">
+            {a.designKits.map(k => {
+              const on = a.designKit?.key === k.key
+              const base = a.frontendSets.find(s => s.setKey === k.baseSetKey)
+              return (
+                <button
+                  key={k.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => a.pickDesignKit(k)}
+                  className={`flex w-full items-start gap-3 rounded-lg border-2 p-2.5 text-start transition-colors ${on ? 'border-primary bg-primary/5' : 'border-outline-variant hover:border-primary/40'}`}
+                  data-design-kit={k.key}
+                >
+                  <ShellSketch menora={isMenoraSet(base, k.baseSetKey)} />
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold text-on-surface">
+                      {k.name}
+                      <span className="ms-1.5 font-normal text-secondary">v{on && a.designKit ? a.designKit.version : k.latestVersion}</span>
+                    </span>
+                    {k.description?.trim() && <span className="line-clamp-2 text-[11px] text-secondary" title={k.description}>{k.description}</span>}
+                  </span>
+                </button>
+              )
+            })}
+            {a.frontendSets.filter(s => !a.designKits.some(k => k.baseSetKey === s.setKey)).map(s => (
+              <button
+                key={s.setKey}
+                type="button"
+                role="radio"
+                aria-checked={!a.designKit && s.setKey === a.frontendSet}
+                onClick={() => a.setFrontendSet(s.setKey)}
+                className={`flex w-full items-start gap-3 rounded-lg border-2 p-2.5 text-start transition-colors ${!a.designKit && s.setKey === a.frontendSet ? 'border-primary bg-primary/5' : 'border-outline-variant hover:border-primary/40'}`}
+                data-frontend-set={s.setKey}
+              >
+                <ShellSketch menora={isMenoraSet(s, s.setKey)} />
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold text-on-surface">{s.name}</span>
+                  {s.description?.trim() && <span className="line-clamp-2 text-[11px] text-secondary" title={s.description}>{s.description}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : a.setsLoading ? (
           <div className="h-[58px] animate-pulse rounded bg-surface-container-low" aria-hidden="true" />
         ) : a.frontendSets.length > 1 ? (
           <div role="radiogroup" aria-label="Frontend template set" className="space-y-1.5" id="fs-frontendSet">

@@ -492,6 +492,59 @@ export interface EntityTemplateSetSummary {
   defaultPaletteId: string | null
 }
 
+/** A design kit as `/metadata/design/kits` lists it: the look of the generated frontend (tokens,
+ *  font, assets) on top of one frontend template set. Only kits with a published version are listed. */
+export interface DesignKitSummary {
+  key: string
+  name: string
+  description: string | null
+  /** The frontend template set the kit restyles; picking the kit picks this set. */
+  baseSetKey: string
+  builtIn: boolean
+  enabled: boolean
+  sortOrder: number
+  defaultPaletteId: string | null
+  clonedFrom: string | null
+  latestVersion: number | null
+  hasDraft: boolean
+  /** The kit's colours follow the selected palette (else the palette only feeds success/danger). */
+  paletteAware: boolean
+  /** What picking the kit switches on. */
+  defaults: { locale?: 'en' | 'he'; rtl?: boolean } | null
+}
+
+/** The kit version a model is built with — kept in the model so a later kit release never changes it unasked. */
+export interface DesignKitPin {
+  key: string
+  version: number
+}
+
+/** One design token: a Tailwind theme variable (`color-brand` → `bg-brand`) and its light/dark values. */
+export interface DesignToken {
+  name: string
+  type?: string
+  value: string
+  dark?: string
+  group?: string
+}
+
+/** A published kit version, as `/metadata/design/kits/{key}/versions/{n}` returns it. */
+export interface DesignKitVersion {
+  key: string
+  version: number | null
+  status: 'DRAFT' | 'PUBLISHED'
+  checksum: string | null
+  notes: string | null
+  tokens: { $schema: string; tokens: DesignToken[] }
+  manifest: {
+    imports: string[]
+    fonts?: { package: string; version: string; weights: number[]; comment?: string }
+    defaults?: { locale?: 'en' | 'he'; rtl?: boolean }
+  }
+  css: string
+  assets: { targetPath: string; role: string; contentType: string; sizeBytes: number; sha256: string; meta: string | null; url: string }[]
+}
+
 export interface FullstackStarterRequest {
   groupId?: string
   artifactId?: string
@@ -506,6 +559,8 @@ export interface FullstackStarterRequest {
   dependencies?: string[]
   backendTemplateSet?: string
   frontendTemplateSet?: string
+  /** The design kit that styles the frontend: `key@version` (it also picks the frontend set). */
+  designKit?: string
   /** Optional dashboard header overrides; blank falls back to the generated defaults. */
   dashboardTitle?: string
   dashboardOverview?: string
@@ -795,6 +850,8 @@ export interface ExampleSettings {
   backendTemplateSet?: string
   frontendTemplateSet?: string
   colorPalette?: string
+  /** A design kit key, or `key@version` (the kit's latest version when bare). */
+  designKit?: string
   scaffold?: string[]
   nav?: FullstackNav
 }

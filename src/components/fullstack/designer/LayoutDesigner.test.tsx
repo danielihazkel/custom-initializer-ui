@@ -409,6 +409,7 @@ describe('Layout designer — Appearance', () => {
         appearance={{
           frontendSets: sets, frontendSet, setFrontendSet, currentFrontendSet: current,
           setsLoading: false, setsError: null, loadTemplateSets: () => {},
+          designKits: [], designKit: null, pickDesignKit: () => {}, clearDesignKit: () => {},
           palettes, feError: null, reloadFe: () => {},
           effectivePalette: effective, setDefaultPalette: 'ocean', colorPalette, setColorPalette,
           locale: meta.locale, dashboardTitle: meta.dashboardTitle, dashboardOverview: meta.dashboardOverview,
