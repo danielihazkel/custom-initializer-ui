@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { EditorView } from '@codemirror/view'
-import { langFromPath } from './lang-from-path'
+import { useLanguage } from './lang-from-path'
 
 const transparentTheme = EditorView.theme({
   '&': { background: 'transparent !important', height: '100%' },
@@ -20,7 +20,8 @@ interface Props {
 export function ReadOnlyCodeViewer({ code, targetPath }: Props) {
   // react-codemirror compares `extensions` by identity — a fresh array per render would
   // reconfigure the editor (and rebuild the parser) every time the parent re-renders.
-  const extensions = useMemo(() => [langFromPath(targetPath), transparentTheme], [targetPath])
+  const language = useLanguage(targetPath)
+  const extensions = useMemo(() => [language, transparentTheme], [language])
   return (
     <CodeMirror
       value={code}

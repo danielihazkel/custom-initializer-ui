@@ -657,7 +657,10 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           <div className="flex gap-1.5">
             <Editable {...link} control="parent" label="Edit the parent entity" className="w-[34%] shrink-0">
               <div className="rounded border border-outline-variant p-1">
-                <p className="px-1 pb-0.5 text-[9px] font-semibold uppercase tracking-wide text-secondary">{screen.parentTitle}</p>
+                <div className="flex items-baseline justify-between gap-1 px-1 pb-0.5">
+                  <p className="truncate text-[9px] font-semibold uppercase tracking-wide text-secondary">{screen.parentTitle}</p>
+                  {screen.parentNew && <span className="shrink-0 text-[8px] font-medium" style={{ color: accent }} data-preview-parent-new>+ {screen.parentNew}</span>}
+                </div>
                 {state !== 'data' && <div className="px-1"><StateNote states={states} empty={states.noRecordsYet} /></div>}
                 {state === 'data' && screen.parentItems.map((item, i) => (
                   <p

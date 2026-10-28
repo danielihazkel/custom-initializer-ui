@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { FullstackEntityDef, FullstackPageDef, FullstackPageType, FullstackWidgetDef } from '../../../types'
 import { entityOption } from '../fieldOptions'
 import { buildLayoutPreview } from '../layoutPreviewModel'
@@ -79,6 +79,22 @@ export interface LayoutIssue {
  * deserves), so the two hosts cannot drift apart. Selection, galleries and other view state stay
  * with each host.
  */
+/**
+ * `pages` for what is only drawn from them — the canvas preview, suggestion lists — a render behind
+ * while typing, so a keystroke in the inspector doesn't wait for every page to be redrawn from
+ * sample data. Only while the layout keeps its shape (the same pages, of the same types, with the
+ * same widgets): an add, a remove or a type switch is drawn at once, so indices never disagree.
+ */
+export function useDrawnPages(pages: FullstackPageDef[]): FullstackPageDef[] {
+  const deferred = useDeferredValue(pages)
+  if (deferred === pages || deferred.length !== pages.length) return pages
+  for (let i = 0; i < pages.length; i++) {
+    const a = deferred[i]; const b = pages[i]
+    if (a.type !== b.type || (a.widgets?.length ?? 0) !== (b.widgets?.length ?? 0)) return pages
+  }
+  return deferred
+}
+
 export function usePagesModel({ pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, onOpenKey, onAdd, onRemovedKey, ldapAuth }: PagesModelOptions) {
   const keys = useStableKeys(pages, p => p.id)
   const named = entities.filter(e => e.name.trim())
@@ -393,7 +409,12 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     pushUndo('Started a page layout from the entities')
     onChange(seedLayout(entities, { title: previewSettings?.dashboardTitle, description: previewSettings?.dashboardOverview }))
   }
-  const layoutTemplates = useMemo(() => LAYOUT_TEMPLATES.map(t => ({ template: t, result: buildLayoutTemplate(t, entities) })), [entities])
+  // Building all the whole-layout templates is a few ms per model edit, and the gallery is rarely
+  // on screen: built on first call (only a visible gallery calls it), then kept until the model changes.
+  const layoutTemplates = useMemo(() => {
+    let built: { template: (typeof LAYOUT_TEMPLATES)[number]; result: ReturnType<typeof buildLayoutTemplate> }[] | undefined
+    return () => (built ??= LAYOUT_TEMPLATES.map(t => ({ template: t, result: buildLayoutTemplate(t, entities) })))
+  }, [entities])
   function startFromTemplate(label: string, built: FullstackPageDef[]) {
     pushUndo(pages.length > 0 ? `Replaced the page layout with the “${label}” template` : `Started a page layout from the “${label}” template`)
     onChange(built)
@@ -497,11 +518,12 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
 
   const entityOptions = useMemo(() => new Map(entities.map(e => [e.name, entityOption(e)])), [entities])
   const warnPages = useMemo(() => new Set(validation.warnings.map(w => w.page).filter((p): p is number => p != null)), [validation.warnings])
+  const drawnPages = useDrawnPages(pages)
   const preview = useMemo(
-    () => buildLayoutPreview(pages, entities, { locale: settings.locale, projectOpts: settings.projectOpts, warnPages }),
-    [pages, entities, settings.locale, settings.projectOpts, warnPages],
+    () => buildLayoutPreview(drawnPages, entities, { locale: settings.locale, projectOpts: settings.projectOpts, warnPages }),
+    [drawnPages, entities, settings.locale, settings.projectOpts, warnPages],
   )
-  const suggestions = useMemo(() => suggestPages(entities, pages), [entities, pages])
+  const suggestions = useMemo(() => suggestPages(entities, drawnPages), [entities, drawnPages])
 
   const issues: LayoutIssue[] = serverIssue && pages[serverIssue.page]
     ? [{ page: serverIssue.page, field: undefined, summary: `The server rejected “${pageLabel(pages[serverIssue.page])}”: ${serverIssue.message}`, fix: undefined }, ...validation.issues]

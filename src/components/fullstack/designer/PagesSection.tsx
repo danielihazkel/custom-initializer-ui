@@ -27,7 +27,9 @@ export function PagesSection(props: PagesSectionProps) {
   const [confirmClassic, setConfirmClassic] = useState(false)
   const sectionRef = useRef<HTMLElement>(null)
   const named = entities.filter(e => e.name.trim())
-  const layoutTemplates = useMemo(() => LAYOUT_TEMPLATES.map(t => ({ template: t, result: buildLayoutTemplate(t, entities) })), [entities])
+  // Only the empty card shows the template gallery — build the templates only then.
+  const empty = pages.length === 0
+  const layoutTemplates = useMemo(() => (empty ? LAYOUT_TEMPLATES.map(t => ({ template: t, result: buildLayoutTemplate(t, entities) })) : []), [entities, empty])
 
   // The caller's "jump to the first error": the designer opens on the first page with a problem.
   useEffect(() => {

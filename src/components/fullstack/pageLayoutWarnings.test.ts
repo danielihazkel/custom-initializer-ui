@@ -44,6 +44,30 @@ describe('validatePages warnings', () => {
     expect(summaries(fixed)).toEqual([])
   })
 
+  it('flags an entity nothing creates when a created entity needs it, and offers a list page', () => {
+    const model: FullstackEntityDef[] = entities.map(e => (e.name === 'Order'
+      ? { ...e, relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer', required: true }] }
+      : e))
+    // Customers are only read here: a record page, and a list without New.
+    const pages: FullstackPageDef[] = [
+      { id: 'orders', type: 'entity-list', entity: 'Order' },
+      { id: 'customers', type: 'entity-list', entity: 'Customer', hideActions: ['new'] },
+      { id: 'customer', type: 'record', entity: 'Customer', hidden: true },
+    ]
+    const { warnings } = validatePages(pages, model)
+    expect(warnings.map(w => w.summary)).toEqual(['No page creates Customer rows — Order needs one, so it cannot be saved either'])
+    expect(warnings[0].key).toBe('uncreatable:customer')
+    const fixed = warnings[0].fix!.apply(pages)
+    expect(fixed[fixed.length - 1]).toEqual({ id: 'customers-2', type: 'entity-list', entity: 'Customer' })
+
+    // Either side of a master-detail page creates, and so does a form page.
+    expect(summaries([pages[0], { id: 'by-customer', type: 'master-detail', parent: 'Customer', child: 'Order' }], model)).toEqual([])
+    expect(summaries([...pages, { id: 'new-customer', type: 'form', entity: 'Customer', hidden: true }], model)).toEqual([])
+    // A read-only lookup is someone else's job, and an optional relation blocks nothing.
+    expect(summaries(pages, model.map(e => (e.name === 'Customer' ? { ...e, readOnly: true } : e)))).toEqual([])
+    expect(summaries(pages)).toEqual([])
+  })
+
   it('flags recent rows without a record page and offers a hidden one', () => {
     const pages: FullstackPageDef[] = [
       { id: 'home', type: 'dashboard', widgets: [{ kind: 'recent', entity: 'Customer' }] },

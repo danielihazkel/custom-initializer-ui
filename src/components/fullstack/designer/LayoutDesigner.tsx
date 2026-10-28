@@ -169,7 +169,8 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     setSelectedWidget(null)
   }
 
-  const playLinks = useMemo(() => buildPlayLinks(pages, entities), [pages, entities])
+  // Only the play canvas follows links; design mode never reads them.
+  const playLinks = useMemo(() => (mode === 'play' ? buildPlayLinks(pages, entities) : null), [mode, pages, entities])
   // The walked pages that still exist, as indexes; the last is the one on the canvas.
   const trailIndexes = trail.map(k => keys.indexOf(k)).filter(i => i >= 0)
   function startPlay() {
@@ -900,7 +901,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                       navStyle={nav?.style}
                       collapsibleGroups={nav?.collapsibleGroups}
                       narrow={device === 'mobile'}
-                      play={{ links: playLinks, go: playGo, note: setPlayNote }}
+                      play={{ links: playLinks!, go: playGo, note: setPlayNote }}
                       dataState={prefs.dataState}
                     />
                   ) : (

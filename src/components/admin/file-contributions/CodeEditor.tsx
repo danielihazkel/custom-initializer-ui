@@ -1,6 +1,5 @@
-import { useMemo } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
-import { langFromPath } from '../../lang-from-path'
+import { useLanguage } from '../../lang-from-path'
 
 interface Props {
   value: string
@@ -11,7 +10,8 @@ interface Props {
 export function CodeEditor({ value, onChange, targetPath }: Props) {
   // CodeMirror compares `extensions` by identity; rebuilding the array (and a fresh
   // language parser) on every keystroke re-configured the editor per character typed.
-  const extensions = useMemo(() => langFromPath(targetPath), [targetPath])
+  // useLanguage hands back the same array until the language changes (or its grammar arrives).
+  const extensions = useLanguage(targetPath)
   return (
     <CodeMirror
       value={value}

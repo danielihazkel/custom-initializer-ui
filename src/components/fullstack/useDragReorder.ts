@@ -30,6 +30,9 @@ export interface DragReorder {
   indicatorFor(list: string, index: number): DropPosition | null
   /** True for the row being dragged (so it can be dimmed). */
   isDragging(list: string, index: number): boolean
+  /** Changes whenever the drag or hover state does ('' when idle) — a memoized row compares it
+   *  to know its handlers and indicators are out of date. */
+  stateKey: string
 }
 
 interface Hover { list: string; index: number; position: DropPosition }
@@ -100,6 +103,7 @@ export function useDragReorder(onMove: (list: string, from: number, to: number) 
     isDragging(list, index) {
       return drag !== null && drag.list === list && drag.index === index
     },
+    stateKey: drag || hover ? JSON.stringify([drag, hover]) : '',
   }
 }
 

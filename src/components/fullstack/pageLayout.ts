@@ -1009,6 +1009,28 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
       layoutWarn(`entity-without-page:${name}`, `No page shows ${e.name} — the app offers no way to browse or edit its rows`, addListPage(e))
     }
   }
+  // A writable entity nothing creates, which a created entity needs through a required relation:
+  // that entity's New opens a form that can never be saved. What creates (the generated app's New):
+  // a reachable list page that keeps New, a form, wizard, import or calendar page, either side of a
+  // master-detail page, a record page's related tab and a list widget.
+  const creates = new Set<string>(relatedShown.map(n => n.trim().toLowerCase()))
+  const create = (name: string | undefined) => { if (name?.trim()) creates.add(name.trim().toLowerCase()) }
+  for (const p of pages) {
+    if (p.type === 'entity-list' && !(p.hideActions ?? []).includes('new') && (!p.hidden || pagesEmbedding(pages, p.id).length > 0)) create(p.entity)
+    if (p.type === 'form' || p.type === 'wizard' || p.type === 'import' || p.type === 'calendar') create(p.entity)
+    if (p.type === 'master-detail') { create(p.parent); create(p.child) }
+    p.widgets?.forEach(w => { if (w.kind === 'list') create(w.entity) })
+  }
+  for (const e of entities) {
+    const name = e.name.trim().toLowerCase()
+    if (!name || e.readOnly || e.viewQuery?.trim() || creates.has(name)) continue
+    // Only where it blocks something: an entity the layout creates rows of that needs this one.
+    const needs = entities.filter(o => o !== e && creates.has(o.name.trim().toLowerCase()) && (o.relations ?? []).some(r =>
+      r.type === 'MANY_TO_ONE' && r.required && r.targetEntity.trim().toLowerCase() === name))
+    if (needs.length === 0) continue
+    const one = needs.length === 1
+    layoutWarn(`uncreatable:${name}`, `No page creates ${e.name} rows — ${needs.map(o => o.name).join(', ')} ${one ? 'needs' : 'need'} one, so ${one ? 'it' : 'they'} cannot be saved either`, addListPage(e))
+  }
   return out
 }
 

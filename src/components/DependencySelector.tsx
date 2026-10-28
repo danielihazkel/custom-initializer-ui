@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef, useDeferredValue, lazy, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
 import { DependencyCard } from './DependencyCard'
@@ -88,7 +88,10 @@ export function DependencySelector({
     })
   }, [])
 
-  const isCollapsed = (name: string) => !search.trim() && collapsedGroups.has(name)
+  // The list follows the search box a render behind, so typing stays instant while hundreds of
+  // cards are filtered (and animated) in the background.
+  const deferredSearch = useDeferredValue(search)
+  const isCollapsed = (name: string) => !deferredSearch.trim() && collapsedGroups.has(name)
 
   const groups = useMemo<DependencyGroup[]>(() => {
     if (!metadata?.dependencies?.values) return []
@@ -98,8 +101,8 @@ export function DependencySelector({
   const allDeps = useMemo<MetadataOption[]>(() => groups.flatMap(g => g.values ?? []), [groups])
 
   const filtered = useMemo<DependencyGroup[]>(() => {
-    if (!search.trim()) return groups
-    const q = search.toLowerCase()
+    if (!deferredSearch.trim()) return groups
+    const q = deferredSearch.toLowerCase()
     return groups
       .map(group => ({
         ...group,
@@ -108,7 +111,7 @@ export function DependencySelector({
         )
       }))
       .filter(g => g.values.length > 0)
-  }, [groups, search])
+  }, [groups, deferredSearch])
 
   // Stable toggle (reads the latest props through refs) so the memoised DependencyCards
   // don't all re-render whenever the selection changes.
@@ -432,13 +435,9 @@ export function DependencySelector({
                   animate={{ opacity: 1 }}
                   className="min-h-[200px] border-2 border-dashed border-outline-variant/50 rounded-2xl flex flex-col items-center justify-center text-center p-8 bg-surface-container-low/30"
                 >
-                  <motion.div
-                    className="w-16 h-16 rounded-full bg-surface-container-highest flex items-center justify-center mb-4"
-                    animate={{ y: [0, -6, 0] }}
-                    transition={{ duration: 3, ease: 'easeInOut', repeat: Infinity }}
-                  >
+                  <div className="w-16 h-16 rounded-full bg-surface-container-highest flex items-center justify-center mb-4">
                     <span className="material-symbols-outlined text-secondary opacity-50" style={{ fontSize: '32px' }}>inventory_2</span>
-                  </motion.div>
+                  </div>
                   <h4 className="text-sm font-bold text-on-surface mb-1">Your cart is empty</h4>
                   <p className="text-xs text-secondary max-w-[200px]">Search and add dependencies from the panel on the right.</p>
                 </motion.div>

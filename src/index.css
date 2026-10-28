@@ -221,7 +221,7 @@ html.dark .glass-drawer {
 .animated-gradient-btn {
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-container) 100%, var(--color-tertiary) 200%);
   background-size: 200% 200%;
-  animation: gradient-shift 4s ease infinite;
+  background-position: 0% 50%;
   color: var(--color-on-primary);
   box-shadow: 0 4px 15px color-mix(in srgb, var(--color-primary) 40%, transparent);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -260,20 +260,6 @@ html.dark .glass-drawer {
   animation: glow-burst 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
 }
 
-@keyframes gradient-shift {
-  0% {
-    background-position: 0% 50%;
-  }
-
-  50% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
 /* Animations map */
 @keyframes fade-in-up {
   from {
@@ -291,61 +277,12 @@ html.dark .glass-drawer {
   animation: fade-in-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-/* Ambient background blobs — slow, looping drift so the backdrop feels alive */
-@keyframes blob-drift-a {
-  0% {
-    transform: translate(0, 0) scale(1);
-    opacity: 0.85;
-  }
-  100% {
-    transform: translate(8%, 6%) scale(1.12);
-    opacity: 1;
-  }
-}
+/* The page's decorative backdrop and "factory" motifs are drawn still: they used to loop forever,
+   and repainting them (under blurred glass panels) kept the CPU/GPU busy on an idle page. */
 
-@keyframes blob-drift-b {
-  0% {
-    transform: translate(0, 0) scale(1.05);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(-7%, -5%) scale(0.92);
-    opacity: 0.7;
-  }
-}
+/* ── "Working factory" motifs ───── */
 
-@keyframes blob-drift-c {
-  0% {
-    transform: translate(0, 0) scale(0.95);
-    opacity: 0.6;
-  }
-  100% {
-    transform: translate(5%, -8%) scale(1.1);
-    opacity: 0.9;
-  }
-}
-
-.ambient-blob-a {
-  animation: blob-drift-a 22s ease-in-out infinite alternate;
-  will-change: transform, opacity;
-}
-
-.ambient-blob-b {
-  animation: blob-drift-b 26s ease-in-out infinite alternate;
-  will-change: transform, opacity;
-}
-
-.ambient-blob-c {
-  animation: blob-drift-c 19s ease-in-out infinite alternate;
-  will-change: transform, opacity;
-}
-
-/* ── "Working factory" motifs — an assembly line visibly running ───── */
-
-/* Conveyor belt: diagonal stripes scrolling sideways */
-@keyframes conveyor-scroll {
-  to { background-position-x: 44px; }
-}
+/* Conveyor belt: diagonal stripes */
 .factory-conveyor {
   background-image: repeating-linear-gradient(
     -45deg,
@@ -356,28 +293,15 @@ html.dark .glass-drawer {
   );
   background-size: 44px 3px;
   opacity: 0.6;
-  animation: conveyor-scroll 0.9s linear infinite;
-  will-change: background-position;
 }
 
 /* Interlocking gears */
-@keyframes gear-cw { to { transform: rotate(360deg); } }
-@keyframes gear-ccw { to { transform: rotate(-360deg); } }
-.factory-gear-cw {
-  display: inline-block;
-  transform-origin: 50% 50%;
-  animation: gear-cw 8s linear infinite;
-}
+.factory-gear-cw,
 .factory-gear-ccw {
   display: inline-block;
-  transform-origin: 50% 50%;
-  animation: gear-ccw 6s linear infinite;
 }
 
-/* Pipeline divider: a highlight sweeping along the line */
-@keyframes pipe-flow {
-  to { background-position-x: -200%; }
-}
+/* Pipeline divider: a highlight on the line */
 .factory-pipe {
   background-image: linear-gradient(
     90deg,
@@ -387,24 +311,17 @@ html.dark .glass-drawer {
   );
   background-size: 200% 100%;
   background-repeat: repeat;
-  animation: pipe-flow 3s linear infinite;
-  will-change: background-position;
 }
 
-/* Blueprint factory-floor grid, slowly panning diagonally */
-@keyframes grid-pan {
-  to { background-position: 40px 40px; }
-}
+/* Blueprint factory-floor grid */
 .factory-grid {
   background-image:
     linear-gradient(to right, color-mix(in srgb, var(--color-outline-variant) 45%, transparent) 1px, transparent 1px),
     linear-gradient(to bottom, color-mix(in srgb, var(--color-outline-variant) 45%, transparent) 1px, transparent 1px);
   background-size: 40px 40px;
   opacity: 0.5;
-  animation: grid-pan 30s linear infinite;
   -webkit-mask-image: radial-gradient(ellipse at center, black 35%, transparent 80%);
   mask-image: radial-gradient(ellipse at center, black 35%, transparent 80%);
-  will-change: background-position;
 }
 
 /* Scrollbar styling */
@@ -452,10 +369,6 @@ html.dark .glass-drawer {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-  .ambient-blob-a, .ambient-blob-b, .ambient-blob-c,
-  .factory-conveyor, .factory-gear-cw, .factory-gear-ccw, .factory-pipe, .factory-grid {
-    animation: none !important;
-  }
 }
 
 /* User-controlled animation kill switch (header toggle) — stops CSS motion;
@@ -464,9 +377,4 @@ html.motion-off *, html.motion-off *::before, html.motion-off *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
-}
-html.motion-off .ambient-blob-a, html.motion-off .ambient-blob-b, html.motion-off .ambient-blob-c,
-html.motion-off .factory-conveyor, html.motion-off .factory-gear-cw, html.motion-off .factory-gear-ccw,
-html.motion-off .factory-pipe, html.motion-off .factory-grid {
-  animation: none !important;
 }

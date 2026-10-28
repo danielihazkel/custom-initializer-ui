@@ -85,8 +85,23 @@ export function makeSnapshot(s: FullstackSnapshot): FullstackSnapshot {
   }
 }
 
+// Snapshots are detached and never changed once made (see makeSnapshot), so each one is
+// serialized once: the editor compares the live snapshot against the undo burst, the last
+// preview, the last generate, the baseline and every preset/recent on each edit.
+const snapshotJson = new WeakMap<FullstackSnapshot, string>()
+
+/** The snapshot's JSON, computed once per snapshot object. */
+export function snapshotKey(s: FullstackSnapshot): string {
+  let json = snapshotJson.get(s)
+  if (json === undefined) {
+    json = JSON.stringify(s)
+    snapshotJson.set(s, json)
+  }
+  return json
+}
+
 export function snapshotsEqual(a: FullstackSnapshot, b: FullstackSnapshot): boolean {
-  return JSON.stringify(a) === JSON.stringify(b)
+  return a === b || snapshotKey(a) === snapshotKey(b)
 }
 
 /** A short human label for the difference between two snapshots — the undo history's entry

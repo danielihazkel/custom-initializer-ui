@@ -774,7 +774,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           {named.length > 0 && (
             <div className="w-full space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Or start from a layout template</p>
-              <TemplateGallery templates={layoutTemplates} onPick={startFromTemplate} />
+              <TemplateGallery templates={layoutTemplates()} onPick={startFromTemplate} />
             </div>
           )}
         </div>
@@ -785,7 +785,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             <p className="text-[11px] text-secondary">
               <span className="font-semibold text-on-surface">Replace the layout</span> — builds a new one from your entities; Undo brings this one back.
             </p>
-            <TemplateGallery templates={layoutTemplates} onPick={startFromTemplate} />
+            <TemplateGallery templates={layoutTemplates()} onPick={startFromTemplate} />
           </div>
         )}
         <div className={!showPreview ? '' : layout === 'stacked' ? 'space-y-3' : 'grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]'}>

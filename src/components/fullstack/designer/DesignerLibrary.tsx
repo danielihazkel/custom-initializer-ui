@@ -7,7 +7,7 @@ import { pageParts, wizardStepsOf, type PagePart, type PartCard } from '../pageP
 import { WIDGET_KINDS } from '../pages/constants'
 import { EntitySelect } from '../pages/fields'
 import { TemplateGallery } from '../pages/TemplateGallery'
-import type { PagesModel } from '../pages/usePagesModel'
+import { useDrawnPages, type PagesModel } from '../pages/usePagesModel'
 import { fitWidget, widgetName, type WidgetClip } from '../widgetClipboard'
 import { startLibraryDrag, type LibraryDrag } from './dragPayload'
 
@@ -81,9 +81,10 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
   const widgetCap = (page?.widgets?.length ?? 0) >= MAX_WIDGETS
   const dashboards = pages.map((p, i) => ({ p, i })).filter(({ p }) => p.type === 'dashboard')
   // Ready-made widgets for the picked entity that this dashboard does not show yet.
+  const drawnPages = useDrawnPages(pages)
   const suggested = useMemo(
-    () => (isDashboard ? suggestWidgets(entityDef, pages, pageIndex, { entities: named, scaffoldOpts: projectOpts }) : []),
-    [isDashboard, entityDef, pages, pageIndex, named, projectOpts],
+    () => (isDashboard ? suggestWidgets(entityDef, drawnPages, pageIndex, { entities: named, scaffoldOpts: projectOpts }) : []),
+    [isDashboard, entityDef, drawnPages, pageIndex, named, projectOpts],
   ).filter(s => matches(query, s.label, s.blurb))
 
   // Widgets saved in this browser, each fitted to this layout (or why it no longer fits).
@@ -534,7 +535,7 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
             </p>
             {model.named.length === 0
               ? <p className="text-[11px] text-secondary">Name an entity first.</p>
-              : <TemplateGallery templates={model.layoutTemplates.filter(t => matches(query, t.template.label, t.template.blurb))} onPick={onTemplate} />}
+              : <TemplateGallery templates={model.layoutTemplates().filter(t => matches(query, t.template.label, t.template.blurb))} onPick={onTemplate} />}
           </section>
         )}
       </div>
