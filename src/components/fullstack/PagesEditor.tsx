@@ -1,16 +1,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { KitNavIcons } from './pages/kitNavIcons'
 import { handleRadioKeys, syncRadioTabStops } from './rovingRadios'
 import type { FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackPageType, FullstackStarterRequest } from '../../types'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { inputClass } from './controls'
 import { cssEscape } from './focus'
-import { buildLayoutPreview } from './layoutPreviewModel'
-import { LayoutPreview, type EditTarget } from './LayoutPreview'
+import type { EditTarget } from './layoutPreviewModel'
+import { PagesAppPreview } from './pages/PagesAppPreview'
+import { designTexts } from './designer/designTexts'
+import type { DesignIntent } from '../../designRuntime/PreviewFrame'
+import { pageIdOfHash } from '../../designRuntime/payload'
 import { focusWithoutClipping, scrollToElement } from './scroll'
 import { pageFromTemplate } from './layoutTemplates'
 import {
   MAX_PAGES, PAGE_TYPE_META, newPageChoices, inNav, pageFromSuggestion, pageLabel,
-  pagesEmbedding, seedLayout, type PageLayoutValidation,
+  pagesEmbedding, type PageLayoutValidation,
 } from './pageLayout'
 import { ICON_BUTTON, SMALL_BUTTON } from './pages/constants'
 import { EntityOptions, GroupChip, MoveButtons } from './pages/fields'
@@ -20,7 +24,9 @@ import { LayoutWarnings } from './pages/LayoutWarnings'
 import { BulkPageBar } from './pages/BulkPageBar'
 import { NewTabsForm, initialTabsForm, type TabsFormState } from './pages/NewTabsForm'
 import { PageList } from './pages/PageList'
-import { offNavNoteFor, usePagesModel, type PagesPreviewSettings } from './pages/usePagesModel'
+import { usePagesModel, type PagesPreviewSettings } from './pages/usePagesModel'
+
+const NO_KIT_ICONS: readonly string[] = []
 
 export type { PagesPreviewSettings } from './pages/usePagesModel'
 
@@ -116,7 +122,7 @@ export function summarizeLayout(pages: FullstackPageDef[]): string {
  * dashboard plus one list page per entity), which "Start from my entities" materializes as an
  * editable starting point.
  */
-export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, dismissedWarnings, onDismissedWarningsChange }: PagesEditorProps) {
+export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, layout = 'split', codeRequest, history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, dismissedWarnings, onDismissedWarningsChange }: PagesEditorProps) {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   // The "Tabs" gallery card asks which pages to embed before adding anything.
@@ -132,7 +138,6 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const [previewDrawer, setPreviewDrawer] = useState(false)
   // With no layout yet: a preview of the classic shell, and (with one) the template gallery again.
   const [classicPreview, setClassicPreview] = useState(false)
-  const [classicSelected, setClassicSelected] = useState(0)
   const [templatesOpen, setTemplatesOpen] = useState(false)
   // Pages picked for a bulk action, by id (ids that no longer exist drop out on their own).
   const [pickedIds, setPickedIds] = useState<string[]>([])
@@ -339,23 +344,49 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   }, [previewRequest, layout])
 
   const { settings, entityOptions, preview } = model
-  const classicModel = useMemo(
-    () => (pages.length === 0 && classicPreview
-      ? buildLayoutPreview(seedLayout(entities, { title: settings.dashboardTitle, description: settings.dashboardOverview }), entities, { locale: settings.locale, projectOpts: settings.projectOpts })
-      : null),
-    [pages.length, classicPreview, entities, settings.dashboardTitle, settings.dashboardOverview, settings.locale, settings.projectOpts],
-  )
+  // The generated app the preview runs: the model as it stands (no layout: the classic shell),
+  // built only while a preview is open and only when the model can be generated.
+  const previewing = (pages.length > 0 && (previewOpen || previewDrawer)) || (pages.length === 0 && classicPreview)
+  const appRequest = previewing && codeRequest && validation.issues.length === 0 ? codeRequest() : null
   const previewIndex = (() => {
     const i = previewKey ? keys.indexOf(previewKey) : -1
     return i >= 0 ? i : preview.nav[0]?.index ?? 0
   })()
   const previewPage = pages[previewIndex]
-  const offNavNote = offNavNoteFor(previewPage)
+  const previewTexts = useMemo(() => designTexts(preview.screens[previewIndex]), [preview, previewIndex])
+  /** The app's editing layer: a part clicked opens its control, a rename or a widget gesture edits the page. */
+  function previewIntent(intent: DesignIntent) {
+    switch (intent.type) {
+      case 'pickPage': {
+        const index = pages.findIndex(p => p.id === pageIdOfHash(intent.hash))
+        if (index >= 0) setPreviewKey(keys[index] ?? null)
+        break
+      }
+      case 'rename': model.renamePart(previewIndex, intent.control, intent.value); break
+      case 'reorder': reorderWidget(previewIndex, intent.from, intent.to); break
+      case 'resize': resizeWidget(previewIndex, intent.index, intent.span); break
+    }
+  }
+  const appPreview = (onPicked?: () => void) => previewPage ? (
+    <PagesAppPreview
+      request={appRequest}
+      pages={pages}
+      page={previewPage}
+      ring={hover?.page === previewIndex ? hover.control ?? null : null}
+      problems={validation.byPage[previewIndex]}
+      texts={previewTexts}
+      problemCount={validation.issues.length}
+      onPick={control => { onPicked?.(); reveal({ page: previewIndex, control: control ?? undefined }) }}
+      onIntent={previewIntent}
+      onOpenPage={i => setPreviewKey(keys[i] ?? null)}
+    />
+  ) : null
   const { suggestions, issues } = model
   const showPreview = pages.length > 0 && previewOpen
 
   return (
     <EntityOptions.Provider value={entityOptions}>
+    <KitNavIcons.Provider value={settings.kitNavIcons ?? NO_KIT_ICONS}>
     <section
       ref={sectionRef}
       id="fs-pages"
@@ -758,17 +789,12 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               {classicPreview ? 'Hide preview' : 'Preview'}
             </button>
           )}
-          {classicModel && (
+          {classicPreview && named.length > 0 && (
             <div className="w-full space-y-1.5" aria-label="Classic layout preview" role="region">
-              <p className="text-[11px] text-secondary">Sample data · this is the app you get without a page layout</p>
-              <LayoutPreview
-                preview={classicModel}
-                selected={classicSelected}
-                onSelect={setClassicSelected}
-                onEdit={() => {}}
-                skin={settings.skin}
-                palette={settings.palette}
-              />
+              <p className="text-[11px] text-secondary">The generated app with sample rows · this is the app you get without a page layout</p>
+              {codeRequest
+                ? <PagesAppPreview request={appRequest} pages={pages} page={null} problemCount={validation.issues.length} className="h-[28rem]" />
+                : <p className="text-[11px] text-secondary">Open the Fullstack tab's editor to run it.</p>}
             </div>
           )}
           {named.length > 0 && (
@@ -791,7 +817,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         <div className={!showPreview ? '' : layout === 'stacked' ? 'space-y-3' : 'grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]'}>
           {/* The left column: the navigation strips over the page list. One grid cell, so the preview keeps its own. */}
           <div className="min-w-0 space-y-2">
-          {onNavChange && settings.skin === 'tailwind' && (
+          {onNavChange && settings.navOptions !== false && (
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant px-2 py-1" data-nav-options>
               <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary" title="How the generated app lays out its navigation">Nav style</span>
               <span role="radiogroup" aria-label="Navigation style" className="inline-flex overflow-hidden rounded border border-outline-variant">
@@ -936,22 +962,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             <aside className={`min-w-0 space-y-1.5 ${layout === 'split' ? 'hidden xl:block xl:sticky xl:top-20 xl:self-start' : ''}`} aria-label="Layout preview">
               <p className="flex items-center justify-between gap-2 text-[11px] text-secondary">
                 <span className="font-semibold uppercase tracking-wider">Preview</span>
-                <span>Sample data · click a part to edit it</span>
+                <span>The generated app · click a part to edit it</span>
               </p>
-              <LayoutPreview
-                preview={preview}
-                selected={previewIndex}
-                onSelect={i => setPreviewKey(keys[i] ?? null)}
-                onEdit={reveal}
-                highlight={hover}
-                skin={settings.skin}
-                palette={settings.palette}
-                offNavNote={offNavNote}
-                onReorderWidget={reorderWidget}
-                onResizeWidget={resizeWidget}
-                navStyle={nav?.style}
-                collapsibleGroups={nav?.collapsibleGroups}
-              />
+              {codeRequest ? appPreview() : <p className="text-[11px] text-secondary">The preview runs the generated app, which this editor cannot make.</p>}
             </aside>
           )}
         </div>
@@ -962,20 +975,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
 
       {previewDrawer && pages.length > 0 && (
         <PreviewDrawer onClose={() => setPreviewDrawer(false)}>
-          <LayoutPreview
-            preview={preview}
-            selected={previewIndex}
-            onSelect={i => setPreviewKey(keys[i] ?? null)}
-            onEdit={target => { setPreviewDrawer(false); reveal(target) }}
-            highlight={hover}
-            skin={settings.skin}
-            palette={settings.palette}
-            offNavNote={offNavNote}
-            onReorderWidget={reorderWidget}
-            onResizeWidget={resizeWidget}
-            navStyle={nav?.style}
-            collapsibleGroups={nav?.collapsibleGroups}
-          />
+          {codeRequest ? appPreview(() => setPreviewDrawer(false)) : <p className="text-[11px] text-secondary">The preview runs the generated app, which this editor cannot make.</p>}
         </PreviewDrawer>
       )}
       {confirmRemove != null && pages[confirmRemove] && (
@@ -1009,6 +1009,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         />
       )}
     </section>
+    </KitNavIcons.Provider>
     </EntityOptions.Provider>
   )
 }

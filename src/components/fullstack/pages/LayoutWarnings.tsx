@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FullstackPageDef } from '../../../types'
-import type { EditTarget } from '../LayoutPreview'
+import type { EditTarget } from '../layoutPreviewModel'
 import type { LayoutWarning, PageLayoutValidation } from '../pageLayout'
 
 /** Advice about the layout (never blocks Generate): each line jumps to its page, and a fix applies in one undo step. */

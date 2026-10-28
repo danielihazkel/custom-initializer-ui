@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import type { PreviewDataState } from '../layoutPreviewModel'
 
 export type PreviewDevice = 'desktop' | 'tablet' | 'mobile'
@@ -16,12 +15,6 @@ export function nextZoom(zoom: number, direction: -1 | 1): number {
   return ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, from + direction))]
 }
 
-/** The widest the app is drawn at each device width, before the zoom. */
-const DEVICE_WIDTH: Record<PreviewDevice, string> = {
-  desktop: 'max-w-[56rem]',
-  tablet: 'max-w-[34rem]',
-  mobile: 'max-w-[18rem]',
-}
 
 /** The Desktop / Tablet / Mobile switch over a designer canvas. */
 export function DeviceSwitch({ device, onChange }: { device: PreviewDevice; onChange: (device: PreviewDevice) => void }) {
@@ -100,16 +93,3 @@ export function ZoomControl({ zoom, onChange }: { zoom: number; onChange: (zoom:
   )
 }
 
-/** The dotted canvas a preview sits on, at the designer's zoom, desktop, tablet or phone wide. */
-export function CanvasFrame({ device, zoom = CANVAS_ZOOM, children }: { device: PreviewDevice; zoom?: number; children: ReactNode }) {
-  return (
-    <div
-      className="min-h-0 flex-1 overflow-auto bg-background p-6 [background-image:radial-gradient(var(--color-outline-variant)_1px,transparent_1px)] [background-size:16px_16px]"
-      data-designer-canvas
-    >
-      <div className={`mx-auto ${DEVICE_WIDTH[device]}`} style={{ zoom }} data-canvas-device={device}>
-        {children}
-      </div>
-    </div>
-  )
-}

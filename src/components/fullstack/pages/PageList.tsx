@@ -1,6 +1,6 @@
 import type { FullstackEntityDef, FullstackPageDef, FullstackPageType } from '../../../types'
 import type { LayoutPreview as LayoutPreviewModel } from '../layoutPreviewModel'
-import type { EditTarget } from '../LayoutPreview'
+import type { EditTarget } from '../layoutPreviewModel'
 import { moveItem } from '../reorder'
 import { useDragReorder } from '../useDragReorder'
 import {

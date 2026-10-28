@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FullstackNav } from '../../types'
+import type { DesignKitPin, FullstackNav } from '../../types'
 import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
@@ -34,12 +34,13 @@ import { ShortcutsOverlay } from './ShortcutsOverlay'
 import { draftHasUnsavedWork } from './shareGuard'
 import { summarizeEntity } from './summary'
 import { frontendSetDefaults } from './frontendSetDefaults'
+import { effectiveKit, kitDefaults, kitHasNavOptions, kitRef, parseKitRef, useDesignKits, useDesignKitVersion } from './designKits'
 import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { emptyHistory, isTypingTarget, record, redoStep, stepMany, undoStep, type History } from './undo'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesSection } from './designer/PagesSection'
 import type { DesignerTarget } from './designer/LayoutDesigner'
-import type { FrontendAppearance } from './designer/FrontendSettings'
+import { isMenoraSet, type FrontendAppearance } from './designer/FrontendSettings'
 import { pageOfServerError, renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
@@ -85,6 +86,7 @@ const LS = {
   frontendSet: 'fullstack:frontendSet',
   opts: 'fullstack:opts',
   palette: 'fullstack:palette',
+  designKit: 'fullstack:designKit',
   pages: 'fullstack:pages',
   collapsed: 'fullstack:collapsed',
   setup: 'fullstack:setup',
@@ -166,6 +168,7 @@ function readStoredSnapshot(): FullstackSnapshot {
     backendSet: item(LS.backendSet) ?? 'spring-jpa-crud',
     frontendSet: item(LS.frontendSet) ?? 'react-tailwind-crud',
     colorPalette: item(LS.palette) ?? '',
+    designKit: loadJson<DesignKitPin | null>(LS.designKit, null) ?? undefined,
     pages: loadJson<FullstackPageDef[]>(LS.pages, []),
     nav: loadJson<FullstackNav | null>(LS.nav, null) ?? undefined,
     dismissedWarnings: loadJson<string[]>(LS.dismissed, []),
@@ -205,6 +208,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const [scaffoldOpts, setScaffoldOpts] = useState<string[]>(() => shared?.scaffoldOpts ?? loadJson<string[]>(LS.opts, []))
   // '' = follow the frontend set's default palette (the backend resolves it; nothing is sent).
   const [colorPalette, setColorPalette] = useState<string>(() => shared ? (shared.colorPalette ?? '') : (localStorage.getItem(LS.palette) ?? ''))
+  // The design kit version the frontend is styled with (it picks the frontend set); null = the set's own look.
+  const [designKit, setDesignKit] = useState<DesignKitPin | null>(() => shared ? (shared.designKit ?? null) : loadJson<DesignKitPin | null>(LS.designKit, null))
   // The frontend page layout — empty = the classic shell. Arrives with an example / preset / link.
   const [pages, setPages] = useState<FullstackPageDef[]>(() => shared ? (shared.pages ?? []) : loadJson<FullstackPageDef[]>(LS.pages, []))
   // The generated shell's navigation for the layout (sidebar/top bar, folding sections).
@@ -297,17 +302,25 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const setDefaultPalette = currentFrontendSet?.defaultPaletteId
     ?? palettes.find(p => p.isDefault)?.id ?? palettes[0]?.id ?? ''
   const effectivePalette = colorPalette || setDefaultPalette
-  const previewPalette = palettes.find(p => p.id === effectivePalette)
-  // The layout preview draws the shell of the chosen frontend set, in the chosen chrome language
-  // and colour palette.
+  const { kits: designKits } = useDesignKits()
+  const currentKit = designKit ? designKits.find(k => k.key === designKit.key) : undefined
+  // The kit the zip is made with: the pinned one, else the set's own kit, else the house kit.
+  const usedKit = effectiveKit(designKit, frontendSet, designKits)
+  const usedPin = usedKit ? { key: usedKit.kit.key, version: usedKit.version } : null
+  const kitVersion = useDesignKitVersion(usedPin)
+  // The layout's view-model follows the chrome language and what the kit allows (its nav options
+  // and icons); without kits (an older or unreachable backend) the set says which.
+  const usedKitInfo = usedKit?.kit
+  // Nav icons the kit adds: the pinned version's own list when it has loaded, else the latest's.
+  const kitNavIcons = useMemo(() => kitVersion?.manifest.navIcons?.names ?? usedKitInfo?.navIcons ?? [], [kitVersion, usedKitInfo])
   const pagesPreviewSettings = useMemo(() => ({
     locale: meta.locale,
     projectOpts: scaffoldOpts,
-    skin: (currentFrontendSet?.designSystem === 'MENORA_DIGITAL' || frontendSet.includes('menora') ? 'menora' : 'tailwind') as 'menora' | 'tailwind',
-    palette: previewPalette,
+    navOptions: usedKitInfo ? kitHasNavOptions(usedKitInfo) : !isMenoraSet(currentFrontendSet, frontendSet),
+    kitNavIcons,
     dashboardTitle: meta.dashboardTitle,
     dashboardOverview: meta.dashboardOverview,
-  }), [meta.locale, meta.dashboardTitle, meta.dashboardOverview, scaffoldOpts, currentFrontendSet, frontendSet, previewPalette])
+  }), [meta.locale, meta.dashboardTitle, meta.dashboardOverview, scaffoldOpts, currentFrontendSet, frontendSet, usedKitInfo, kitNavIcons])
 
   // Validation — mirrors the backend FullstackRequestValidator so problems surface inline
   // before submit. The server stays the source of truth.
@@ -319,8 +332,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   )
   // A layout outlives the entities it names (rename / delete) — flagged here, not as a 400 later.
   // Page roles are enforced by the generated backend's LDAP groups, so they need an LDAP auth variant (ldap-auth-rest, the sets' default, or ldap-auth).
-  const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth, scaffoldOpts, dismissed: dismissedWarnings }),
-    [pages, entities, ldapAuth, scaffoldOpts, dismissedWarnings])
+  const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth, scaffoldOpts, dismissed: dismissedWarnings, kitIcons: kitNavIcons }),
+    [pages, entities, ldapAuth, scaffoldOpts, dismissedWarnings, kitNavIcons])
   const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageValidation.count
   const hasErrors = errorCount > 0
 
@@ -355,6 +368,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   useEffect(() => { persist(LS.frontendSet, frontendSet) }, [frontendSet])
   useEffect(() => { persist(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
   useEffect(() => { persist(LS.palette, colorPalette) }, [colorPalette])
+  useEffect(() => { persist(LS.designKit, JSON.stringify(designKit)) }, [designKit])
   usePersistThrottled(pages, ps => { persist(LS.pages, JSON.stringify(ps)) })
   useEffect(() => { persist(LS.nav, JSON.stringify(nav ?? null)) }, [nav])
   useEffect(() => { persist(LS.dismissed, JSON.stringify(dismissedWarnings)) }, [dismissedWarnings])
@@ -365,8 +379,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
   const currentSnapshot = useMemo(
-    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages, nav, dismissedWarnings }),
-    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, pages, nav, dismissedWarnings],
+    () => makeSnapshot({ meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, designKit: designKit ?? undefined, pages, nav, dismissedWarnings }),
+    [meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet, colorPalette, designKit, pages, nav, dismissedWarnings],
   )
   const snapshotRef = useRef(currentSnapshot)
   snapshotRef.current = currentSnapshot
@@ -612,6 +626,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     setBackendSet(s.backendSet)
     setFrontendSet(s.frontendSet)
     setColorPalette(s.colorPalette ?? '')
+    setDesignKit(s.designKit ? { ...s.designKit } : null)
     setPages(s.pages ? JSON.parse(JSON.stringify(s.pages)) as FullstackPageDef[] : [])
     setNav(s.nav ? { ...s.nav } : undefined)
     setDismissedWarnings(s.dismissedWarnings ? [...s.dismissedWarnings] : [])
@@ -699,6 +714,15 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     }
     if (settings.colorPalette && palettes.some(x => x.id === settings.colorPalette)) {
       setColorPalette(settings.colorPalette)
+    }
+    const examplePin = parseKitRef(settings.designKit, designKits)
+    const exampleKit = examplePin && designKits.find(k => k.key === examplePin.key)
+    if (examplePin && exampleKit) {
+      seededFrontendSetRef.current = exampleKit.baseSetKey
+      setFrontendSet(exampleKit.baseSetKey)
+      setDesignKit(examplePin)
+    } else if (settings.frontendTemplateSet) {
+      setDesignKit(null)
     }
   }
 
@@ -904,6 +928,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       department: meta.department || undefined,
       backendTemplateSet: backendSet,
       frontendTemplateSet: frontendSet,
+      designKit: designKit ? kitRef(designKit) : undefined,
       dependencies: selectedDeps,
       opts: scaffoldOpts.length ? { scaffold: scaffoldOpts } : undefined,
       colorPalette: colorPalette || undefined,
@@ -1059,6 +1084,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     setFrontendSet('react-tailwind-crud')
     setScaffoldOpts([])
     setColorPalette('')
+    setDesignKit(null)
     setPages([])
     setCollapsed(new Set())
     setLastGenerated(null)
@@ -1185,7 +1211,28 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
   // Everything that decides the generated app's look, for the layout designer's Appearance view.
   const frontendAppearance: FrontendAppearance = {
-    frontendSets, frontendSet, setFrontendSet, currentFrontendSet,
+    frontendSets, frontendSet, currentFrontendSet,
+    setFrontendSet: setKey => {
+      // A bare set is its own look: no kit.
+      setDesignKit(null)
+      setFrontendSet(setKey)
+    },
+    designKits, designKit, currentKit, usedKit: usedKit ?? undefined,
+    pickDesignKit: (kit, version) => {
+      const pin = { key: kit.key, version: version ?? kit.latestVersion ?? 1 }
+      setDesignKit(pin)
+      if (kit.baseSetKey !== frontendSet) {
+        // The kit's own defaults decide language/direction, not the base set's.
+        seededFrontendSetRef.current = kit.baseSetKey
+        setFrontendSet(kit.baseSetKey)
+      }
+      if (designKit?.key !== kit.key) {
+        const defaults = kitDefaults(kit)
+        if (defaults.locale) setMeta(prev => ({ ...prev, locale: defaults.locale! }))
+        if (defaults.rtl) setScaffoldOpts(prev => prev.includes('rtl') ? prev : [...prev, 'rtl'])
+      }
+    },
+    clearDesignKit: () => setDesignKit(null),
     setsLoading, setsError, loadTemplateSets,
     palettes, feError, reloadFe, effectivePalette, setDefaultPalette, colorPalette, setColorPalette,
     locale: meta.locale, dashboardTitle: meta.dashboardTitle, dashboardOverview: meta.dashboardOverview,

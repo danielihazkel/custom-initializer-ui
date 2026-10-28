@@ -1,4 +1,5 @@
-import type { FullstackEntityDef, FullstackNav, FullstackPageDef } from '../../types'
+import type { DesignKitPin, FullstackEntityDef, FullstackNav, FullstackPageDef } from '../../types'
+import { pinFromRef } from './designKits'
 import { describePagesChange } from './pageLayout'
 import { stripUids } from './uid'
 
@@ -59,6 +60,9 @@ export interface FullstackSnapshot {
   /** Seeded colour-palette id for the generated frontend. Absent/blank = the frontend set's
    *  default palette (the backend resolves it). Optional so older presets and links still load. */
   colorPalette?: string
+  /** The design kit version the frontend is styled with (it also decides `frontendSet`). Absent =
+   *  the set's own look; optional so older snapshots still load. */
+  designKit?: DesignKitPin
   /** Frontend page layout. Absent/empty = the classic shell; optional so older snapshots load
    *  (and compare equal to a layout-free editor). */
   pages?: FullstackPageDef[]
@@ -79,6 +83,7 @@ export function makeSnapshot(s: FullstackSnapshot): FullstackSnapshot {
     backendSet: s.backendSet,
     frontendSet: s.frontendSet,
     ...(s.colorPalette ? { colorPalette: s.colorPalette } : {}),
+    ...(s.designKit ? { designKit: { key: s.designKit.key, version: s.designKit.version } } : {}),
     ...(s.pages && s.pages.length > 0 ? { pages: JSON.parse(JSON.stringify(s.pages)) as FullstackPageDef[] } : {}),
     ...(s.nav && (s.nav.style || s.nav.collapsibleGroups) ? { nav: { ...s.nav } } : {}),
     ...(s.dismissedWarnings && s.dismissedWarnings.length > 0 ? { dismissedWarnings: [...s.dismissedWarnings] } : {}),
@@ -125,6 +130,9 @@ export function describeSnapshotChange(prev: FullstackSnapshot, next: FullstackS
   if (JSON.stringify(prev.meta) !== JSON.stringify(next.meta)) return 'Edited project settings'
   if (JSON.stringify(prev.selectedDeps) !== JSON.stringify(next.selectedDeps)) return 'Changed dependencies'
   if (JSON.stringify(prev.scaffoldOpts) !== JSON.stringify(next.scaffoldOpts)) return 'Changed options'
+  if (JSON.stringify(prev.designKit ?? null) !== JSON.stringify(next.designKit ?? null)) {
+    return prev.designKit && next.designKit && prev.designKit.key === next.designKit.key ? 'Updated the design kit' : 'Changed the design kit'
+  }
   if (prev.backendSet !== next.backendSet || prev.frontendSet !== next.frontendSet) return 'Changed template set'
   if (prev.colorPalette !== next.colorPalette) return 'Changed colour palette'
   if (JSON.stringify(prev.nav ?? {}) !== JSON.stringify(next.nav ?? {})) return 'Changed the navigation'
@@ -163,7 +171,8 @@ export function snapshotChangeKey(prev: FullstackSnapshot, next: FullstackSnapsh
   }
   if (JSON.stringify(prev.selectedDeps) !== JSON.stringify(next.selectedDeps)) return 'deps'
   if (JSON.stringify(prev.scaffoldOpts) !== JSON.stringify(next.scaffoldOpts)) return 'opts'
-  if (prev.backendSet !== next.backendSet || prev.frontendSet !== next.frontendSet) return 'sets'
+  if (prev.backendSet !== next.backendSet || prev.frontendSet !== next.frontendSet
+    || JSON.stringify(prev.designKit ?? null) !== JSON.stringify(next.designKit ?? null)) return 'sets'
   if (prev.colorPalette !== next.colorPalette) return 'palette'
   if (JSON.stringify(prev.nav ?? {}) !== JSON.stringify(next.nav ?? {})) return 'nav'
   const pa = prev.pages ?? []; const pb = next.pages ?? []
@@ -194,6 +203,8 @@ export function isSnapshot(v: unknown): v is FullstackSnapshot {
     && typeof s.backendSet === 'string'
     && typeof s.frontendSet === 'string'
     && (s.colorPalette === undefined || typeof s.colorPalette === 'string')
+    && (s.designKit === undefined || (typeof s.designKit === 'object' && s.designKit !== null
+      && typeof (s.designKit as DesignKitPin).key === 'string' && typeof (s.designKit as DesignKitPin).version === 'number'))
     && (s.pages === undefined || Array.isArray(s.pages))
     && (s.nav === undefined || (typeof s.nav === 'object' && s.nav !== null))
     && (s.dismissedWarnings === undefined || (Array.isArray(s.dismissedWarnings) && s.dismissedWarnings.every(k => typeof k === 'string')))
@@ -240,6 +251,7 @@ export function snapshotFromRequest(request: Record<string, unknown>): Fullstack
     backendSet: typeof request.backendTemplateSet === 'string' ? request.backendTemplateSet : 'spring-jpa-crud',
     frontendSet: typeof request.frontendTemplateSet === 'string' ? request.frontendTemplateSet : 'react-tailwind-crud',
     ...(typeof request.colorPalette === 'string' ? { colorPalette: request.colorPalette } : {}),
+    ...(pinFromRef(request.designKit) ? { designKit: pinFromRef(request.designKit) } : {}),
     ...(Array.isArray(request.pages) ? { pages: request.pages as FullstackPageDef[] } : {}),
     ...(request.nav && typeof request.nav === 'object' ? { nav: request.nav as FullstackNav } : {}),
   })

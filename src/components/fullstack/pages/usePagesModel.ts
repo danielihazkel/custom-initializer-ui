@@ -3,7 +3,6 @@ import type { FullstackEntityDef, FullstackPageDef, FullstackPageType, Fullstack
 import { entityOption } from '../fieldOptions'
 import { buildLayoutPreview } from '../layoutPreviewModel'
 import { placePart as placePagePart, renamePart as renamePagePart, type PagePart } from '../pageParts'
-import type { PreviewPalette } from '../LayoutPreview'
 import { moveItem } from '../reorder'
 import { useStableKeys } from '../rowKeys'
 import { LAYOUT_TEMPLATES, buildLayoutTemplate, deletePageTemplate, readPageTemplates, savePageTemplate } from '../layoutTemplates'
@@ -21,20 +20,21 @@ import {
 import type { Lossy, Removed } from './formTypes'
 import { WIDGET_KINDS } from './constants'
 
-/** What the layout preview needs beyond the layout: the chrome language, the project-wide
- *  scaffold opts (list toolbars follow them) and which frontend set draws the shell. */
+/** What the layout's view-model needs beyond the layout: the chrome language, the project-wide
+ *  scaffold opts (list toolbars follow them) and what the model's design kit allows. */
 export interface PagesPreviewSettings {
   locale: 'en' | 'he'
   projectOpts: string[]
-  skin: 'tailwind' | 'menora'
-  /** The colour palette the generator will use — the tailwind shell and accents follow it. */
-  palette?: PreviewPalette
+  /** The kit's shell honours the layout's nav options (sidebar/top bar, folding groups); absent = it does. */
+  navOptions?: boolean
+  /** Nav icons the model's design kit adds to the lucide ones. */
+  kitNavIcons?: string[]
   /** The setup panel's dashboard heading — "Start from my entities" puts it on the dashboard page. */
   dashboardTitle?: string
   dashboardOverview?: string
 }
 
-export const DEFAULT_PREVIEW_SETTINGS: PagesPreviewSettings = { locale: 'en', projectOpts: [], skin: 'tailwind' }
+export const DEFAULT_PREVIEW_SETTINGS: PagesPreviewSettings = { locale: 'en', projectOpts: [] }
 
 export interface PagesModelOptions {
   pages: FullstackPageDef[]
@@ -491,6 +491,12 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
       }
       pushUndo(title ? `Renamed “${pageLabel(page)}” to “${title}”` : `Cleared the title of “${pageLabel(page)}”`)
       retitle(pageIndex, title)
+      return
+    }
+    if (control === 'description') {
+      const description = value.trim()
+      pushUndo(description ? `Changed the description of “${pageLabel(page)}”` : `Cleared the description of “${pageLabel(page)}”`)
+      update(pageIndex, { description: description || undefined })
       return
     }
     const renamed = renamePagePart(pages, pageIndex, named, control, value)

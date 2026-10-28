@@ -130,7 +130,7 @@ export function FullstackExampleForm({ data, errors, onChange, teamModels, onImp
               onChange={next => onChange({ pagesText: next.length ? JSON.stringify(requestPages(next), null, 2) : '' })}
               pushUndo={() => {}}
               onClear={() => onChange({ pagesText: '' })}
-              previewSettings={{ locale: visual.locale, projectOpts: visual.scaffold, skin: visual.menora ? 'menora' : 'tailwind' }}
+              previewSettings={{ locale: visual.locale, projectOpts: visual.scaffold, navOptions: !visual.menora }}
               nav={visual.nav}
               layout="stacked"
             />

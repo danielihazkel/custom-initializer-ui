@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import type { EntityTemplateSetSummary } from '../../../types'
+import type { DesignKitPin, DesignKitSummary, EntityTemplateSetSummary } from '../../../types'
+import { kitSketch, kitStatus, swatchColor } from '../designKits'
 import type { FeColorPalette } from '../../../hooks/useFrontendMetadata'
 import { PalettePicker } from '../../shared/PalettePicker'
 import { SetDescription, SetLabel, inputClass } from '../controls'
@@ -17,6 +18,16 @@ export interface FrontendAppearance {
   setsLoading: boolean
   setsError: string | null
   loadTemplateSets: () => void
+  /** The published design kits; when there are any, the Look group offers them in place of bare sets. */
+  designKits: DesignKitSummary[]
+  /** The pinned kit version, or null: the set's own kit, else the house kit. */
+  designKit: DesignKitPin | null
+  currentKit?: DesignKitSummary
+  /** The kit the zip is made with — pinned, the set's own, or the house kit (see `effectiveKit`). */
+  usedKit?: { kit: DesignKitSummary; version: number; via: 'pinned' | 'set' | 'house' }
+  /** Picks a kit (its latest version unless one is given) and its frontend set. */
+  pickDesignKit: (kit: DesignKitSummary, version?: number) => void
+  clearDesignKit: () => void
   palettes: FeColorPalette[]
   feError: string | null
   reloadFe: () => void
@@ -53,20 +64,74 @@ function Group({ title, hint, children }: { title: string; hint: string; childre
   )
 }
 
-/** A thumbnail of a set's shell: the tailwind sets' dark sidebar, or Menora Digital's white top bar. */
-function ShellSketch({ menora }: { menora: boolean }) {
+/** The pinned kit's state: a newer version to switch to, or a kit that is gone. */
+function KitNotice({ appearance: a, pin }: { appearance: FrontendAppearance; pin: DesignKitPin }) {
+  if (a.designKits.length === 0) return null
+  const status = kitStatus(pin, a.designKits)
+  if (status.kind === 'current') return null
+  if (status.kind === 'missing') {
+    return (
+      <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-[11px] text-on-surface" data-kit-missing>
+        <span>This model uses design kit <b>{pin.key}</b> v{pin.version}, which is no longer available. Generate would fail.</span>
+        <button type="button" onClick={a.clearDesignKit} className="shrink-0 rounded-lg border border-error/40 px-2.5 py-1 text-xs font-medium text-error hover:bg-error/10">Use the house look</button>
+      </div>
+    )
+  }
+  if (status.kind === 'deprecated') {
+    return (
+      <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] text-on-surface" data-kit-deprecated>
+        <span>
+          {a.currentKit?.name ?? pin.key} v{pin.version} is deprecated{status.note ? <>: {status.note}</> : '.'} It still generates.
+        </span>
+        {status.latest > pin.version && (
+          <button type="button" onClick={() => a.currentKit && a.pickDesignKit(a.currentKit, status.latest)} className="shrink-0 rounded-lg border border-outline px-2.5 py-1 text-xs font-medium text-on-surface hover:bg-surface-container-high">
+            Use v{status.latest}
+          </button>
+        )}
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] text-on-surface" data-kit-upgrade>
+      <span>{a.currentKit?.name ?? pin.key} v{status.latest} is available — this model uses v{pin.version}.</span>
+      <button type="button" onClick={() => a.currentKit && a.pickDesignKit(a.currentKit, status.latest)} className="shrink-0 rounded-lg border border-primary/40 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10">
+        Use v{status.latest}
+      </button>
+    </div>
+  )
+}
+
+/** The colours a shell thumbnail is drawn in: the shell's ground, identity, action and page. */
+interface SketchColors { ink: string; brand: string; primary: string; canvas: string }
+
+const SET_SKETCH: SketchColors = { ink: '#2B2F4C', brand: '#9A83F7', primary: '#9A83F7', canvas: '#f3f4f8' }
+const MENORA_SKETCH: SketchColors = { ink: '#37374e', brand: '#684eed', primary: '#ffc700', canvas: '#f4f4f8' }
+
+/** A thumbnail of a shell: a dark sidebar, or a white top bar over a footer band (Menora Digital). */
+function ShellSketch({ menora, colors = menora ? MENORA_SKETCH : SET_SKETCH }: { menora: boolean; colors?: SketchColors }) {
   return menora ? (
-    <span aria-hidden="true" className="flex h-12 w-16 shrink-0 flex-col overflow-hidden rounded border border-outline-variant bg-[#f4f4f8]">
-      <span className="flex h-2.5 items-center gap-0.5 bg-white px-1"><span className="h-1 w-2 rounded-sm bg-[#684eed]" /><span className="h-1 w-3 rounded-sm bg-[#37374e]/30" /></span>
-      <span className="m-1 flex-1 rounded-sm bg-white" />
-      <span className="h-1.5 bg-[#37374e]" />
+    <span aria-hidden="true" className="flex h-12 w-16 shrink-0 flex-col overflow-hidden rounded border border-outline-variant" style={{ background: colors.canvas }}>
+      <span className="flex h-2.5 items-center gap-0.5 bg-white px-1"><span className="h-1 w-2 rounded-sm" style={{ background: colors.brand }} /><span className="h-1 w-3 rounded-sm" style={{ background: colors.ink, opacity: 0.3 }} /></span>
+      <span className="m-1 flex flex-1 items-end justify-end rounded-sm bg-white p-0.5"><span className="h-1 w-2.5 rounded-full" style={{ background: colors.primary }} /></span>
+      <span className="h-1.5" style={{ background: colors.ink }} />
     </span>
   ) : (
-    <span aria-hidden="true" className="flex h-12 w-16 shrink-0 overflow-hidden rounded border border-outline-variant bg-[#f3f4f8]">
-      <span className="w-4 bg-[#2B2F4C]" />
-      <span className="m-1 flex-1 rounded-sm bg-white" />
+    <span aria-hidden="true" className="flex h-12 w-16 shrink-0 overflow-hidden rounded border border-outline-variant" style={{ background: colors.canvas }}>
+      <span className="flex w-4 flex-col gap-0.5 p-0.5" style={{ background: colors.ink }}><span className="h-1 rounded-sm" style={{ background: colors.brand }} /></span>
+      <span className="m-1 flex flex-1 items-start justify-end rounded-sm bg-white p-0.5"><span className="h-1 w-2.5 rounded-sm" style={{ background: colors.primary }} /></span>
     </span>
   )
+}
+
+/** A kit's thumbnail: its own picture when it has one, else its sketch in its own swatch (palette references filled in). */
+function KitSketch({ kit, palette }: { kit: DesignKitSummary; palette?: FeColorPalette }) {
+  if (kit.thumbnail) {
+    return <img src={kit.thumbnail} alt="" aria-hidden="true" className="h-12 w-16 shrink-0 rounded border border-outline-variant bg-white object-cover" data-kit-thumbnail />
+  }
+  const menora = kitSketch(kit) === 'menora'
+  const base = menora ? MENORA_SKETCH : SET_SKETCH
+  const color = (name: string, fallback: string) => swatchColor(kit, name, palette) ?? fallback
+  return <ShellSketch menora={menora} colors={{ ink: color('color-ink', base.ink), brand: color('color-brand', base.brand), primary: color('color-primary', base.primary), canvas: color('color-canvas', base.canvas) }} />
 }
 
 /**
@@ -79,7 +144,10 @@ export function FrontendSettings({ appearance: a, hasPages, onEditStartDashboard
   /** With a layout: opens its first dashboard page, where the heading now lives. */
   onEditStartDashboard?: () => void
 }) {
-  const menora = isMenoraSet(a.currentFrontendSet, a.frontendSet)
+  const menora = a.usedKit ? kitSketch(a.usedKit.kit) === 'menora' : isMenoraSet(a.currentFrontendSet, a.frontendSet)
+  const palette = a.palettes.find(p => p.id === a.effectivePalette)
+  // A set a kit restyles, or that stands for one, is offered as that kit.
+  const bareSets = a.frontendSets.filter(s => !a.designKits.some(k => k.baseSetKey === s.setKey || k.aliases?.includes(s.setKey)))
   return (
     <div className="space-y-6" data-frontend-settings>
       <Group title="Look" hint="The template set draws the whole app — its shell, navigation and components.">
@@ -91,7 +159,59 @@ export function FrontendSettings({ appearance: a, hasPages, onEditStartDashboard
             </button>
           </div>
         )}
-        {a.setsLoading ? (
+        {a.designKit && <KitNotice appearance={a} pin={a.designKit} />}
+        {a.designKits.length > 0 && !a.setsLoading ? (
+          <div role="radiogroup" aria-label="Design kit" className="space-y-1.5" id="fs-designKit">
+            {a.designKits.map(k => {
+              const on = a.usedKit ? a.usedKit.kit.key === k.key : a.designKit?.key === k.key
+              return (
+                <button
+                  key={k.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => a.pickDesignKit(k)}
+                  className={`flex w-full items-start gap-3 rounded-lg border-2 p-2.5 text-start transition-colors ${on ? 'border-primary bg-primary/5' : 'border-outline-variant hover:border-primary/40'}`}
+                  data-design-kit={k.key}
+                >
+                  <KitSketch kit={k} palette={palette} />
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold text-on-surface">
+                      {k.name}
+                      <span className="ms-1.5 font-normal text-secondary">v{on && a.usedKit ? a.usedKit.version : k.latestVersion}</span>
+                      {k.defaultKit && <span className="ms-1.5 rounded-full bg-surface-container-high px-1.5 py-px text-[10px] font-medium text-secondary" data-house-kit>House</span>}
+                    </span>
+                    {k.description?.trim() && <span className="line-clamp-2 text-[11px] text-secondary" title={k.description}>{k.description}</span>}
+                  </span>
+                </button>
+              )
+            })}
+            {a.usedKit && a.usedKit.via !== 'pinned' && (
+              <p className="text-[11px] text-secondary" data-kit-follows>
+                {a.usedKit.via === 'house'
+                  ? <>No kit picked: the app is made with the house kit, {a.usedKit.kit.name}, at its latest version. Pick a kit to keep its version.</>
+                  : <>The {a.currentFrontendSet?.name ?? a.frontendSet} set is {a.usedKit.kit.name}, at its latest version. Pick it to keep its version.</>}
+              </p>
+            )}
+            {bareSets.map(s => (
+              <button
+                key={s.setKey}
+                type="button"
+                role="radio"
+                aria-checked={!a.designKit && s.setKey === a.frontendSet}
+                onClick={() => a.setFrontendSet(s.setKey)}
+                className={`flex w-full items-start gap-3 rounded-lg border-2 p-2.5 text-start transition-colors ${!a.designKit && s.setKey === a.frontendSet ? 'border-primary bg-primary/5' : 'border-outline-variant hover:border-primary/40'}`}
+                data-frontend-set={s.setKey}
+              >
+                <ShellSketch menora={isMenoraSet(s, s.setKey)} />
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold text-on-surface">{s.name}</span>
+                  {s.description?.trim() && <span className="line-clamp-2 text-[11px] text-secondary" title={s.description}>{s.description}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : a.setsLoading ? (
           <div className="h-[58px] animate-pulse rounded bg-surface-container-low" aria-hidden="true" />
         ) : a.frontendSets.length > 1 ? (
           <div role="radiogroup" aria-label="Frontend template set" className="space-y-1.5" id="fs-frontendSet">
@@ -124,7 +244,9 @@ export function FrontendSettings({ appearance: a, hasPages, onEditStartDashboard
         )}
       </Group>
 
-      <Group title="Colours" hint={menora ? 'Menora Digital keeps its brand colours; the palette only feeds the success and danger accents.' : 'The shell, buttons and charts take the palette’s two colours.'}>
+      <Group title="Colours" hint={a.usedKit
+        ? (a.usedKit.kit.paletteAware ? `${a.usedKit.kit.name} takes its brand colours from the palette.` : `${a.usedKit.kit.name} keeps its own colours; the palette only feeds the success and danger accents.`)
+        : menora ? 'Menora Digital keeps its brand colours; the palette only feeds the success and danger accents.' : 'The shell, buttons and charts take the palette’s two colours.'}>
         {a.feError && a.palettes.length === 0 && (
           <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-on-surface" data-palette-error>
             <span>Couldn't load the colour palettes ({a.feError}); the generated app uses the set's default palette.</span>

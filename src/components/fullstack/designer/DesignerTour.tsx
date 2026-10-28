@@ -20,7 +20,7 @@ export const DESIGNER_TOUR: TourStep[] = [
     body: 'Every page of the app in menu order. Click one to open it, drag to reorder, right-click for more; Ctrl- or Shift-click picks several at once.',
   },
   {
-    anchor: '[data-canvas-device]',
+    anchor: '[data-designer-canvas]',
     title: 'The canvas',
     body: 'The page as the generated app draws it, with sample rows. Click a part to edit it, double-click a title to rename it, drag a widget’s edge to resize it.',
   },
