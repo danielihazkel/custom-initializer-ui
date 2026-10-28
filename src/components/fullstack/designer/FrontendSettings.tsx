@@ -201,7 +201,9 @@ export function FrontendSettings({ appearance: a, hasPages, onEditStartDashboard
         )}
       </Group>
 
-      <Group title="Colours" hint={menora ? 'Menora Digital keeps its brand colours; the palette only feeds the success and danger accents.' : 'The shell, buttons and charts take the palette’s two colours.'}>
+      <Group title="Colours" hint={a.currentKit && a.designKit
+        ? (a.currentKit.paletteAware ? `${a.currentKit.name} takes its brand colours from the palette.` : `${a.currentKit.name} keeps its own colours; the palette only feeds the success and danger accents.`)
+        : menora ? 'Menora Digital keeps its brand colours; the palette only feeds the success and danger accents.' : 'The shell, buttons and charts take the palette’s two colours.'}>
         {a.feError && a.palettes.length === 0 && (
           <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-on-surface" data-palette-error>
             <span>Couldn't load the colour palettes ({a.feError}); the generated app uses the set's default palette.</span>
