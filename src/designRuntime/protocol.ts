@@ -16,8 +16,14 @@
  * strips, header numbers, steps, lanes, list columns, …), titles of tabs, steps and header
  * numbers rename in place, a page part from the library drops among its kind (`drag.slot`), the
  * host passes the page's words (`texts`), and `snapshot` returns the screen as static markup.
+ *
+ * v5: the Design Studio shows a kit's components where they are drawn. `slots` names the slot
+ * components (`src/shared/ui/<Name>.tsx`) on screen and the app's routes linked from it, so a
+ * host can walk the app; `highlight` outlines one slot's instances; after each compile the
+ * runtime reports which custom properties the app reads (`tokenUse`), so a token nothing paints
+ * with can be told apart.
  */
-export const PROTOCOL_VERSION = 4
+export const PROTOCOL_VERSION = 5
 
 export type DataState = 'data' | 'empty' | 'loading' | 'error'
 
@@ -78,6 +84,10 @@ export type HostMessage =
   | { type: 'design'; design: DesignState | null }
   /** The screen on show as static markup, once its data has arrived (answered by `snapshot`). */
   | { type: 'snapshot'; id: string }
+  /** The slot components on show, once its data has arrived (answered by `slots`). */
+  | { type: 'slots'; id: string }
+  /** Outline every instance of one slot (its module path) on screen; null: none. Kept across loads. */
+  | { type: 'highlight'; path: string | null }
 
 export interface CompileError { path: string; message: string }
 
@@ -106,3 +116,10 @@ export type RuntimeMessage =
   /** Design mode: a key pressed while the app had the focus, for the host's own shortcuts
    *  (undo, delete, …) — the host replays it on the frame element. */
   | { type: 'key'; key: string; code: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }
+  /** The slot modules drawn on the screen on show, and the app routes (`#/…`) it links to. */
+  | { type: 'slots'; id: string; hash: string; slots: string[]; links: { hash: string; text: string }[] }
+  /** How many instances of the highlighted slot are on screen (0: none on this screen). */
+  | { type: 'highlighted'; path: string; count: number }
+  /** After a compile: how often the app's stylesheets and sources read each custom property
+   *  (`var(--color-brand)` → `color-brand`); a property missing here is read by nothing. */
+  | { type: 'tokenUse'; ref: string; uses: Record<string, number> }
