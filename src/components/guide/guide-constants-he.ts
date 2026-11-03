@@ -1182,7 +1182,7 @@ public class H2Config {
       {
         id: 'build-custom-types',
         title: 'סוגי תצורות',
-        description: 'שלושת סוגי שינויי pom.xml ב-Maven.',
+        description: 'ארבעת סוגי שינויי pom.xml ב-Maven.',
         content: `### ADD_DEPENDENCY
 מוסיף רשומת Maven \`<dependency>\` ל-\`pom.xml\` שנוצר. דורש \`mavenGroupId\` ו-\`mavenArtifactId\`. גרסה ו-scope אופציונליים (תלויות מנוהלות BOM אינן צריכות גרסה).
 
@@ -1203,13 +1203,18 @@ public class H2Config {
 ### ADD_REPOSITORY
 מוסיף רשומת Maven \`<repository>\` ל-\`pom.xml\` שנוצר. ה-\`repoId\` חייב להיות ייחודי ומשמש כ-\`<id>\` ב-XML.
 
-**דוגמת שימוש:** הוספת מאגרי release ו-snapshot של Menora Artifactory כדי שהפרויקט שנוצר יוכל לפתור artifacts פנימיים.`,
+**דוגמת שימוש:** הוספת מאגרי release ו-snapshot של Menora Artifactory כדי שהפרויקט שנוצר יוכל לפתור artifacts פנימיים.
+
+### ADD_BOM
+מייבא BOM לתוך \`<dependencyManagement>\` (\`<type>pom</type><scope>import</scope>\`). דורש \`mavenGroupId\`, \`mavenArtifactId\` ו-\`version\`. הגרסה נכתבת למאפיין pom שנקרא על שם ה-artifact — \`spring-cloud-dependencies\` → \`<spring-cloud.version>\` — וה-BOM מפנה אליו.
+
+**דוגמת שימוש:** ייבוא \`spring-cloud-dependencies\` כך ש-\`spring-cloud-starter-vault-config\` (חיבור ה-Vault המקומי שכל backend כולל) אינו צריך גרסה משלו.`,
         fields: [
           { name: 'dependencyId', type: 'string', required: true, description: 'ה-depId של התלות האב, או `__common__` להחלה על כל הפרויקטים.', example: '__common__' },
-          { name: 'customizationType', type: 'CustomizationType', required: true, description: 'ADD_DEPENDENCY, EXCLUDE_DEPENDENCY, או ADD_REPOSITORY.', example: 'ADD_DEPENDENCY' },
+          { name: 'customizationType', type: 'CustomizationType', required: true, description: 'ADD_DEPENDENCY, EXCLUDE_DEPENDENCY, ADD_REPOSITORY, או ADD_BOM.', example: 'ADD_DEPENDENCY' },
           { name: 'mavenGroupId', type: 'string', required: false, description: 'עבור ADD_DEPENDENCY: קבוצת ה-artifact. עבור EXCLUDE_DEPENDENCY: הקבוצה של התלות הטרנסיטיבית להוצאה.', example: 'org.springframework.boot' },
           { name: 'mavenArtifactId', type: 'string', required: false, description: 'עבור ADD_DEPENDENCY: מזהה ה-artifact. עבור EXCLUDE_DEPENDENCY: מזהה ה-artifact של התלות להוצאה.', example: 'spring-boot-starter-log4j2' },
-          { name: 'version', type: 'string', required: false, description: 'גרסת Maven עבור ADD_DEPENDENCY. השאירו ריק אם מנוהל על ידי Spring Boot BOM.', example: '' },
+          { name: 'version', type: 'string', required: false, description: 'גרסת Maven עבור ADD_DEPENDENCY (השאירו ריק אם מנוהל על ידי BOM), או גרסת ה-BOM עבור ADD_BOM.', example: '' },
           { name: 'excludeFromGroupId', type: 'string', required: false, description: 'EXCLUDE_DEPENDENCY בלבד: מזהה קבוצה של ה-artifact להוסיף לו את בלוק ההוצאה.', example: 'org.springframework.boot' },
           { name: 'excludeFromArtifactId', type: 'string', required: false, description: 'EXCLUDE_DEPENDENCY בלבד: מזהה artifact להוסיף לו את בלוק ההוצאה.', example: 'spring-boot-starter' },
           { name: 'repoId', type: 'string', required: false, description: 'ADD_REPOSITORY: מזהה מאגר ייחודי (משמש כ-<id> ב-pom.xml).', example: 'menora-release' },
