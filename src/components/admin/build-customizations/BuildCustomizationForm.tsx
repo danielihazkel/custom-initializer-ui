@@ -3,7 +3,7 @@ import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 import { COMMON_DEP_ID } from '../shared/adminConstants'
 import { useAdminKind } from '../AdminKindContext'
 
-const BACKEND_TYPES: BuildCustomizationType[] = ['ADD_DEPENDENCY', 'EXCLUDE_DEPENDENCY', 'ADD_REPOSITORY']
+const BACKEND_TYPES: BuildCustomizationType[] = ['ADD_DEPENDENCY', 'EXCLUDE_DEPENDENCY', 'ADD_REPOSITORY', 'ADD_BOM']
 const FRONTEND_TYPES: BuildCustomizationType[] = ['ADD_NPM_DEPENDENCY', 'ADD_NPM_SCRIPT', 'ADD_VITE_PLUGIN']
 
 interface Props {
@@ -97,6 +97,21 @@ export function BuildCustomizationForm({ data, isEditing, errors, onChange, depe
             />
             <span className="text-sm text-on-surface">Snapshots enabled</span>
           </label>
+        </div>
+      )}
+
+      {type === 'ADD_BOM' && (
+        <div className="space-y-4 border-t border-outline-variant pt-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-secondary">Imported BOM</p>
+          <FieldRow label="Maven Group ID" required error={errors.mavenGroupId}>
+            <input className={inputClass} value={data.mavenGroupId ?? ''} onChange={e => onChange({ mavenGroupId: e.target.value })} placeholder="org.springframework.cloud" />
+          </FieldRow>
+          <FieldRow label="Maven Artifact ID" required error={errors.mavenArtifactId} hint="The pom property is named after it: spring-cloud-dependencies → spring-cloud.version">
+            <input className={inputClass} value={data.mavenArtifactId ?? ''} onChange={e => onChange({ mavenArtifactId: e.target.value })} placeholder="spring-cloud-dependencies" />
+          </FieldRow>
+          <FieldRow label="Version" required error={errors.version} hint="Must match the Spring Boot version of the generated project">
+            <input className={inputClass} value={data.version ?? ''} onChange={e => onChange({ version: e.target.value })} placeholder="2023.0.3" />
+          </FieldRow>
         </div>
       )}
 

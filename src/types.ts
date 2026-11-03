@@ -213,6 +213,7 @@ export type BuildCustomizationType =
   | 'ADD_DEPENDENCY'
   | 'EXCLUDE_DEPENDENCY'
   | 'ADD_REPOSITORY'
+  | 'ADD_BOM'
   | 'ADD_NPM_DEPENDENCY'
   | 'ADD_NPM_SCRIPT'
   | 'ADD_VITE_PLUGIN'
