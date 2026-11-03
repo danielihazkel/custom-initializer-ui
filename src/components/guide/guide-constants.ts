@@ -1182,7 +1182,7 @@ The DB is the source of truth. Editing the catalog manifest seeds a fresh DB; fo
       {
         id: 'build-custom-types',
         title: 'Customization Types',
-        description: 'The three types of Maven pom.xml modifications.',
+        description: 'The four types of Maven pom.xml modifications.',
         content: `### ADD_DEPENDENCY
 Adds a Maven \`<dependency>\` entry to the generated \`pom.xml\`. Requires \`mavenGroupId\` and \`mavenArtifactId\`. Version and scope are optional (BOM-managed dependencies don't need a version).
 
@@ -1203,13 +1203,18 @@ Requires:
 ### ADD_REPOSITORY
 Adds a Maven \`<repository>\` entry to the generated \`pom.xml\`. The \`repoId\` must be unique and is used as the XML \`<id>\`.
 
-**Example use case:** Adding the Menora Artifactory release and snapshot repositories so the generated project can resolve internal artifacts.`,
+**Example use case:** Adding the Menora Artifactory release and snapshot repositories so the generated project can resolve internal artifacts.
+
+### ADD_BOM
+Imports a BOM into \`<dependencyManagement>\` (\`<type>pom</type><scope>import</scope>\`). Requires \`mavenGroupId\`, \`mavenArtifactId\` and \`version\`. The version is written to a pom property named after the artifact — \`spring-cloud-dependencies\` → \`<spring-cloud.version>\` — and the BOM refers to it.
+
+**Example use case:** Importing \`spring-cloud-dependencies\` so \`spring-cloud-starter-vault-config\` (the local Vault connection every backend ships) needs no version of its own.`,
         fields: [
           { name: 'dependencyId', type: 'string', required: true, description: 'The depId of the parent dependency, or `__common__` to apply to all projects.', example: '__common__' },
-          { name: 'customizationType', type: 'CustomizationType', required: true, description: 'ADD_DEPENDENCY, EXCLUDE_DEPENDENCY, or ADD_REPOSITORY.', example: 'ADD_DEPENDENCY' },
+          { name: 'customizationType', type: 'CustomizationType', required: true, description: 'ADD_DEPENDENCY, EXCLUDE_DEPENDENCY, ADD_REPOSITORY, or ADD_BOM.', example: 'ADD_DEPENDENCY' },
           { name: 'mavenGroupId', type: 'string', required: false, description: 'For ADD_DEPENDENCY: the artifact group. For EXCLUDE_DEPENDENCY: the group of the transitive dependency to exclude.', example: 'org.springframework.boot' },
           { name: 'mavenArtifactId', type: 'string', required: false, description: 'For ADD_DEPENDENCY: the artifact ID. For EXCLUDE_DEPENDENCY: the artifact ID of the dependency to exclude.', example: 'spring-boot-starter-log4j2' },
-          { name: 'version', type: 'string', required: false, description: 'Maven version for ADD_DEPENDENCY. Leave blank if managed by the Spring Boot BOM.', example: '' },
+          { name: 'version', type: 'string', required: false, description: 'Maven version for ADD_DEPENDENCY (leave blank if managed by a BOM), or the BOM version for ADD_BOM.', example: '' },
           { name: 'excludeFromGroupId', type: 'string', required: false, description: 'EXCLUDE_DEPENDENCY only: group ID of the artifact to add the exclusion block to.', example: 'org.springframework.boot' },
           { name: 'excludeFromArtifactId', type: 'string', required: false, description: 'EXCLUDE_DEPENDENCY only: artifact ID to add the exclusion block to.', example: 'spring-boot-starter' },
           { name: 'repoId', type: 'string', required: false, description: 'ADD_REPOSITORY: unique repository ID (used as <id> in pom.xml).', example: 'menora-release' },

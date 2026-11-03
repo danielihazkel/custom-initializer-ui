@@ -48,6 +48,11 @@ export function BuildCustomizationsTab() {
       if (!data.excludeFromGroupId?.trim()) e.excludeFromGroupId = 'Required'
       if (!data.excludeFromArtifactId?.trim()) e.excludeFromArtifactId = 'Required'
     }
+    if (data.customizationType === 'ADD_BOM') {
+      if (!data.mavenGroupId?.trim()) e.mavenGroupId = 'Required'
+      if (!data.mavenArtifactId?.trim()) e.mavenArtifactId = 'Required'
+      if (!data.version?.trim()) e.version = 'Required'
+    }
     if (data.customizationType === 'ADD_REPOSITORY') {
       if (!data.repoId?.trim()) e.repoId = 'Required'
       if (!data.repoUrl?.trim()) e.repoUrl = 'Required'
@@ -104,6 +109,9 @@ export function BuildCustomizationsTab() {
       return [r.mavenArtifactId, r.version].filter(Boolean).join('@')
     }
     if (r.customizationType === 'ADD_VITE_PLUGIN') return r.mavenGroupId ?? ''
+    if (r.customizationType === 'ADD_BOM') {
+      return [r.mavenGroupId, r.mavenArtifactId, r.version].filter(Boolean).join(':')
+    }
     return [r.mavenGroupId, r.mavenArtifactId].filter(Boolean).join(':')
   }
 
