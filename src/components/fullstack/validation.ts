@@ -195,6 +195,8 @@ export interface RelationErrors {
   fieldName?: string
   targetEntity?: string
   joinColumn?: string
+  /** A MANY_TO_MANY's join table name, or the kind itself when this entity cannot own one. */
+  joinTable?: string
 }
 
 export interface EntityErrors {
@@ -458,6 +460,15 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       }
       if (rel.joinColumn?.trim() && !COLUMN_RE.test(rel.joinColumn.trim())) {
         rErr.joinColumn = COLUMN_RULE
+      }
+      // A MANY_TO_MANY keeps one key of each side in its join table, so both sides need a single
+      // one, and an entity cannot be both ends of it.
+      if (rel.type === 'MANY_TO_MANY') {
+        if (target && !rErr.targetEntity && target.toLowerCase() === entity.name.trim().toLowerCase()) {
+          rErr.targetEntity = "Can't link an entity to itself this way — add a join entity"
+        }
+        if (pkCount > 1) rErr.joinTable = 'A composite-key entity cannot own a many-to-many'
+        else if (rel.joinTable?.trim() && !COLUMN_RE.test(rel.joinTable.trim())) rErr.joinTable = COLUMN_RULE
       }
       if (Object.keys(rErr).length > 0) {
         eErr.relations = eErr.relations ?? {}

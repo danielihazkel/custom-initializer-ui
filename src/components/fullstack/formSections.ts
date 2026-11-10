@@ -22,7 +22,9 @@ export function syncFormSections(before: FullstackEntityDef, after: FullstackEnt
     const was = r.uid ? (before.relations ?? []).find(x => x.uid === r.uid) : undefined
     if (was && was.fieldName !== r.fieldName) renamed.set(was.fieldName, r.fieldName)
   }
-  const names = new Set([...after.fields.map(f => f.name), ...(after.relations ?? []).map(r => r.fieldName)])
+  // A section lists fields and foreign keys; a many-to-many is drawn after the sections.
+  const names = new Set([...after.fields.map(f => f.name),
+    ...(after.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => r.fieldName)])
   let changed = false
   const sections: FullstackFormSection[] = []
   for (const s of after.formSections) {

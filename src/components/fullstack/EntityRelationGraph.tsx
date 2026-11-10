@@ -85,8 +85,9 @@ export function EntityRelationGraph({ entities, showInverse, onSelect, onCreateR
         const target = byLower.get(r.targetEntity.trim().toLowerCase())
         if (!target || !r.fieldName.trim()) continue
         const source = nodes[i]
-        edges.push({ id: `${source.id}-${r.fieldName}`, source, target, label: r.fieldName.trim(), required: Boolean(r.required) })
-        if (showInverse && source !== target) {
+        // A many-to-many is drawn like a link; only a foreign key gives its target an inverse collection.
+        edges.push({ id: `${source.id}-${r.fieldName}`, source, target, label: r.type === 'MANY_TO_MANY' ? `${r.fieldName.trim()} ⋈` : r.fieldName.trim(), required: Boolean(r.required) })
+        if (showInverse && source !== target && r.type === 'MANY_TO_ONE') {
           const camel = source.label.charAt(0).toLowerCase() + source.label.slice(1)
           target.inverse.push(pluralize(camel))
         }
