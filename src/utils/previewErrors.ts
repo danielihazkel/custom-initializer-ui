@@ -5,7 +5,7 @@ export async function readErrorBody(res: Response): Promise<PreviewError> {
   try {
     const body = await res.json() as {
       error?: string; detail?: string; dep?: string;
-      snippet?: string; statementIndex?: number; messages?: string[]
+      snippet?: string; statementIndex?: number; messages?: string[]; path?: string
     } | null
     if (!body) return fallback
     const messages = Array.isArray(body.messages) && body.messages.length > 0
@@ -13,6 +13,7 @@ export async function readErrorBody(res: Response): Promise<PreviewError> {
       : null
     return {
       message: body.detail ?? messages ?? body.error ?? fallback.message,
+      path: typeof body.path === 'string' ? body.path : undefined,
       kind: body.error,
       dep: body.dep,
       snippet: body.snippet,

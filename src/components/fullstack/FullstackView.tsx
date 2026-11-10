@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
 } from '../../types'
-import { EntitiesEditor, countEntityErrors, newEntity, type EditorDensity, type NoticeAction } from './EntitiesEditor'
+import { EntitiesEditor, countEntityErrors, newEntity, type EditorDensity, type EntityServerIssue, type NoticeAction } from './EntitiesEditor'
 import { EntityNavigator, entityMatches, useActiveEntity } from './EntityNavigator'
 import { SectionNav } from './SectionNav'
 import { focusWithoutClipping, scrollToElement } from './scroll'
@@ -41,7 +41,9 @@ import { PagesSection } from './designer/PagesSection'
 import type { DesignerTarget } from './designer/LayoutDesigner'
 import type { FrontendAppearance } from './designer/FrontendSettings'
 import { renameEntityInRelations } from './relationRefs'
-import { pageOfServerError, renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
+import { describeServerTarget, locateServerIssue, type ServerIssue, type ServerTarget } from './serverIssue'
+import { readErrorBody } from '../../utils/previewErrors'
+import { renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
@@ -211,9 +213,19 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // The generated shell's navigation for the layout (sidebar/top bar, folding sections).
   const [nav, setNav] = useState<FullstackNav | undefined>(() => shared ? shared.nav : (loadJson<FullstackNav | null>(LS.nav, null) ?? undefined))
   const [dismissedWarnings, setDismissedWarnings] = useState<string[]>(() => shared ? (shared.dismissedWarnings ?? []) : loadJson<string[]>(LS.dismissed, []))
-  // A Generate 400 that names a page: shown on that page until the layout changes.
-  const [pageServerIssue, setPageServerIssue] = useState<{ page: number; message: string } | null>(null)
-  useEffect(() => { setPageServerIssue(null) }, [pages])
+  // A Generate / Explore 400 that says where it is (or names a page): shown on that entity, field
+  // or page until the model changes.
+  const [serverIssue, setServerIssue] = useState<ServerIssue | null>(null)
+  useEffect(() => { setServerIssue(null) }, [pages, entities])
+  const serverTarget = useMemo(() => locateServerIssue(serverIssue, pages), [serverIssue, pages])
+  const pageServerIssue = useMemo(
+    () => (serverIssue && serverTarget?.kind === 'page' ? { page: serverTarget.page, message: serverIssue.message } : null),
+    [serverIssue, serverTarget])
+  const entityServerIssue = useMemo<EntityServerIssue | null>(
+    () => (serverIssue && serverTarget?.kind === 'entity'
+      ? { entity: serverTarget.entity, field: serverTarget.field, relation: serverTarget.relation, panel: serverTarget.panel, message: serverIssue.message }
+      : null),
+    [serverIssue, serverTarget])
   // Bumped to make the page editor open its first problem (the sticky bar's "jump to error").
   const [pagesReveal, setPagesReveal] = useState(0)
   // Bumped by the command palette: open the "Add page" gallery / the layout preview.
@@ -273,9 +285,11 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // A preview (Explore) 400 that names a page is shown on that page, like a Generate one is.
   useEffect(() => {
     if (!previewError) return
-    const page = pageOfServerError(previewError.message, pages)
-    if (page != null) setPageServerIssue({ page, message: previewError.message })
-  }, [previewError, pages])
+    const issue: ServerIssue = { message: previewError.message, path: previewError.path }
+    if (locateServerIssue(issue, pages)) showServerIssue(issue)
+    // Only when the answer arrives: `pages` is read as it was sent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewError])
   const { presets, recents, persistFailed: presetsPersistFailed, savePreset, deletePreset, restorePreset, deleteRecent, restoreRecent, pushRecent } = useFullstackPresets()
   const team = useTeamModels()
   const exampleModels = useFullstackExamples()
@@ -1017,8 +1031,10 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         signal: controller.signal,
       })
       if (!res.ok) {
-        const err = await res.json().catch(() => null) as { detail?: string; error?: string } | null
-        throw new Error(err?.detail || err?.error || `HTTP ${res.status}`)
+        // The same reader Explore uses: detail, else the joined messages, else the error — and
+        // where in the request the problem is.
+        const failure = await readErrorBody(res)
+        throw Object.assign(new Error(failure.message), { path: failure.path })
       }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
@@ -1045,13 +1061,12 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         setToast({ message: 'Generation cancelled', type: 'success' })
         return false
       }
-      const message = (err as Error).message
-      const page = pageOfServerError(message, pages)
-      if (page != null) {
-        setPageServerIssue({ page, message })
-        setToast({ message: 'Generation failed — the server rejected a page; it is highlighted in the page layout', type: 'error' })
+      const issue: ServerIssue = { message: (err as Error).message, path: (err as { path?: string }).path }
+      const target = showServerIssue(issue)
+      if (target && target.kind !== 'setting') {
+        setToast({ message: `Generation failed — the server rejected ${describeServerTarget(target)}`, type: 'error' })
       } else {
-        setToast({ message: `Generation failed: ${message}`, type: 'error' })
+        setToast({ message: `Generation failed: ${issue.message}`, type: 'error' })
       }
       return false
     } finally {
@@ -1106,6 +1121,22 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
    *  collapsed card (expanded) — then focuses its name, or the first control matching
    *  `opts.focus` (jump-to-error). Used by the diagram, the suggestions panel, the coverage chips,
    *  the issue counter, and every add/duplicate/restore so a new row is never created off screen. */
+  /**
+   * Puts a server-side problem where it belongs — on the entity card (revealed and focused), or
+   * on the page — and answers what it was about; null when it names nothing the editor can show
+   * it on, which the caller reports as a plain message.
+   */
+  function showServerIssue(issue: ServerIssue): ServerTarget | null {
+    const target = locateServerIssue(issue, pages)
+    if (!target || target.kind === 'setting') return target
+    setServerIssue(issue)
+    if (target.kind === 'entity') {
+      const uid = entities[target.entity]?.uid
+      if (uid) revealRow(uid, { focus: '[data-server-issue]' })
+    }
+    return target
+  }
+
   function revealRow(uid: string, opts?: { focus?: string }) {
     if (visibleUids && !visibleUids.has(uid)) setEntityFilter('')
     setCollapsed(prev => { if (!prev.has(uid)) return prev; const next = new Set(prev); next.delete(uid); return next })
@@ -1544,6 +1575,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
               entities={entities}
               onChange={setEntities}
               errors={entityErrors.entities}
+              serverIssue={entityServerIssue}
               noEntities={entityErrors.noEntities}
               collapsed={collapsed}
               onToggleCollapsed={editorCallbacks.toggleCollapsed}

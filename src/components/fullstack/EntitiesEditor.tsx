@@ -41,6 +41,9 @@ interface Props {
   entities: FullstackEntityDef[]
   onChange: (entities: FullstackEntityDef[]) => void
   errors?: Record<number, EntityErrors>
+  /** A problem only the server found (a Generate / Explore 400), on the entity it names — and its
+   *  field or relation, when it names one. Shown on that card until the model changes. */
+  serverIssue?: EntityServerIssue | null
   /** True when the model has no entities at all — rendered as an error in the empty state. */
   noEntities?: boolean
   /** Entity uids whose card is collapsed to its header (owned by the parent so "jump to first
@@ -113,6 +116,26 @@ export function newEntity(): FullstackEntityDef {
   }
 }
 
+/** A server-side problem on one entity (see `serverIssue.ts`): which, and where in it. */
+export interface EntityServerIssue {
+  entity: number
+  field?: number
+  relation?: number
+  panel?: 'workflow' | 'formSections'
+  message: string
+}
+
+/** What the server's message is about, in the model's own names. */
+function serverIssueSubject(entity: FullstackEntityDef, issue: EntityServerIssue): string {
+  const field = issue.field != null ? entity.fields[issue.field] : undefined
+  if (field) return `field “${field.name.trim() || `#${issue.field! + 1}`}”`
+  const relation = issue.relation != null ? entity.relations?.[issue.relation] : undefined
+  if (relation) return `relation “${relation.fieldName.trim() || `#${issue.relation! + 1}`}”`
+  if (issue.panel === 'workflow') return 'this entity’s workflow'
+  if (issue.panel === 'formSections') return 'this entity’s form sections'
+  return 'this entity'
+}
+
 function newField(): FullstackFieldDef {
   return { uid: newUid(), name: '', type: 'STRING' }
 }
@@ -128,7 +151,7 @@ const SMALL_ICON_BTN = 'p-1 rounded text-secondary hover:text-primary hover:bg-p
 /** Memoized: the Fullstack tab re-renders on every edit anywhere (the layout designer, the setup
  *  panel), and redrawing every entity card for those was most of the cost of a keystroke. */
 export const EntitiesEditor = memo(function EntitiesEditor({
-  entities, onChange: onChangeRaw, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = NO_OPTS, onNotice,
+  entities, onChange: onChangeRaw, errors, serverIssue, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = NO_OPTS, onNotice,
   onRowAdded, lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx, onGoToOptions, onCodeFiles, codeState,
   ldapAuth, onAddDep,
 }: Props) {
@@ -421,6 +444,7 @@ export const EntitiesEditor = memo(function EntitiesEditor({
             eIdx={eIdx}
             entityCount={entities.length}
             eErr={errors?.[eIdx]}
+            serverIssue={serverIssue?.entity === eIdx ? serverIssue : undefined}
             lintCount={lintCounts?.get(entityKey) ?? 0}
             isCollapsed={Boolean(collapsed?.has(entityKey))}
             panelKind={panelKind}
@@ -523,6 +547,8 @@ interface EntityCardProps {
   eIdx: number
   entityCount: number
   eErr?: EntityErrors
+  /** Set only on the card the server's issue names (the others keep their props, and their render). */
+  serverIssue?: EntityServerIssue
   lintCount: number
   isCollapsed: boolean
   /** The secondary panel open on this card, if any. */
@@ -553,7 +579,7 @@ interface EntityCardProps {
  *  a model of a dozen entities was most of the cost of a keystroke. `api` is stable and `dnd` is
  *  compared through `dndKey`; every other prop by identity. */
 const EntityCard = memo(function EntityCard({
-  entity, eIdx, entityCount, eErr, lintCount, isCollapsed, panelKind, expandedRows, quickAddOpen, entityNames,
+  entity, eIdx, entityCount, eErr, serverIssue, lintCount, isCollapsed, panelKind, expandedRows, quickAddOpen, entityNames,
   previewEntities, dnd, density, projectOpts, previewCtx, codeState, onCodeFiles, onGoToOptions, ldapAuth, onAddDep,
   onShowLint, onToggleCollapsed, onNotice, api,
 }: EntityCardProps) {
@@ -617,6 +643,13 @@ const EntityCard = memo(function EntityCard({
         cardDrop === 'before' ? 'border-t-4 border-t-primary' : cardDrop === 'after' ? 'border-b-4 border-b-primary' : ''} ${
         dnd.isDragging('entities', eIdx) ? 'opacity-40' : ''}`}
     >
+      {serverIssue && (
+        <p role="alert" data-error data-server-issue tabIndex={-1}
+           className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-xs text-error outline-none focus-visible:ring-2 focus-visible:ring-error/40">
+          <span className="font-semibold">The server rejected {serverIssueSubject(entity, serverIssue)}:</span>{' '}
+          {serverIssue.message}
+        </p>
+      )}
       {/* Header: identity (row 1), then the generated-page behaviour with the endpoint
           headline on its right (row 2), then the derivation detail behind one disclosure.
           Secondary attributes (labels, mapping, read-only, SELECT view) live behind Settings,
@@ -1022,7 +1055,9 @@ const EntityCard = memo(function EntityCard({
               return (
               <Fragment key={fieldKey}>
               <tr
-                className={`${rowDrop ? dropIndicatorClass(rowDrop) : 'border-t border-outline-variant'} ${dnd.isDragging(fieldList, fIdx) ? 'opacity-40' : ''}`}
+                className={`${rowDrop ? dropIndicatorClass(rowDrop) : 'border-t border-outline-variant'} ${dnd.isDragging(fieldList, fIdx) ? 'opacity-40' : ''} ${
+                  serverIssue?.field === fIdx ? 'bg-error/10' : ''}`}
+                data-server-issue-row={serverIssue?.field === fIdx ? '' : undefined}
                 data-row-uid={field.uid}
                 {...dnd.rowProps(fieldList, fIdx)}
               >

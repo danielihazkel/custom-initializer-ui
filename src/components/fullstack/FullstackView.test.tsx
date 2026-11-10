@@ -141,6 +141,39 @@ describe('FullstackView — generate and shortcuts', () => {
     expect(screen.queryByRole('region', { name: 'Next steps' })).toBeNull()
   })
 
+  it('puts a Generate 400 that says where it is on that entity\'s card, until the model changes', async () => {
+    storeDraft(draftEntities)
+    fetchMock.mockImplementation((url: string) => Promise.resolve(url === '/starter-fullstack.zip'
+      ? response(400, { error: 'Invalid request', detail: 'number may not be that', path: 'entities[0].fields[1].type' })
+      : response(404, { error: `no ${url}` })))
+    render(<FullstackView />)
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true })
+
+    // Not just a toast: the message sits on the card, naming the field, and its row is marked.
+    const issue = await waitFor(() => {
+      const el = document.querySelector('[data-server-issue]')
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+    expect(issue.textContent).toContain('The server rejected field “number”')
+    expect(issue.textContent).toContain('number may not be that')
+    expect(issue.closest('[data-entity-index="0"]')).toBeTruthy()
+    expect(document.querySelectorAll('[data-server-issue-row]')).toHaveLength(1)
+    await screen.findByText(/Generation failed — the server rejected a field/)
+
+    // Any edit to the model retires it: the server has not seen the new one.
+    fireEvent.change(screen.getByLabelText('Entity name'), { target: { value: 'Bill' } })
+    await waitFor(() => expect(document.querySelector('[data-server-issue]')).toBeNull())
+  })
+
+  it('reads a failed Generate like Explore does: detail, else the joined messages', async () => {
+    storeDraft(draftEntities)
+    fetchMock.mockImplementation(() => Promise.resolve(response(400, { error: 'Invalid spec', messages: ['first', 'second'] })))
+    render(<FullstackView />)
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true })
+    await screen.findByText(/Generation failed: first; second/)
+  })
+
   it('opens the save prompt on Ctrl+S even while typing, and the cheat sheet on ?', () => {
     storeDraft(draftEntities)
     render(<FullstackView />)

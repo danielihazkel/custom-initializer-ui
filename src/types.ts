@@ -930,6 +930,8 @@ export interface PreviewResponse {
 
 export interface PreviewError {
   message: string
+  /** Where in the request the problem is (`entities[1].fields[3]`, `pages[2]`), when the server says. */
+  path?: string
   kind?: string       // e.g. "Invalid SQL", "Invalid OpenAPI spec", "Invalid WSDL"
   dep?: string        // dependency id whose script failed (when applicable)
   snippet?: string    // offending statement excerpt (SQL wizard only)
