@@ -1,6 +1,7 @@
 import type { FullstackCalendarMode, FullstackEntityDef, FullstackFieldDef, FullstackInboxQueue, FullstackPageDef, FullstackPageType } from '../../types'
 import { contentLinks, isExternalLink } from './contentMarkdown'
 import { CHOICES, LIMITS } from './schema'
+import { isDateType, isLongTextType, isTextualType } from './fieldTypes'
 
 /**
  * The calendar, board, content, import and search page types: their choices, defaults and the
@@ -40,7 +41,7 @@ export function defaultInboxFields(e: FullstackEntityDef | undefined): string[] 
 }
 
 const eq = (a: string | undefined, b: string | undefined) => a != null && b != null && a.trim().toLowerCase() === b.trim().toLowerCase()
-const isDate = (f: FullstackFieldDef) => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'
+const isDate = (f: FullstackFieldDef) => isDateType(f.type)
 
 /** What a calendar can place rows by: a filterable, non-key date (the period travels as its filter). */
 export const calendarDateFields = (e: FullstackEntityDef | undefined): FullstackFieldDef[] =>
@@ -73,12 +74,12 @@ export function cardFieldOptions(e: FullstackEntityDef | undefined): string[] {
  *  the first text field, else the key — the next two fields but the lane, then the first relation. */
 export function defaultCardFields(e: FullstackEntityDef | undefined, lane: string | undefined): string[] {
   if (!e || e.fields.length === 0) return []
-  const heading = e.fields.find(f => !f.primaryKey && (f.type === 'STRING' || f.type === 'TEXT'))
+  const heading = e.fields.find(f => !f.primaryKey && (isTextualType(f.type)))
     ?? e.fields.find(f => f.primaryKey) ?? e.fields[0]
   const out = [heading.name]
   for (const f of e.fields) {
     if (out.length >= 3) break
-    if (f.primaryKey || f.name === lane || out.includes(f.name) || f.type === 'TEXT') continue
+    if (f.primaryKey || f.name === lane || out.includes(f.name) || isLongTextType(f.type)) continue
     out.push(f.name)
   }
   const relation = (e.relations ?? []).find(r => r.type === 'MANY_TO_ONE')
@@ -88,7 +89,7 @@ export function defaultCardFields(e: FullstackEntityDef | undefined, lane: strin
 
 /** Whether a search can find an entity's rows: some searchable text field. */
 export const searchableEntity = (e: FullstackEntityDef) =>
-  e.fields.some(f => f.searchable !== false && (f.type === 'STRING' || f.type === 'TEXT'))
+  e.fields.some(f => f.searchable !== false && (isTextualType(f.type)))
 
 /** The entities a search page asks when it names none. */
 export const defaultSearchEntities = (entities: FullstackEntityDef[]) =>

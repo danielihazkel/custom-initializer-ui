@@ -3,6 +3,7 @@ import { formSectionsProblem } from './formSections'
 import { workflowProblem } from './workflow'
 import { columnOf, joinColumnOf } from './naming'
 import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
+import { isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
 
 /**
  * Client-side mirror of the backend `FullstackRequestValidator` so users see problems
@@ -107,6 +108,7 @@ export interface FieldErrors {
   email?: string
   defaultValue?: string
   column?: string
+  currency?: string
 }
 
 /** Mirrors FullstackRequestValidator.SQL_NAME: column names are spliced into native SQL. A quoted
@@ -138,6 +140,14 @@ export function defaultValueError(field: {
       return /^[+-]?\d+$/.test(v) ? undefined : 'Must be a whole number'
     case 'BIG_DECIMAL':
       return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(v) ? undefined : 'Must be a number'
+    case 'MONEY':
+      // Two decimals at most — what the column keeps.
+      return /^[+-]?(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(v) ? undefined : 'Must be an amount with at most two decimals'
+    case 'LOCAL_TIME':
+      return /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(v) ? undefined : 'Must be a time (HH:MM or HH:MM:SS)'
+    case 'INSTANT':
+      return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?Z$/.test(v) && !Number.isNaN(Date.parse(v))
+        ? undefined : 'Must be a UTC instant (YYYY-MM-DDTHH:MM:SSZ)'
     case 'BOOLEAN':
       return /^(true|false)$/i.test(v) ? undefined : 'Must be true or false'
     case 'LOCAL_DATE':
@@ -167,7 +177,7 @@ export function carryDefaultAcrossTypes(
 ): string | undefined {
   if (value == null || value.trim() === '') return undefined
   if (from === to) return value
-  const text = (from === 'STRING' || from === 'TEXT') && (to === 'STRING' || to === 'TEXT')
+  const text = isTextualType(from) && isTextualType(to)
   if (text) return value
   const integral = (from === 'LONG' || from === 'INTEGER') && (to === 'LONG' || to === 'INTEGER')
   if (integral) {
@@ -309,7 +319,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       }
 
       // Numeric bounds: only on numeric types, min ≤ max. Regex/email: only on STRING.
-      const isNumeric = field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'BIG_DECIMAL'
+      const isNumeric = isNumericType(field.type)
       if (field.min != null || field.max != null) {
         if (!isNumeric) {
           if (field.min != null) fErr.min = 'Min applies to numeric fields only'
@@ -317,7 +327,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
         } else {
           // Integral bounds must be whole (the DTO renders them into @Min/@Max, which take longs);
           // decimals are only meaningful on BIG_DECIMAL (@DecimalMin/@DecimalMax).
-          if (field.type !== 'BIG_DECIMAL') {
+          if (!isDecimalType(field.type)) {
             const whole = (v: number) => Number.isInteger(v) && (field.type === 'LONG' || (v >= -2147483648 && v <= 2147483647))
             if (field.min != null && !whole(field.min)) fErr.min = field.type === 'INTEGER' && Number.isInteger(field.min) ? 'Out of the int range' : 'Must be a whole number'
             if (field.max != null && !whole(field.max)) fErr.max = field.type === 'INTEGER' && Number.isInteger(field.max) ? 'Out of the int range' : 'Must be a whole number'
@@ -337,6 +347,16 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
 
       const defErr = defaultValueError(field)
       if (defErr) fErr.defaultValue = defErr
+
+      // A currency is a MONEY field's, three letters (the backend upper-cases it; blank = ILS).
+      if (field.currency?.trim()) {
+        if (field.type !== 'MONEY') fErr.currency = 'Currency applies to MONEY only'
+        else if (!/^[A-Za-z]{3}$/.test(field.currency.trim())) fErr.currency = 'A three-letter code such as ILS or USD'
+      }
+      // A key travels in URLs and relation ids, which these types are not fit for.
+      if (field.primaryKey && !isKeyableType(field.type)) {
+        fErr.generated = `A ${field.type} field cannot be the key`
+      }
 
       if (field.column?.trim()) {
         if (entity.viewQuery != null) fErr.column = 'A view maps fields by their names'

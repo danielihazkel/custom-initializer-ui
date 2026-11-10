@@ -325,6 +325,8 @@ export interface AdminEntityTemplateFile {
 export type FullstackFieldType =
   | 'STRING' | 'TEXT' | 'LONG' | 'INTEGER' | 'BOOLEAN'
   | 'LOCAL_DATE' | 'LOCAL_DATE_TIME' | 'BIG_DECIMAL' | 'UUID' | 'ENUM'
+  // Round 9: a time of day, a UTC instant, an amount with a currency, Markdown long text.
+  | 'LOCAL_TIME' | 'INSTANT' | 'MONEY' | 'MARKDOWN'
 
 export interface FullstackFieldDef {
   /** Client-only editor row identity (React key); stripped before the request is sent. */
@@ -340,6 +342,8 @@ export interface FullstackFieldDef {
   max?: number
   pattern?: string
   email?: boolean
+  /** A MONEY field's ISO 4217 currency (`USD`); omitted = ILS. MONEY only. */
+  currency?: string
   enumValues?: string[]
   /** Display labels per enum constant (`{ IN_PROGRESS: 'In progress' }` / Hebrew), shown by the
    *  generated dropdowns, filter chips, kanban lanes, table cells and detail rows. A constant

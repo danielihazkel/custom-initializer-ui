@@ -59,7 +59,7 @@ export interface UiPreviewContext {
 function columnKind(f: FullstackFieldDef): PreviewColumnKind {
   if (f.primaryKey) return 'key'
   switch (f.type) {
-    case 'LONG': case 'INTEGER': case 'BIG_DECIMAL': return 'number'
+    case 'LONG': case 'INTEGER': case 'BIG_DECIMAL': case 'MONEY': return 'number'
     case 'BOOLEAN': return 'bool'
     case 'LOCAL_DATE': case 'LOCAL_DATE_TIME': return 'date'
     case 'ENUM': return 'enum'
@@ -69,11 +69,11 @@ function columnKind(f: FullstackFieldDef): PreviewColumnKind {
 
 function controlKind(f: FullstackFieldDef): PreviewControlKind {
   switch (f.type) {
-    case 'TEXT': return 'textarea'
-    case 'LONG': case 'INTEGER': case 'BIG_DECIMAL': return 'number'
+    case 'TEXT': case 'MARKDOWN': return 'textarea'
+    case 'LONG': case 'INTEGER': case 'BIG_DECIMAL': case 'MONEY': return 'number'
     case 'BOOLEAN': return 'checkbox'
     case 'LOCAL_DATE': return 'date'
-    case 'LOCAL_DATE_TIME': return 'datetime'
+    case 'LOCAL_DATE_TIME': case 'INSTANT': return 'datetime'
     case 'ENUM': return 'select'
     case 'UUID': return 'uuid'
     default: return 'text'

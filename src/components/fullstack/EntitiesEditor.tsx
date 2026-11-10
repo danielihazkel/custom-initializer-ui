@@ -24,14 +24,11 @@ import type { EntityCodeFile } from './entityCode'
 import { ENTITY_OPT_LABELS, PROJECT_ONLY_OPTS } from './scaffoldOptions'
 import { joinEntity } from './joinEntity'
 import { enumLabel, pruneLabels } from './enumLabels'
+import { DEFAULT_CURRENCY, FIELD_TYPES, FIELD_TYPE_LABELS, isDateType, isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
 
 /** A one-click follow-up on a notice — "Undo" after a removal. */
 export type NoticeAction = { label: string; onClick: () => void }
 
-const FIELD_TYPES: FullstackFieldType[] = [
-  'STRING', 'TEXT', 'LONG', 'INTEGER', 'BOOLEAN',
-  'LOCAL_DATE', 'LOCAL_DATE_TIME', 'BIG_DECIMAL', 'UUID', 'ENUM',
-]
 
 /** Field-table density. Compact hides the Label column (the label moves into the row's More
  *  panel and shows as a chip) and tightens the row padding. */
@@ -291,12 +288,15 @@ export const EntitiesEditor = memo(function EntitiesEditor({
     if (type !== 'LONG' && type !== 'INTEGER' && type !== 'UUID') updates.generated = undefined
     // Constraints follow the same "clear what no longer applies" rule the backend enforces:
     // numeric bounds only on numeric types, regex/email only on STRING.
-    const numeric = type === 'LONG' || type === 'INTEGER' || type === 'BIG_DECIMAL'
+    const numeric = isNumericType(type)
     if (!numeric) { updates.min = undefined; updates.max = undefined }
     if (type !== 'STRING') { updates.pattern = undefined; updates.email = undefined }
     // The search/filter opt-out flags only apply to eligible types — clear them when leaving.
-    if (type !== 'STRING' && type !== 'TEXT') updates.searchable = undefined
-    const temporal = type === 'LOCAL_DATE' || type === 'LOCAL_DATE_TIME'
+    if (!isTextualType(type)) updates.searchable = undefined
+    // A currency belongs to money; a key cannot be one of the types a URL cannot carry.
+    if (type !== 'MONEY') updates.currency = undefined
+    if (!isKeyableType(type)) { updates.primaryKey = undefined; updates.generated = undefined }
+    const temporal = isDateType(type)
     if (!(type === 'ENUM' || type === 'BOOLEAN' || temporal || numeric)) updates.filterable = undefined
     // A default is typed per field type: keep it across the lossless pairs (STRING↔TEXT,
     // LONG↔INTEGER), otherwise drop it.
@@ -594,7 +594,7 @@ const EntityCard = memo(function EntityCard({
     const isView = entity.viewQuery != null
     const kanbanOk = !entity.readOnly && !isView
       && entity.fields.some(f => f.type === 'ENUM' || f.type === 'BOOLEAN')
-    const calendarOk = entity.fields.some(f => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME')
+    const calendarOk = entity.fields.some(f => isDateType(f.type))
     // Which list views are enabled (back-compat: fall back to the legacy single listView, else table).
     const views: string[] = entity.listViews ?? (entity.listView ? [entity.listView] : ['table'])
     const VIEW_ORDER = ['table', 'cards', 'kanban', 'calendar']
@@ -1033,12 +1033,12 @@ const EntityCard = memo(function EntityCard({
               const fieldKey = field.uid ?? `i${fIdx}`
               // A generated key requires a single PK (JPA IDENTITY can't target one column of a composite key).
               const canGenerate = !!field.primaryKey && pkCount === 1 && (field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'UUID')
-              const isNumeric = field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'BIG_DECIMAL'
+              const isNumeric = isNumericType(field.type)
               const isString = field.type === 'STRING'
               // Per-field search/filter eligibility mirrors the backend collection loops:
               // search → STRING/TEXT; filter bar → non-PK enum/boolean/temporal/numeric.
-              const isTextSearch = isString || field.type === 'TEXT'
-              const isTemporal = field.type === 'LOCAL_DATE' || field.type === 'LOCAL_DATE_TIME'
+              const isTextSearch = isTextualType(field.type)
+              const isTemporal = isDateType(field.type)
               const isFilterableType = !field.primaryKey
                 && (field.type === 'ENUM' || field.type === 'BOOLEAN' || isTemporal || isNumeric)
               // A generated key takes no constraints, default, lock or search/filter — its
@@ -1046,7 +1046,7 @@ const EntityCard = memo(function EntityCard({
               const generatedKey = Boolean(field.primaryKey && field.generated)
               const hasMorePanel = !generatedKey || compact
               const hasErr = Boolean(
-                fErr?.length || fErr?.min || fErr?.max || fErr?.pattern || fErr?.email || fErr?.enumValues || fErr?.defaultValue)
+                fErr?.length || fErr?.min || fErr?.max || fErr?.pattern || fErr?.email || fErr?.enumValues || fErr?.defaultValue || fErr?.currency)
               const rowKey = `${entityKey}-${fieldKey}`
               // Force open on error so the message is never hidden behind a collapsed panel.
               const isOpen = hasMorePanel && (expanded.has(rowKey) || hasErr)
@@ -1094,7 +1094,7 @@ const EntityCard = memo(function EntityCard({
                     value={field.type}
                     onChange={e => api.changeFieldType(eIdx, fIdx, e.target.value as FullstackFieldType)}
                   >
-                    {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    {FIELD_TYPES.map(t => <option key={t} value={t}>{FIELD_TYPE_LABELS[t] ?? t}</option>)}
                   </select>
                 </td>
                 {!compact && (
@@ -1379,6 +1379,20 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
           />
         </ConstraintBox>
       )}
+      {field.type === 'MONEY' && (
+        <ConstraintBox label="Currency" error={fErr?.currency}>
+          <input
+            aria-label="Currency"
+            aria-invalid={Boolean(fErr?.currency)}
+            className={inputClass(fErr?.currency)}
+            value={field.currency ?? ''}
+            placeholder={DEFAULT_CURRENCY}
+            maxLength={3}
+            title="ISO 4217 code the amounts are printed in (ILS, USD, EUR…). Blank = ILS."
+            onChange={e => onUpdate({ currency: e.target.value.trim() === '' ? undefined : e.target.value.toUpperCase() })}
+          />
+        </ConstraintBox>
+      )}
       {takesConstraints && (
         <ConstraintBox label="Default value" error={fErr?.defaultValue}>
           <DefaultValueInput field={field} invalid={Boolean(fErr?.defaultValue)} className={inputClass(fErr?.defaultValue)}
@@ -1443,11 +1457,13 @@ function DefaultValueInput({ field, invalid, className, onChange }: {
   }
   if (field.type === 'LOCAL_DATE') return <input {...common} type="date" value={value} onChange={e => onChange(e.target.value)} />
   if (field.type === 'LOCAL_DATE_TIME') return <input {...common} type="datetime-local" value={value} onChange={e => onChange(e.target.value)} />
+  if (field.type === 'LOCAL_TIME') return <input {...common} type="time" value={value} onChange={e => onChange(e.target.value)} />
   const placeholder = field.type === 'UUID' ? '00000000-0000-…'
     : field.type === 'LONG' || field.type === 'INTEGER' ? '0'
-    : field.type === 'BIG_DECIMAL' ? '0.00' : 'none'
+    : isDecimalType(field.type) ? '0.00'
+    : field.type === 'INSTANT' ? '2026-01-31T08:00:00Z' : 'none'
   return (
-    <input {...common} type="text" inputMode={field.type === 'STRING' || field.type === 'TEXT' ? undefined : 'decimal'}
+    <input {...common} type="text" inputMode={isTextualType(field.type) ? undefined : 'decimal'}
       value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)} />
   )
 }

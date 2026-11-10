@@ -1,5 +1,6 @@
 import type { FullstackEntityDef, FullstackFieldDef, FullstackTransition, FullstackWorkflow } from '../../types'
 import { LIMITS, NAME_RULES } from './schema'
+import { isDateType } from './fieldTypes'
 
 /** Mirrors FullstackRequestValidator (parseWorkflow). */
 export const MAX_TRANSITIONS = LIMITS.maxTransitions
@@ -10,7 +11,7 @@ const TRANSITION_NAME = NAME_RULES.transitionName
 const same = (a: string | undefined, b: string | undefined) => a != null && b != null && a.trim().toLowerCase() === b.trim().toLowerCase()
 const fieldOf = (entity: FullstackEntityDef, name: string | undefined) => entity.fields.find(f => same(f.name, name))
 const upper = (s: string) => s.trim().toUpperCase()
-const isDate = (f: FullstackFieldDef) => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'
+const isDate = (f: FullstackFieldDef) => isDateType(f.type)
 
 /** The enum fields a workflow can move: non-key and filterable (the list, inbox and board filter by it). */
 export function statusFieldChoices(entity: FullstackEntityDef): FullstackFieldDef[] {

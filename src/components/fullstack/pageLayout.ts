@@ -25,6 +25,7 @@ import { humanize, pluralize } from './naming'
 import { enumLabel, humanizeConstant } from './enumLabels'
 import { summarizeEntity } from './summary'
 import { CHOICES, LIMITS, NAME_RULES } from './schema'
+import { isDateType, isNumericType } from './fieldTypes'
 
 /**
  * The frontend page layout (`pages`) model: validation, the summary lines the editor shows, and
@@ -116,7 +117,7 @@ export function viewDisabledReason(entity: FullstackEntityDef | undefined, view:
   const readOnly = Boolean(entity.readOnly) || entity.viewQuery != null
   if (view === 'kanban' && readOnly) return 'Kanban needs a writable entity'
   if (view === 'kanban' && !entity.fields.some(f => f.type === 'ENUM' || f.type === 'BOOLEAN')) return 'Kanban needs an enum or boolean field'
-  if (view === 'calendar' && !entity.fields.some(f => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME')) return 'Calendar needs a date field'
+  if (view === 'calendar' && !entity.fields.some(f => isDateType(f.type))) return 'Calendar needs a date field'
   return `Not ticked in the list views of ${entity.name}`
 }
 
@@ -370,7 +371,7 @@ export function groupableFields(entity: FullstackEntityDef | undefined): Fullsta
 
 /** What a time series can be bucketed over: a non-key date column. */
 export function dateFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
-  return (entity?.fields ?? []).filter(f => !f.primaryKey && (f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'))
+  return (entity?.fields ?? []).filter(f => !f.primaryKey && (isDateType(f.type)))
 }
 
 /** What the dashboard period can limit: a filterable, non-key date (the list's own date filter). */
@@ -505,8 +506,8 @@ export const PRESET_PERIODS: { value: string; label: string }[] = [
 export type PresetKind = 'choice' | 'date' | 'number'
 
 export function presetKind(f: FullstackFieldDef): PresetKind {
-  if (f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME') return 'date'
-  if (f.type === 'LONG' || f.type === 'INTEGER' || f.type === 'BIG_DECIMAL') return 'number'
+  if (isDateType(f.type)) return 'date'
+  if (isNumericType(f.type)) return 'number'
   return 'choice'
 }
 
@@ -639,7 +640,7 @@ export function trendDateField(w: FullstackWidgetDef, entity: FullstackEntityDef
 /** What sum/avg/min/max can reduce: a non-key numeric column. */
 export function numericFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
   return (entity?.fields ?? [])
-    .filter(f => !f.primaryKey && (f.type === 'LONG' || f.type === 'INTEGER' || f.type === 'BIG_DECIMAL'))
+    .filter(f => !f.primaryKey && (isNumericType(f.type)))
 }
 
 /** What a report can group by: an enum/boolean draws bars, a date draws a line. */
@@ -2132,7 +2133,7 @@ export const PAGE_TYPE_META: Record<FullstackPageType, { icon: string; label: st
 // ── Defaults the generator resolves ─────────────────────────────────────────
 
 const nonKey = (e: FullstackEntityDef | undefined) => (e?.fields ?? []).filter(f => !f.primaryKey)
-const isDate = (f: FullstackFieldDef) => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'
+const isDate = (f: FullstackFieldDef) => isDateType(f.type)
 
 /** The field a breakdown chart groups by when none is picked: the first enum, else the first
  *  boolean (FullstackPageValidator.groupBy). */
@@ -2533,7 +2534,7 @@ export function suggestPages(entities: FullstackEntityDef[], pages: FullstackPag
       })
     }
     if (views.includes('calendar') && !hasListIn('calendar')) {
-      const date = e.fields.find(f => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME')?.name ?? 'date'
+      const date = e.fields.find(f => isDateType(f.type))?.name ?? 'date'
       out.push({
         key: `calendar:${e.name}`,
         icon: 'calendar_month',
@@ -2635,7 +2636,7 @@ export function suggestWidgets(entity: FullstackEntityDef | undefined, pages: Fu
     widget: { kind: 'kpi', entity: name },
   }]
   const numbers = numericFields(entity)
-  const money = numbers.find(f => f.type === 'BIG_DECIMAL') ?? numbers[0]
+  const money = numbers.find(f => f.type === 'MONEY') ?? numbers.find(f => f.type === 'BIG_DECIMAL') ?? numbers[0]
   if (money) {
     candidates.push({
       key: `sum:${money.name}`, icon: 'functions', label: `Total ${labelOf(money).toLowerCase()}`, blurb: `A tile summing ${labelOf(money)} over every ${name}`,

@@ -33,6 +33,7 @@ import { auditText, cellText, detailText, sampleRaw, seeded } from './previewSam
 import {
   CALENDAR_MODES, DEFAULT_INBOX_QUEUES, cardFieldOptions, defaultCardFields, defaultInboxFields, defaultLaneField, defaultSearchEntities, laneValues,
 } from './newPageTypes'
+import { isDecimalType, isNumericType, isTextualType } from './fieldTypes'
 
 /**
  * View-model for the Fullstack tab's layout preview: a wireframe of the app the page layout
@@ -338,14 +339,14 @@ function formatNumber(n: number, locale: 'en' | 'he'): string {
 function magnitude(agg: FullstackAgg | undefined, field: FullstackFieldDef | undefined): [number, number] {
   if (!agg || agg === 'count') return [4, 60]
   const lo = field?.min != null ? Number(field.min) : 10
-  const hi = field?.max != null ? Number(field.max) : field?.type === 'BIG_DECIMAL' ? 900 : 120
+  const hi = field?.max != null ? Number(field.max) : field && isDecimalType(field.type) ? 900 : 120
   const [a, b] = [Number.isFinite(lo) ? lo : 10, Number.isFinite(hi) && hi > lo ? hi : lo + 100]
   return agg === 'sum' ? [a * 20 + 50, b * 20 + 100] : [a, b]
 }
 
 /** The field the generated app labels a row with: the first non-key string (EntityScaffoldContext). */
 function labelFieldOf(e: FullstackEntityDef): FullstackFieldDef | undefined {
-  return e.fields.find(f => !f.primaryKey && (f.type === 'STRING' || f.type === 'TEXT'))
+  return e.fields.find(f => !f.primaryKey && (isTextualType(f.type)))
 }
 
 // ── Builder ──────────────────────────────────────────────────────────────────
@@ -397,7 +398,7 @@ export function buildLayoutPreview(
       return {
         key: f.name,
         label: fieldLabel(f),
-        kind: f.type === 'ENUM' ? 'enum' : !f.primaryKey && (f.type === 'LONG' || f.type === 'INTEGER' || f.type === 'BIG_DECIMAL') ? 'number' : 'text',
+        kind: f.type === 'ENUM' ? 'enum' : !f.primaryKey && (isNumericType(f.type)) ? 'number' : 'text',
         value: (row: number) => (pinned != null ? cellText(f, pinned) : cell(e, f, row)),
         detail: (row: number) => (pinned != null ? detailText(f, pinned, ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') }) : detail(e, f, row)),
       }

@@ -3,6 +3,7 @@ import { entityOptApplicability, summarizeEntity } from './summary'
 import { toCamelCase } from './naming'
 import { newUid } from './uid'
 import { ambiguousMoves, stateLabel, unreachableStates } from './workflow'
+import { isTextualType } from './fieldTypes'
 
 /**
  * Model lint: things that are *valid* (the server would accept them) but will produce a
@@ -78,7 +79,7 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
     }
 
     // Search box: only STRING/TEXT fields feed it, and only while at least one is opted in.
-    const textFields = entity.fields.filter(f => f.type === 'STRING' || f.type === 'TEXT')
+    const textFields = entity.fields.filter(f => isTextualType(f.type))
     if (textFields.length > 0 && textFields.every(f => f.searchable === false)) {
       issues.push({
         id: `no-search:${uid}`,

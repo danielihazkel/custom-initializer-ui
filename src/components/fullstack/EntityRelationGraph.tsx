@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, type SimulationNodeDatum } from 'd3-force'
 import type { FullstackEntityDef } from '../../types'
 import { pluralize } from './naming'
+import { isTextualType } from './fieldTypes'
 
 interface Props {
   entities: FullstackEntityDef[]
@@ -67,7 +68,7 @@ export function EntityRelationGraph({ entities, showInverse, onSelect, onCreateR
     const byLower = new Map<string, Node>()
     const nodes: Node[] = entities.map((e, i) => {
       const pkFields = e.fields.filter(f => f.primaryKey)
-      const labelField = e.fields.find(f => !f.primaryKey && (f.type === 'STRING' || f.type === 'TEXT'))
+      const labelField = e.fields.find(f => !f.primaryKey && (isTextualType(f.type)))
       const n: Node = {
         id: e.uid ?? `i${i}`, uid: e.uid, label: e.name.trim() || '(unnamed)', fields: e.fields.length,
         readOnly: Boolean(e.readOnly || e.viewQuery), isView: Boolean(e.viewQuery), inverse: [],

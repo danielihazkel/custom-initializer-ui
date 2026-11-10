@@ -113,3 +113,10 @@ describe('name rules read from the schema', () => {
     expect(errors.entities[2].name).toMatch(/'Order' already generates a class called OrderDto/)
   })
 })
+
+describe('field types', () => {
+  it('the picker lists exactly the backend\'s types', async () => {
+    const { FIELD_TYPES } = await import('../fieldTypes')
+    expect(sorted(FIELD_TYPES)).toEqual(sorted(SCHEMA.fieldTypes.map(t => t.type)))
+  })
+})

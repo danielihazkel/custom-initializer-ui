@@ -1,5 +1,6 @@
 import type { FullstackEntityDef, FullstackEntityOptKey, FullstackFieldDef } from '../../types'
 import { pluralize, toKebabCase } from './naming'
+import { isDateType, isNumericType, isTextualType } from './fieldTypes'
 
 /** Whether each per-entity scaffold override can take effect on this entity, mirroring the
  *  `*Applicable` derivations in `EntityScaffoldContext.buildEntityContext`: audit/soft delete/bulk
@@ -56,8 +57,8 @@ export interface EntitySummary {
   opts: FullstackEntityOptKey[]
 }
 
-const isTemporal = (f: FullstackFieldDef) => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'
-const isNumeric = (f: FullstackFieldDef) => f.type === 'LONG' || f.type === 'INTEGER' || f.type === 'BIG_DECIMAL'
+const isTemporal = (f: FullstackFieldDef) => isDateType(f.type)
+const isNumeric = (f: FullstackFieldDef) => isNumericType(f.type)
 
 export function summarizeEntity(entity: FullstackEntityDef, projectOpts: string[] = []): EntitySummary {
   const name = entity.name.trim() || 'Entity'
@@ -95,7 +96,7 @@ export function summarizeEntity(entity: FullstackEntityDef, projectOpts: string[
   if (views.length === 0) views.push({ name: 'table' })
 
   const search = entity.fields
-    .filter(f => (f.type === 'STRING' || f.type === 'TEXT') && f.searchable !== false)
+    .filter(f => (isTextualType(f.type)) && f.searchable !== false)
     .map(f => f.name)
   const filters = entity.fields
     .filter(f => !f.primaryKey && f.filterable !== false
