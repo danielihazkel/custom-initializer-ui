@@ -233,6 +233,8 @@ export interface AdminBuildCustomization {
   snapshotsEnabled: boolean
   scope?: string
   subOptionId?: string
+  /** Spring Boot version range the row applies to (`[3.4.0,3.5.0)`); blank = every version. Backend rows. */
+  compatibilityRange?: string | null
   sortOrder: number
   projectKind?: ProjectKind
 }
