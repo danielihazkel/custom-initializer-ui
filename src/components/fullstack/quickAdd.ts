@@ -33,6 +33,8 @@ const TYPE_ALIASES: Record<string, FullstackFieldType> = {
   instant: 'INSTANT',
   money: 'MONEY', amount: 'MONEY',
   markdown: 'MARKDOWN', md: 'MARKDOWN', rich_text: 'MARKDOWN', richtext: 'MARKDOWN',
+  file: 'FILE', attachment: 'FILE',
+  image: 'IMAGE', photo: 'IMAGE', picture: 'IMAGE',
   enum: 'ENUM',
 }
 

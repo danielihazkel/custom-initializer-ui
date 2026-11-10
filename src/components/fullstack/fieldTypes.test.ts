@@ -101,3 +101,20 @@ describe('preview text', () => {
       .toBe(new Date('2026-01-31T08:00:00Z').toLocaleString('en'))
   })
 })
+
+describe('file and image fields', () => {
+  it('are not keys, take no default, and quick add reads them', () => {
+    expect(isKeyableType('FILE')).toBe(false)
+    expect(isKeyableType('IMAGE')).toBe(false)
+    expect(defaultValueError({ type: 'FILE', defaultValue: 'a.pdf' })).toMatch(/uploaded, not typed/)
+    const { fields, errors } = parseQuickAdd('contract file\nphoto image required\nscan attachment\navatar photo')
+    expect(errors).toEqual([])
+    expect(fields.map(f => f.type)).toEqual(['FILE', 'IMAGE', 'FILE', 'IMAGE'])
+    expect(fields[1].required).toBe(true)
+  })
+
+  it('validate as ordinary fields otherwise', () => {
+    const errors = validateEntities([entity({ name: 'contract', type: 'FILE' }, { name: 'photo', type: 'IMAGE', required: true })])
+    expect(errors.entities[0]).toBeUndefined()
+  })
+})

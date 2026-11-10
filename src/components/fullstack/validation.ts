@@ -140,6 +140,9 @@ export function defaultValueError(field: {
       return /^[+-]?\d+$/.test(v) ? undefined : 'Must be a whole number'
     case 'BIG_DECIMAL':
       return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(v) ? undefined : 'Must be a number'
+    case 'FILE':
+    case 'IMAGE':
+      return 'A file is uploaded, not typed — it cannot have a default'
     case 'MONEY':
       // Two decimals at most — what the column keeps.
       return /^[+-]?(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(v) ? undefined : 'Must be an amount with at most two decimals'

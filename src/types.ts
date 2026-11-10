@@ -327,6 +327,8 @@ export type FullstackFieldType =
   | 'LOCAL_DATE' | 'LOCAL_DATE_TIME' | 'BIG_DECIMAL' | 'UUID' | 'ENUM'
   // Round 9: a time of day, a UTC instant, an amount with a currency, Markdown long text.
   | 'LOCAL_TIME' | 'INSTANT' | 'MONEY' | 'MARKDOWN'
+  // An uploaded file, and one that must be a picture: the field holds the attachment's id.
+  | 'FILE' | 'IMAGE'
 
 export interface FullstackFieldDef {
   /** Client-only editor row identity (React key); stripped before the request is sent. */

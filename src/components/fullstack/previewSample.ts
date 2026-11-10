@@ -243,6 +243,9 @@ export function sampleRaw(f: FullstackFieldDef, row: number, ctx: SampleContext)
       const d = dateFor(f.name.toLowerCase(), row, rand, today)
       return `${isoDate(d)}T${pad(8 + Math.floor(rand() * 10))}:${pad(Math.floor(rand() * 4) * 15)}:00Z`
     }
+    // What the generated list shows for a file: its name.
+    case 'FILE': return `${f.name}-${row}.pdf`
+    case 'IMAGE': return `${f.name}-${row}.png`
     case 'UUID': return uuid(rand)
     default: {
       const fallback = `${fieldLabel(f)} ${row}`

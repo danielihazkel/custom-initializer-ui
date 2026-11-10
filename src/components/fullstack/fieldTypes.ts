@@ -10,7 +10,7 @@ import type { FullstackFieldType } from '../../types'
 /** Every field type, in the order the type picker lists them. `schemaParity.test.ts` holds it to the backend's. */
 export const FIELD_TYPES: FullstackFieldType[] = [
   'STRING', 'TEXT', 'MARKDOWN', 'LONG', 'INTEGER', 'BIG_DECIMAL', 'MONEY', 'BOOLEAN',
-  'LOCAL_DATE', 'LOCAL_DATE_TIME', 'LOCAL_TIME', 'INSTANT', 'UUID', 'ENUM',
+  'LOCAL_DATE', 'LOCAL_DATE_TIME', 'LOCAL_TIME', 'INSTANT', 'UUID', 'ENUM', 'FILE', 'IMAGE',
 ]
 
 /** What the picker calls a type whose name does not say it. */
@@ -19,6 +19,8 @@ export const FIELD_TYPE_LABELS: Partial<Record<FullstackFieldType, string>> = {
   MONEY: 'MONEY (amount + currency)',
   LOCAL_TIME: 'LOCAL_TIME (time of day)',
   INSTANT: 'INSTANT (UTC timestamp)',
+  FILE: 'FILE (upload)',
+  IMAGE: 'IMAGE (picture upload)',
 }
 
 /** A number: bounds, sums, averages, range filters. Money is one. */
@@ -41,7 +43,13 @@ export const isDateType = (t: FullstackFieldType) => t === 'LOCAL_DATE' || t ===
 
 /** Whether a field of this type may be (part of) the primary key — `FieldType.keyable()`. */
 export const isKeyableType = (t: FullstackFieldType) =>
-  t !== 'LOCAL_TIME' && t !== 'INSTANT' && t !== 'MONEY' && t !== 'MARKDOWN'
+  t !== 'LOCAL_TIME' && t !== 'INSTANT' && t !== 'MONEY' && t !== 'MARKDOWN' && !isAttachmentType(t)
+
+/**
+ * An uploaded file or picture. The field holds the attachment's id, and the generated app adds a
+ * read-only `<field>Name` beside it. Never searched, filtered, bulk-edited, defaulted or unique.
+ */
+export const isAttachmentType = (t: FullstackFieldType) => t === 'FILE' || t === 'IMAGE'
 
 /** The currency a MONEY field has when it names none (`FieldDefinition.DEFAULT_CURRENCY`). */
 export const DEFAULT_CURRENCY = 'ILS'

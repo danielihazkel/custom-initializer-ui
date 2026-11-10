@@ -24,7 +24,7 @@ import type { EntityCodeFile } from './entityCode'
 import { ENTITY_OPT_LABELS, PROJECT_ONLY_OPTS } from './scaffoldOptions'
 import { joinEntity } from './joinEntity'
 import { enumLabel, pruneLabels } from './enumLabels'
-import { DEFAULT_CURRENCY, FIELD_TYPES, FIELD_TYPE_LABELS, isDateType, isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
+import { DEFAULT_CURRENCY, FIELD_TYPES, FIELD_TYPE_LABELS, isAttachmentType, isDateType, isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
 
 /** A one-click follow-up on a notice — "Undo" after a removal. */
 export type NoticeAction = { label: string; onClick: () => void }
@@ -296,6 +296,8 @@ export const EntitiesEditor = memo(function EntitiesEditor({
     // A currency belongs to money; a key cannot be one of the types a URL cannot carry.
     if (type !== 'MONEY') updates.currency = undefined
     if (!isKeyableType(type)) { updates.primaryKey = undefined; updates.generated = undefined }
+    // A file has no typed default, and every upload is its own file.
+    if (isAttachmentType(type)) { updates.unique = undefined }
     const temporal = isDateType(type)
     if (!(type === 'ENUM' || type === 'BOOLEAN' || temporal || numeric)) updates.filterable = undefined
     // A default is typed per field type: keep it across the lossless pairs (STRING↔TEXT,
@@ -1276,7 +1278,8 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
     `w-full bg-background border rounded px-2 py-1.5 text-xs tabular-nums focus:ring-1 outline-none ${
       error ? 'border-error focus:ring-error/20 focus:border-error'
         : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`
-  const takesConstraints = !(field.primaryKey && field.generated)
+  // A generated key takes no constraints; neither does a file, which has nothing to constrain.
+  const takesConstraints = !(field.primaryKey && field.generated) && !isAttachmentType(field.type)
   const hasBehaviour = !field.primaryKey || isTextSearch
   return (
     <div className="flex flex-wrap items-start gap-x-5 gap-y-3 rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-3" data-field-more>
