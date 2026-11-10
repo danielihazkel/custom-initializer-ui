@@ -1,9 +1,10 @@
 import type { FullstackEntityDef, FullstackFormSection } from '../../types'
 import { askableFields } from './pageLayout'
+import { LIMITS } from './schema'
 
 /** Mirrors FullstackRequestValidator.MAX_FORM_SECTIONS / MAX_SECTION_TITLE. */
-export const MAX_FORM_SECTIONS = 6
-export const MAX_SECTION_TITLE = 60
+export const MAX_FORM_SECTIONS = LIMITS.maxFormSections
+export const MAX_SECTION_TITLE = LIMITS.maxSectionTitle
 
 /**
  * An entity's form sections after an edit: a renamed field or relation (matched by uid) is

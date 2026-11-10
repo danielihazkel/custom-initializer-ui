@@ -24,6 +24,7 @@ import {
 import { humanize, pluralize } from './naming'
 import { enumLabel, humanizeConstant } from './enumLabels'
 import { summarizeEntity } from './summary'
+import { CHOICES, LIMITS, NAME_RULES } from './schema'
 
 /**
  * The frontend page layout (`pages`) model: validation, the summary lines the editor shows, and
@@ -33,29 +34,29 @@ import { summarizeEntity } from './summary'
  * control, instead of as a 400 on Generate.
  */
 
-export const PAGE_ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
-export const MAX_PAGES = 30
+export const PAGE_ID = NAME_RULES.pageId
+export const MAX_PAGES = LIMITS.maxPages
 /** Every title in a layout — a page's, a widget's, a tab's, a step's, a header tile's (FullstackPageValidator.MAX_TITLE). */
-export const MAX_TITLE = 80
-export const MAX_DESCRIPTION = 300
-export const MAX_WIDGETS = 24
-export const MIN_TABS = 2
-export const MAX_TABS = 6
+export const MAX_TITLE = LIMITS.maxTitle
+export const MAX_DESCRIPTION = LIMITS.maxDescription
+export const MAX_WIDGETS = LIMITS.maxWidgets
+export const MIN_TABS = LIMITS.minTabs
+export const MAX_TABS = LIMITS.maxTabs
 export const MAX_CHILD_TABS = MAX_TABS - 1
-export const MAX_RECENT_LIMIT = 20
-export const MAX_GROUP = 40
-export const MAX_SPAN = 4
-export const MAX_CHARTS = 4
-export const MAX_STEPS = 8
-export const DEFAULT_STEP_SIZE = 4
-export const MAX_HEADER_STATS = 4
-export const MAX_TEXT = 2000
+export const MAX_RECENT_LIMIT = LIMITS.maxRecentLimit
+export const MAX_GROUP = LIMITS.maxGroup
+export const MAX_SPAN = LIMITS.maxSpan
+export const MAX_CHARTS = LIMITS.maxCharts
+export const MAX_STEPS = LIMITS.maxSteps
+export const DEFAULT_STEP_SIZE = LIMITS.defaultStepSize
+export const MAX_HEADER_STATS = LIMITS.maxHeaderStats
+export const MAX_TEXT = LIMITS.maxText
 /** The pages one links widget can open. */
-export const MAX_LINKS = 8
+export const MAX_LINKS = LIMITS.maxLinks
 /** A list widget's rows per page: the pager's own sizes that fit a card. */
 export const LIST_WIDGET_LIMITS = [10, 20]
 /** The rows-per-page choices the generated pager offers — what a list page may open on. */
-export const LIST_PAGE_SIZES = [10, 20, 50, 100]
+export const LIST_PAGE_SIZES = CHOICES.listPageSizes
 export const DEFAULT_PAGE_SIZE = 20
 export const LIST_VIEWS: { value: FullstackListView; label: string; icon: string }[] = [
   { value: 'table', label: 'Table', icon: 'table' },
@@ -380,15 +381,15 @@ export function filterableDateFields(entity: FullstackEntityDef | undefined): Fu
 // ── Dashboard filters and widget click targets ──────────────────────────────
 
 /** At most this many dashboard filters (FullstackPageValidator.MAX_DASHBOARD_FILTERS). */
-export const MAX_DASHBOARD_FILTERS = 4
+export const MAX_DASHBOARD_FILTERS = LIMITS.maxDashboardFilters
 
 /** The widgets that read an entity — every kind but a note and a launcher. They take the
  *  dashboard's filters, and their clicks can open a chosen page (`drillTo`). */
 export const readsEntity = (w: FullstackWidgetDef) => w.kind !== 'text' && w.kind !== 'links' && w.kind !== 'activity'
 
 /** The most entities an activity feed reads, and how many changes it lists (FullstackPageValidator). */
-export const MAX_ACTIVITY_ENTITIES = 6
-export const MIN_ACTIVITY_LIMIT = 5
+export const MAX_ACTIVITY_ENTITIES = LIMITS.maxActivityEntities
+export const MIN_ACTIVITY_LIMIT = LIMITS.minActivityLimit
 
 /** The entities an activity feed reads: the ones it names, else every one the audit opt applies to. */
 export function activityEntities(w: FullstackWidgetDef, entities: FullstackEntityDef[], scaffoldOpts: string[] = []): string[] {

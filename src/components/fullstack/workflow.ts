@@ -1,10 +1,11 @@
 import type { FullstackEntityDef, FullstackFieldDef, FullstackTransition, FullstackWorkflow } from '../../types'
+import { LIMITS, NAME_RULES } from './schema'
 
 /** Mirrors FullstackRequestValidator (parseWorkflow). */
-export const MAX_TRANSITIONS = 20
-export const MAX_TRANSITION_LABEL = 40
+export const MAX_TRANSITIONS = LIMITS.maxTransitions
+export const MAX_TRANSITION_LABEL = LIMITS.maxTransitionLabel
 export const WORKFLOW_ROLES = ['ADMIN', 'USER'] as const
-const TRANSITION_NAME = /^[a-z][A-Za-z0-9]{0,39}$/
+const TRANSITION_NAME = NAME_RULES.transitionName
 
 const same = (a: string | undefined, b: string | undefined) => a != null && b != null && a.trim().toLowerCase() === b.trim().toLowerCase()
 const fieldOf = (entity: FullstackEntityDef, name: string | undefined) => entity.fields.find(f => same(f.name, name))

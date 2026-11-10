@@ -1,5 +1,6 @@
 import type { FullstackCalendarMode, FullstackEntityDef, FullstackFieldDef, FullstackInboxQueue, FullstackPageDef, FullstackPageType } from '../../types'
 import { contentLinks, isExternalLink } from './contentMarkdown'
+import { CHOICES, LIMITS } from './schema'
 
 /**
  * The calendar, board, content, import and search page types: their choices, defaults and the
@@ -12,15 +13,15 @@ export const CALENDAR_MODES: { value: FullstackCalendarMode; label: string }[] =
   { value: 'agenda', label: 'Agenda' },
   { value: 'timeline', label: 'Timeline' },
 ]
-export const LANE_SIZES = [10, 20, 50]
-export const DEFAULT_LANE_SIZE = 20
-export const MAX_CARD_FIELDS = 4
-export const MAX_WIP_LIMIT = 999
-export const MAX_BODY = 8000
-export const MAX_SEARCH_ENTITIES = 8
-export const MIN_PER_ENTITY = 3
-export const MAX_PER_ENTITY = 10
-export const DEFAULT_PER_ENTITY = 5
+export const LANE_SIZES = CHOICES.laneSizes
+export const DEFAULT_LANE_SIZE = LIMITS.defaultLaneSize
+export const MAX_CARD_FIELDS = LIMITS.maxCardFields
+export const MAX_WIP_LIMIT = LIMITS.maxWipLimit
+export const MAX_BODY = LIMITS.maxBody
+export const MAX_SEARCH_ENTITIES = LIMITS.maxSearchEntities
+export const MIN_PER_ENTITY = LIMITS.minPerEntity
+export const MAX_PER_ENTITY = LIMITS.maxPerEntity
+export const DEFAULT_PER_ENTITY = LIMITS.defaultPerEntity
 export const INBOX_QUEUES: { value: FullstackInboxQueue; label: string }[] = [
   { value: 'mine', label: 'My tasks' },
   { value: 'unassigned', label: 'Unassigned' },

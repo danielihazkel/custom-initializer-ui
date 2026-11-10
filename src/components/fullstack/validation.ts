@@ -2,6 +2,7 @@ import type { FullstackEntityDef } from '../../types'
 import { formSectionsProblem } from './formSections'
 import { workflowProblem } from './workflow'
 import { columnOf, joinColumnOf } from './naming'
+import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
 
 /**
  * Client-side mirror of the backend `FullstackRequestValidator` so users see problems
@@ -9,20 +10,11 @@ import { columnOf, joinColumnOf } from './naming'
  * surface the same rules early and gate the Generate button.
  */
 
-// Mirrors RESERVED_JAVA_KEYWORDS in FullstackRequestValidator.java.
-const RESERVED_JAVA_KEYWORDS = new Set([
-  'abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char',
-  'class', 'const', 'continue', 'default', 'do', 'double', 'else', 'enum',
-  'extends', 'final', 'finally', 'float', 'for', 'goto', 'if', 'implements',
-  'import', 'instanceof', 'int', 'interface', 'long', 'native', 'new', 'null',
-  'package', 'private', 'protected', 'public', 'return', 'short', 'static',
-  'strictfp', 'super', 'switch', 'synchronized', 'this', 'throw', 'throws',
-  'transient', 'true', 'false', 'try', 'void', 'volatile', 'while', 'yield',
-  'record', 'sealed', 'permits', 'var',
-])
+// RESERVED_JAVA_KEYWORDS of FullstackRequestValidator.java, from the schema document.
+const RESERVED_JAVA_KEYWORDS = RESERVED_KEYWORDS
 
-// Close enough to Character.isJavaIdentifier* for a UI hint (ASCII identifiers).
-const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+// ASCII Java identifiers — the backend holds names to the same rule (FullstackRequestValidator.IDENTIFIER_RULE).
+const IDENTIFIER_RE = NAME_RULES.identifier
 
 // Valid Java package: dot-separated identifiers. Mirrors PACKAGE_NAME_RE in projectUtils.ts.
 const PACKAGE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/
@@ -119,7 +111,7 @@ export interface FieldErrors {
 
 /** Mirrors FullstackRequestValidator.SQL_NAME: column names are spliced into native SQL. A quoted
  *  name ("OrderDate", `OrderDate`, [OrderDate]) keeps its exact case in the generated entity. */
-const COLUMN_RE = /^(?:[A-Za-z_$#@][A-Za-z0-9_$#@]{0,127}|"[A-Za-z0-9_$#@ .-]{1,128}"|`[A-Za-z0-9_$#@ .-]{1,128}`|\[[A-Za-z0-9_$#@ .-]{1,128}\])$/
+const COLUMN_RE = NAME_RULES.sqlName
 const COLUMN_RULE = 'Letters, digits and _ $ # @, or a quoted name like "OrderDate"'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -250,7 +242,12 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
 
     const nameErr = identifierError(entity.name, 'Entity name')
     if (nameErr) eErr.name = nameErr
-    else {
+    // The generated code already names these (ReservedNames.java): a 400 on Generate otherwise.
+    else if (isReservedEntityName(entity.name)) {
+      eErr.name = `'${entity.name.trim()}' is a name the generated code already uses — pick another (a label can still say it)`
+    } else {
+      const owner = ownerOfGeneratedClass(entity.name, entities.filter(other => other !== entity).map(other => other.name))
+      if (owner) eErr.name = `'${owner}' already generates a class called ${entity.name.trim()} — pick another name`
       const lower = entity.name.trim().toLowerCase()
       const bucket = seenEntityNames.get(lower) ?? []
       bucket.push(eIdx)
@@ -291,7 +288,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
           if (fErr.enumValues) break
           if (!known.has(key.trim().toLowerCase())) fErr.enumValues = `Label for '${key}', which is not one of the values`
           else if (!label.trim()) fErr.enumValues = `Label for '${key}' is blank`
-          else if (label.trim().length > 80) fErr.enumValues = `Label for '${key}' is too long (max 80 characters)`
+          else if (label.trim().length > LIMITS.maxEnumLabel) fErr.enumValues = `Label for '${key}' is too long (max ${LIMITS.maxEnumLabel} characters)`
         }
       } else if ((field.enumValues?.length ?? 0) > 0 || Object.keys(field.enumLabels ?? {}).length > 0) {
         // Mirrors the backend rule that enumValues/enumLabels are only allowed when type=ENUM.
