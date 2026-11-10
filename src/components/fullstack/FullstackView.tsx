@@ -40,6 +40,7 @@ import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesSection } from './designer/PagesSection'
 import type { DesignerTarget } from './designer/LayoutDesigner'
 import type { FrontendAppearance } from './designer/FrontendSettings'
+import { renameEntityInRelations } from './relationRefs'
 import { pageOfServerError, renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
@@ -388,8 +389,12 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     const enumsNow = new Map<string, string[]>()
     let follow: ((ps: FullstackPageDef[]) => FullstackPageDef[])[] = []
     const followPages = (fn: (ps: FullstackPageDef[]) => FullstackPageDef[]) => { follow = [...follow, fn] }
+    // Relations name their target entity, so an entity rename follows into them too.
+    let followTargets: ((es: FullstackEntityDef[]) => FullstackEntityDef[])[] = []
     for (const e of entities) {
-      if (e.uid) now.set(e.uid, e.name)
+      // A name cleared on the way to a new one keeps its last spelling here, so the references
+      // that still say it follow once the new name is typed.
+      if (e.uid) now.set(e.uid, e.name.trim() ? e.name : (before.get(e.uid) ?? e.name))
       for (const f of e.fields) {
         if (!f.uid) continue
         now.set(f.uid, `${e.name}.${f.name}`)
@@ -419,8 +424,15 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         }
         const [wasEntity, wasField] = was.split('.')
         const [nowEntity, nowField] = name.split('.')
-        if (wasField == null && nowEntity.trim()) followPages(ps => renameEntityInPages(ps, wasEntity, nowEntity))
-        else if (wasField != null && nowField?.trim() && wasField !== nowField) {
+        if (wasField == null && nowEntity.trim()) {
+          followPages(ps => renameEntityInPages(ps, wasEntity, nowEntity))
+          // Only while the old name meant one entity: with two entities of that name there is
+          // no telling whose relations these are.
+          const sharedName = [...before].filter(([otherUid, other]) => otherUid !== uid
+            && !other.includes('.') && !other.includes('#')
+            && other.trim().toLowerCase() === wasEntity.trim().toLowerCase()).length > 0
+          if (!sharedName) followTargets = [...followTargets, es => renameEntityInRelations(es, wasEntity, nowEntity)]
+        } else if (wasField != null && nowField?.trim() && wasField !== nowField) {
           followPages(ps => renameFieldInPages(ps, nowEntity, wasField, nowField))
         }
       }
@@ -431,6 +443,16 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       setPages(ps => {
         const next = follow.reduce((acc, fn) => fn(acc), ps)
         if (next !== ps) followsModelRef.current = true
+        return next
+      })
+    }
+    if (followTargets.length > 0) {
+      // Same undo step as the rename, like the layout. The flag is raised inside the updater —
+      // that runs with the next render, after this commit's recording effect has filed the
+      // rename itself.
+      setEntities(es => {
+        const next = followTargets.reduce((acc, fn) => fn(acc), es)
+        if (next !== es) followsModelRef.current = true
         return next
       })
     }

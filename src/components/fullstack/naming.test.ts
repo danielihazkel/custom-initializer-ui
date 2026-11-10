@@ -1,5 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { toCamelCase, toPascalCase } from './naming'
+import { inverseCollectionName, toCamelCase, toPascalCase } from './naming'
+
+describe('inverseCollectionName mirrors EntityScaffoldContext.inverseCollectionName', () => {
+  it('is the owner\'s plural for a single link', () => {
+    expect(inverseCollectionName('OrderLine', 'order', 'Order', [{ targetEntity: 'Order' }, { targetEntity: 'Product' }]))
+      .toBe('orderLines')
+  })
+
+  it('tells two links to one target apart by their relation', () => {
+    const links = [{ targetEntity: 'Account' }, { targetEntity: 'account' }]
+    expect(inverseCollectionName('Transfer', 'source', 'Account', links)).toBe('transfersBySource')
+    expect(inverseCollectionName('Transfer', 'target', 'Account', links)).toBe('transfersByTarget')
+  })
+})
 
 describe('toPascalCase / toCamelCase mirror gen/Naming.java', () => {
   it('handles separators, camel humps and all-caps identifiers', () => {

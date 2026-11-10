@@ -179,8 +179,8 @@ export function snapshotChangeKey(prev: FullstackSnapshot, next: FullstackSnapsh
 function isReordered(a: readonly unknown[], b: readonly unknown[]): boolean {
   if (a.length !== b.length || a.length < 2) return false
   const sa = a.map(x => JSON.stringify(x)); const sb = b.map(x => JSON.stringify(x))
-  if (sa.join(' ') === sb.join(' ')) return false
-  return [...sa].sort().join(' ') === [...sb].sort().join(' ')
+  if (sa.join('\u0000') === sb.join('\u0000')) return false
+  return [...sa].sort().join('\u0000') === [...sb].sort().join('\u0000')
 }
 
 /** Minimal shape check for data that arrived from storage, a URL or an imported file. */

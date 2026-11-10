@@ -250,6 +250,40 @@ describe('FullstackView — editor safety nets', () => {
     expect(screen.getAllByLabelText('Entity name')[0].getAttribute('aria-invalid')).toBe('true')
   })
 
+  it('an entity rename follows into the relations that point at it, as one undo step', async () => {
+    storeDraft([
+      { name: 'Customer', fields: [pk, { name: 'name', type: 'STRING' }] },
+      { name: 'Order', fields: [pk], relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer' }] },
+    ])
+    render(<FullstackView />)
+    // The entity's own name input and the relation's target select both say Customer.
+    expect(screen.getAllByDisplayValue('Customer')).toHaveLength(2)
+
+    fireEvent.change(screen.getAllByLabelText('Entity name')[0], { target: { value: 'Client' } })
+    await waitFor(() => expect(screen.getAllByDisplayValue('Client')).toHaveLength(2))
+    expect(screen.queryAllByDisplayValue('Customer')).toHaveLength(0)
+    // Nothing is left aimed at a name that no longer exists.
+    expect(screen.queryByText(/unknown entity/i)).toBeNull()
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(screen.getAllByDisplayValue('Customer')).toHaveLength(2))
+    expect(screen.queryAllByDisplayValue('Client')).toHaveLength(0)
+  })
+
+  it('a name cleared and retyped still carries its relations along', async () => {
+    storeDraft([
+      { name: 'Customer', fields: [pk, { name: 'name', type: 'STRING' }] },
+      { name: 'Order', fields: [pk], relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer' }] },
+    ])
+    render(<FullstackView />)
+    const name = screen.getAllByLabelText('Entity name')[0]
+
+    fireEvent.change(name, { target: { value: '' } })
+    fireEvent.change(name, { target: { value: 'Client' } })
+
+    await waitFor(() => expect(screen.getAllByDisplayValue('Client')).toHaveLength(2))
+  })
+
   it('undo keeps the other cards collapsed', () => {
     storeDraft(four.slice(0, 2))
     render(<FullstackView />)

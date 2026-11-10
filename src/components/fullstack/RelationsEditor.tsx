@@ -4,7 +4,7 @@ import type { RelationErrors } from './validation'
 import { newUid } from './uid'
 import { focusRowWhenRendered } from './focus'
 import { moveItem } from './reorder'
-import { pluralize, toCamelCase, toSnakeCase, uniqueName } from './naming'
+import { inverseCollectionName, toSnakeCase, uniqueName } from './naming'
 import { dropIndicatorClass, useDragReorder } from './useDragReorder'
 
 interface Props {
@@ -73,8 +73,10 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
     onChange([...relations.slice(0, idx + 1), copy, ...relations.slice(idx + 1)])
     focusRowWhenRendered(copy.uid)
   }
-  // Mirrors EntityScaffoldContext: the parent's collection is the pluralized camel-case child name.
-  const inverseName = ownerName?.trim() ? pluralize(toCamelCase(ownerName.trim())) : ''
+  // Mirrors EntityScaffoldContext.inverseCollectionName: the owner's plural, told apart by the
+  // relation when the owner links to one target twice.
+  const inverseNameOf = (rel: FullstackRelationDef) => (ownerName?.trim()
+    ? inverseCollectionName(ownerName.trim(), rel.fieldName, rel.targetEntity, relations) : '')
 
   return (
     <div className="space-y-2 border-t border-outline-variant pt-3">
@@ -135,6 +137,7 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
               const rErr = errors?.[rIdx]
               const indicator = dnd.indicatorFor('relations', rIdx)
               const target = rel.targetEntity.trim()
+              const inverseName = inverseNameOf(rel)
               return (
                 <tr
                   key={rel.uid ?? `i${rIdx}`}
