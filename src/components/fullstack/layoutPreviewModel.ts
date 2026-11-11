@@ -29,7 +29,7 @@ import {
 } from './pageLayout'
 import { buildUiPreview, fieldLabel } from './uiPreview'
 import { parseContent, type ContentBlock } from './contentMarkdown'
-import { auditText, cellText, detailText, sampleRaw, seeded } from './previewSample'
+import { auditText, detailText, sampleRaw, seeded } from './previewSample'
 import {
   CALENDAR_MODES, DEFAULT_INBOX_QUEUES, cardFieldOptions, defaultCardFields, defaultInboxFields, defaultLaneField, defaultSearchEntities, laneValues,
 } from './newPageTypes'
@@ -370,7 +370,10 @@ export function buildLayoutPreview(
   const fieldOf = (e: FullstackEntityDef, name: string | undefined) => (name ? e.fields.find(f => f.name === name) : undefined)
   // Sample rows: a list cell shows the value as the API sends it, the details format it.
   const raw = (e: FullstackEntityDef, f: FullstackFieldDef, row: number) => sampleRaw(f, row, { locale: ctx.locale, entity: e.name, today: ctx.today })
-  const cell = (e: FullstackEntityDef, f: FullstackFieldDef, row: number) => cellText(f, raw(e, f, row))
+  // A list cell reads like the details since the generator writes both with one function
+  // (EntityScaffoldContext.displayTs): booleans worded, dates for the app's locale.
+  const cell = (e: FullstackEntityDef, f: FullstackFieldDef, row: number) =>
+    detailText(f, raw(e, f, row), ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') })
   const detail = (e: FullstackEntityDef, f: FullstackFieldDef, row: number) =>
     detailText(f, raw(e, f, row), ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') })
   /** What a row of `e` is called: its label field's value, else "Order #3". */
@@ -399,7 +402,7 @@ export function buildLayoutPreview(
         key: f.name,
         label: fieldLabel(f),
         kind: f.type === 'ENUM' ? 'enum' : !f.primaryKey && (isNumericType(f.type)) ? 'number' : 'text',
-        value: (row: number) => (pinned != null ? cellText(f, pinned) : cell(e, f, row)),
+        value: (row: number) => (pinned != null ? detailText(f, pinned, ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') }) : cell(e, f, row)),
         detail: (row: number) => (pinned != null ? detailText(f, pinned, ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') }) : detail(e, f, row)),
       }
     })

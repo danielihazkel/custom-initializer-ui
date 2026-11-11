@@ -256,8 +256,9 @@ export function sampleRaw(f: FullstackFieldDef, row: number, ctx: SampleContext)
   }
 }
 
-/** A value as a generated list cell shows it: an enum's label, anything else as the API sent it
- *  (`String(value)` — ISO dates, `true`/`false`, plain numbers). */
+/** A value before the wording and date formatting `detailText` adds: an enum's label, money in
+ *  its currency, an instant in the reader's zone, anything else as the API sent it. The generated
+ *  list cell, details and cards all read like `detailText` (one function writes them). */
 export function cellText(f: FullstackFieldDef, raw: SampleRaw): string {
   if (f.type === 'ENUM' && typeof raw === 'string') return raw ? enumLabel(f, raw) : '—'
   // The generated app's format.ts: money in its currency, an instant in the reader's zone.
@@ -281,8 +282,8 @@ export function moneyText(f: FullstackFieldDef, raw: SampleRaw, locale: string =
   }
 }
 
-/** A value as the generated details (drawer, record page, review) show it: booleans worded,
- *  dates and date-times in the app's locale. */
+/** A value as the generated app shows it — in a list cell, the details (drawer, record page,
+ *  review) and a card alike: booleans worded, dates and date-times in the app's locale. */
 export function detailText(f: FullstackFieldDef, raw: SampleRaw, locale: SampleLocale, words: { yes: string; no: string }): string {
   if (f.type === 'BOOLEAN') return raw === true || raw === 'true' ? words.yes : words.no
   if (f.type === 'LOCAL_DATE' && typeof raw === 'string') {
