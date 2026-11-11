@@ -599,7 +599,8 @@
     ],
     "settings": {
       "scaffold": [
-        "csvExport"
+        "csvExport",
+        "xlsxExport"
       ]
     }
   },
