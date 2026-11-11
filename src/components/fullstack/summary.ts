@@ -23,6 +23,7 @@ export function entityOptApplicability(entity: FullstackEntityDef): EntityOptApp
     softDelete: gate([mutable, readOnlyReason], [!composite, 'composite primary key']),
     csvExport: { applicable: true },
     xlsxExport: { applicable: true },
+    savedViews: { applicable: true },
     bulkDelete: gate([mutable, readOnlyReason], [!composite, 'composite primary key']),
     bulkUpdate: gate([mutable, readOnlyReason], [!composite, 'composite primary key'], [editable, 'no editable field']),
     tests: { applicable: true },
@@ -85,7 +86,7 @@ export function summarizeEntity(entity: FullstackEntityDef, projectOpts: string[
     endpoints.push({ method: 'POST', path: `${path}/{id}/transitions/{name}` })
     if (entity.workflow.assigneeField) endpoints.push({ method: 'POST', path: `${path}/{id}/claim` }, { method: 'POST', path: `${path}/{id}/release` }, { method: 'POST', path: `${path}/{id}/assign` })
   }
-  const opts = (['audit', 'softDelete', 'csvExport', 'xlsxExport', 'bulkDelete', 'bulkUpdate', 'tests', 'inlineEdit', 'optimisticLocking'] as FullstackEntityOptKey[]).filter(optOn)
+  const opts = (['audit', 'softDelete', 'csvExport', 'xlsxExport', 'savedViews', 'bulkDelete', 'bulkUpdate', 'tests', 'inlineEdit', 'optimisticLocking'] as FullstackEntityOptKey[]).filter(optOn)
 
   const breakdown = entity.fields.find(f => f.type === 'ENUM') ?? entity.fields.find(f => f.type === 'BOOLEAN')
   const calendar = entity.fields.find(isTemporal)

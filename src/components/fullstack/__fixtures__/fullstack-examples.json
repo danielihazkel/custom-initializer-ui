@@ -880,7 +880,8 @@
     ],
     "settings": {
       "scaffold": [
-        "bulkUpdate"
+        "bulkUpdate",
+        "savedViews"
       ]
     }
   },
