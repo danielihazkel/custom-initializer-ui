@@ -35,6 +35,24 @@
         ]
       },
       {
+        "name": "Tag",
+        "fields": [
+          {
+            "name": "id",
+            "type": "LONG",
+            "primaryKey": true,
+            "generated": true
+          },
+          {
+            "name": "name",
+            "type": "STRING",
+            "required": true,
+            "unique": true,
+            "length": 40
+          }
+        ]
+      },
+      {
         "name": "Post",
         "listViews": [
           "table",
@@ -79,6 +97,11 @@
             "fieldName": "author",
             "targetEntity": "Author",
             "required": true
+          },
+          {
+            "type": "MANY_TO_MANY",
+            "fieldName": "tags",
+            "targetEntity": "Tag"
           }
         ]
       },
@@ -194,6 +217,13 @@
         "entity": "Post"
       },
       {
+        "id": "tags",
+        "type": "entity-list",
+        "group": "Content",
+        "icon": "Tag",
+        "entity": "Tag"
+      },
+      {
         "id": "authors",
         "type": "master-detail",
         "group": "Content",
@@ -307,8 +337,21 @@
       {
         "name": "Order",
         "formSections": [
-          { "title": "The order", "fields": ["reference", "customer", "status"] },
-          { "title": "Amounts and dates", "fields": ["total", "placedAt"] }
+          {
+            "title": "The order",
+            "fields": [
+              "reference",
+              "customer",
+              "status"
+            ]
+          },
+          {
+            "title": "Amounts and dates",
+            "fields": [
+              "total",
+              "placedAt"
+            ]
+          }
         ],
         "listViews": [
           "table",
@@ -357,6 +400,11 @@
             "fieldName": "customer",
             "targetEntity": "Customer",
             "required": true
+          },
+          {
+            "type": "ONE_TO_MANY",
+            "fieldName": "lines",
+            "targetEntity": "OrderLine"
           }
         ]
       },
@@ -451,7 +499,11 @@
             "presetFilter": {
               "status": "OPEN"
             },
-            "columns": ["reference", "customer", "total"],
+            "columns": [
+              "reference",
+              "customer",
+              "total"
+            ],
             "sort": {
               "field": "placedAt",
               "dir": "desc"
@@ -476,8 +528,15 @@
         "parent": "Customer",
         "child": "Order",
         "showParent": true,
-        "columns": ["reference", "status", "total"],
-        "sort": { "field": "placedAt", "dir": "desc" }
+        "columns": [
+          "reference",
+          "status",
+          "total"
+        ],
+        "sort": {
+          "field": "placedAt",
+          "dir": "desc"
+        }
       },
       {
         "id": "new-order",
@@ -518,14 +577,22 @@
         "group": "Catalog",
         "icon": "Package",
         "entity": "Product",
-        "hideActions": ["delete"]
+        "hideActions": [
+          "delete"
+        ]
       },
       {
         "id": "order",
         "type": "record",
         "entity": "Order",
         "childTabs": [
-          { "entity": "OrderLine", "sort": { "field": "quantity", "dir": "desc" } }
+          {
+            "entity": "OrderLine",
+            "sort": {
+              "field": "quantity",
+              "dir": "desc"
+            }
+          }
         ]
       }
     ],
@@ -731,7 +798,10 @@
           {
             "kind": "links",
             "title": "Go to",
-            "pages": ["queue", "teams"],
+            "pages": [
+              "queue",
+              "teams"
+            ],
             "span": 4
           }
         ]
@@ -1764,7 +1834,7 @@
           },
           {
             "name": "budget",
-            "type": "BIG_DECIMAL",
+            "type": "MONEY",
             "min": 0
           }
         ]
@@ -1790,7 +1860,7 @@
           },
           {
             "name": "amount",
-            "type": "BIG_DECIMAL",
+            "type": "MONEY",
             "required": true,
             "min": 0
           },
@@ -1840,12 +1910,16 @@
           },
           {
             "name": "approvedAmount",
-            "type": "BIG_DECIMAL",
+            "type": "MONEY",
             "min": 0
           },
           {
             "name": "rejectionReason",
             "type": "TEXT"
+          },
+          {
+            "name": "receipt",
+            "type": "FILE"
           }
         ],
         "relations": [
@@ -1864,7 +1938,8 @@
               "amount",
               "category",
               "spentOn",
-              "costCenter"
+              "costCenter",
+              "receipt"
             ]
           },
           {
