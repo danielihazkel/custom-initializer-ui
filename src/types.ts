@@ -107,6 +107,10 @@ export interface SqlWizardEntry {
   subPackage: string
   tables: SqlTableConfig[]
   apiMode?: SqlApiMode  // defaults to 'NONE' (entities only) when absent
+  /** With the Flyway dependency: write the script as the first migration. Absent = yes. */
+  flywayBaseline?: boolean
+  /** A controller slice test per generated REST controller. Absent = no. */
+  generateTests?: boolean
 }
 
 export type SqlByDep = Record<string, SqlWizardEntry>

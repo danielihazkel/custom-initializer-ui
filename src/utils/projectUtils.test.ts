@@ -58,6 +58,21 @@ describe('buildWizardBody', () => {
       'data-jpa': { subPackage: 'domain', tables: [{ name: 'users', generateRepository: true }], apiMode: 'MAPSTRUCT_DTO' },
     })
   })
+
+  it('sends the SQL extras only where they differ from the server defaults', () => {
+    const entry = { sql: 'CREATE TABLE users (id INT);', subPackage: 'entity', tables: [] }
+    const options = (extra: Partial<SqlByDep[string]>) =>
+      (buildWizardBody(form, ['postgresql'], {}, { postgresql: { ...entry, ...extra } }, {}, {})
+        .sqlOptions as Record<string, Record<string, unknown>>).postgresql
+
+    // Baseline on and tests off are what the server assumes: nothing to say.
+    expect(options({ apiMode: 'INLINE_DTO', flywayBaseline: true, generateTests: false }))
+      .toEqual({ subPackage: 'entity', tables: [], apiMode: 'INLINE_DTO' })
+    expect(options({ apiMode: 'INLINE_DTO', flywayBaseline: false, generateTests: true }))
+      .toEqual({ subPackage: 'entity', tables: [], apiMode: 'INLINE_DTO', flywayBaseline: false, generateTests: true })
+    // A test needs a controller: without a REST stack the flag is not sent.
+    expect(options({ generateTests: true })).toEqual({ subPackage: 'entity', tables: [], apiMode: 'NONE' })
+  })
 })
 
 describe('requiredSqlDeps', () => {

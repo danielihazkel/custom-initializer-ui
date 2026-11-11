@@ -236,13 +236,23 @@ export function buildWizardBody(
   }
 
   const sqlByDepBody: Record<string, string> = {}
-  const sqlOptionsBody: Record<string, { subPackage: string; tables: { name: string; generateRepository: boolean }[]; apiMode: string }> = {}
+  const sqlOptionsBody: Record<string, {
+    subPackage: string
+    tables: { name: string; generateRepository: boolean }[]
+    apiMode: string
+    flywayBaseline?: boolean
+    generateTests?: boolean
+  }> = {}
   for (const [depId, entry] of Object.entries(activeSql)) {
     sqlByDepBody[depId] = entry.sql
     sqlOptionsBody[depId] = {
       subPackage: entry.subPackage,
       tables: entry.tables.map(t => ({ name: t.name, generateRepository: t.generateRepository })),
       apiMode: entry.apiMode ?? 'NONE',
+      // Sent only when they differ from the server's defaults (baseline on, tests off).
+      ...(entry.flywayBaseline === false ? { flywayBaseline: false } : {}),
+      // A test needs a controller: nothing to send without a REST stack.
+      ...(entry.generateTests && (entry.apiMode ?? 'NONE') !== 'NONE' ? { generateTests: true } : {}),
     }
   }
 
