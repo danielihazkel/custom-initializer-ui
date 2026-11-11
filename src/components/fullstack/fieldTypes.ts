@@ -51,5 +51,9 @@ export const isKeyableType = (t: FullstackFieldType) =>
  */
 export const isAttachmentType = (t: FullstackFieldType) => t === 'FILE' || t === 'IMAGE'
 
+/** Whether a list can be sorted by a field of this type — `FieldType.sortable()`: not by long
+ *  text (it does not sort on every database) and not by a file (its value is an id). */
+export const isSortableType = (t: FullstackFieldType) => t !== 'TEXT' && t !== 'MARKDOWN' && !isAttachmentType(t)
+
 /** The currency a MONEY field has when it names none (`FieldDefinition.DEFAULT_CURRENCY`). */
 export const DEFAULT_CURRENCY = 'ILS'

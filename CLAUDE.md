@@ -214,6 +214,12 @@ columns (`narrowColumns`, the wide-list fix). Pinned by `pageLayoutKpiTrend.test
 
 Pinned by `schemaParity.test.ts`, `fixturesInSync.test.ts`, `serverIssue.test.ts`, `RelationsEditor.test.tsx`, `childLists.test.ts`, `updateBaseline.test.ts`, and the "offers an update" / "puts an update the server rejects" cases of `FullstackView.test.tsx`.
 
+**Generator round 10, phase 1 (2026-11)** — the editor side of the fix sweep in `backend/CLAUDE.md`.
+- *Relation labels:* a relation row has a Label input (`FullstackRelationDef.label`, ≤ `LIMITS.maxRelationLabel`); `naming.ts` `relationLabel` (label, else the field name in words) names it in the layout preview, the UI mock and the list-column picker.
+- *Workflow assignee:* locked like the status. `workflow.ts`: a required field is not an assignee choice and `workflowProblem` flags one; `requirableNames` leaves it out. `pageLayout.ts`: `wizardFields` / `defaultWizardSteps` skip it and a step naming it is flagged. `summary.ts` lists `POST /{id}/assign`.
+- *Formatting:* the preview's list cells read like the details (`layoutPreviewModel` `cell` → `detailText`), since the generator writes cells, details and cards with one function.
+- *Sorting:* `fieldTypes.ts` `isSortableType` (not long text, not a file) decides `listColumns().sortable` and the recent widget's "Newest by" choices; a recent list sorted by one is flagged.
+
 *Uncreatable entities:* `collectWarnings` raises a layout-level `uncreatable:<entity>` warning when a writable entity has no page that creates it, but an entity the layout does create needs it through a required `MANY_TO_ONE`. The message reads "No page creates Customer rows — Order needs one, so it cannot be saved either", and the fix is `addListPage`. These count as creating:
 - a reachable list page that keeps New;
 - a form, wizard, import or calendar page;

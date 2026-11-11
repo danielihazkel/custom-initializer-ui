@@ -25,7 +25,7 @@ import { humanize, pluralize, relationLabel } from './naming'
 import { enumLabel, humanizeConstant } from './enumLabels'
 import { summarizeEntity } from './summary'
 import { CHOICES, LIMITS, NAME_RULES } from './schema'
-import { isDateType, isNumericType } from './fieldTypes'
+import { isDateType, isNumericType, isSortableType } from './fieldTypes'
 
 /**
  * The frontend page layout (`pages`) model: validation, the summary lines the editor shows, and
@@ -89,7 +89,7 @@ export function listColumns(entity: FullstackEntityDef | undefined, scaffoldOpts
   if (!entity) return []
   const out: ListColumnOption[] = entity.fields
     .filter(f => f.name.trim())
-    .map(f => ({ key: f.name, label: f.label?.trim() || humanize(f.name), sortable: true, kind: 'field' as const }))
+    .map(f => ({ key: f.name, label: f.label?.trim() || humanize(f.name), sortable: isSortableType(f.type), kind: 'field' as const }))
   for (const r of entity.relations ?? []) {
     if (r.type === 'MANY_TO_ONE' && r.fieldName.trim()) out.push({ key: r.fieldName, label: relationLabel(r), sortable: false, kind: 'relation' })
   }
@@ -1561,6 +1561,9 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
               && !(auditOn(e, scaffoldOpts) && (w.sortBy === 'createdAt' || w.sortBy === 'updatedAt'))) {
               add(`widget.${wi}.sortBy`, `${e.name} has no field “${w.sortBy}”`,
                 `${where} sorts ${e.name} by “${w.sortBy}”, which it no longer has`)
+            } else if (e.fields.some(f => f.name === w.sortBy && !isSortableType(f.type))) {
+              add(`widget.${wi}.sortBy`, `“${w.sortBy}” is long text or a file, which a list cannot be sorted by`,
+                `${where} sorts ${e.name} by “${w.sortBy}”, which is long text or a file`)
             }
           }
           checkPresetFilter(w.presetFilter, e, entityOf, add, `${where} has a widget that`, field => `widget.${wi}.presetFilter.${field}`)

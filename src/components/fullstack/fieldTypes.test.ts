@@ -2,11 +2,30 @@ import { describe, expect, it } from 'vitest'
 import type { FullstackEntityDef, FullstackFieldDef } from '../../types'
 import { isDateType, isDecimalType, isKeyableType, isLongTextType, isNumericType, isTextualType } from './fieldTypes'
 import { cellText, detailText, moneyText } from './previewSample'
+import { sortableKeys, validatePages } from './pageLayout'
 import { parseQuickAdd } from './quickAdd'
 import { carryDefaultAcrossTypes, defaultValueError, validateEntities } from './validation'
 
 const pk: FullstackFieldDef = { name: 'id', type: 'LONG', primaryKey: true, generated: true }
 const entity = (...fields: FullstackFieldDef[]): FullstackEntityDef => ({ name: 'Shift', fields: [pk, ...fields] })
+
+describe('what a list sorts by (mirrors FieldType.sortable)', () => {
+  it('is every field but long text and files', () => {
+    const shift = entity(
+      { name: 'title', type: 'STRING' }, { name: 'notes', type: 'MARKDOWN' }, { name: 'summary', type: 'TEXT' },
+      { name: 'contract', type: 'FILE' }, { name: 'photo', type: 'IMAGE' }, { name: 'startsAt', type: 'LOCAL_TIME' },
+    )
+    expect(sortableKeys(shift)).toEqual(['id', 'title', 'startsAt'])
+    // A list page that opens sorted by one of the others, and a recent list ordered by one, are flagged.
+    const sorted = validatePages([{ id: 'shifts', type: 'entity-list', entity: 'Shift', sort: { field: 'notes', dir: 'asc' } }], [shift])
+    expect(sorted.problems.join()).toContain('notes')
+    const recent = validatePages([
+      { id: 'shifts', type: 'entity-list', entity: 'Shift' },
+      { id: 'home', type: 'dashboard', widgets: [{ kind: 'recent', entity: 'Shift', sortBy: 'contract' }] },
+    ], [shift])
+    expect(recent.problems.join()).toContain('long text or a file')
+  })
+})
 
 describe('what kind of thing a field type is (mirrors FieldType.java)', () => {
   it('money is a number with decimals; Markdown is long, searchable text', () => {

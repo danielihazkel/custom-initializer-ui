@@ -1,6 +1,7 @@
 import type { FullstackDateRange, FullstackEntityDef, FullstackPageDef, FullstackWidgetDef } from '../../../types'
 import { inputClass } from '../controls'
 import { fieldOption, keyOption } from '../fieldOptions'
+import { isSortableType } from '../fieldTypes'
 import { pluralize } from '../naming'
 import { dropIndicatorClass, useDragReorder } from '../useDragReorder'
 import {
@@ -678,7 +679,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
                   className={`${inputClass()} max-w-[11rem] py-1 text-xs`}
                 >
                   <option value="">{defaultOptionLabel(pk, 'key', labelOf)}</option>
-                  {(entity?.fields ?? []).filter(f => !f.primaryKey).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
+                  {(entity?.fields ?? []).filter(f => !f.primaryKey && isSortableType(f.type)).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
                   {auditOn(entity, projectOpts) && (
                     <>
                       <option value="createdAt">Created at (createdAt)</option>
