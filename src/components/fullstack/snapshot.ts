@@ -1,5 +1,6 @@
 import type { FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackStarterRequest } from '../../types'
 import { describePagesChange, requestPages } from './pageLayout'
+import { hasNavSettings, requestNav } from './navTools'
 import { stripUids } from './uid'
 
 export interface ProjectMeta {
@@ -80,7 +81,7 @@ export function makeSnapshot(s: FullstackSnapshot): FullstackSnapshot {
     frontendSet: s.frontendSet,
     ...(s.colorPalette ? { colorPalette: s.colorPalette } : {}),
     ...(s.pages && s.pages.length > 0 ? { pages: JSON.parse(JSON.stringify(s.pages)) as FullstackPageDef[] } : {}),
-    ...(s.nav && (s.nav.style || s.nav.collapsibleGroups) ? { nav: { ...s.nav } } : {}),
+    ...(hasNavSettings(s.nav) ? { nav: { ...s.nav } } : {}),
     ...(s.dismissedWarnings && s.dismissedWarnings.length > 0 ? { dismissedWarnings: [...s.dismissedWarnings] } : {}),
   }
 }
@@ -298,6 +299,6 @@ export function requestFromSnapshot(s: FullstackSnapshot): FullstackStarterReque
     colorPalette: s.colorPalette || undefined,
     entities: stripUids(s.entities),
     pages: pages.length ? requestPages(pages) : undefined,
-    nav: pages.length && s.nav && (s.nav.style || s.nav.collapsibleGroups) ? s.nav : undefined,
+    nav: pages.length ? requestNav(s.nav, s.entities) : undefined,
   }
 }

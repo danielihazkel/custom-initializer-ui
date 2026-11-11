@@ -163,6 +163,34 @@ describe('PagesEditor', () => {
     expect(document.querySelector('[data-nav-options]')).toBeNull()
   })
 
+  it('switches the header’s tools on and off, whatever the template set, and disables a bell with nothing to count', () => {
+    const onNavChange = vi.fn()
+    const pages: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }]
+    const { rerender } = render(
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} nav={{ style: 'topbar' }} />,
+    )
+    fireEvent.click(screen.getByLabelText('Go to anything (Ctrl+K)'))
+    expect(onNavChange).toHaveBeenLastCalledWith({ style: 'topbar', commandPalette: true })
+    // No workflow assigns tasks in this model: the bell is off and says why.
+    const bell = screen.getByLabelText('Notification bell') as HTMLInputElement
+    expect(bell.disabled).toBe(true)
+    expect(bell.closest('label')?.getAttribute('title')).toMatch(/workflow has an assignee/)
+
+    // Switching the last setting off leaves no nav at all — the shell it was before.
+    rerender(
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} nav={{ userMenu: true }} />,
+    )
+    fireEvent.click(screen.getByLabelText('User menu'))
+    expect(onNavChange).toHaveBeenLastCalledWith(undefined)
+
+    // The Menora shell takes the tools too, though it has no nav style to choose.
+    rerender(
+      <PagesEditor pages={pages} entities={entities} validation={validatePages(pages, entities)} onChange={() => {}} pushUndo={pushUndo} onClear={() => {}} onNavChange={onNavChange} previewSettings={{ locale: 'en', projectOpts: [], skin: 'menora' }} />,
+    )
+    expect(document.querySelector('[data-nav-options]')).toBeNull()
+    expect(document.querySelector('[data-nav-tools]')).toBeTruthy()
+  })
+
   it('draws the tailwind preview in the chosen colour palette, and the Menora one in its own', () => {
     const pages: FullstackPageDef[] = [{ id: 'orders', type: 'entity-list', entity: 'Order' }]
     const palette = { primary: '#123456', secondary: '#abcdef' }

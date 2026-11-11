@@ -865,10 +865,17 @@ export interface ExampleSettings {
 }
 
 /** The generated shell's navigation, for a page layout: a sidebar (default) or a top bar, and
- *  whether nav sections fold. The Menora set is a top bar already and ignores it. */
+ *  whether nav sections fold — the Menora set is a top bar already and ignores those two — and the
+ *  header's tools, which both sets take. */
 export interface FullstackNav {
   style?: 'sidebar' | 'topbar'
   collapsibleGroups?: boolean
+  /** Who is signed in, their roles and the keyboard shortcuts. */
+  userMenu?: boolean
+  /** A bell over the workflows' queues; needs an entity whose workflow has an assignee. */
+  notifications?: boolean
+  /** The Ctrl+K palette: pages by name, records by theirs. */
+  commandPalette?: boolean
 }
 
 export interface AdminColorPalette {

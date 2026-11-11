@@ -20,6 +20,8 @@ import { LayoutWarnings } from './pages/LayoutWarnings'
 import { BulkPageBar } from './pages/BulkPageBar'
 import { NewTabsForm, initialTabsForm, type TabsFormState } from './pages/NewTabsForm'
 import { PageList } from './pages/PageList'
+import { NavToolsFields } from './pages/NavTools'
+import { cleanNav } from './navTools'
 import { offNavNoteFor, usePagesModel, type PagesPreviewSettings } from './pages/usePagesModel'
 
 export type { PagesPreviewSettings } from './pages/usePagesModel'
@@ -804,7 +806,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                       role="radio"
                       aria-checked={on}
                       aria-label={label}
-                      onClick={() => onNavChange(value === 'sidebar' ? (nav?.collapsibleGroups ? { collapsibleGroups: true } : undefined) : { ...nav, style: value })}
+                      onClick={() => onNavChange(cleanNav({ ...nav, style: value }))}
                       className={`px-2 py-0.5 text-[11px] ${on ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5'}`}
                     >
                       {label}
@@ -818,12 +820,13 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                   className="accent-primary"
                   checked={Boolean(nav?.collapsibleGroups)}
                   aria-label="Collapsible groups"
-                  onChange={e => onNavChange(e.target.checked ? { ...nav, collapsibleGroups: true } : (nav?.style && nav.style !== 'sidebar' ? { style: nav.style } : undefined))}
+                  onChange={e => onNavChange(cleanNav({ ...nav, collapsibleGroups: e.target.checked }))}
                 />
                 Collapsible groups
               </label>
             </div>
           )}
+          {onNavChange && pages.length > 0 && <NavToolsFields nav={nav} entities={entities} onNavChange={onNavChange} />}
           {navGroupSections.some(s => s.group) && (
             <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-outline-variant px-2 py-1" data-nav-groups>
               <span

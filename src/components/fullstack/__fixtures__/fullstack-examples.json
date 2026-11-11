@@ -2153,6 +2153,11 @@
       }
     ],
     "settings": {
+      "nav": {
+        "userMenu": true,
+        "notifications": true,
+        "commandPalette": true
+      },
       "scaffold": [
         "audit",
         "optimisticLocking",
