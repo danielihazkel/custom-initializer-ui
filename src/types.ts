@@ -118,6 +118,9 @@ export type SqlByDep = Record<string, SqlWizardEntry>
 // ── OpenAPI Wizard ────────────────────────────────────────────────────────────
 export type OpenApiMode = 'CONTROLLERS' | 'CLIENT' | 'BOTH'
 
+// What a generated client calls through. Absent = RestTemplate, as before.
+export type OpenApiClientKind = 'restTemplate' | 'restClient'
+
 export interface OpenApiWizardEntry {
   spec: string
   apiSubPackage: string
@@ -125,6 +128,9 @@ export interface OpenApiWizardEntry {
   clientSubPackage: string
   mode: OpenApiMode
   baseUrlProperty: string
+  clientKind?: OpenApiClientKind
+  /** Keep the document in the project (src/main/resources/openapi/). Absent = no. */
+  copySpec?: boolean
 }
 
 export type OpenApiByDep = Record<string, OpenApiWizardEntry>

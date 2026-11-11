@@ -263,6 +263,8 @@ export function buildWizardBody(
     clientSubPackage: string
     mode: string
     baseUrlProperty: string
+    clientKind?: string
+    copySpec?: boolean
   }> = {}
   for (const [depId, entry] of Object.entries(activeOpenApi)) {
     specByDep[depId] = entry.spec
@@ -272,6 +274,9 @@ export function buildWizardBody(
       clientSubPackage: entry.clientSubPackage,
       mode: entry.mode,
       baseUrlProperty: entry.baseUrlProperty,
+      // Sent only where they differ from the server's defaults; a client kind needs a client.
+      ...(entry.clientKind === 'restClient' && entry.mode !== 'CONTROLLERS' ? { clientKind: 'restClient' } : {}),
+      ...(entry.copySpec ? { copySpec: true } : {}),
     }
   }
 

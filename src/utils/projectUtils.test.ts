@@ -59,6 +59,23 @@ describe('buildWizardBody', () => {
     })
   })
 
+  it('sends the OpenAPI client kind and spec copy only when set', () => {
+    const entry = {
+      spec: 'openapi: 3.0.0', apiSubPackage: 'api', dtoSubPackage: 'dto', clientSubPackage: 'client',
+      mode: 'BOTH' as const, baseUrlProperty: 'openapi.client.base-url',
+    }
+    const plain = { apiSubPackage: 'api', dtoSubPackage: 'dto', clientSubPackage: 'client', mode: 'BOTH', baseUrlProperty: 'openapi.client.base-url' }
+    const options = (extra: object) =>
+      (buildWizardBody(form, ['web'], {}, {}, { web: { ...entry, ...extra } }, {})
+        .openApiOptions as Record<string, Record<string, unknown>>).web
+
+    expect(options({})).toEqual(plain)
+    expect(options({ clientKind: 'restTemplate', copySpec: false })).toEqual(plain)
+    expect(options({ clientKind: 'restClient', copySpec: true })).toEqual({ ...plain, clientKind: 'restClient', copySpec: true })
+    // No client, no client kind.
+    expect(options({ mode: 'CONTROLLERS', clientKind: 'restClient' })).toEqual({ ...plain, mode: 'CONTROLLERS' })
+  })
+
   it('sends the SQL extras only where they differ from the server defaults', () => {
     const entry = { sql: 'CREATE TABLE users (id INT);', subPackage: 'entity', tables: [] }
     const options = (extra: Partial<SqlByDep[string]>) =>
