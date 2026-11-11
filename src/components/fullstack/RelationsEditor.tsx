@@ -38,9 +38,9 @@ const childList = (rel: FullstackRelationDef) => rel.type === 'ONE_TO_MANY'
 
 /** What a row keeps when its kind changes: each kind's own settings mean nothing to the others. */
 const KIND_RESET: Record<FullstackRelationType, Partial<FullstackRelationDef>> = {
-  MANY_TO_ONE: { type: 'MANY_TO_ONE', joinTable: undefined, inverseJoinColumn: undefined, mappedBy: undefined },
+  MANY_TO_ONE: { type: 'MANY_TO_ONE', joinTable: undefined, inverseJoinColumn: undefined, mappedBy: undefined, composition: undefined },
   // A set of rows is never required and has no single foreign-key column.
-  MANY_TO_MANY: { type: 'MANY_TO_MANY', required: false, joinColumn: undefined, mappedBy: undefined },
+  MANY_TO_MANY: { type: 'MANY_TO_MANY', required: false, joinColumn: undefined, mappedBy: undefined, composition: undefined },
   // The other side holds the column, and says whether it is required.
   ONE_TO_MANY: { type: 'ONE_TO_MANY', required: false, joinColumn: undefined, joinTable: undefined, inverseJoinColumn: undefined },
 }
@@ -220,6 +220,20 @@ export function RelationsEditor({ relations, entityNames, linkIndex, fieldNames 
                           {rel.mappedBy && !linksOf(rel).includes(rel.mappedBy) && <option value={rel.mappedBy}>by {rel.mappedBy}</option>}
                         </select>
                         {rErr?.mappedBy && <p className="mt-0.5 text-[11px] text-error">{rErr.mappedBy}</p>}
+                        <label
+                          className="mt-1 flex items-center gap-1.5 text-[11px] text-on-surface-variant cursor-pointer"
+                          title="Composition: the rows are part of this entity. Its form edits them in a table, a save carries them, and a row left out is removed. Without it the list is read-only here and the rows are edited on their own page."
+                        >
+                          <input
+                            type="checkbox"
+                            className="accent-primary"
+                            checked={rel.composition === true}
+                            aria-invalid={Boolean(rErr?.composition)}
+                            onChange={e => update(rIdx, { composition: e.target.checked ? true : undefined })}
+                          />
+                          Edit the rows in this form
+                        </label>
+                        {rErr?.composition && <p className="mt-0.5 text-[11px] text-error" data-error>{rErr.composition}</p>}
                       </>
                     ) : many(rel) ? (
                       <>

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { FullstackEntityDef, FullstackRelationDef } from '../../types'
-import { linkIndexKey, linkKey, linksBetween, parseLinkIndex, renameLinkInChildLists, resolveLink } from './childLists'
+import { compositionProblem, linkIndexKey, linkKey, linksBetween, parseLinkIndex, renameLinkInChildLists, resolveLink } from './childLists'
 import { validateEntities } from './validation'
 import { summarizeEntity } from './summary'
 
@@ -104,5 +104,43 @@ describe('validating a one-to-many', () => {
     expect(validateEntities([owner, line]).count).toBe(0)
     expect(summarizeEntity({ ...order, relations: [list({})] }, []).filters).not.toContain('linesId')
     expect(summarizeEntity(line, []).filters).toContain('orderId')
+  })
+})
+
+describe('composition — the rows of a one-to-many edited in their parent', () => {
+  const product: FullstackEntityDef = { name: 'Product', fields: [id, name] }
+  const composed = list({ composition: true })
+  const parent = (): FullstackEntityDef => ({ ...order, relations: [composed] })
+  const problemWith = (child: FullstackEntityDef, owner = parent(), rest: FullstackEntityDef[] = []) =>
+    compositionProblem(owner, composed, 'order', [owner, child, product, ...rest])
+
+  it('is fine for a plain row of its parent', () => {
+    expect(problemWith(line)).toBeUndefined()
+    // …with other foreign keys of its own.
+    expect(problemWith({ ...line, relations: [...line.relations!, { type: 'MANY_TO_ONE', fieldName: 'product', targetEntity: 'Product' }] }))
+      .toBeUndefined()
+    expect(validateEntities([parent(), line]).count).toBe(0)
+  })
+
+  it('says which rule a child breaks, as the server does', () => {
+    expect(problemWith({ ...line, relations: [{ ...line.relations![0], required: false }] }))
+      .toBe("'order' on OrderLine must be required (a composed row always belongs to its Order)")
+    expect(problemWith({ ...line, fields: [{ name: 'code', type: 'STRING', primaryKey: true }] }))
+      .toContain('needs a single generated key')
+    expect(problemWith({ ...line, readOnly: true })).toBe('OrderLine is read-only: its rows cannot be saved')
+    expect(problemWith(line, { ...parent(), readOnly: true })).toContain('Order is read-only')
+    expect(problemWith({ ...line, fields: [id, { name: 'scan', type: 'FILE' }] })).toContain("attachment field ('scan')")
+    expect(problemWith({ ...line, relations: [...line.relations!, { type: 'MANY_TO_MANY', fieldName: 'extras', targetEntity: 'Product' }] }))
+      .toContain('has lists of its own')
+    // A row has one owner: the first composition of it, in the model's order.
+    const other: FullstackEntityDef = { name: 'Basket', fields: [id], relations: [list({ composition: true })] }
+    expect(compositionProblem(parent(), composed, 'order', [other, parent(), line])).toBe('OrderLine is already composed by Basket.lines: a row has one owner')
+  })
+
+  it('is a problem of the relation, and none while the box is not ticked', () => {
+    const optional = { ...line, relations: [{ ...line.relations![0], required: false }] }
+    const result = validateEntities([parent(), optional])
+    expect(result.entities[0].relations?.[0].composition).toContain('must be required')
+    expect(validateEntities([{ ...order, relations: [list({})] }, optional]).count).toBe(0)
   })
 })

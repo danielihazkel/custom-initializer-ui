@@ -2,7 +2,7 @@ import type { FullstackEntityDef } from '../../types'
 import { formSectionsProblem } from './formSections'
 import { workflowProblem } from './workflow'
 import { columnOf, joinColumnOf } from './naming'
-import { linksBetween, resolveLink } from './childLists'
+import { compositionProblem, linksBetween, resolveLink } from './childLists'
 import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
 import { isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
 
@@ -200,6 +200,8 @@ export interface RelationErrors {
   joinTable?: string
   /** A ONE_TO_MANY's link: not one of the target's, ambiguous, or already listed. */
   mappedBy?: string
+  /** Why a ONE_TO_MANY cannot be a composition. */
+  composition?: string
   label?: string
 }
 
@@ -481,6 +483,10 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
           const key = `${target.toLowerCase()}>${link.mappedBy!.toLowerCase()}`
           if (listedLinks.has(key)) rErr.mappedBy = 'Lists the same rows as another one-to-many of this entity'
           listedLinks.add(key)
+          if (rel.composition) {
+            const problem = compositionProblem(entity, rel, link.mappedBy!, entities)
+            if (problem) rErr.composition = problem
+          }
         }
       }
       // A MANY_TO_MANY keeps one key of each side in its join table, so both sides need a single

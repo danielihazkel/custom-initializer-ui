@@ -20,6 +20,14 @@ function renderEditor(relations: FullstackRelationDef[], errors?: Parameters<typ
   return onChange
 }
 
+function renderEditorHasBox(relations: FullstackRelationDef[]): boolean {
+  const { container, unmount } = render(<RelationsEditor relations={relations} entityNames={['Post', 'Tag']} linkIndex={links}
+                                                         ownerName="Post" showInverse onChange={() => {}} />)
+  const found = Array.from(container.querySelectorAll('label')).some(l => l.textContent?.includes('Edit the rows in this form'))
+  unmount()
+  return found
+}
+
 describe('RelationsEditor — relation kind', () => {
   it('turns a foreign key into a many-to-many: never required, no foreign-key column', () => {
     const onChange = renderEditor([foreignKey])
@@ -94,6 +102,27 @@ describe('RelationsEditor — relation kind', () => {
     const [[[next]]] = onChange.mock.calls
     expect(next.type).toBe('MANY_TO_ONE')
     expect(next.mappedBy).toBeUndefined()
+  })
+
+  it('makes a one-to-many a composition, and drops that with the kind', () => {
+    const rows: FullstackRelationDef = { uid: 'r1', type: 'ONE_TO_MANY', fieldName: 'comments', targetEntity: 'Comment' }
+    const onChange = renderEditor([rows])
+    const box = screen.getByLabelText('Edit the rows in this form') as HTMLInputElement
+    expect(box.checked).toBe(false)
+    fireEvent.click(box)
+    expect(onChange).toHaveBeenLastCalledWith([{ ...rows, composition: true }])
+  })
+
+  it('shows why a composition cannot work under its box, and clears it with the kind', () => {
+    const rows: FullstackRelationDef = { uid: 'r1', type: 'ONE_TO_MANY', fieldName: 'comments', targetEntity: 'Comment', composition: true }
+    const onChange = renderEditor([rows], { 0: { composition: "'post' on Comment must be required" } })
+    expect((screen.getByLabelText('Edit the rows in this form') as HTMLInputElement).checked).toBe(true)
+    expect(screen.getByText("'post' on Comment must be required")).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Relation kind'), { target: { value: 'MANY_TO_ONE' } })
+    const [[[next]]] = onChange.mock.calls
+    expect(next.composition).toBeUndefined()
+    // A foreign key has no such box.
+    expect(renderEditorHasBox([foreignKey])).toBe(false)
   })
 
   it('shows what is wrong with the join table under it', () => {

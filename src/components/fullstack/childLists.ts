@@ -72,6 +72,40 @@ export function resolveLink(rel: FullstackRelationDef, owner: string, links: rea
 }
 
 /**
+ * Why `rel` — a ONE_TO_MANY of `parent` that reads `mappedBy` — cannot be a composition, or
+ * undefined when it can. A composition makes the rows part of the parent (edited in its form,
+ * saved and removed with it), which only works for a child that is plainly a row of its parent:
+ * the rules of `FullstackRequestValidator.checkComposition`, in the same order.
+ */
+export function compositionProblem(
+  parent: FullstackEntityDef, rel: FullstackRelationDef, mappedBy: string, entities: readonly FullstackEntityDef[],
+): string | undefined {
+  const child = entities.find(e => lower(e.name) === lower(rel.targetEntity))
+  if (!child) return undefined
+  const childName = child.name.trim()
+  if (lower(childName) === lower(parent.name)) return 'An entity cannot be composed of its own rows'
+  if (parent.readOnly || parent.viewQuery !== undefined) return `${parent.name.trim()} is read-only, so it has no form to edit the rows in`
+  if (child.readOnly || child.viewQuery !== undefined) return `${childName} is read-only: its rows cannot be saved`
+  const keys = child.fields.filter(f => f.primaryKey)
+  if (keys.length !== 1 || !keys[0].generated) return `${childName} needs a single generated key (a new row gets its id from the database)`
+  const link = (child.relations ?? []).find(r => r.type === 'MANY_TO_ONE' && lower(r.fieldName) === lower(mappedBy))
+  if (link && !link.required) return `'${link.fieldName.trim()}' on ${childName} must be required (a composed row always belongs to its ${parent.name.trim()})`
+  if (child.workflow) return `${childName} has a workflow: its rows change by their own moves, not with a parent's save`
+  const attachment = child.fields.find(f => f.type === 'FILE' || f.type === 'IMAGE')
+  if (attachment) return `${childName} has an attachment field ('${attachment.name}'), which a row of a parent's form cannot upload`
+  if ((child.relations ?? []).some(r => r.type !== 'MANY_TO_ONE')) return `${childName} has lists of its own, which a row of a parent's form cannot edit`
+  // A row has one owner: the first composition of the child, in the model's order, is it.
+  for (const other of entities) {
+    for (const r of other.relations ?? []) {
+      if (r.type !== 'ONE_TO_MANY' || !r.composition || lower(r.targetEntity) !== lower(childName)) continue
+      if (other === parent && r === rel) return undefined
+      return `${childName} is already composed by ${other.name.trim()}.${r.fieldName.trim()}: a row has one owner`
+    }
+  }
+  return undefined
+}
+
+/**
  * A MANY_TO_ONE was renamed: the ONE_TO_MANYs that name it in `mappedBy` follow. Returns the same
  * array when none did.
  */

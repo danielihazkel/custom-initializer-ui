@@ -444,6 +444,9 @@ export interface FullstackRelationDef {
   /** ONE_TO_MANY only: the target's MANY_TO_ONE this list reads. Omitted = the only one it has
    *  to this entity. */
   mappedBy?: string
+  /** ONE_TO_MANY only: the rows are part of this entity — edited in its form and saved, and
+   *  removed, with it. */
+  composition?: boolean
   /** What the generated UI calls the relation (column heading, form label, filter). Omitted =
    *  the field name. */
   label?: string
