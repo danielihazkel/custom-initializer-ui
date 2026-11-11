@@ -32,6 +32,7 @@ export default defineConfig({
       '/starter-wizard.preview': 'http://localhost:8080',
       '/starter-wizard.detect-paths': 'http://localhost:8080',
       '/starter-wizard.detect-services': 'http://localhost:8080',
+      '/starter-wizard.detect-channels': 'http://localhost:8080',
       '/actuator': 'http://localhost:8080',
       '/admin': 'http://localhost:8080',
       '/frontend': 'http://localhost:8080',

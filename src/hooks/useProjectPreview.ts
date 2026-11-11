@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { PreviewError, PreviewResponse, ProjectFormValues, SqlByDep, OpenApiByDep, SoapByDep } from '../types'
-import { buildWizardBody } from '../utils/projectUtils'
+import type { PreviewError, PreviewResponse, ProjectFormValues, SqlByDep, OpenApiByDep, SoapByDep, EventsByDep } from '../types'
+import { activeWizardEntries, buildWizardBody } from '../utils/projectUtils'
 import { readErrorBody } from '../utils/previewErrors'
 
 export function useProjectPreview() {
@@ -28,6 +28,7 @@ export function useProjectPreview() {
     sqlByDep?: SqlByDep,
     openApiByDep?: OpenApiByDep,
     soapByDep?: SoapByDep,
+    eventsByDep?: EventsByDep,
   ) => {
     abortRef.current?.abort()
     const ctrl = new AbortController()
@@ -47,13 +48,15 @@ export function useProjectPreview() {
       const activeSoap = soapByDep
         ? Object.fromEntries(Object.entries(soapByDep).filter(([id]) => selected.includes(id)))
         : {}
+      const activeEvents = activeWizardEntries(eventsByDep, selected)
       const hasWizard = Object.keys(activeSql).length > 0
           || Object.keys(activeOpenApi).length > 0
           || Object.keys(activeSoap).length > 0
+          || Object.keys(activeEvents).length > 0
 
       let data: PreviewResponse
       if (hasWizard) {
-        const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap)
+        const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap, activeEvents)
         const res = await fetch('/starter-wizard.preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

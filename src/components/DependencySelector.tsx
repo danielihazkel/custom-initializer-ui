@@ -1,12 +1,16 @@
 import { useState, useMemo, useEffect, useCallback, useRef, useDeferredValue, lazy, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import type { DependencySelectorProps, DependencyGroup, MetadataOption } from '../types'
+import type { DependencySelectorProps, DependencyGroup, EventsByDep, MetadataOption } from '../types'
 import { DependencyCard } from './DependencyCard'
 // The wizard drawers embed a CodeMirror editor (~1 MB of grammars); load them only when a
 // wizard is actually opened so the editor stack stays out of the initial bundle.
 const SqlWizardDrawer = lazy(() => import('./SqlWizardDrawer').then(m => ({ default: m.SqlWizardDrawer })))
 const OpenApiWizardDrawer = lazy(() => import('./OpenApiWizardDrawer').then(m => ({ default: m.OpenApiWizardDrawer })))
 const SoapWizardDrawer = lazy(() => import('./SoapWizardDrawer').then(m => ({ default: m.SoapWizardDrawer })))
+const EventsWizardDrawer = lazy(() => import('./EventsWizardDrawer').then(m => ({ default: m.EventsWizardDrawer })))
+
+const NO_EVENTS_DEPS: string[] = []
+const NO_EVENTS: EventsByDep = {}
 import { SuggestionStrip } from './SuggestionStrip'
 import { useDependencyCompatibility } from '../hooks/useDependencyCompatibility'
 import { requiredSqlDeps, isSqlDepSatisfied } from '../utils/projectUtils'
@@ -71,6 +75,9 @@ export function DependencySelector({
   soapCapableDeps,
   soapByDep,
   onSoapByDepChange,
+  eventsCapableDeps = NO_EVENTS_DEPS,
+  eventsByDep = NO_EVENTS,
+  onEventsByDepChange,
   sqlParseError,
 }: DependencySelectorProps) {
   const [search, setSearch] = useState<string>('')
@@ -78,6 +85,7 @@ export function DependencySelector({
   const [wizardDepId, setWizardDepId] = useState<string | null>(null)
   const [openApiWizardDepId, setOpenApiWizardDepId] = useState<string | null>(null)
   const [soapWizardDepId, setSoapWizardDepId] = useState<string | null>(null)
+  const [eventsWizardDepId, setEventsWizardDepId] = useState<string | null>(null)
 
   const toggleGroup = useCallback((name: string) => {
     setCollapsedGroups(prev => {
@@ -210,6 +218,7 @@ export function DependencySelector({
   const wizardDep = wizardDepId ? allDeps.find(d => d.id === wizardDepId) : null
   const openApiWizardDep = openApiWizardDepId ? allDeps.find(d => d.id === openApiWizardDepId) : null
   const soapWizardDep = soapWizardDepId ? allDeps.find(d => d.id === soapWizardDepId) : null
+  const eventsWizardDep = eventsWizardDepId ? allDeps.find(d => d.id === eventsWizardDepId) : null
 
   return (
     <>
@@ -428,6 +437,23 @@ export function DependencySelector({
                       )}
                     </div>
                   )}
+                  {eventsCapableDeps.includes(dep.id) && (
+                    <div className="mt-3 pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEventsWizardDepId(dep.id)}
+                        className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>cell_tower</span>
+                        {eventsByDep[dep.id] ? 'Edit events…' : 'Generate from AsyncAPI…'}
+                      </button>
+                      {eventsByDep[dep.id] && (
+                        <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
+                          ✓ document attached
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </motion.div>
               )) : (
                 <motion.div
@@ -606,6 +632,16 @@ export function DependencySelector({
           depName={soapWizardDep.name}
           initial={soapByDep[soapWizardDep.id] ?? null}
           onSave={entry => onSoapByDepChange(soapWizardDep.id, entry)}
+        />
+      )}
+      {eventsWizardDep && (
+        <EventsWizardDrawer
+          isOpen={eventsWizardDepId !== null}
+          onClose={() => setEventsWizardDepId(null)}
+          depId={eventsWizardDep.id}
+          depName={eventsWizardDep.name}
+          initial={eventsByDep[eventsWizardDep.id] ?? null}
+          onSave={entry => onEventsByDepChange?.(eventsWizardDep.id, entry)}
         />
       )}
       </Suspense>

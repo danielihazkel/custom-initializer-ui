@@ -5,6 +5,7 @@ import { useExtensions } from './hooks/useExtensions'
 import { useSqlDialects } from './hooks/useSqlDialects'
 import { useOpenApiCapable } from './hooks/useOpenApiCapable'
 import { useSoapCapable } from './hooks/useSoapCapable'
+import { useEventsCapable } from './hooks/useEventsCapable'
 import { useCompatibility } from './hooks/useCompatibility'
 import { useProjectPreview } from './hooks/useProjectPreview'
 import { useStarterTemplates } from './hooks/useStarterTemplates'
@@ -72,6 +73,7 @@ export default function App() {
   const { dialects: sqlDialects } = useSqlDialects()
   const { depIds: openApiCapableDeps } = useOpenApiCapable()
   const { depIds: soapCapableDeps } = useSoapCapable()
+  const { depIds: eventsCapableDeps } = useEventsCapable()
   const { rules: compatibilityRules } = useCompatibility('BACKEND')
   const { templates } = useStarterTemplates('BACKEND')
   const { modules: moduleTemplates } = useModuleTemplates()
@@ -84,6 +86,7 @@ export default function App() {
     sqlByDep,
     openApiByDep,
     soapByDep,
+    eventsByDep,
     multiModuleEnabled,
     selectedModules,
     activeTemplate,
@@ -94,6 +97,7 @@ export default function App() {
     handleSqlByDepChange,
     handleOpenApiByDepChange,
     handleSoapByDepChange,
+    handleEventsByDepChange,
     handleTemplateSelect,
     applySnapshot,
     resetAll,
@@ -128,9 +132,10 @@ export default function App() {
     sqlByDep,
     openApiByDep,
     soapByDep,
+    eventsByDep,
     multiModuleEnabled,
     selectedModules,
-  }), [form, selectedDeps, selectedOptions, sqlByDep, openApiByDep, soapByDep, multiModuleEnabled, selectedModules])
+  }), [form, selectedDeps, selectedOptions, sqlByDep, openApiByDep, soapByDep, eventsByDep, multiModuleEnabled, selectedModules])
 
   const [shareCopied, setShareCopied] = useState(false)
   const [generateSuccess, setGenerateSuccess] = useState(false)
@@ -224,7 +229,7 @@ export default function App() {
   const downloadArgs = () => [
     form, selectedDeps, selectedOptions,
     { enabled: multiModuleEnabled, modules: selectedModules },
-    sqlByDep, openApiByDep, soapByDep,
+    sqlByDep, openApiByDep, soapByDep, eventsByDep,
   ] as const
 
   async function downloadProject(): Promise<boolean> {
@@ -553,6 +558,9 @@ export default function App() {
             soapCapableDeps={soapCapableDeps}
             soapByDep={soapByDep}
             onSoapByDepChange={handleSoapByDepChange}
+            eventsCapableDeps={eventsCapableDeps}
+            eventsByDep={eventsByDep}
+            onEventsByDepChange={handleEventsByDepChange}
             sqlParseError={isWizardPreviewError ? previewError : null}
             form={form}
             formErrors={formErrors}

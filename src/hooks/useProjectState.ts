@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { parseUrlParams, defaultForm } from '../utils/projectUtils'
 import { readJson, readString, writeJson, writeString } from '../utils/storage'
-import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, StarterTemplate, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, StarterTemplate, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, EventsByDep, EventsWizardEntry } from '../types'
 
 const PERSIST_DEBOUNCE_MS = 300
 
@@ -17,6 +17,30 @@ function normalizeOpenApiByDep(raw: unknown): OpenApiByDep {
       clientSubPackage: value.clientSubPackage ?? 'client',
       mode: value.mode ?? 'CONTROLLERS',
       baseUrlProperty: value.baseUrlProperty ?? 'openapi.client.base-url',
+      // Kept only when set, like the drawer saves them.
+      ...(value.clientKind === 'restClient' ? { clientKind: 'restClient' as const } : {}),
+      ...(value.copySpec === true ? { copySpec: true } : {}),
+    }
+  }
+  return out
+}
+
+function normalizeEventsByDep(raw: unknown): EventsByDep {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: EventsByDep = {}
+  for (const [depId, value] of Object.entries(raw as Record<string, Partial<EventsWizardEntry>>)) {
+    if (!value || typeof value !== 'object') continue
+    out[depId] = {
+      spec: value.spec ?? '',
+      subPackage: value.subPackage ?? 'events',
+      payloadSubPackage: value.payloadSubPackage ?? 'events.model',
+      groupId: value.groupId ?? '',
+      channels: Array.isArray(value.channels)
+        ? value.channels
+            .filter(c => c && typeof c.name === 'string')
+            .map(c => ({ name: c.name, produce: c.produce === true, consume: c.consume === true }))
+        : [],
+      generateTests: value.generateTests === true,
     }
   }
   return out
@@ -100,6 +124,9 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
   const [soapByDep, setSoapByDep] = useState<SoapByDep>(() =>
     url ? {} : normalizeSoapByDep(readJson<unknown>('soapByDep', {})))
 
+  const [eventsByDep, setEventsByDep] = useState<EventsByDep>(() =>
+    url ? {} : normalizeEventsByDep(readJson<unknown>('eventsByDep', {})))
+
   // Persist to localStorage — debounced so a keystroke doesn't trigger eight
   // synchronous JSON.stringify + setItem calls; flushed on unmount / page hide.
   const persistRef = useRef<() => void>(() => {})
@@ -113,11 +140,12 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
       writeJson('sqlByDep', sqlByDep)
       writeJson('openApiByDep', openApiByDep)
       writeJson('soapByDep', soapByDep)
+      writeJson('eventsByDep', eventsByDep)
     }
     persistRef.current = write
     const handle = setTimeout(write, PERSIST_DEBOUNCE_MS)
     return () => clearTimeout(handle)
-  }, [form, selected, selectedOptions, multiModuleEnabled, selectedModules, sqlByDep, openApiByDep, soapByDep])
+  }, [form, selected, selectedOptions, multiModuleEnabled, selectedModules, sqlByDep, openApiByDep, soapByDep, eventsByDep])
 
   useEffect(() => {
     const flush = () => persistRef.current()
@@ -203,6 +231,7 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
       setSqlByDep(drop)
       setOpenApiByDep(drop)
       setSoapByDep(drop)
+      setEventsByDep(drop)
     }
     setActiveTemplate(null)
   }, [selected])
@@ -234,6 +263,15 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
     })
   }, [])
 
+  const handleEventsByDepChange = useCallback((depId: string, entry: EventsWizardEntry | null) => {
+    setEventsByDep(prev => {
+      const next = { ...prev }
+      if (entry === null) delete next[depId]
+      else next[depId] = entry
+      return next
+    })
+  }, [])
+
   const handleOptionsChange = useCallback((depId: string, optIds: string[]) => {
     setSelectedOptions(prev => ({ ...prev, [depId]: optIds }))
     setActiveTemplate(null)
@@ -247,11 +285,13 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
       setSqlByDep({})
       setOpenApiByDep({})
       setSoapByDep({})
+      setEventsByDep({})
       return
     }
     setSqlByDep({})
     setOpenApiByDep({})
     setSoapByDep({})
+    setEventsByDep({})
     setActiveTemplate(template.id)
     setSelected(template.dependencies.map(d => d.depId))
     const opts: Record<string, string[]> = {}
@@ -277,6 +317,7 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
     setSqlByDep(JSON.parse(JSON.stringify(snapshot.sqlByDep)))
     setOpenApiByDep(normalizeOpenApiByDep(JSON.parse(JSON.stringify(snapshot.openApiByDep ?? {}))))
     setSoapByDep(normalizeSoapByDep(JSON.parse(JSON.stringify(snapshot.soapByDep ?? {}))))
+    setEventsByDep(normalizeEventsByDep(JSON.parse(JSON.stringify(snapshot.eventsByDep ?? {}))))
     setMultiModuleEnabled(snapshot.multiModuleEnabled)
     setSelectedModules([...snapshot.selectedModules])
     setActiveTemplate(null)
@@ -289,6 +330,7 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
     setSqlByDep({})
     setOpenApiByDep({})
     setSoapByDep({})
+    setEventsByDep({})
     setMultiModuleEnabled(false)
     setSelectedModules([])
     setActiveTemplate(null)
@@ -302,6 +344,7 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
     sqlByDep,
     openApiByDep,
     soapByDep,
+    eventsByDep,
     multiModuleEnabled,
     selectedModules,
     activeTemplate,
@@ -313,6 +356,7 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
     handleSqlByDepChange,
     handleOpenApiByDepChange,
     handleSoapByDepChange,
+    handleEventsByDepChange,
     handleTemplateSelect,
     applySnapshot,
     resetAll,

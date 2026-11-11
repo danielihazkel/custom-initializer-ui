@@ -4,7 +4,7 @@ import { OptionsPanel } from './OptionsPanel'
 import { ProjectForm } from './ProjectForm'
 import { ModuleSelector } from './ModuleSelector'
 import { DependencySelector } from './DependencySelector'
-import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, PreviewError } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, EventsByDep, EventsWizardEntry, PreviewError } from '../types'
 import type { FormErrors } from '../utils/projectUtils'
 
 interface InitializrViewProps {
@@ -22,6 +22,9 @@ interface InitializrViewProps {
   soapCapableDeps: string[]
   soapByDep: SoapByDep
   onSoapByDepChange: (depId: string, entry: SoapWizardEntry | null) => void
+  eventsCapableDeps?: string[]
+  eventsByDep?: EventsByDep
+  onEventsByDepChange?: (depId: string, entry: EventsWizardEntry | null) => void
   sqlParseError?: PreviewError | null
 
   form: ProjectFormValues
@@ -64,6 +67,9 @@ export function InitializrView({
   soapCapableDeps,
   soapByDep,
   onSoapByDepChange,
+  eventsCapableDeps,
+  eventsByDep,
+  onEventsByDepChange,
   sqlParseError,
   form,
   formErrors,
@@ -173,6 +179,9 @@ export function InitializrView({
             soapCapableDeps={soapCapableDeps}
             soapByDep={soapByDep}
             onSoapByDepChange={onSoapByDepChange}
+            eventsCapableDeps={eventsCapableDeps}
+            eventsByDep={eventsByDep}
+            onEventsByDepChange={onEventsByDepChange}
             sqlParseError={sqlParseError}
           />
         </section>

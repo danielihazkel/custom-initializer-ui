@@ -88,6 +88,9 @@ export interface DependencySelectorProps {
   soapCapableDeps:     string[]
   soapByDep:           SoapByDep
   onSoapByDepChange:   (depId: string, entry: SoapWizardEntry | null) => void
+  eventsCapableDeps?:  string[]
+  eventsByDep?:        EventsByDep
+  onEventsByDepChange?: (depId: string, entry: EventsWizardEntry | null) => void
   sqlParseError?:      PreviewError | null
 }
 
@@ -150,6 +153,28 @@ export interface SoapWizardEntry {
 
 export type SoapByDep = Record<string, SoapWizardEntry>
 
+// ── Events Wizard (AsyncAPI → Kafka) ──────────────────────────────────────────
+export interface EventsChannelChoice {
+  /** The channel's name in the document. */
+  name: string
+  /** Write a producer / a listener for it. */
+  produce: boolean
+  consume: boolean
+}
+
+export interface EventsWizardEntry {
+  spec: string
+  subPackage: string
+  payloadSubPackage: string
+  /** The listeners' consumer group; blank = the application's own. */
+  groupId: string
+  /** Empty = every channel, as the application the document describes. */
+  channels: EventsChannelChoice[]
+  generateTests: boolean
+}
+
+export type EventsByDep = Record<string, EventsWizardEntry>
+
 export interface GenerateButtonProps {
   form:     ProjectFormValues
   selected: string[]
@@ -163,6 +188,8 @@ export interface ProjectSnapshot {
   sqlByDep: SqlByDep
   openApiByDep: OpenApiByDep
   soapByDep: SoapByDep
+  /** Absent in snapshots saved before the events wizard. */
+  eventsByDep?: EventsByDep
   multiModuleEnabled: boolean
   selectedModules: string[]
 }

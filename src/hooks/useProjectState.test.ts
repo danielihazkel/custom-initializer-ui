@@ -116,3 +116,39 @@ describe('useProjectState — persistence', () => {
     expect(result.current.sqlByDep).toEqual({})
   })
 })
+
+describe('useProjectState — wizard entries across a reload', () => {
+  it('keeps the options a wizard saved, and reads an entry of an older shape', () => {
+    // What the drawers save today…
+    localStorage.setItem('selectedDeps', JSON.stringify(['web', 'data-jpa']))
+    localStorage.setItem('openApiByDep', JSON.stringify({
+      web: { spec: 's', apiSubPackage: 'api', dtoSubPackage: 'dto', clientSubPackage: 'client', mode: 'BOTH',
+        baseUrlProperty: 'p', clientKind: 'restClient', copySpec: true },
+      // …and an entry saved before the client kind existed.
+      old: { spec: 'o' },
+    }))
+    localStorage.setItem('eventsByDep', JSON.stringify({
+      // (keyed by a dependency this test's catalog has)
+      'data-jpa': { spec: 'asyncapi: 3.0.0', groupId: 'billing', generateTests: true,
+        channels: [{ name: 'orders', produce: true }, { nope: 1 }] },
+    }))
+    const { result } = renderHook(() => useProjectState(metadata))
+
+    // The client kind and the spec copy used to be dropped here, so a reload undid them.
+    expect(result.current.openApiByDep.web).toMatchObject({ clientKind: 'restClient', copySpec: true })
+    expect(result.current.openApiByDep.old).toEqual({
+      spec: 'o', apiSubPackage: 'api', dtoSubPackage: 'dto', clientSubPackage: 'client',
+      mode: 'CONTROLLERS', baseUrlProperty: 'openapi.client.base-url',
+    })
+    expect(result.current.eventsByDep['data-jpa']).toEqual({
+      spec: 'asyncapi: 3.0.0', subPackage: 'events', payloadSubPackage: 'events.model', groupId: 'billing',
+      channels: [{ name: 'orders', produce: true, consume: false }], generateTests: true,
+    })
+
+    // Deselecting the dependency drops its entry, like the other wizards'.
+    act(() => { result.current.handleDepsChange(['web']) })
+    expect(result.current.eventsByDep).toEqual({})
+    act(() => { result.current.handleEventsByDepChange('data-jpa', null) })
+    expect(result.current.eventsByDep).toEqual({})
+  })
+})

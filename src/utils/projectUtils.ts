@@ -1,4 +1,4 @@
-import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlApiMode, SqlByDep, OpenApiByDep, SoapByDep } from '../types'
+import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlApiMode, SqlByDep, OpenApiByDep, SoapByDep, EventsByDep } from '../types'
 import { readErrorBody } from './previewErrors'
 
 // Dependencies the SQL wizard's generated code needs for a given api mode:
@@ -23,6 +23,7 @@ export function captureSnapshot(args: {
   sqlByDep: SqlByDep
   openApiByDep: OpenApiByDep
   soapByDep: SoapByDep
+  eventsByDep?: EventsByDep
   multiModuleEnabled: boolean
   selectedModules: string[]
 }): ProjectSnapshot {
@@ -33,6 +34,10 @@ export function captureSnapshot(args: {
     sqlByDep: JSON.parse(JSON.stringify(args.sqlByDep)),
     openApiByDep: JSON.parse(JSON.stringify(args.openApiByDep)),
     soapByDep: JSON.parse(JSON.stringify(args.soapByDep)),
+    // Only when there is one: snapshots without events keep the shape they had.
+    ...(args.eventsByDep && Object.keys(args.eventsByDep).length > 0
+      ? { eventsByDep: JSON.parse(JSON.stringify(args.eventsByDep)) as EventsByDep }
+      : {}),
     multiModuleEnabled: args.multiModuleEnabled,
     selectedModules: [...args.selectedModules],
   }
@@ -130,6 +135,7 @@ export async function triggerDownload(
   sqlByDep?: SqlByDep,
   openApiByDep?: OpenApiByDep,
   soapByDep?: SoapByDep,
+  eventsByDep?: EventsByDep,
 ): Promise<void> {
   const activeSql = sqlByDep
     ? Object.fromEntries(Object.entries(sqlByDep).filter(([id]) => selected.includes(id)))
@@ -140,13 +146,15 @@ export async function triggerDownload(
   const activeSoap = soapByDep
     ? Object.fromEntries(Object.entries(soapByDep).filter(([id]) => selected.includes(id)))
     : {}
+  const activeEvents = activeWizardEntries(eventsByDep, selected)
   const hasWizard = Object.keys(activeSql).length > 0
       || Object.keys(activeOpenApi).length > 0
       || Object.keys(activeSoap).length > 0
+      || Object.keys(activeEvents).length > 0
 
   // Branch: any wizard active → single POST carrying all payloads.
   if (hasWizard) {
-    await triggerWizardDownload(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap)
+    await triggerWizardDownload(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap, activeEvents)
     return
   }
 
@@ -192,8 +200,9 @@ async function triggerWizardDownload(
   activeSql: SqlByDep,
   activeOpenApi: OpenApiByDep,
   activeSoap: SoapByDep,
+  activeEvents: EventsByDep = {},
 ): Promise<void> {
-  const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap)
+  const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap, activeEvents)
   const res = await fetch('/starter-wizard.zip', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -220,6 +229,11 @@ export function downloadBlob(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
+/** The wizard entries of dependencies that are still selected. */
+export function activeWizardEntries<T>(byDep: Record<string, T> | undefined, selected: string[]): Record<string, T> {
+  return byDep ? Object.fromEntries(Object.entries(byDep).filter(([id]) => selected.includes(id))) : {}
+}
+
 export function buildWizardBody(
   form: ProjectFormValues,
   selected: string[],
@@ -227,6 +241,7 @@ export function buildWizardBody(
   activeSql: SqlByDep,
   activeOpenApi: OpenApiByDep,
   activeSoap: SoapByDep,
+  activeEvents: EventsByDep = {},
 ): Record<string, unknown> {
   const opts: Record<string, string[]> = {}
   for (const [depId, optIds] of Object.entries(selectedOptions)) {
@@ -321,5 +336,28 @@ export function buildWizardBody(
     openApiOptions: openApiOptionsBody,
     wsdlByDep,
     soapOptions: soapOptionsBody,
+    // Only with an events entry: requests without one keep the shape they had.
+    ...eventsBody(activeEvents),
   }
+}
+
+/** `asyncApiByDep` + `eventOptions` for the events wizard's entries; nothing when there are none. */
+function eventsBody(activeEvents: EventsByDep): Record<string, unknown> {
+  const ids = Object.keys(activeEvents)
+  if (ids.length === 0) return {}
+  const asyncApiByDep: Record<string, string> = {}
+  const eventOptions: Record<string, Record<string, unknown>> = {}
+  for (const depId of ids) {
+    const entry = activeEvents[depId]
+    asyncApiByDep[depId] = entry.spec
+    eventOptions[depId] = {
+      subPackage: entry.subPackage,
+      payloadSubPackage: entry.payloadSubPackage,
+      ...(entry.groupId.trim() ? { groupId: entry.groupId.trim() } : {}),
+      // No list: the server follows the document (the project is the application it describes).
+      ...(entry.channels.length > 0 ? { channels: entry.channels } : {}),
+      ...(entry.generateTests ? { generateTests: true } : {}),
+    }
+  }
+  return { asyncApiByDep, eventOptions }
 }
