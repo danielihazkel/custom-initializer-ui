@@ -12,6 +12,19 @@ const validEntity = (over: Partial<FullstackEntityDef> = {}): FullstackEntityDef
 })
 
 describe('validateEntities', () => {
+  it('takes a relation label of up to the schema limit', () => {
+    const withLabel = (label: string) => validateEntities([
+      validEntity({ name: 'Customer' }),
+      validEntity({
+        name: 'Order',
+        relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer', label }],
+      }),
+    ])
+    expect(withLabel('לקוח מס\' "1"').count).toBe(0)
+    expect(withLabel('  ' + 'x'.repeat(80) + '  ').count).toBe(0)
+    expect(withLabel('x'.repeat(81)).entities[1].relations?.[0].label).toBe('Label is too long (max 80 characters)')
+  })
+
   it('checks DB column names: identifier characters only, not on a view, never shared', () => {
     const withColumn = (column: string, over: Partial<FullstackEntityDef> = {}) => validateEntities([validEntity({
       fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'email', type: 'STRING', column }],

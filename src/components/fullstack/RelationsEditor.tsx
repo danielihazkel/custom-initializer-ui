@@ -266,6 +266,17 @@ export function RelationsEditor({ relations, entityNames, linkIndex, fieldNames 
                       )}
                     </select>
                     {rErr?.targetEntity && <p className="mt-0.5 text-[11px] text-error">{rErr.targetEntity}</p>}
+                    <input
+                      type="text"
+                      aria-label="Relation label"
+                      aria-invalid={Boolean(rErr?.label)}
+                      className={`mt-1 w-full bg-background border rounded px-2 py-0.5 text-[11px] focus:ring-1 outline-none ${rErr?.label ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant/60 focus:ring-primary/20 focus:border-primary'}`}
+                      value={rel.label ?? ''}
+                      onChange={e => update(rIdx, { label: e.target.value || undefined })}
+                      placeholder="Label (optional)"
+                      title="What the generated app calls this relation: its column heading, form label and filter. Leave blank for the field name."
+                    />
+                    {rErr?.label && <p className="mt-0.5 text-[11px] text-error">{rErr.label}</p>}
                     {!rErr?.targetEntity && showInverse && target && inverseName && rel.type === 'MANY_TO_ONE' && (
                       <p className="mt-0.5 text-[10px] text-secondary font-mono" data-inverse-hint
                          title="With the Inverse collections option on, the target gets a read-only @OneToMany collection and its DTO a count of these rows">

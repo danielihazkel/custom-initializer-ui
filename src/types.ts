@@ -407,6 +407,9 @@ export interface FullstackRelationDef {
   /** ONE_TO_MANY only: the target's MANY_TO_ONE this list reads. Omitted = the only one it has
    *  to this entity. */
   mappedBy?: string
+  /** What the generated UI calls the relation (column heading, form label, filter). Omitted =
+   *  the field name. */
+  label?: string
 }
 
 export interface FullstackEntityDef {

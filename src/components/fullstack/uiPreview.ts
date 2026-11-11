@@ -1,6 +1,6 @@
 import type { FullstackEntityDef, FullstackFieldDef } from '../../types'
 import { enumLabel } from './enumLabels'
-import { humanize, pluralize, toPascalCase } from './naming'
+import { humanize, pluralize, relationLabel, toPascalCase } from './naming'
 import { entityOptApplicability, summarizeEntity } from './summary'
 
 /**
@@ -109,7 +109,7 @@ export function buildUiPreview(entity: FullstackEntityDef, ctx: UiPreviewContext
   const columns: PreviewColumn[] = entity.fields.map(f => ({ label: fieldLabel(f), kind: columnKind(f) }))
   for (const r of entity.relations ?? []) {
     if (!r.fieldName.trim()) continue
-    columns.push({ label: humanize(r.fieldName), kind: 'relation' })
+    columns.push({ label: relationLabel(r), kind: 'relation' })
   }
   if (optOn('audit')) columns.push({ label: 'Created', kind: 'audit' }, { label: 'Updated', kind: 'audit' })
 
@@ -133,7 +133,7 @@ export function buildUiPreview(entity: FullstackEntityDef, ctx: UiPreviewContext
     const targetTitle = target?.label?.trim() || toPascalCase(r.targetEntity.trim() || 'target')
     form.push({
       name: r.fieldName,
-      label: humanize(r.fieldName),
+      label: relationLabel(r),
       control: 'select',
       required: Boolean(r.required),
       locked: false,
@@ -146,7 +146,7 @@ export function buildUiPreview(entity: FullstackEntityDef, ctx: UiPreviewContext
     const field = entity.fields.find(f => f.name === fname)
     if (field) return fieldLabel(field)
     const rel = (entity.relations ?? []).find(r => `${r.fieldName.trim()}Id` === fname)
-    return rel ? humanize(rel.fieldName) : fname
+    return rel ? relationLabel(rel) : fname
   })
 
   return {

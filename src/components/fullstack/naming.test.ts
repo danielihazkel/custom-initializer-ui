@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { inverseCollectionName, toCamelCase, toPascalCase } from './naming'
+import { inverseCollectionName, relationLabel, toCamelCase, toPascalCase } from './naming'
 
 describe('inverseCollectionName mirrors EntityScaffoldContext.inverseCollectionName', () => {
   it('is the owner\'s plural for a single link', () => {
@@ -25,5 +25,13 @@ describe('toPascalCase / toCamelCase mirror gen/Naming.java', () => {
     expect(toCamelCase('OrderItem')).toBe('orderItem')
     expect(toCamelCase('order_item')).toBe('orderItem')
     expect(toCamelCase('')).toBe('')
+  })
+})
+
+describe('relationLabel', () => {
+  it('is the label of the relation, else its field name in words', () => {
+    expect(relationLabel({ fieldName: 'billTo' })).toBe('Bill to')
+    expect(relationLabel({ fieldName: 'billTo', label: '   ' })).toBe('Bill to')
+    expect(relationLabel({ fieldName: 'customer', label: ' Client ' })).toBe('Client')
   })
 })

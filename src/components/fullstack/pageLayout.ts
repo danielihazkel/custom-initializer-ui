@@ -21,7 +21,7 @@ import {
   newSearchReason, newTypeReason, renameEntityInNewPages, renameEnumValueInNewPages, renameFieldInNewPages,
   renamePageIdInBody, renameRelationInNewPages,
 } from './newPageTypes'
-import { humanize, pluralize } from './naming'
+import { humanize, pluralize, relationLabel } from './naming'
 import { enumLabel, humanizeConstant } from './enumLabels'
 import { summarizeEntity } from './summary'
 import { CHOICES, LIMITS, NAME_RULES } from './schema'
@@ -91,7 +91,7 @@ export function listColumns(entity: FullstackEntityDef | undefined, scaffoldOpts
     .filter(f => f.name.trim())
     .map(f => ({ key: f.name, label: f.label?.trim() || humanize(f.name), sortable: true, kind: 'field' as const }))
   for (const r of entity.relations ?? []) {
-    if (r.type === 'MANY_TO_ONE' && r.fieldName.trim()) out.push({ key: r.fieldName, label: humanize(r.fieldName), sortable: false, kind: 'relation' })
+    if (r.type === 'MANY_TO_ONE' && r.fieldName.trim()) out.push({ key: r.fieldName, label: relationLabel(r), sortable: false, kind: 'relation' })
   }
   if (auditOn(entity, scaffoldOpts)) {
     out.push({ key: 'createdAt', label: 'Created', sortable: true, kind: 'audit' }, { key: 'updatedAt', label: 'Updated', sortable: true, kind: 'audit' })
@@ -2661,7 +2661,7 @@ export function suggestWidgets(entity: FullstackEntityDef | undefined, pages: Fu
   const relation = (entity.relations ?? []).find(r => r.type === 'MANY_TO_ONE' && r.fieldName.trim())
   if (relation) {
     candidates.push({
-      key: `top:${relation.fieldName}`, icon: 'format_list_numbered', label: `Top ${humanize(relation.fieldName).toLowerCase()} by ${plural.toLowerCase()}`,
+      key: `top:${relation.fieldName}`, icon: 'format_list_numbered', label: `Top ${relationLabel(relation).toLowerCase()} by ${plural.toLowerCase()}`,
       blurb: `The ${relation.targetEntity} records with the most ${plural}`,
       widget: { kind: 'top', entity: name, groupBy: relation.fieldName, limit: 5 },
     })

@@ -200,6 +200,7 @@ export interface RelationErrors {
   joinTable?: string
   /** A ONE_TO_MANY's link: not one of the target's, ambiguous, or already listed. */
   mappedBy?: string
+  label?: string
 }
 
 export interface EntityErrors {
@@ -465,6 +466,9 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       }
       if (rel.joinColumn?.trim() && !COLUMN_RE.test(rel.joinColumn.trim())) {
         rErr.joinColumn = COLUMN_RULE
+      }
+      if ((rel.label?.trim().length ?? 0) > LIMITS.maxRelationLabel) {
+        rErr.label = `Label is too long (max ${LIMITS.maxRelationLabel} characters)`
       }
       // A ONE_TO_MANY reads a link the target holds: which one must be settled, and no two
       // lists may read the same one.

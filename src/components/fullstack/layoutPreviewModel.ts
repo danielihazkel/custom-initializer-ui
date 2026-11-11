@@ -1,6 +1,6 @@
 import type { FullstackAgg, FullstackBucket, FullstackChartKind, FullstackEntityDef, FullstackFieldDef, FullstackListDetail, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
 import { enumLabel } from './enumLabels'
-import { humanize } from './naming'
+import { humanize, relationLabel } from './naming'
 import { describePresetValue, pageLabel as linkLabel } from './pageLayout'
 import {
   DEFAULT_NAV_ICON,
@@ -407,7 +407,7 @@ export function buildLayoutPreview(
       if (!r.fieldName.trim() || r.fieldName === hideRelation || r.type === 'ONE_TO_MANY') continue
       const target = entityOf(r.targetEntity)
       const named = (row: number) => (target ? rowLabel(target, row) : `#${row}`)
-      cells.push({ key: r.fieldName, label: humanize(r.fieldName), value: named, detail: named })
+      cells.push({ key: r.fieldName, label: relationLabel(r), value: named, detail: named })
     }
     if (auditOn(e, ctx.projectOpts)) {
       const created = (row: number) => auditText(row, false, ctx.locale, ctx.today)
@@ -482,7 +482,7 @@ export function buildLayoutPreview(
       const f = fieldOf(e, name)
       if (!f) {
         const relation = (e.relations ?? []).find(r => `${r.fieldName}Id` === name)
-        return relation ? `${humanize(relation.fieldName)}: ${value.split(',').map(id => `#${id.trim()}`).join(', ')}` : `${name}: ${value}`
+        return relation ? `${relationLabel(relation)}: ${value.split(',').map(id => `#${id.trim()}`).join(', ')}` : `${name}: ${value}`
       }
       const shown = f.type === 'ENUM' ? value.split(',').map(v => enumLabel(f, v.trim())).join(' / ')
         : f.type === 'BOOLEAN' ? (value === 'true' ? t('trueLabel') : t('falseLabel'))
@@ -623,7 +623,7 @@ export function buildLayoutPreview(
               let groupLabel: string
               if (relation) {
                 const target = entityOf(relation.targetEntity)
-                groupLabel = humanize(relation.fieldName)
+                groupLabel = relationLabel(relation)
                 rows = Array.from({ length: Math.min(limit, 5) }, (_, i) => ({
                   label: target ? rowLabel(target, i + 1) : `#${i + 1}`,
                   value: between(rand, lo, hi),
@@ -651,7 +651,7 @@ export function buildLayoutPreview(
                 const [lo, hi] = magnitude(w.agg, valueField)
                 return {
                   ...base, kind: w.kind,
-                  title: w.title || t('xByY', { x: measured, y: humanize(relation.fieldName) }),
+                  title: w.title || t('xByY', { x: measured, y: relationLabel(relation) }),
                   bars: Array.from({ length: 5 }, (_, i) => ({
                     label: target ? rowLabel(target, i + 1) : `#${i + 1}`,
                     value: between(rand, lo, hi),
@@ -906,7 +906,7 @@ export function buildLayoutPreview(
           } else {
             bars = !group ? [] : line ? series(chart.bucket, chart.agg, valueField, seed) : breakdown(group, chart.agg, valueField, seed)
           }
-          const groupLabel = relation ? humanize(relation.fieldName) : group ? fieldLabel(group) : undefined
+          const groupLabel = relation ? relationLabel(relation) : group ? fieldLabel(group) : undefined
           const title = groupLabel ? (line ? t('xOverTime', { x: measured }) : t('xByY', { x: measured, y: groupLabel })) : measured
           // The totals table: the chart's own choice, else the first chart only.
           return { groupLabel, reduces, measured, line, bars, title, table: chart.kind === 'table' || (chart.table ?? ci === 0), kind: chart.kind }
@@ -1015,7 +1015,7 @@ export function buildLayoutPreview(
         if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
         const fields = [
           ...e.fields.filter(f => !(f.primaryKey && f.generated) && !f.readOnly).map(f => ({ label: fieldLabel(f), required: Boolean(f.required) || Boolean(f.primaryKey) })),
-          ...(e.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => ({ label: humanize(r.fieldName), required: Boolean(r.required) })),
+          ...(e.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => ({ label: relationLabel(r), required: Boolean(r.required) })),
         ]
         return {
           type: 'import', title: page.title || t('importX', { x: labels(e).plural }), description, entity: labels(e).plural, fields,

@@ -29,6 +29,12 @@ export function columnOf(field: { name: string; column?: string }): string {
   return field.column?.trim() || toSnakeCase(field.name.trim())
 }
 
+/** What the editor calls a relation: its label, else its field name in words. (The generated
+ *  app falls back to the PascalCase field name — `EntityScaffoldContext.labelOf`.) */
+export function relationLabel(rel: { fieldName: string; label?: string }): string {
+  return rel.label?.trim() || humanize(rel.fieldName)
+}
+
 /** The foreign-key column of a relation — mirrors `EntityScaffoldContext.joinColumnOf`. */
 export function joinColumnOf(rel: { fieldName: string; joinColumn?: string }): string {
   return rel.joinColumn?.trim() || `${toSnakeCase(rel.fieldName.trim())}_id`
