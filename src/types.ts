@@ -822,6 +822,8 @@ export interface FullstackPageDef {
   /** record: number tiles over its related lists (default: one row count per related tab;
    *  an empty array: none). */
   headerStats?: { child: string; agg?: FullstackAgg; field?: string; title?: string; via?: string }[]
+  /** record: a Print button, and the page laid out for paper. Absent: no button. */
+  printable?: boolean
   /** calendar: the date field rows are placed by (default: the entity's first filterable date). */
   dateField?: string
   /** calendar: the date a row ends on (needed by the timeline); absent: rows are one day long. */

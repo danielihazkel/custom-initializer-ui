@@ -490,7 +490,7 @@ export const LIST_ACTIONS: { value: FullstackListAction; label: string; hint: st
   { value: 'new', label: 'New', hint: 'The New button, the empty list’s offer and the n shortcut' },
   { value: 'edit', label: 'Edit', hint: 'Edit on a row, the side pane and the quick look; inline cells and dragging a card' },
   { value: 'delete', label: 'Delete', hint: 'Delete on a row and in the side pane' },
-  { value: 'export', label: 'Export', hint: 'Export CSV (the csvExport option)' },
+  { value: 'export', label: 'Export', hint: 'Export CSV and Excel (the csvExport and xlsxExport options)' },
   { value: 'import', label: 'Import', hint: 'Import CSV (the csvImport option)' },
   { value: 'bulk', label: 'Bulk actions', hint: 'Row checkboxes and the bulk bar (bulkDelete / bulkUpdate)' },
 ]
@@ -1314,7 +1314,9 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         checkListPresentation(page, e, add, where, scaffoldOpts)
         if (page.hideActions?.length) {
           const unknown = page.hideActions.find(a => !LIST_ACTIONS.some(x => x.value === a))
-          const exports = e.opts?.csvExport ?? scaffoldOpts.includes('csvExport')
+          // Either export is an action a list has: the CSV, or the Excel workbook.
+          const exports = (e.opts?.csvExport ?? scaffoldOpts.includes('csvExport'))
+            || (e.opts?.xlsxExport ?? scaffoldOpts.includes('xlsxExport'))
           if (unknown) add('hideActions', `“${unknown}” is not a list action`, `${where} hides the unknown action “${unknown}”`)
           else if (new Set(page.hideActions).size < page.hideActions.length) add('hideActions', 'lists an action twice', `${where} hides an action twice`)
           else if ((e.readOnly || e.viewQuery != null) && !exports) {
@@ -1955,7 +1957,7 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       const tabs = page.childTabs
       const related = tabs == null ? 'its related lists' : tabs.length === 0 ? 'no related lists'
         : tabs.map(tab => (childTabVia(tab) ? `${childTabEntity(tab)} (${childTabVia(tab)})` : childTabEntity(tab))).join(', ')
-      return `One ${page.entity ?? '?'} · ${related}`
+      return `One ${page.entity ?? '?'} · ${related}${page.printable ? ' · print' : ''}`
     }
     default:
       return describeNewTypePage(page, [])
@@ -2903,6 +2905,8 @@ export function retargetPage(page: FullstackPageDef, type: FullstackPageType, en
   lost(page.pageSize, next.pageSize, 'page size')
   if (type === 'entity-list' && page.hideActions?.length) next.hideActions = page.hideActions
   lost(page.hideActions, next.hideActions, 'hidden actions')
+  if (type === 'record' && page.printable) next.printable = true
+  lost(page.printable, next.printable, 'Print button')
   lost(page.widgets, next.widgets, 'widgets')
   lost(page.dateRange, next.dateRange, 'period picker')
   lost(page.refreshSeconds, next.refreshSeconds, 'auto-refresh')

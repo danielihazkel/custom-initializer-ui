@@ -74,7 +74,7 @@
           },
           {
             "name": "body",
-            "type": "TEXT"
+            "type": "MARKDOWN"
           },
           {
             "name": "status",
@@ -2143,7 +2143,8 @@
       {
         "id": "claim",
         "type": "record",
-        "entity": "ExpenseClaim"
+        "entity": "ExpenseClaim",
+        "printable": true
       },
       {
         "id": "cost-center",
