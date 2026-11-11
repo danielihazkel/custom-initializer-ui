@@ -124,10 +124,11 @@ export function viewDisabledReason(entity: FullstackEntityDef | undefined, view:
 /** What a wizard step can ask for: every field but a generated key, then the MANY_TO_ONE
  *  relations (by field name) — what the entity's form shows. */
 /** What a wizard can ask for: the form's fields, without a workflow's status (it starts in its
- *  initial state, and only transitions move it). */
+ *  initial state, and only transitions move it) or its assignee (set by claiming and reassigning). */
 export function wizardFields(entity: FullstackEntityDef | undefined): { name: string; required: boolean; relation: boolean }[] {
   const status = entity?.workflow?.statusField
-  return askableFields(entity).filter(a => a.relation || a.name !== status)
+  const assignee = entity?.workflow?.assigneeField
+  return askableFields(entity).filter(a => a.relation || (a.name !== status && a.name !== assignee))
 }
 
 export function askableFields(entity: FullstackEntityDef | undefined): { name: string; required: boolean; relation: boolean }[] {
@@ -144,12 +145,13 @@ export function askableFields(entity: FullstackEntityDef | undefined): { name: s
 export function defaultWizardSteps(entity: FullstackEntityDef | undefined): { title?: string; fields: string[] }[] {
   const names = wizardFields(entity).map(f => f.name)
   const status = entity?.workflow?.statusField
+  const assignee = entity?.workflow?.assigneeField
   // The entity's form sections, one step each, then whatever they leave out (FullstackPageValidator.steps).
   if (entity?.formSections?.length) {
     const placed = new Set(entity.formSections.flatMap(s => s.fields.map(f => f.toLowerCase())))
     const rest = names.filter(n => !placed.has(n.toLowerCase()))
     const sections = entity.formSections
-      .map(s => ({ title: s.title, fields: s.fields.filter(f => f !== status) }))
+      .map(s => ({ title: s.title, fields: s.fields.filter(f => f !== status && f !== assignee) }))
       .filter(s => s.fields.length > 0)
     return [...sections, ...(rest.length ? [{ fields: rest }] : [])]
   }
@@ -1806,6 +1808,8 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
           for (const name of step.fields) {
             if (name === e.workflow?.statusField) {
               add(`step.${si}`, `“${name}” is set by the workflow`, `${where} asks for “${name}”, which its workflow sets`)
+            } else if (name === e.workflow?.assigneeField) {
+              add(`step.${si}`, `“${name}” is set by claiming and reassigning`, `${where} asks for “${name}”, which is set by claiming and reassigning`)
             } else if (!askable.some(a => a.name === name)) {
               add(`step.${si}`, `${e.name} has no field “${name}”`, `${where} asks for “${name}”, which ${e.name} no longer has`)
             } else if (asked.has(name)) {

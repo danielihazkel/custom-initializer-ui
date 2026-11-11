@@ -18,9 +18,10 @@ export function statusFieldChoices(entity: FullstackEntityDef): FullstackFieldDe
   return entity.fields.filter(f => f.name.trim() && !f.primaryKey && f.type === 'ENUM' && f.filterable !== false && (f.enumValues ?? []).length > 0)
 }
 
-/** The text fields that can hold who a row is assigned to. */
+/** The text fields that can hold who a row is assigned to — never a required one: a task
+ *  nobody has taken has no assignee. */
 export function assigneeFieldChoices(entity: FullstackEntityDef): FullstackFieldDef[] {
-  return entity.fields.filter(f => f.name.trim() && !f.primaryKey && !f.unique && f.type === 'STRING')
+  return entity.fields.filter(f => f.name.trim() && !f.primaryKey && !f.unique && !f.required && f.type === 'STRING')
 }
 
 /** The dates a row can be due by. */
@@ -28,11 +29,13 @@ export function dueFieldChoices(entity: FullstackEntityDef): FullstackFieldDef[]
   return entity.fields.filter(f => f.name.trim() && !f.primaryKey && isDate(f))
 }
 
-/** What a transition can ask for: fields and relations, never a key, a read-only field or the status. */
+/** What a transition can ask for: fields and relations, never a key, a read-only field, the
+ *  status or the assignee (which changes by claiming and reassigning). */
 export function requirableNames(entity: FullstackEntityDef): string[] {
   const status = entity.workflow?.statusField
+  const assignee = entity.workflow?.assigneeField
   return [
-    ...entity.fields.filter(f => f.name.trim() && !f.primaryKey && !f.readOnly && !same(f.name, status)).map(f => f.name),
+    ...entity.fields.filter(f => f.name.trim() && !f.primaryKey && !f.readOnly && !same(f.name, status) && !same(f.name, assignee)).map(f => f.name),
     ...(entity.relations ?? []).filter(r => r.type === 'MANY_TO_ONE' && r.fieldName.trim()).map(r => r.fieldName),
   ]
 }
@@ -153,6 +156,7 @@ export function workflowProblem(entity: FullstackEntityDef, context: { ldapAuth?
   if (wf.assigneeField) {
     const f = fieldOf(entity, wf.assigneeField)
     if (!f || f.primaryKey || f.unique || f.type !== 'STRING') return `The assignee “${wf.assigneeField}” must be a non-key, non-unique text field`
+    if (f.required) return `The assignee “${wf.assigneeField}” cannot be required — a task nobody has taken has none`
     if (entity.fields.some(x => same(x.name, 'inbox'))) return 'A field named “inbox” clashes with the inbox queue — rename it'
   }
   if (wf.dueField) {
