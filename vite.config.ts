@@ -36,7 +36,8 @@ export default defineConfig({
       '/admin': 'http://localhost:8080',
       '/frontend': 'http://localhost:8080',
       '/starter-fullstack.zip': 'http://localhost:8080',
-      '/starter-fullstack.preview': 'http://localhost:8080'
+      '/starter-fullstack.preview': 'http://localhost:8080',
+      '/starter-fullstack.patch': 'http://localhost:8080'
     }
   }
 })

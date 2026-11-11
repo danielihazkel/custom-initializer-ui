@@ -17,7 +17,7 @@ import { StatusToast } from '../admin/shared/StatusToast'
 import { newUid, reconcileUids, stripUids, withUids } from './uid'
 import { toCamelCase, uniqueName } from './naming'
 import {
-  DEFAULT_PROJECT_META, describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, snapshotChangeKey, snapshotsEqual, toExportedModel,
+  DEFAULT_PROJECT_META, describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, requestFromSnapshot, snapshotChangeKey, snapshotsEqual, toExportedModel,
   type FullstackSnapshot, type ProjectMeta,
 } from './snapshot'
 import { lintModel, type LintIssue } from './lint'
@@ -42,9 +42,11 @@ import type { DesignerTarget } from './designer/LayoutDesigner'
 import type { FrontendAppearance } from './designer/FrontendSettings'
 import { renameEntityInRelations } from './relationRefs'
 import { renameLinkInChildLists } from './childLists'
+import { countsOf, describeCounts, readBaseline, sideOfPath, updateRequest, writeBaseline, type UpdateBaseline } from './updateBaseline'
+import { UpdatePanel } from './UpdatePanel'
 import { describeServerTarget, locateServerIssue, type ServerIssue, type ServerTarget } from './serverIssue'
 import { readErrorBody } from '../../utils/previewErrors'
-import { renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
+import { renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, seedLayout, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
@@ -281,7 +283,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const [saveRequest, setSaveRequest] = useState<{ target: SaveTarget; key: number; draft?: { name: string; description: string } } | null>(null)
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
-    fetchPreview, clearPreview, clearError, cancel: cancelPreview,
+    fetchPreview, fetchComparison, clearPreview, clearError, cancel: cancelPreview,
   } = useFullstackPreview()
   // A preview (Explore) 400 that names a page is shown on that page, like a Generate one is.
   useEffect(() => {
@@ -832,6 +834,11 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         setToast({ message: `Couldn't import ${file.name}: ${result.error}`, type: 'error' })
         return
       }
+      // A generated project's own model file: what its code was made from, so later changes to
+      // the model can be offered as an update to that code.
+      if (result.fromProject) {
+        setBaseline({ snapshot: result.snapshot, templatesHash: result.templatesHash, source: 'imported', at: Date.now() })
+      }
       // With a model already in the editor, offer Append (its entities join yours) as well as
       // the whole-model Replace — the same choice the DDL import gives.
       if (entities.length > 0 && result.snapshot.entities.length > 0) setPendingJsonImport(result.snapshot)
@@ -940,17 +947,65 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const frontendSets = availableSets.filter(s => s.kind === 'FRONTEND_REACT')
 
   function buildBody(): FullstackStarterRequest {
-    return {
-      ...meta,
-      department: meta.department || undefined,
-      backendTemplateSet: backendSet,
-      frontendTemplateSet: frontendSet,
-      dependencies: selectedDeps,
-      opts: scaffoldOpts.length ? { scaffold: scaffoldOpts } : undefined,
-      colorPalette: colorPalette || undefined,
-      entities: stripUids(entities),
-      pages: pages.length ? requestPages(pages) : undefined,
-      nav: pages.length && nav && (nav.style || nav.collapsibleGroups) ? nav : undefined,
+    return requestFromSnapshot(currentSnapshot)
+  }
+
+  // ── Updating a project that already exists ─────────────────────────────────
+  // The model the project in hand was generated from (see updateBaseline.ts). While the editor's
+  // model differs from it, UpdatePanel offers the difference as a patch instead of a fresh zip.
+  const [baseline, setBaselineState] = useState<UpdateBaseline | null>(() => readBaseline())
+  const [updating, setUpdating] = useState(false)
+  // What the open preview's Download does: a fresh project, or the update it is showing.
+  const [previewIsUpdate, setPreviewIsUpdate] = useState(false)
+  function setBaseline(next: UpdateBaseline | null) {
+    setBaselineState(next)
+    writeBaseline(next)
+  }
+
+  function previewUpdate() {
+    if (!baseline || !validateBeforeSubmit()) return
+    previewSnapshotRef.current = currentSnapshot
+    setPreviewIsUpdate(true)
+    void fetchComparison(requestFromSnapshot(baseline.snapshot), buildBody())
+  }
+
+  /** Returns true when the update zip downloaded. */
+  async function downloadUpdate(): Promise<boolean> {
+    if (!baseline || !validateBeforeSubmit()) return false
+    setUpdating(true)
+    try {
+      const res = await fetch('/starter-fullstack.patch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateRequest(baseline, snapshotRef.current)),
+      })
+      if (!res.ok) {
+        const failure = await readErrorBody(res)
+        const where = sideOfPath(failure.path)
+        if (where.side === 'base') {
+          // Nothing in the editor to point at: it is the stored model that no longer generates.
+          setToast({ message: `The model the project was generated from is no longer accepted: ${failure.message}`, type: 'error' })
+          return false
+        }
+        const issue: ServerIssue = { message: failure.message, path: where.path }
+        const target = showServerIssue(issue)
+        setToast({
+          message: target && target.kind !== 'setting'
+            ? `Update failed — the server rejected ${describeServerTarget(target)}`
+            : `Update failed: ${issue.message}`,
+          type: 'error',
+        })
+        return false
+      }
+      const counts = countsOf(res.headers)
+      downloadBlob(await res.blob(), `${meta.artifactId || 'project'}-update.zip`)
+      setToast({ message: `Update downloaded (${describeCounts(counts)}) — UPDATE.md inside says how to apply it`, type: 'success' })
+      return true
+    } catch (err) {
+      setToast({ message: `Update failed: ${err instanceof Error ? err.message : String(err)}`, type: 'error' })
+      return false
+    } finally {
+      setUpdating(false)
     }
   }
 
@@ -1007,6 +1062,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     // Stamp the model the preview is being built from, so each card's Code panel can tell
     // whether the files it shows still match what the card describes.
     previewSnapshotRef.current = currentSnapshot
+    setPreviewIsUpdate(false)
     fetchPreview(buildBody())
   }
 
@@ -1051,6 +1107,11 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       pushRecent(currentSnapshot)
+      // The project now in the user's hands was made from this model.
+      setBaseline({
+        snapshot: currentSnapshot, templatesHash: res.headers.get('X-Templates-Hash') ?? undefined,
+        source: 'generated', at: Date.now(),
+      })
       setToast({ message: 'Fullstack project downloaded', type: 'success' })
       setLastGenerated({
         at: Date.now(),
@@ -1638,6 +1699,22 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         }}
       />
 
+      {/* A project is followed by its artifact id: another model loaded into the editor is not a
+          change to the project in hand. */}
+      {baseline && baseline.snapshot.meta.artifactId === meta.artifactId && !snapshotsEqual(baseline.snapshot, currentSnapshot) && (
+        <UpdatePanel
+          baseline={baseline}
+          busy={updating || previewLoading}
+          onPreview={previewUpdate}
+          onDownload={() => { void downloadUpdate() }}
+          onMarkApplied={() => {
+            setBaseline({ ...baseline, snapshot: currentSnapshot, at: Date.now() })
+            setToast({ message: 'Later updates will start from this model', type: 'success' })
+          }}
+          onForget={() => setBaseline(null)}
+        />
+      )}
+
       {lastGenerated && (
         <NextStepsPanel
           run={lastGenerated}
@@ -1756,7 +1833,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
             previousPreview={previousPreview}
             artifactId={meta.artifactId || 'demo'}
             onClose={clearPreview}
-            onDownload={async () => { if (await generate()) clearPreview() }}
+            onDownload={async () => { if (await (previewIsUpdate ? downloadUpdate() : generate())) clearPreview() }}
           />
         </Suspense>,
         document.body,
