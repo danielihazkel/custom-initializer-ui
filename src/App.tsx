@@ -14,6 +14,8 @@ import { useProjectState } from './hooks/useProjectState'
 import { useProjectPresets } from './hooks/useProjectPresets'
 
 import { InitializrView } from './components/InitializrView'
+import { BackendModelBar } from './components/backend/BackendModelBar'
+import { useBackendUpdate } from './components/backend/useBackendUpdate'
 import { Suspense, lazy } from 'react'
 
 // Modals opened on demand — keep CodeMirror + its grammars + the diff engine out of the initial chunk.
@@ -226,6 +228,9 @@ export default function App() {
     }
   }
 
+  // What the Backend tab knows of the project it last generated or imported (menora-model.json).
+  const backendUpdate = useBackendUpdate(currentSnapshot, applySnapshot, setAppToast)
+
   const downloadArgs = () => [
     form, selectedDeps, selectedOptions,
     { enabled: multiModuleEnabled, modules: selectedModules },
@@ -236,6 +241,8 @@ export default function App() {
     try {
       await triggerDownload(...downloadArgs())
       pushRecent(currentSnapshot)
+      // The project now exists: a later change of the model is an update of it.
+      backendUpdate.rememberGenerated(currentSnapshot)
       return true
     } catch (err) {
       setAppToast({ message: `Couldn't generate project: ${err instanceof Error ? err.message : String(err)}`, type: 'error' })
@@ -543,6 +550,7 @@ export default function App() {
               </div>
             </div>
           )}
+          <BackendModelBar update={backendUpdate} />
           <InitializrView
             metadata={metadata}
             templates={templates}
