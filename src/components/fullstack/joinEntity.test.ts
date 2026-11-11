@@ -28,9 +28,13 @@ describe('joinEntity', () => {
     expect(self.relations?.map(r => r.fieldName)).toEqual(['employee', 'employee2'])
   })
 
-  it('validates cleanly and raises no lint next to its two sides', () => {
+  it('validates cleanly; until it has a column of its own, lint only says a many-to-many would do', () => {
     const model = withUids([order, product, joinEntity('Order', 'Product', ['Order', 'Product'])])
     expect(validateEntities(model).count).toBe(0)
-    expect(lintModel(model, [], []).filter(i => i.entityUid === model[2].uid)).toEqual([])
+    const mine = lintModel(model, [], []).filter(i => i.entityUid === model[2].uid)
+    expect(mine.map(i => [i.rule, i.severity])).toEqual([['join-entity-to-m2m', 'info']])
+    // The thing a join entity is for: something about each link.
+    const withQuantity = model.map((e, i) => i === 2 ? { ...e, fields: [...e.fields, { uid: 'q', name: 'quantity', type: 'INTEGER' as const }] } : e)
+    expect(lintModel(withQuantity, [], []).filter(i => i.entityUid === model[2].uid)).toEqual([])
   })
 })

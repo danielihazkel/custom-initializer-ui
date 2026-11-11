@@ -201,7 +201,9 @@ export function syncWorkflow(before: FullstackEntityDef, after: FullstackEntityD
     const was = r.uid ? (before.relations ?? []).find(x => x.uid === r.uid) : undefined
     if (was && was.fieldName !== r.fieldName) renamed.set(was.fieldName, r.fieldName)
   }
-  const names = new Set([...after.fields.map(f => f.name), ...(after.relations ?? []).map(r => r.fieldName)])
+  // A step asks for fields and foreign keys; a relation turned into a many-to-many drops out.
+  const names = new Set([...after.fields.map(f => f.name),
+    ...(after.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => r.fieldName)])
   const follow = (n: string | undefined) => (n == null ? n : renamed.get(n) ?? n)
   const next: FullstackWorkflow = {
     ...wf,

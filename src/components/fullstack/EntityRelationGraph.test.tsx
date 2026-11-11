@@ -101,6 +101,21 @@ describe('EntityRelationGraph — drag to relate', () => {
     expect(titles.some(t => t?.includes('Report'))).toBe(false)
   })
 
+  it('marks a many-to-many on its edge and gives its target no inverse collection', () => {
+    const linked: FullstackEntityDef = { ...order, relations: [
+      { uid: 'r1', type: 'MANY_TO_MANY', fieldName: 'buyers', targetEntity: 'Customer' },
+    ] }
+    const many = render(<EntityRelationGraph entities={[customer, linked]} showInverse />).container.textContent ?? ''
+    expect(many).toContain('buyers ⋈')
+    expect(many).not.toContain('orders')
+    const foreignKey: FullstackEntityDef = { ...order, relations: [
+      { uid: 'r1', type: 'MANY_TO_ONE', fieldName: 'buyer', targetEntity: 'Customer' },
+    ] }
+    const one = render(<EntityRelationGraph entities={[customer, foreignKey]} showInverse />).container.textContent ?? ''
+    expect(one).not.toContain('⋈')
+    expect(one).toContain('orders')
+  })
+
   it('shows the key and the label field on each box', () => {
     const { container } = renderGraph([customer, lineItem])
     const text = container.textContent ?? ''

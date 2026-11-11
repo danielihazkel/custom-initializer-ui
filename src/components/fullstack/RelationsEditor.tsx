@@ -39,10 +39,10 @@ function newRelation(defaultTarget: string): FullstackRelationDef {
 const ICON_BUTTON = 'p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
 
 /**
- * Per-entity editor for `MANY_TO_ONE` relations (the FK-owning side). v1 supports only
- * MANY_TO_ONE — the inverse `@OneToMany` is auto-derived server-side via the
- * `inverseCollections` opt, so there is no inverse editor here; the hint under each target
- * shows what that derivation will name.
+ * Per-entity editor for the relations an entity owns: `MANY_TO_ONE` (a foreign key) and
+ * `MANY_TO_MANY` (a set of rows through a join table). The inverse `@OneToMany` of a foreign key
+ * is derived server-side by the `inverseCollections` opt, so there is no inverse editor here; the
+ * hint under each target shows what that derivation will name.
  */
 export function RelationsEditor({ relations, entityNames, fieldNames = [], onChange, onRemoved, onAddJoinEntity, errors, addDisabledReason, ownerName, showInverse }: Props) {
   const dnd = useDragReorder((_list, from, to) => onChange(moveItem(relations, from, to)))

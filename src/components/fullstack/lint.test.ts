@@ -136,6 +136,60 @@ describe('lintModel', () => {
     })
   })
 
+  describe('join-entity-to-m2m', () => {
+    const name = { name: 'name', type: 'STRING' as const, required: true }
+    const joined = (extra: Partial<FullstackEntityDef> = {}): FullstackEntityDef[] => [
+      { name: 'Post', fields: [pk, name] },
+      { name: 'Tag', fields: [pk, name] },
+      {
+        name: 'PostTag', fields: [pk],
+        relations: [
+          { type: 'MANY_TO_ONE', fieldName: 'post', targetEntity: 'Post', required: true },
+          { type: 'MANY_TO_ONE', fieldName: 'tag', targetEntity: 'Tag', required: true, joinColumn: 'TAG_FK' },
+        ],
+        ...extra,
+      },
+    ]
+
+    it('offers to replace a pure join entity with a many-to-many on the first side', () => {
+      const model = withUids(joined())
+      const issue = lintModel(model, [], []).find(i => i.rule === 'join-entity-to-m2m')!
+      expect(issue.severity).toBe('info')
+      expect(issue.entityUid).toBe(model[2].uid)
+      const fixed = issue.fix!.apply({ entities: model, scaffoldOpts: [], selectedDeps: [] })
+      expect(fixed.entities.map(e => e.name)).toEqual(['Post', 'Tag'])
+      // The table and the columns the join entity had.
+      expect(fixed.entities[0].relations).toMatchObject([{
+        type: 'MANY_TO_MANY', fieldName: 'tags', targetEntity: 'Tag', required: false,
+        joinTable: 'post_tag', joinColumn: 'post_id', inverseJoinColumn: 'TAG_FK',
+      }])
+      expect(lintModel(fixed.entities, [], [])).toEqual([])
+    })
+
+    it('keeps a table name the model spells out, and a field name that is free', () => {
+      const model = withUids(joined({ tableName: 'T_POST_TAGS' }))
+      model[0] = { ...model[0], fields: [...model[0].fields, { uid: 'x', name: 'tags', type: 'STRING' }] }
+      const fixed = lintModel(model, [], []).find(i => i.rule === 'join-entity-to-m2m')!.fix!
+        .apply({ entities: model, scaffoldOpts: [], selectedDeps: [] })
+      expect(fixed.entities[0].relations).toMatchObject([{ fieldName: 'tags2', joinTable: 'T_POST_TAGS' }])
+    })
+
+    it('stays quiet when the link carries data, is optional, is pointed at, or cannot be a many-to-many', () => {
+      const quiet = (entities: FullstackEntityDef[]) => expect(rules(entities).map(i => i.rule)).not.toContain('join-entity-to-m2m')
+      quiet(joined({ fields: [pk, { name: 'quantity', type: 'INTEGER' }] }))
+      const optional = joined()
+      optional[2].relations![1].required = false
+      quiet(optional)
+      quiet([...joined(), { name: 'Note', fields: [pk, name], relations: [{ type: 'MANY_TO_ONE', fieldName: 'link', targetEntity: 'PostTag' }] }])
+      const selfJoin = joined()
+      selfJoin[2].relations![1].targetEntity = 'Post'
+      quiet(selfJoin)
+      const composite = joined()
+      composite[1] = { name: 'Tag', fields: [{ name: 'a', type: 'LONG', primaryKey: true }, { name: 'b', type: 'LONG', primaryKey: true }, name] }
+      quiet(composite)
+    })
+  })
+
   it('has nothing to say about a clean model', () => {
     expect(rules([{ name: 'Item', fields: [pk, { name: 'name', type: 'STRING', required: true }] }])).toEqual([])
   })

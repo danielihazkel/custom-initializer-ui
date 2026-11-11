@@ -497,7 +497,8 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       })
     })
     relations.forEach((rel, rIdx) => {
-      if (!rel.fieldName.trim()) return
+      // A many-to-many's columns are in its join table, not in this one.
+      if (!rel.fieldName.trim() || rel.type === 'MANY_TO_MANY') return
       addMember(joinColumnOf(rel), Boolean(rel.joinColumn?.trim()), () => {
         eErr.relations = eErr.relations ?? {}
         const existing = eErr.relations[rIdx] ?? {}

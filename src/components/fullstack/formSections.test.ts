@@ -22,6 +22,9 @@ describe('form sections', () => {
     expect(syncFormSections(order, renamed).formSections).toEqual([{ title: 'Who', fields: ['customer', 'ref'] }, { title: 'What', fields: ['status'] }])
     const noStatus = { ...order, fields: order.fields.filter(f => f.uid !== 'f3') }
     expect(syncFormSections(order, noStatus).formSections).toEqual([{ title: 'Who', fields: ['customer', 'reference'] }])
+    // A relation turned into a many-to-many leaves its section: the form draws it after them.
+    const many = { ...order, relations: [{ ...order.relations![0], type: 'MANY_TO_MANY' as const }] }
+    expect(syncFormSections(order, many).formSections?.[0].fields).toEqual(['reference'])
     const relRenamed = { ...order, relations: [{ ...order.relations![0], fieldName: 'buyer' }] }
     expect(syncFormSections(order, relRenamed).formSections?.[0].fields).toEqual(['buyer', 'reference'])
   })
