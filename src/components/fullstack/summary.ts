@@ -102,7 +102,10 @@ export function summarizeEntity(entity: FullstackEntityDef, projectOpts: string[
     .filter(f => !f.primaryKey && f.filterable !== false
       && (f.type === 'ENUM' || f.type === 'BOOLEAN' || isTemporal(f) || isNumeric(f)))
     .map(f => f.name)
-  for (const r of entity.relations ?? []) if (r.fieldName.trim()) filters.push(`${r.fieldName.trim()}Id`)
+  // A foreign key and a many-to-many filter by the ids they hold; a one-to-many holds none.
+  for (const r of entity.relations ?? []) {
+    if (r.fieldName.trim() && r.type !== 'ONE_TO_MANY') filters.push(`${r.fieldName.trim()}Id`)
+  }
 
   return { path, verbs, views, search, filters, endpoints, opts }
 }

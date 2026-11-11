@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, type SimulationNodeDatum } from 'd3-force'
 import type { FullstackEntityDef } from '../../types'
 import { pluralize } from './naming'
+import { linksBetween, resolveLink } from './childLists'
 import { isTextualType } from './fieldTypes'
 
 interface Props {
@@ -85,9 +86,20 @@ export function EntityRelationGraph({ entities, showInverse, onSelect, onCreateR
         const target = byLower.get(r.targetEntity.trim().toLowerCase())
         if (!target || !r.fieldName.trim()) continue
         const source = nodes[i]
+        // A one-to-many is the other end of an edge its target already draws: it names that
+        // end on this box instead of drawing the line twice.
+        if (r.type === 'ONE_TO_MANY') {
+          source.inverse.push(r.fieldName.trim())
+          continue
+        }
         // A many-to-many is drawn like a link; only a foreign key gives its target an inverse collection.
         edges.push({ id: `${source.id}-${r.fieldName}`, source, target, label: r.type === 'MANY_TO_MANY' ? `${r.fieldName.trim()} ⋈` : r.fieldName.trim(), required: Boolean(r.required) })
-        if (showInverse && source !== target && r.type === 'MANY_TO_ONE') {
+        // …and where the target names the collection itself, that name stands in for the derived one.
+        const named = r.type === 'MANY_TO_ONE' && entities.some(parent => byLower.get(parent.name.trim().toLowerCase()) === target
+          && (parent.relations ?? []).some(list => list.type === 'ONE_TO_MANY'
+            && list.targetEntity.trim().toLowerCase() === e.name.trim().toLowerCase()
+            && resolveLink(list, parent.name, linksBetween(e, parent.name)).mappedBy === r.fieldName.trim()))
+        if (showInverse && source !== target && r.type === 'MANY_TO_ONE' && !named) {
           const camel = source.label.charAt(0).toLowerCase() + source.label.slice(1)
           target.inverse.push(pluralize(camel))
         }

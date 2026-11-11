@@ -1,4 +1,5 @@
 import { Fragment, memo, useDeferredValue, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { linkIndexKey, parseLinkIndex, type LinkIndex } from './childLists'
 import {
   FULLSTACK_ENTITY_OPT_KEYS,
   type FullstackEntityDef, type FullstackEntityOptKey, type FullstackFieldDef, type FullstackFieldType, type FullstackRelationDef,
@@ -365,6 +366,9 @@ export const EntitiesEditor = memo(function EntitiesEditor({
   // typing an entity's name redraws the other cards' target lists after the keystroke, not in it.
   const entityNamesKey = useDeferredValue(entities.map(e => e.name.trim()).filter(Boolean).join('\n'))
   const entityNames = useMemo(() => (entityNamesKey ? entityNamesKey.split('\n') : []), [entityNamesKey])
+  // Which foreign keys point where — what a one-to-many can read. Compared by value, like the names.
+  const linkKey = useDeferredValue(linkIndexKey(entities))
+  const linkIndex = useMemo(() => parseLinkIndex(linkKey), [linkKey])
   function duplicateField(eIdx: number, fIdx: number) {
     let copyUid: string | undefined
     onChange(entities.map((e, i) => {
@@ -453,6 +457,7 @@ export const EntitiesEditor = memo(function EntitiesEditor({
             expandedRows={expandedRowsOf(entityKey)}
             quickAddOpen={quickAddFor === entityKey}
             entityNames={entityNames}
+            linkIndex={linkIndex}
             previewEntities={panelKind === 'preview' ? entities : undefined}
             dnd={dnd}
             dndKey={dnd.stateKey}
@@ -559,6 +564,8 @@ interface EntityCardProps {
   expandedRows: string
   quickAddOpen: boolean
   entityNames: string[]
+  /** Every (child, parent) pair's foreign keys — the links a one-to-many can read. */
+  linkIndex: LinkIndex
   /** The whole model, only while this card's UI preview is open (it draws relation pickers). */
   previewEntities?: FullstackEntityDef[]
   dnd: ReturnType<typeof useDragReorder>
@@ -581,7 +588,7 @@ interface EntityCardProps {
  *  a model of a dozen entities was most of the cost of a keystroke. `api` is stable and `dnd` is
  *  compared through `dndKey`; every other prop by identity. */
 const EntityCard = memo(function EntityCard({
-  entity, eIdx, entityCount, eErr, serverIssue, lintCount, isCollapsed, panelKind, expandedRows, quickAddOpen, entityNames,
+  entity, eIdx, entityCount, eErr, serverIssue, lintCount, isCollapsed, panelKind, expandedRows, quickAddOpen, entityNames, linkIndex,
   previewEntities, dnd, density, projectOpts, previewCtx, codeState, onCodeFiles, onGoToOptions, ldapAuth, onAddDep,
   onShowLint, onToggleCollapsed, onNotice, api,
 }: EntityCardProps) {
@@ -1233,6 +1240,7 @@ const EntityCard = memo(function EntityCard({
       <RelationsEditor
         relations={entity.relations ?? []}
         entityNames={entityNames}
+        linkIndex={linkIndex}
         fieldNames={entity.fields.map(f => f.name)}
         onChange={rels => api.updateRelations(eIdx, rels)}
         onRemoved={(rel, rIdx) => onNotice?.(

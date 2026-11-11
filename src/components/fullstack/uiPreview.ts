@@ -127,7 +127,8 @@ export function buildUiPreview(entity: FullstackEntityDef, ctx: UiPreviewContext
       hint: controlHint(f),
     }))
   for (const r of entity.relations ?? []) {
-    if (!r.fieldName.trim()) continue
+    // A one-to-many is read-only: a count in the list, a table in the details, nothing in the form.
+    if (!r.fieldName.trim() || r.type === 'ONE_TO_MANY') continue
     const target = byName.get(r.targetEntity.trim().toLowerCase())
     const targetTitle = target?.label?.trim() || toPascalCase(r.targetEntity.trim() || 'target')
     form.push({

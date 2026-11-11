@@ -386,7 +386,9 @@ export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'sof
 // server-side via the inverseCollections opt.
 // MANY_TO_MANY is the owning side of a link through a join table: the entity holds a set of the
 // target's rows (the generated DTO carries `<field>Ids` and `<field>Labels`).
-export type FullstackRelationType = 'MANY_TO_ONE' | 'MANY_TO_MANY'
+// ONE_TO_MANY is the read side of a MANY_TO_ONE its target declares: the list of the rows that
+// point at this entity (`<field>Count` on the DTO, a table of them in the details).
+export type FullstackRelationType = 'MANY_TO_ONE' | 'MANY_TO_MANY' | 'ONE_TO_MANY'
 
 export interface FullstackRelationDef {
   /** Client-only editor row identity (React key); stripped before the request is sent. */
@@ -402,6 +404,9 @@ export interface FullstackRelationDef {
   joinTable?: string
   /** MANY_TO_MANY only: the target's column in the join table. Omitted = `<snake target>_id`. */
   inverseJoinColumn?: string
+  /** ONE_TO_MANY only: the target's MANY_TO_ONE this list reads. Omitted = the only one it has
+   *  to this entity. */
+  mappedBy?: string
 }
 
 export interface FullstackEntityDef {

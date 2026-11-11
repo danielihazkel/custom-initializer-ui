@@ -2,6 +2,7 @@ import type { FullstackEntityDef } from '../../types'
 import { formSectionsProblem } from './formSections'
 import { workflowProblem } from './workflow'
 import { columnOf, joinColumnOf } from './naming'
+import { linksBetween, resolveLink } from './childLists'
 import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
 import { isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
 
@@ -197,6 +198,8 @@ export interface RelationErrors {
   joinColumn?: string
   /** A MANY_TO_MANY's join table name, or the kind itself when this entity cannot own one. */
   joinTable?: string
+  /** A ONE_TO_MANY's link: not one of the target's, ambiguous, or already listed. */
+  mappedBy?: string
 }
 
 export interface EntityErrors {
@@ -438,6 +441,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
     // Relations (MANY_TO_ONE). fieldName must be a unique, valid identifier across fields and
     // relations; targetEntity must exist and not be a composite-PK entity.
     const relations = entity.relations ?? []
+    const listedLinks = new Set<string>()
     relations.forEach((rel, rIdx) => {
       const rErr: RelationErrors = {}
       const nameErr = identifierError(rel.fieldName, 'Relation field name')
@@ -455,11 +459,25 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       } else {
         const targetPkCount = pkCountByName.get(target.toLowerCase())
         if (targetPkCount === undefined) rErr.targetEntity = `Unknown entity '${target}'`
-        else if (targetPkCount > 1) rErr.targetEntity = "Can't target a composite-PK entity"
+        // A one-to-many holds no key of its target, so its rows may be keyed any way.
+        else if (targetPkCount > 1 && rel.type !== 'ONE_TO_MANY') rErr.targetEntity = "Can't target a composite-PK entity"
         else if (viewNames.has(target.toLowerCase())) rErr.targetEntity = "Can't target a view"
       }
       if (rel.joinColumn?.trim() && !COLUMN_RE.test(rel.joinColumn.trim())) {
         rErr.joinColumn = COLUMN_RULE
+      }
+      // A ONE_TO_MANY reads a link the target holds: which one must be settled, and no two
+      // lists may read the same one.
+      if (rel.type === 'ONE_TO_MANY' && target && !rErr.targetEntity) {
+        const child = entities.find(e => e.name.trim().toLowerCase() === target.toLowerCase())
+        const link = resolveLink(rel, entity.name, linksBetween(child, entity.name))
+        if (link.problem) {
+          rErr[link.problem.on] = link.problem.message
+        } else {
+          const key = `${target.toLowerCase()}>${link.mappedBy!.toLowerCase()}`
+          if (listedLinks.has(key)) rErr.mappedBy = 'Lists the same rows as another one-to-many of this entity'
+          listedLinks.add(key)
+        }
       }
       // A MANY_TO_MANY keeps one key of each side in its join table, so both sides need a single
       // one, and an entity cannot be both ends of it.
@@ -497,8 +515,9 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       })
     })
     relations.forEach((rel, rIdx) => {
-      // A many-to-many's columns are in its join table, not in this one.
-      if (!rel.fieldName.trim() || rel.type === 'MANY_TO_MANY') return
+      // Only a foreign key is a column of this table: a many-to-many's are in its join table,
+      // a one-to-many's in its target's.
+      if (!rel.fieldName.trim() || rel.type !== 'MANY_TO_ONE') return
       addMember(joinColumnOf(rel), Boolean(rel.joinColumn?.trim()), () => {
         eErr.relations = eErr.relations ?? {}
         const existing = eErr.relations[rIdx] ?? {}

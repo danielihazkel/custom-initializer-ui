@@ -79,6 +79,8 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
 
     // Relation targets are shown by their first text field; without one the dropdown shows ids.
     for (const rel of entity.relations ?? []) {
+      // A one-to-many shows its rows' own columns, not one label per row.
+      if (rel.type === 'ONE_TO_MANY') continue
       const target = byName.get(rel.targetEntity.trim().toLowerCase())
       if (!target || labelField(target)) continue
       const targetName = target.name.trim()

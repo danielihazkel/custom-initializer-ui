@@ -41,6 +41,7 @@ import { PagesSection } from './designer/PagesSection'
 import type { DesignerTarget } from './designer/LayoutDesigner'
 import type { FrontendAppearance } from './designer/FrontendSettings'
 import { renameEntityInRelations } from './relationRefs'
+import { renameLinkInChildLists } from './childLists'
 import { describeServerTarget, locateServerIssue, type ServerIssue, type ServerTarget } from './serverIssue'
 import { readErrorBody } from '../../utils/previewErrors'
 import { renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
@@ -433,7 +434,11 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         if (was.includes('#')) {
           const [, wasRelation] = was.split('#')
           const [nowEntity, nowRelation] = name.split('#')
-          if (nowRelation?.trim()) followPages(ps => renameRelationInPages(ps, nowEntity, wasRelation, nowRelation))
+          if (nowRelation?.trim()) {
+            followPages(ps => renameRelationInPages(ps, nowEntity, wasRelation, nowRelation))
+            // The one-to-manys that read this link by name.
+            followTargets = [...followTargets, es => renameLinkInChildLists(es, nowEntity, wasRelation, nowRelation)]
+          }
           continue
         }
         const [wasEntity, wasField] = was.split('.')

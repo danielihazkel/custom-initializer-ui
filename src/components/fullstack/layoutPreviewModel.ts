@@ -404,7 +404,7 @@ export function buildLayoutPreview(
       }
     })
     for (const r of e.relations ?? []) {
-      if (!r.fieldName.trim() || r.fieldName === hideRelation) continue
+      if (!r.fieldName.trim() || r.fieldName === hideRelation || r.type === 'ONE_TO_MANY') continue
       const target = entityOf(r.targetEntity)
       const named = (row: number) => (target ? rowLabel(target, row) : `#${row}`)
       cells.push({ key: r.fieldName, label: humanize(r.fieldName), value: named, detail: named })
