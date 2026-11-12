@@ -1,4 +1,7 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { useHotkeys } from '../hooks/useHotkeys'
+import { registerCommands } from '../commands'
+import { ShortcutsOverlay, FRONTEND_SHORTCUTS } from './fullstack/ShortcutsOverlay'
 import { createPortal } from 'react-dom'
 import { useFrontendMetadata } from '../hooks/useFrontendMetadata'
 import { useFrontendState } from '../hooks/useFrontendState'
@@ -13,6 +16,27 @@ import { OptionsPanelFE } from './frontend/OptionsPanelFE'
 import { SelectedDependenciesFE } from './frontend/SelectedDependenciesFE'
 import { AvailableDependenciesFE } from './frontend/AvailableDependenciesFE'
 import { ViewSkeleton } from './Skeletons'
+import { ConfirmDialog } from './ConfirmDialog'
+import { PageHeader } from './shared/PageHeader'
+import { NextSteps } from './shared/NextSteps'
+import { useBusy } from '../utils/busy'
+import { copyToClipboard } from '../utils/clipboard'
+
+/** What the last successful Generate made — in memory only. */
+interface FrontendRun {
+  projectName: string
+  dependencyCount: number
+  packageManager: string
+  /** The download URL it was generated from, to tell when the setup has moved on. */
+  url: string
+}
+
+/** Install and start, in the project's own package manager. */
+function runCommandFor(packageManager: string): string {
+  if (packageManager === 'yarn') return 'yarn && yarn dev'
+  if (packageManager === 'npm') return 'npm install && npm run dev'
+  return `${packageManager} install && ${packageManager} dev`
+}
 import { readErrorBody } from '../utils/previewErrors'
 import { downloadBlob } from '../utils/projectUtils'
 
@@ -39,18 +63,33 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
 
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null)
   const [resetSlot, setResetSlot] = useState<HTMLElement | null>(null)
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [lastRun, setLastRun] = useState<FrontendRun | null>(null)
+  // The header's conveyor and gears run while a request is out (see utils/busy.ts).
+  useBusy(generating || previewLoading)
+
+  // The tab's keys and ⌘K actions. Declared before the loading / error returns (hooks may not
+  // follow one) and pointed at the real handlers further down, once there is a catalog.
+  const actions = useRef({ generate: () => {}, explore: () => {} })
+  useHotkeys([
+    { key: 'Enter', ctrl: true, run: () => actions.current.generate() },
+    { key: 'e', ctrl: true, shift: true, run: () => actions.current.explore() },
+    { key: '?', run: () => setShortcutsOpen(true) },
+  ])
+  useEffect(() => registerCommands([
+    { id: 'fe-generate', title: 'Generate and download the frontend project', icon: 'download', group: 'Frontend', shortcut: 'Ctrl+Enter', run: () => actions.current.generate() },
+    { id: 'fe-explore', title: 'Explore the generated files', icon: 'folder_open', group: 'Frontend', shortcut: 'Ctrl+Shift+E', run: () => actions.current.explore() },
+    { id: 'fe-reset', title: 'Reset the frontend project to defaults', icon: 'restart_alt', group: 'Frontend', run: () => setResetConfirmOpen(true) },
+    { id: 'fe-shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', group: 'Frontend', shortcut: '?', run: () => setShortcutsOpen(true) },
+  ]), [])
   useEffect(() => {
     setHeaderSlot(document.getElementById('header-frontend-actions'))
     setResetSlot(document.getElementById('header-frontend-reset'))
   }, [])
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-16 text-secondary text-sm relative z-10">
-        Loading frontend metadata…
-      </div>
-    )
-  }
+  if (loading) return <ViewSkeleton />
 
   if (error || !metadata) {
     return (
@@ -79,8 +118,11 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
   // Fetch (not an anchor GET) so a server-side failure surfaces as an error
   // instead of a "downloaded" toast with no file.
   async function handleGenerate(): Promise<void> {
+    if (generating) return
+    setGenerating(true)
     try {
-      const res = await fetch(fe.downloadUrl)
+      const url = fe.downloadUrl
+      const res = await fetch(url)
       if (!res.ok) {
         const err = await readErrorBody(res)
         onError?.(`Couldn't generate project: ${err.kind ? `${err.kind}: ${err.message}` : err.message}`)
@@ -88,26 +130,64 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
       }
       downloadBlob(await res.blob(), `${fe.state.form.projectName || 'demo'}.zip`)
       presets.pushRecent(fe.state)
+      setLastRun({
+        projectName: fe.state.form.projectName || 'demo',
+        dependencyCount: fe.state.selectedDeps.length,
+        packageManager: fe.state.packageManager,
+        url,
+      })
       onGenerated?.()
     } catch (err) {
       onError?.(`Couldn't generate project: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setGenerating(false)
     }
   }
 
-  function handleReset() {
-    if (!window.confirm('Reset the project to defaults? Your current selections will be lost.')) return
+  async function copyShareLink(): Promise<void> {
+    const ok = await copyToClipboard(window.location.href)
+    if (!ok) onError?.("Couldn't copy link — copy it from the address bar")
+  }
+
+  actions.current = {
+    generate: () => { void handleGenerate() },
+    explore: () => { void fetchPreview(fe.state) },
+  }
+
+  function confirmReset() {
+    setResetConfirmOpen(false)
     fe.reset()
     onReset?.()
   }
 
   return (
-    <div className="relative z-10 max-w-7xl mx-auto px-4 lg:px-6">
+    <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-8">
       <div className="mb-6">
-        <h2 className="text-lg font-bold text-on-surface">React + TypeScript + Vite Generator</h2>
-        <p className="text-xs text-secondary mt-0.5">
-          Scaffolds a Feature-Slice Design project with your chosen tooling. Single-app v1.
-        </p>
+        <PageHeader icon="web" title="React Frontend Generator">
+          React + TypeScript + Vite, scaffolded as a Feature-Sliced Design project with the tooling you choose.
+        </PageHeader>
       </div>
+
+      {lastRun && (
+        <div className="mb-6">
+          <NextSteps
+            title={`${lastRun.projectName}.zip is downloaded — ${lastRun.dependencyCount} ${lastRun.dependencyCount === 1 ? 'dependency' : 'dependencies'}`}
+            hint={<>Install and start it, then open <a className="underline" href="http://localhost:5173" target="_blank" rel="noreferrer">http://localhost:5173</a>.</>}
+            stale={fe.downloadUrl !== lastRun.url}
+            commands={[
+              { label: 'Unpack', cmd: `unzip ${lastRun.projectName}.zip -d ${lastRun.projectName} && cd ${lastRun.projectName}` },
+              { label: 'Run', cmd: runCommandFor(lastRun.packageManager) },
+            ]}
+            actionsLabel="Keep this setup:"
+            actions={[
+              { id: 'link', label: 'Copy share link', icon: 'link', onClick: () => { void copyShareLink() } },
+              { id: 'explore', label: 'Explore the files', icon: 'folder_open', onClick: () => { void fetchPreview(fe.state) } },
+            ]}
+            onDismiss={() => setLastRun(null)}
+            onCopied={(ok, what) => { if (!ok) onError?.(`Couldn't copy the ${what.toLowerCase()}`) }}
+          />
+        </div>
+      )}
 
       {headerSlot && createPortal(
         <>
@@ -123,10 +203,18 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
           </button>
           <button
             onClick={() => { void handleGenerate() }}
-            className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn"
+            disabled={generating}
+            aria-busy={generating}
+            title="Generate and download the project (Ctrl+Enter)"
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn ${generating ? 'cursor-progress' : ''}`}
             style={{ minWidth: '110px' }}
           >
-            Generate
+            {generating ? (
+              <span className="flex items-center justify-center gap-1.5">
+                <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }} aria-hidden="true">progress_activity</span>
+                Building…
+              </span>
+            ) : 'Generate'}
           </button>
         </>,
         headerSlot
@@ -134,7 +222,7 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
 
       {resetSlot && createPortal(
         <button
-          onClick={handleReset}
+          onClick={() => setResetConfirmOpen(true)}
           className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
           aria-label="Reset to defaults"
           title="Reset project to defaults (clears form & dependencies)"
@@ -198,7 +286,7 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
         </section>
 
         {/* Right column: selected + available dependency panels */}
-        <section className="lg:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <section className="lg:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-4" data-tour="fe-deps">
           <div className="glass-panel rounded-2xl p-5">
             <SelectedDependenciesFE
               metadata={metadata}
@@ -218,6 +306,19 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
           </div>
         </section>
       </div>
+
+      {shortcutsOpen && <ShortcutsOverlay shortcuts={FRONTEND_SHORTCUTS} onClose={() => setShortcutsOpen(false)} />}
+
+      {resetConfirmOpen && (
+        <ConfirmDialog
+          title="Reset project to defaults?"
+          message="Your current form values and selected dependencies will be lost."
+          confirmLabel="Reset"
+          tone="danger"
+          onConfirm={confirmReset}
+          onCancel={() => setResetConfirmOpen(false)}
+        />
+      )}
 
       {preview && createPortal(
         <Suspense fallback={<ViewSkeleton />}>

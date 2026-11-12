@@ -13,6 +13,8 @@ import { FullstackPresets, type SaveTarget } from './FullstackPresets'
 import { ImportFromDdlDrawer, type ImportMode, type ImportVariant } from './ImportFromDdlDrawer'
 import { ViewSkeleton } from '../Skeletons'
 import { ConfirmDialog } from '../ConfirmDialog'
+import { PageHeader } from '../shared/PageHeader'
+import { useBusy } from '../../utils/busy'
 import { StatusToast } from '../admin/shared/StatusToast'
 import { newUid, reconcileUids, stripUids, withUids } from './uid'
 import { toCamelCase, uniqueName } from './naming'
@@ -285,6 +287,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     preview, previousPreview, loading: previewLoading, error: previewError,
     fetchPreview, fetchComparison, clearPreview, clearError, cancel: cancelPreview,
   } = useFullstackPreview()
+  // The header's conveyor and gears run while a request is out (see utils/busy.ts).
+  useBusy(generating || previewLoading)
   // A preview (Explore) 400 that names a page is shown on that page, like a Generate one is.
   useEffect(() => {
     if (!previewError) return
@@ -1467,14 +1471,10 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
   return (
     <div className="max-w-7xl mx-auto px-8 space-y-8">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-bold text-on-surface tracking-tight">Fullstack CRUD Generator</h1>
-        <p className="text-sm text-secondary max-w-2xl">
-          Define a set of entities with their fields. Get a single ZIP containing a Spring Boot backend
-          (JPA + REST controllers per entity) and a React frontend (Vite + Tailwind, with a table-driven
-          CRUD page per entity), already wired together end-to-end.
-        </p>
-      </header>
+      <PageHeader icon="stacks" title="Fullstack CRUD Generator">
+        Define entities and their fields, and get one ZIP with a Spring Boot backend (JPA and REST per
+        entity) and a React frontend (Vite + Tailwind, a CRUD page per entity), already wired together.
+      </PageHeader>
 
       <ModelNotices
         previewError={previewError}

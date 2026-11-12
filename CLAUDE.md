@@ -442,8 +442,225 @@ goes (`enumLabels.ts` `pruneLabels`), mirrored by `quickAdd` `values="OPEN:Open|
 the UI mock (`enumLabel` = explicit else `humanizeConstant`, mirroring `EntityScaffoldContext`) and
 validated like the server's `canonicalEnumLabels` (key must be a value, non-blank, ≤ 80 chars, ENUM only). The tickets example carries labels so the path is exercised.
 
+## Round 11 (2026-11) — the site's own UX, speed first
+
+The plan is `~/.claude/plans/stay-on-the-same-temporal-matsumoto.md` (nine phases, 0–8). Its rules hold
+for every phase: **no new npm packages**, new surfaces are `lazy()` chunks, **no new framer-motion
+usage** (CSS transitions, `@starting-style`, View Transitions), no new `backdrop-filter` surfaces, no
+`infinite` animations, nothing waits on an animation.
+
+**Phase 0 — baseline.**
+- `npm run build:check` builds and runs `scripts/check-bundle-budget.mjs`: it prints what first paint
+  downloads (entry, react, motion, CSS — raw and gzip) and **fails when the entry chunk passes
+  `ENTRY_BUDGET`** (112 800 bytes). Raise the budget deliberately, never to turn a build green.
+- The entry had grown to 235 KB because `backend/useBackendUpdate.ts` imported `countsOf`/`describeCounts`
+  from `fullstack/updateBaseline.ts`, which imports `snapshot.ts` → `pageLayout.ts` (91 KB) and friends.
+  They live in `utils/updateCounts.ts` now (re-exported from `updateBaseline.ts`). **Nothing the Backend
+  tab renders at first paint may import from `components/fullstack/`.** To see what a chunk holds:
+  `npx vite build --sourcemap --outDir <scratch>` and read which `sources` its map names.
+- The dependency catalog is off framer-motion: `DependencyCard` is a plain `<label>` (accent bar = a
+  `scale-y` transition, tick = the `check-pop` keyframe), and a group collapses with `.collapse-rows`
+  (`grid-template-rows: 1fr ↔ 0fr` + `visibility`, in `index.css`) instead of a measured `height: auto`
+  animation — in `DependencySelector` and `frontend/AvailableDependenciesFE`. The Selected ("cart") list
+  keeps its framer animations: it is a handful of rows.
+
+**Phase 1 — foundation.**
+- *Theme.* `@custom-variant dark (&:where(.dark, .dark *))` in `index.css`: `dark:` follows the app's
+  class, not the OS. Glows come from the token (`.glow-primary`, `.glow-primary-soft`), warnings from
+  `text-warning` / `bg-warning/10` — never a literal violet or `yellow-*`. `hooks/useTheme.ts`
+  `useIsDark()` reads the `html` class (a `MutationObserver` store); the two CodeMirror hosts
+  (`ReadOnlyCodeViewer`, admin `CodeEditor`) pass it as their `theme`.
+- *Focus.* One `:focus-visible` ring (`--focus-ring`: primary, tertiary in light) at zero specificity,
+  and `label:has(input.sr-only:focus-visible)` rings the label of every custom checkbox, radio and pill.
+  `.collapse-rows > *` is padded 4px and pulled back so a ring at the edge is not clipped.
+- *Toasts.* `src/toast.ts` is the one stack (`showToast` / `dismissToast`, at most three, 3 s — 6 s with
+  an action — paused while hovered); `components/Toaster.tsx` draws it bottom centre. `AppToast` and
+  `admin/shared/StatusToast` are adapters (`useToastProp`) that keep their `toast` / `onClear` props, so
+  no caller changed; each renders a `Toaster` and only the first mounted one draws. New code calls
+  `showToast` directly. `src/test/setup.ts` runs `resetToasts()` between tests.
+- *Modals.* `hooks/useModal.ts(ref, { onClose, active, initialFocus, lockScroll })`: Escape (top modal
+  only, skipped when an inner widget `preventDefault`ed it), a real Tab trap, counted scroll lock, focus
+  back to the opener (read at render time — an `autoFocus` inside runs before effects — and not during
+  StrictMode's test unmount). Used by `ConfirmDialog`, `ShortcutsOverlay`, `AdminFormDrawer`,
+  `TemplateCompare`, `ProjectPreview`. A new dialog uses it rather than its own `keydown` listener.
+- *Shell.* `App.tsx` `NAV` is the one list of tabs: a row with `aria-current` from `lg`, a
+  `shared/PopoverMenu` below it; Share / Reset / animations / theme are in the row from `xl` and a
+  "more" `PopoverMenu` below. `shared/PageHeader` is the heading of all three generator tabs (the
+  Backend one sits in `BackendModelBar`'s row, which takes it as `children`). `BackendUnreachable`
+  (lazy) replaces the dead "Cannot reach backend" card: Retry, and an automatic retry after 2, 4, 8, 15,
+  30 s while the tab is visible — `useMetadata` gained `reload` / `retrying`. `CommandPalette`,
+  `ConfirmDialog` and `BackendUnreachable` are lazy in `App.tsx` (the palette's chunk is fetched on idle).
+- *Narrow windows.* The Backend body is `grid-cols-1 lg:grid-cols-12` (twelve tracks with 40px gaps were
+  440px wide before any content); the two dependency panels sit side by side, pinned, only from `xl`.
+- The Frontend tab's Reset uses `ConfirmDialog`, not `window.confirm`.
+
+Pinned by `toast.test.tsx`, `hooks/useModal.test.tsx` and `components/BackendUnreachable.test.tsx`.
+
+**Phase 2 — keyboard, palette, dependency search.**
+- *Matching.* `utils/fuzzy.ts` `fuzzyMatch(query, text)` → `{score, ranges}`: a substring (exact > prefix
+  > start of a word > inside), else the letters in order when they sit at word starts or run on
+  (`sdj` → **S**pring **D**ata **J**PA; quality below `FUZZY_QUALITY_MIN` is no match, so `gen` does not
+  hit "Go to Backend"). `substringMatch` is for prose (descriptions). `shared/Highlight` draws the ranges
+  as `mark.search-hit`. In-house — no library.
+- *Commands.* `commands.ts` is **scoped**: `registerCommands(list, scope = 'view')`, scopes merged with
+  `global` last. Whoever owns a piece of state registers the actions on it: `App` (`global`: the tabs,
+  theme, animations, share; `backend`: Generate, Explore, Compare, multi-module, Reset, shortcuts),
+  `DependencySelector` (`backend-deps`: search, and the wizard of each selected dependency),
+  `PresetPicker` (`backend-presets`: save, load each preset / recent), `BackendModelBar`
+  (`backend-model`), `FrontendView` and `FullstackView` (`view`). **An effect that registers must not
+  depend on a callback prop** — registering re-renders `App`, a subscriber — read it through a ref.
+- *Palette* (`CommandPalette.tsx`, lazy): no query → "Recent" (`localStorage` `palette:recent`, last 8),
+  then everything under its group heading; a query → ranked across groups, the title's match marked. At
+  most `MAX_ROWS` (50) rows are drawn, with a "Showing 50 of N" footer. `role="combobox"` /
+  `listbox` / `option` with `aria-activedescendant`. The catalog items (dependencies, templates, settings)
+  are offered on the Backend tab only.
+- *Keys.* `hooks/useHotkeys(bindings, enabled)`: a chord (Ctrl/⌘) fires while typing, a bare key only
+  outside a field, nothing under a modal. Backend: Ctrl+Enter, Ctrl+Shift+E, `?` (`App`), `/`
+  (`DependencySelector`), Ctrl+S (`PresetPicker`). Frontend: the same but Ctrl+S. `ShortcutsOverlay`
+  takes `shortcuts` (`BACKEND_SHORTCUTS`, `FRONTEND_SHORTCUTS` beside `FULLSTACK_SHORTCUTS`) — **a new
+  binding goes into its list too**. The Fullstack tab keeps its own handler.
+- *Dependency picker.* Search is `fuzzyMatch` on the name, `substringMatch` on the description, a
+  substring of the id; the catalog keeps its order. From the search box ↓ enters the results, ↑/↓ move
+  between cards (`input[data-dep-card]`, open groups only), Enter toggles the first result, Escape clears.
+  A card shows a **wizard badge** (`SQL` / `OpenAPI` / `WSDL` / `AsyncAPI`) before it is selected and a
+  star (`hooks/useDepFavorites`, `localStorage` `depFavorites`). **Quick picks** above the catalog:
+  favourites, then the dependencies of recent projects (`InitializrView` → `recentDepIds`), then the
+  most used here (`hooks/usePopularDeps` → `GET /metadata/popular-deps`, through `catalogCache`; empty
+  when it fails).
+- `BackendUpdatePanel` and `ModuleSelector` are lazy. The entry budget was re-based once, to 120 000
+  bytes, when the picker's search and keyboard code (first-paint code) used up the first one — the
+  history is in `scripts/check-bundle-budget.mjs`.
+
+Pinned by `utils/fuzzy.test.ts`, `components/CommandPalette.test.tsx` (palette, the registry's scopes,
+`useHotkeys`) and `components/DependencySelector.test.tsx`.
+
+**Phase 3 — Generate, and what comes after it.**
+- *One request builder.* `projectUtils.ts` `buildProjectRequest(target, form, selected, …)` →
+  `{url, init, kind, key}` for `'zip'` or `'preview'`: a POST to the wizard endpoint when a selected
+  dependency carries a wizard payload, else a GET (the multi-module endpoint when modules are ticked).
+  `triggerDownload`, `useProjectPreview`, "Copy as curl" (`utils/curl.ts` `curlFor`) and the file dock
+  all go through it — it used to be written out three times. `key` identifies the project a snapshot
+  generates (the staleness check and the dock's cache use it).
+- *Every download is a `fetch`.* The plain path was an `<a download>` click: the page could show no
+  progress and a server error was saved as a broken zip. `triggerDownload(…, signal)` now rejects with
+  the server's words, or an `AbortError`.
+- *While it builds.* `App.downloadProject` keeps `generating` (the button reads "Building…", a second
+  click does nothing) and shows **Cancel** once it has taken 700 ms. `utils/busy.ts` `useBusy(active)`
+  sets `html[data-busy]` (counted) — the three generator tabs call it for their generate and preview
+  requests — and `index.css` runs the header's conveyor and gears **only under that attribute**. That
+  is the one sanctioned `infinite` animation: it is bounded by a request.
+- *Next steps.* `shared/NextSteps` is the card (title, hint, command rows with Copy, an action row, a
+  stale notice, children); `fullstack/NextStepsPanel` wraps it and keeps its `data-next-steps*` hooks.
+  The Backend tab shows `backend/BackendNextSteps` (lazy) from `App`'s `lastRun` — unpack / run / test,
+  Save as preset (`runCommand('backend-save-preset')`: `commands.ts` `runCommand(id)` runs another
+  owner's registered action), Copy as curl, Copy share link, Explore — stale once
+  `buildProjectRequest('zip', …).key` differs from the run's. The Frontend tab renders `NextSteps`
+  itself, with the run command in the project's package manager.
+
+Pinned by `utils/projectRequest.test.ts` (builder, download, curl) and `shared/NextSteps.test.tsx`
+(card, Backend card, `useBusy`, `runCommand`).
+
+**Phase 4 — Explore as a small IDE** (`ProjectPreview.tsx`, shared by all three tabs; a lazy chunk).
+- *Tree.* `explore/FileTree.tsx` — **no editor import**, so the file dock can draw it on the page. Rows
+  are computed flat (`visibleRows(tree, collapsed, filter)`): `role="tree"` / `treeitem`, one Tab stop,
+  ↑ ↓ Home End, → opens or steps in, ← closes or goes to the parent, Enter selects. A `filter` narrows to
+  matching files under their (opened) directories — `fuzzyMatch` on the name, a substring of the path, so
+  a breadcrumb can filter to `src/main/`. `fileStatuses` / `changedDirs` mark a diff, `flash` a new path.
+- *Modal.* Left column: **Files** (filter box; `/` or Ctrl+P) or **Search** (Ctrl+Shift+F —
+  `utils/searchFiles.ts`, a scan of the in-memory files, two letters at least, `MAX_SEARCH_HITS` lines,
+  each hit cut around its match). The column is resizable (drag the separator, or ← → on it;
+  `localStorage` `explore:treeWidth`). The bar over the file: breadcrumbs (a folder filters the tree to
+  it), wrap (`explore:wrap`), copy path, copy file, download file. It opens on `initialPath`, else the
+  file looked at last (`sessionStorage` `explore:lastPath`), else the first. `useModal` gives Escape and
+  the Tab trap; a filter's own Escape clears it first.
+- *Diff.* `utils/diffRows.ts` is the model, apart from the drawing: `diffRows` (rows name lines by
+  number), `foldUnchanged` (runs of 8+ unchanged lines fold, three lines of context kept beside a
+  change), `hunkStarts` (Previous / Next change), `pairRows` (side by side: removed beside added, the
+  shorter side padded). `DiffContentViewer` draws unified or side by side (`explore:diffMode`).
+- *Colour without an editor.* `utils/highlightCode.ts` `tokenizeLines(code, languageExtensions)` runs the
+  grammar `lang-from-path.ts` already loaded through `@lezer/highlight`'s `classHighlighter`; `index.css`
+  colours the `tok-*` classes under `.code-tokens` per theme (`--tok-keyword`…). `@lezer/highlight` was
+  already installed as CodeMirror's dependency; it is listed in `package.json` (and the lockfile's root)
+  only so the import is explicit.
+
+Pinned by `explore/FileTree.test.tsx` (rows, tree, the diff model, `searchFiles`, `tokenizeLines`).
+
+**Phase 5 — the file dock** (Backend tab): the tree of files the setup on screen generates, kept
+current as it changes, with what the last change did ("Kafka adds 4 files, changes 2").
+- `backend/FileDock.tsx` (lazy; its tree is `FileTree`, so no editor on the page). Closed it is a
+  "Project files" button at the bottom right; open, a 300px panel at the right edge — a column of its
+  own from 1600px (`App`'s `<main>` gets `min-[1600px]:pr-[300px]`), an overlay below. `App` owns
+  `dockOpen` (`localStorage` `backend:fileDock`; default open only from 1600px) and `previewRequest`
+  (`buildProjectRequest('preview', …)`, null while the form cannot generate). Added files flash
+  (`.tree-flash`) and are marked against the previous answer; `describeChange` words the change, naming
+  the dependency when exactly one was added or removed between the two.
+- **When it may ask the backend** — `hooks/useLiveProjectTree.ts`: only while the dock is open *and* the
+  tab is visible; `LIVE_DEBOUNCE_MS` (500) after the last change, the call in flight aborted; never for a
+  request key it already holds (`utils/livePreviewCache.ts`, the last 8, so ticking a dependency off and
+  on is instant); with the header `X-Preview-Intent: live`, which keeps it out of the generation audit
+  (*Round 11* in `backend/CLAUDE.md`). Refresh asks again. **Do not relax these**: the dock is the one
+  part of the site that calls the backend without being asked.
+- A click on a file opens Explore on the preview the dock holds (`useProjectPreview.showPreview`,
+  `ProjectPreview`'s `initialPath`); the Explore button does the same when the dock already has exactly
+  that request (`livePreviewFor(key)`), so neither costs a call.
+
+Pinned by `hooks/useLiveProjectTree.test.tsx` (the hook's rules, the cache, `describeChange`, the dock).
+
+**Phase 6 — motion, without script.**
+- `utils/viewTransition.ts` `withViewTransition(update, { name?, origin? })` runs a state update inside
+  `document.startViewTransition` (the update is `flushSync`ed — the browser snapshots when the callback
+  returns), sets `html[data-transition=<name>]` for its length, and simply runs the update where the API
+  is missing or motion is off. `App` uses it for a tab switch (`goTo`, the "Go to" commands) and the
+  theme toggle. In `index.css`: the page cross-fades in 160 ms; `.glass-header` is its own layer
+  (`view-transition-name: app-header`) so it does not fade; **`.nav-indicator`** — the line under the
+  active tab, rendered only in that tab — carries a `view-transition-name`, which is what slides it
+  between tabs; `data-transition="theme"` reveals the new theme in a circle from `--vt-x`/`--vt-y`.
+- `dialog-enter` (confirm, shortcuts, tour card), `panel-enter` (Explore, Compare), `dock-enter`,
+  `toast-enter`, `next-steps-enter` are one-shot keyframes. `shared/CopyButton` turns into a tick for a
+  moment after copying (the next-steps commands, Explore's copy path / copy file), so a copy answers
+  where it was clicked; the toast is kept for a refused copy.
+
+**Phase 7 — guidance.**
+- `shared/CoachTour` is the tour (spotlight, card, Back / Next / Skip, arrows, Escape, once per browser
+  under `storageKey`), generalised from `designer/DesignerTour.tsx`, which is now a wrapper with the same
+  exports. It looks its anchors up **after mounting** — a part rendered in the same pass is not in the
+  document during render. `components/tours.tsx` (lazy) holds the Backend, Frontend and Fullstack tours;
+  their stops are parts marked `data-tour="…"` (`quick-start`, `project-setup`, `dep-search`,
+  `selected-deps`, `file-dock`, `actions`, `fe-deps`, `fs-start`, plus `#fs-entities` / `#fs-pages`).
+  A renamed or removed anchor silently drops its stop.
+- `App` opens a tab's tour by itself once (`localStorage` `tour:<backend|frontend|fullstack>` — read
+  directly, so the tours chunk is not loaded to learn one was seen): it waits for the tab's
+  `TOUR_READY` anchor, never opens over a dialog, and not at all on a share link (a query beyond `tab`).
+- The header's **Help** menu (`PopoverMenu`): Take the tour, Keyboard shortcuts (the Backend sheet, or
+  `runCommand('fe-shortcuts' | 'fs-shortcuts')`), Guide, Training. `data-tip="…"` is a CSS-only tooltip
+  (hover and keyboard focus, 0.35 s delay) on the header's icon buttons, in place of `title`.
+- Empty states act: the empty cart says "press /" and has a Search button; "No results" has Clear search.
+
+**Phase 8 — one visual language** (deliberately small).
+- `html.dark { color-scheme: dark }` / `html.light { color-scheme: light }`: what the browser draws
+  itself — a native `<select>`'s list, scrollbars, date pickers, number spinners — follows the app's
+  theme. It was always light before.
+- `.surface-toolbar` and `.surface-panel` (`index.css`) are the flat surfaces of the dense tools — no
+  blur. The designer's header, Explore's, Compare's and the Config sidebar's head use `surface-toolbar`.
+- Not done: restyling the designer's and Config's cards and native selects beyond that; replacing
+  Lucide in Guide / Training; the inline icon `fontSize` styles.
+
+Pinned by `shared/CoachTour.test.tsx` (the tour, the tab tours' keys, `CopyButton`, `withViewTransition`).
+
+**Where the round left first paint.** Entry chunk 235 KB → 113 KB raw (66.6 → 32 KB gzip), with every
+new surface a lazy chunk: `CommandPalette`, `ConfirmDialog`, `BackendUnreachable`, `BackendUpdatePanel`,
+`ModuleSelector`, `BackendNextSteps`, `FileDock` (+ `FileTree`), `tours`, the shortcuts sheet.
+
+**Looking at the site without the Chrome extension.** Start the backend on a scratch database and
+`npx vite`; a headless Chromium can then be driven over its DevTools port from a ~150-line Node script
+(Node 24 has a global `WebSocket`): `Page.navigate`, `Runtime.evaluate`, `Input.dispatchMouseEvent` /
+`dispatchKeyEvent`, `Emulation.setDeviceMetricsOverride`, `Emulation.setEmulatedMedia` for the colour
+scheme, `Page.captureScreenshot`. Unlike `--screenshot`, it can click, type and resize.
+
 ## Performance rules
 
+- **The entry chunk has a budget** — `npm run build:check` (see *Round 11, phase 0*). What is not needed
+  to paint the Backend tab is a `lazy()` chunk.
 - **Catalog lists are fetched once per session.** `useMetadata` (`getMetadata`) and `hooks/catalogCache.ts`
   (`useCatalog`, behind `useCompatibility`, `useStarterTemplates`, `useFrontendMetadata`, `useSqlDialects`,
   `useExtensions`, `useModuleTemplates`, `useOpenApiCapable`, `useSoapCapable`) share one promise per URL.

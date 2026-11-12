@@ -39,7 +39,7 @@ export function AdminSidebar({ activeTab, onTabChange }: AdminSidebarProps) {
 
   return (
     <aside className={`border-r border-outline-variant bg-surface-container-low flex flex-col h-full shrink-0 transition-all duration-300 relative ${isCollapsed ? 'w-20' : 'w-64'}`}>
-      <div className={`p-6 border-b border-outline-variant bg-surface/50 backdrop-blur-sm flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+      <div className={`p-6 surface-toolbar flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
         {!isCollapsed && (
           <div className="flex flex-col overflow-hidden">
             <h2 className="font-bold text-on-surface tracking-wide uppercase text-sm flex items-center gap-2 whitespace-nowrap">

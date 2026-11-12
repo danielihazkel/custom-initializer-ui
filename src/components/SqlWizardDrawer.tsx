@@ -356,7 +356,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
         )}
 
         {sql.trim().length > 0 && tables.length === 0 && !selectPresent && (
-          <div className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+          <div className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg p-3">
             No <code className="font-mono">CREATE TABLE</code> or <code className="font-mono">SELECT</code> statements
             detected. Check your SQL syntax.
           </div>

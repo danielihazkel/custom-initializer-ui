@@ -51,6 +51,11 @@ export interface UseMetadataResult {
   metadata: InitializrMetadata | null
   loading:  boolean
   error:    string | null
+  /** True while a {@link reload} is in flight. The last error stays set meanwhile, so the
+   *  "cannot reach backend" screen does not flicker to a skeleton and back on every attempt. */
+  retrying: boolean
+  /** Asks for the catalog again after a failed load. */
+  reload:   () => void
 }
 
 export interface UseExtensionsResult {
@@ -92,6 +97,8 @@ export interface DependencySelectorProps {
   eventsByDep?:        EventsByDep
   onEventsByDepChange?: (depId: string, entry: EventsWizardEntry | null) => void
   sqlParseError?:      PreviewError | null
+  /** Dependencies of the projects generated or explored lately, newest first — for Quick picks. */
+  recentDepIds?:       string[]
 }
 
 // ── SQL Entity Wizard ─────────────────────────────────────────────────────────

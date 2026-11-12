@@ -242,7 +242,7 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
         </div>
 
         {parseError && (
-          <div className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 leading-relaxed"
+          <div className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg p-3 leading-relaxed"
             data-events-error>
             {parseError}
           </div>
@@ -284,7 +284,7 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
                         {' by the application'}
                       </div>
                       {c.problem && (
-                        <div className="text-[10px] text-yellow-600 dark:text-yellow-400 leading-relaxed">
+                        <div className="text-[10px] text-warning leading-relaxed">
                           No code can be written for it: {c.problem}.
                         </div>
                       )}
@@ -305,7 +305,7 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
               })}
             </div>
             {chosen === 0 && (
-              <p className="text-[10px] text-yellow-600 dark:text-yellow-400 mt-1.5 leading-relaxed" data-events-none>
+              <p className="text-[10px] text-warning mt-1.5 leading-relaxed" data-events-none>
                 No channel is chosen: tick what this project produces to or consumes from.
               </p>
             )}

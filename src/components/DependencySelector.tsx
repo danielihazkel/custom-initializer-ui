@@ -14,6 +14,27 @@ const NO_EVENTS: EventsByDep = {}
 import { SuggestionStrip } from './SuggestionStrip'
 import { useDependencyCompatibility } from '../hooks/useDependencyCompatibility'
 import { requiredSqlDeps, isSqlDepSatisfied } from '../utils/projectUtils'
+import { fuzzyMatch, substringMatch } from '../utils/fuzzy'
+import { useHotkeys } from '../hooks/useHotkeys'
+import { useDepFavorites } from '../hooks/useDepFavorites'
+import { usePopularDeps } from '../hooks/usePopularDeps'
+import { registerCommands, type PaletteAction } from '../commands'
+
+/** Where a search matched one dependency. */
+interface Hit { name?: [number, number][]; description?: [number, number][] }
+const NO_HITS = new Map<string, Hit>()
+const NO_RECENT: string[] = []
+
+/** Why a dependency is among the Quick picks. */
+type PickKind = 'favourite' | 'recent' | 'popular'
+const PICK_ICON: Record<PickKind, string> = { favourite: 'star', recent: 'history', popular: 'trending_up' }
+const PICK_TITLE: Record<PickKind, string> = {
+  favourite: 'One of your favourites',
+  recent: 'In a project you generated or explored lately',
+  popular: 'Among the most used here',
+}
+/** Dependency checkboxes Tab and the arrows can reach: those of the groups that are open. */
+const OPEN_CARD_INPUTS = '.collapse-rows:not([data-collapsed="true"]) input[data-dep-card]'
 
 const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle', 'mongodb', 'h2'] as const
 const DB_PRIMARY_OPTIONS: Record<string, string> = {
@@ -49,14 +70,6 @@ const DB_KIND_LABELS: Record<string, string> = {
   mongodb: 'Primary MongoDB Connection',
 }
 
-// Cascade the dependency rows in when a group expands or search filters the list.
-const depGridContainer = {
-  animate: { transition: { staggerChildren: 0.03 } },
-}
-const depGridItem = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-}
 
 export function DependencySelector({
   metadata,
@@ -79,6 +92,7 @@ export function DependencySelector({
   eventsByDep = NO_EVENTS,
   onEventsByDepChange,
   sqlParseError,
+  recentDepIds = NO_RECENT,
 }: DependencySelectorProps) {
   const [search, setSearch] = useState<string>('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -108,17 +122,27 @@ export function DependencySelector({
 
   const allDeps = useMemo<MetadataOption[]>(() => groups.flatMap(g => g.values ?? []), [groups])
 
-  const filtered = useMemo<DependencyGroup[]>(() => {
-    if (!deferredSearch.trim()) return groups
-    const q = deferredSearch.toLowerCase()
-    return groups
+  // A name matches loosely ("sdj" finds Spring Data JPA); a description, being prose, only by
+  // the words typed. The catalog keeps its order — a list that reshuffles while typing is hard
+  // to scan — and each hit remembers where it matched, for the highlight.
+  const { filtered, hits } = useMemo((): { filtered: DependencyGroup[]; hits: Map<string, Hit> } => {
+    const q = deferredSearch.trim()
+    if (!q) return { filtered: groups, hits: NO_HITS }
+    const lowered = q.toLowerCase()
+    const found = new Map<string, Hit>()
+    const narrowed = groups
       .map(group => ({
         ...group,
-        values: (group.values ?? []).filter(
-          d => d.name.toLowerCase().includes(q) || (d.description ?? '').toLowerCase().includes(q)
-        )
+        values: (group.values ?? []).filter(d => {
+          const name = fuzzyMatch(q, d.name)
+          const description = substringMatch(q, d.description ?? '')
+          if (!name && !description && !d.id.toLowerCase().includes(lowered)) return false
+          found.set(d.id, { name: name?.ranges, description: description?.ranges })
+          return true
+        }),
       }))
       .filter(g => g.values.length > 0)
+    return { filtered: narrowed, hits: found }
   }, [groups, deferredSearch])
 
   // Stable toggle (reads the latest props through refs) so the memoised DependencyCards
@@ -215,6 +239,90 @@ export function DependencySelector({
   )
   const warnings = { conflicts, requires }
 
+  // ── Quick picks: favourites, then what was used lately, then what is popular here ─────────
+  const { favorites, toggle: toggleFavorite } = useDepFavorites()
+  const favoriteSet = useMemo(() => new Set(favorites), [favorites])
+  const popular = usePopularDeps('BACKEND')
+  const quickPicks = useMemo(() => {
+    const byId = new Map(allDeps.map(d => [d.id, d]))
+    const seen = new Set<string>()
+    const take = (ids: string[], kind: PickKind, max: number) =>
+      ids.filter(id => byId.has(id) && !seen.has(id)).slice(0, max).map(id => {
+        seen.add(id)
+        return { dep: byId.get(id)!, kind }
+      })
+    return [...take(favorites, 'favourite', 8), ...take(recentDepIds, 'recent', 5), ...take(popular, 'popular', 5)]
+  }, [allDeps, favorites, recentDepIds, popular])
+
+  // What a wizard can generate for a dependency, shown on its card before it is selected.
+  const wizardOf = useMemo(() => {
+    const map = new Map<string, string>()
+    const add = (id: string, what: string) => map.set(id, map.has(id) ? `${map.get(id)} · ${what}` : what)
+    for (const id of Object.keys(sqlDialects)) add(id, 'SQL')
+    for (const id of openApiCapableDeps) add(id, 'OpenAPI')
+    for (const id of soapCapableDeps) add(id, 'WSDL')
+    for (const id of eventsCapableDeps) add(id, 'AsyncAPI')
+    return map
+  }, [sqlDialects, openApiCapableDeps, soapCapableDeps, eventsCapableDeps])
+
+  // ── Keyboard: "/" to the search box, arrows through the results, Enter adds the first ─────
+  const searchRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const focusSearch = useCallback(() => {
+    searchRef.current?.focus()
+    searchRef.current?.select()
+  }, [])
+  useHotkeys([{ key: '/', run: focusSearch }])
+
+  const cardInputs = () => Array.from(listRef.current?.querySelectorAll<HTMLInputElement>(OPEN_CARD_INPUTS) ?? [])
+
+  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      cardInputs()[0]?.focus()
+    } else if (e.key === 'Enter' && search.trim()) {
+      // Type, Enter: the top result is added (or removed) without leaving the box.
+      e.preventDefault()
+      const first = filtered[0]?.values[0]
+      if (first) toggle(first.id)
+    } else if (e.key === 'Escape' && search) {
+      e.preventDefault()
+      setSearch('')
+    }
+  }
+
+  function onListKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    const target = e.target as HTMLElement
+    if (!target.matches('input[data-dep-card]')) return
+    e.preventDefault()
+    const inputs = cardInputs()
+    const at = inputs.indexOf(target as HTMLInputElement)
+    if (e.key === 'ArrowUp' && at <= 0) {
+      focusSearch()
+      return
+    }
+    inputs[e.key === 'ArrowDown' ? Math.min(at + 1, inputs.length - 1) : at - 1]?.focus()
+  }
+
+  // ⌘K: the search box, and the wizard of every selected dependency that has one.
+  useEffect(() => {
+    const list: PaletteAction[] = [{
+      id: 'backend-search-deps', title: 'Search dependencies', icon: 'search', group: 'Backend',
+      shortcut: '/', run: focusSearch,
+    }]
+    for (const dep of selectedDeps) {
+      const wizard = (id: string, title: string, icon: string, open: (depId: string) => void) => list.push({
+        id: `backend-wizard-${id}-${dep.id}`, title: `${dep.name}: ${title}`, icon, group: 'Wizards', run: () => open(dep.id),
+      })
+      if (sqlDialects[dep.id]) wizard('sql', 'generate entities from SQL…', 'auto_fix_high', setWizardDepId)
+      if (openApiCapableDeps.includes(dep.id)) wizard('openapi', 'generate from an OpenAPI spec…', 'integration_instructions', setOpenApiWizardDepId)
+      if (soapCapableDeps.includes(dep.id)) wizard('soap', 'generate from a WSDL…', 'hub', setSoapWizardDepId)
+      if (eventsCapableDeps.includes(dep.id)) wizard('events', 'generate from an AsyncAPI document…', 'cell_tower', setEventsWizardDepId)
+    }
+    return registerCommands(list, 'backend-deps')
+  }, [selectedDeps, sqlDialects, openApiCapableDeps, soapCapableDeps, eventsCapableDeps, focusSearch])
+
   const wizardDep = wizardDepId ? allDeps.find(d => d.id === wizardDepId) : null
   const openApiWizardDep = openApiWizardDepId ? allDeps.find(d => d.id === openApiWizardDepId) : null
   const soapWizardDep = soapWizardDepId ? allDeps.find(d => d.id === soapWizardDepId) : null
@@ -222,10 +330,12 @@ export function DependencySelector({
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-6 sticky top-20" style={{ height: 'calc(100vh - 12rem)' }}>
+      {/* Two panels side by side, pinned and as tall as the window, from `xl` up. Narrower than
+          that they stack and scroll with the page: half of a small window is too little for either. */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 xl:sticky xl:top-20 xl:h-[calc(100vh-12rem)]">
 
         {/* Panel 1: Selected Dependencies */}
-        <div className="glass-panel rounded-2xl p-6 flex flex-col overflow-hidden text-on-surface">
+        <div className="glass-panel rounded-2xl p-6 flex flex-col overflow-hidden text-on-surface max-xl:max-h-[70vh]" data-tour="selected-deps">
           <div className="flex items-center justify-between mb-4 pb-4 border-b border-outline-variant/50">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>shopping_cart</span>
@@ -266,13 +376,13 @@ export function DependencySelector({
                     </div>
                   ))}
                   {warnings.requires.map((w, i) => (
-                    <div key={`req-${i}`} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 text-xs text-yellow-600 dark:text-yellow-400 shadow-sm">
+                    <div key={`req-${i}`} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-warning/30 bg-warning/10 text-xs text-warning shadow-sm">
                       <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: '16px' }}>error</span>
                       <span className="flex-1 leading-relaxed font-medium">{w.desc}</span>
                       <button
                         type="button"
                         onClick={() => onChange([...selected, w.target])}
-                        className="flex-shrink-0 text-[10px] font-bold px-3 py-1 rounded bg-yellow-500 text-white dark:text-gray-900 shadow-sm transition-transform active:scale-95 hover:brightness-110"
+                        className="flex-shrink-0 text-[10px] font-bold px-3 py-1 rounded bg-warning text-background shadow-sm transition-transform active:scale-95 hover:brightness-110"
                       >
                         ADD IT
                       </button>
@@ -465,7 +575,19 @@ export function DependencySelector({
                     <span className="material-symbols-outlined text-secondary opacity-50" style={{ fontSize: '32px' }}>inventory_2</span>
                   </div>
                   <h4 className="text-sm font-bold text-on-surface mb-1">Your cart is empty</h4>
-                  <p className="text-xs text-secondary max-w-[200px]">Search and add dependencies from the panel on the right.</p>
+                  <p className="text-xs text-secondary max-w-[220px]">
+                    Tick dependencies in the catalog, or press{' '}
+                    <kbd className="px-1.5 py-0.5 rounded border border-outline-variant bg-surface-container font-mono text-[10px] text-on-surface">/</kbd>{' '}
+                    and type a name.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={focusSearch}
+                    className="mt-3 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 transition-colors"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">search</span>
+                    Search dependencies
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -473,7 +595,7 @@ export function DependencySelector({
         </div>
 
         {/* Panel 2: All Available Dependencies */}
-        <div className="glass-panel rounded-2xl p-6 flex flex-col overflow-hidden text-on-surface">
+        <div className="glass-panel rounded-2xl p-6 flex flex-col overflow-hidden text-on-surface max-xl:max-h-[80vh] max-xl:order-first">
           <div className="flex items-center gap-2 mb-4 pb-4 border-b border-outline-variant/50">
             <span className="material-symbols-outlined text-tertiary" style={{ fontSize: '20px' }}>explore</span>
             <h3 className="text-xs font-bold uppercase tracking-widest">Explore Dependencies</h3>
@@ -486,7 +608,7 @@ export function DependencySelector({
           />
 
           {/* Search */}
-          <div className="relative mb-6 group">
+          <div className="relative mb-6 group" data-tour="dep-search">
             <span
               className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-primary transition-transform group-focus-within:scale-110"
               style={{ fontSize: '20px' }}
@@ -494,11 +616,16 @@ export function DependencySelector({
               search
             </span>
             <input
+              ref={searchRef}
               type="search"
+              aria-label="Search dependencies"
+              aria-keyshortcuts="/"
               className="w-full bg-surface-container-highest border border-outline-variant rounded-xl pl-12 pr-12 py-3.5 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all placeholder-secondary/70 shadow-inner"
               placeholder="Search Web, Security, JPA..."
               value={search}
               onChange={e => setSearch(e.target.value)}
+              onKeyDown={onSearchKeyDown}
+              data-dep-search
             />
             <div className="absolute right-4 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded border border-outline-variant text-[10px] font-bold text-secondary bg-surface-container">
               /
@@ -506,88 +633,106 @@ export function DependencySelector({
           </div>
 
           {/* Grouped checkboxes */}
-          <div className="flex-grow space-y-6 overflow-y-auto pr-2 tutorial-scroll pb-20">
-            <AnimatePresence>
-              {filtered.map(group => {
-                const collapsed = isCollapsed(group.name)
-                const selectedCount = group.values.filter(d => selectedSet.has(d.id)).length
-                const gridId = `dep-group-${group.name.replace(/\s+/g, '-').toLowerCase()}`
-                return (
-                  <motion.div
-                    layout
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    key={group.name}
-                    className="space-y-3"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(group.name)}
-                      aria-expanded={!collapsed}
-                      aria-controls={gridId}
-                      className="w-full flex items-center gap-3 cursor-pointer group/header"
-                    >
-                      <div className="factory-pipe h-px flex-1 bg-outline-variant/50"></div>
-                      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-secondary px-2 py-1 bg-surface-container-lowest rounded-full border border-outline-variant/30 group-hover/header:border-primary/50 group-hover/header:text-on-surface transition-colors">
-                        <span
-                          className={`material-symbols-outlined transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`}
-                          style={{ fontSize: '14px' }}
-                        >
-                          expand_more
+          <div ref={listRef} onKeyDown={onListKeyDown} className="flex-grow space-y-6 overflow-y-auto pr-2 tutorial-scroll pb-20">
+            {!deferredSearch.trim() && quickPicks.length > 0 && (
+              <div className="space-y-2" data-quick-picks>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-secondary">Quick picks</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {quickPicks.map(({ dep, kind }) => {
+                    const picked = selectedSet.has(dep.id)
+                    return (
+                      <button
+                        key={dep.id}
+                        type="button"
+                        onClick={() => toggle(dep.id)}
+                        aria-pressed={picked}
+                        title={`${PICK_TITLE[kind]} — ${dep.description ?? dep.name}`}
+                        className={`inline-flex items-center gap-1 pl-2 pr-2.5 py-1 rounded-full border text-[11px] font-semibold transition-colors ${
+                          picked
+                            ? 'border-primary bg-primary/15 text-primary'
+                            : 'border-outline-variant text-secondary hover:text-on-surface hover:border-primary/50'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '13px' }} aria-hidden="true">
+                          {picked ? 'check' : PICK_ICON[kind]}
                         </span>
-                        {group.name}
-                        {selectedCount > 0 && (
-                          <span className="ml-1 px-1.5 py-px rounded-full bg-primary/15 text-primary text-[9px] font-bold">
-                            {selectedCount}
-                          </span>
-                        )}
-                      </div>
-                      <div className="factory-pipe h-px flex-1 bg-outline-variant/50"></div>
-                    </button>
-                    <AnimatePresence initial={false}>
-                      {!collapsed && (
-                        <motion.div
-                          key="grid"
-                          id={gridId}
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2, ease: 'easeInOut' }}
-                          style={{ overflow: 'hidden' }}
-                        >
-                          <motion.div
-                            className="grid gap-2"
-                            variants={depGridContainer}
-                            initial="initial"
-                            animate="animate"
-                          >
-                            {group.values.map(dep => (
-                              <DependencyCard
-                                key={dep.id}
-                                id={dep.id}
-                                name={dep.name}
-                                description={dep.description}
-                                versionBadge={dep.versionRange ? `Boot ${dep.versionRange}` : undefined}
-                                isSelected={selectedSet.has(dep.id)}
-                                onToggle={toggle}
-                                variants={depGridItem}
-                              />
-                            ))}
-                          </motion.div>
-                        </motion.div>
+                        {dep.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {/* Plain elements: with hundreds of cards, a framer `layout` wrapper per group and a
+                staggered motion card per row made every search keystroke measure the whole list. */}
+            {filtered.map(group => {
+              const collapsed = isCollapsed(group.name)
+              const selectedCount = group.values.filter(d => selectedSet.has(d.id)).length
+              const gridId = `dep-group-${group.name.replace(/\s+/g, '-').toLowerCase()}`
+              return (
+                <div key={group.name} className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.name)}
+                    aria-expanded={!collapsed}
+                    aria-controls={gridId}
+                    className="w-full flex items-center gap-3 cursor-pointer group/header"
+                  >
+                    <div className="factory-pipe h-px flex-1 bg-outline-variant/50"></div>
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-secondary px-2 py-1 bg-surface-container-lowest rounded-full border border-outline-variant/30 group-hover/header:border-primary/50 group-hover/header:text-on-surface transition-colors">
+                      <span
+                        className={`material-symbols-outlined transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`}
+                        style={{ fontSize: '14px' }}
+                      >
+                        expand_more
+                      </span>
+                      {group.name}
+                      {selectedCount > 0 && (
+                        <span className="ml-1 px-1.5 py-px rounded-full bg-primary/15 text-primary text-[9px] font-bold">
+                          {selectedCount}
+                        </span>
                       )}
-                    </AnimatePresence>
-                  </motion.div>
-                )
-              })}
-            </AnimatePresence>
+                    </div>
+                    <div className="factory-pipe h-px flex-1 bg-outline-variant/50"></div>
+                  </button>
+                  <div id={gridId} className="collapse-rows" data-collapsed={collapsed}>
+                    <div>
+                      <div className="grid gap-2">
+                        {group.values.map(dep => (
+                          <DependencyCard
+                            key={dep.id}
+                            id={dep.id}
+                            name={dep.name}
+                            description={dep.description}
+                            versionBadge={dep.versionRange ? `Boot ${dep.versionRange}` : undefined}
+                            isSelected={selectedSet.has(dep.id)}
+                            onToggle={toggle}
+                            nameRanges={hits.get(dep.id)?.name}
+                            descriptionRanges={hits.get(dep.id)?.description}
+                            wizard={wizardOf.get(dep.id)}
+                            favourite={favoriteSet.has(dep.id)}
+                            onFavourite={toggleFavorite}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
             {filtered.length === 0 && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
                 <span className="material-symbols-outlined text-secondary opacity-30 mb-3" style={{ fontSize: '48px' }}>search_off</span>
                 <p className="text-sm font-medium text-on-surface">No results found</p>
                 <p className="text-xs text-secondary mt-1 max-w-[200px]">We couldn't find any dependencies matching &ldquo;{search}&rdquo;</p>
-              </motion.div>
+                <button
+                  type="button"
+                  onClick={() => { setSearch(''); focusSearch() }}
+                  className="mt-3 px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 transition-colors"
+                >
+                  Clear search
+                </button>
+              </div>
             )}
           </div>
         </div>

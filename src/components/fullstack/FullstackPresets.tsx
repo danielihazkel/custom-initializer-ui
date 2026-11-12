@@ -121,7 +121,7 @@ export function FullstackPresets({
   )
 
   return (
-    <section className="space-y-3" aria-label="Start from">
+    <section className="space-y-3" aria-label="Start from" data-tour="fs-start">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4">
           {tabButton('examples', 'Examples', examples.length, 'primary')}

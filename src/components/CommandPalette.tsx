@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { InitializrMetadata, ProjectFormValues, StarterTemplate } from '../types'
 import type { PaletteAction } from '../commands'
+import { fuzzyMatch, substringMatch } from '../utils/fuzzy'
+import { useModal } from '../hooks/useModal'
+import { Highlight } from './shared/Highlight'
 
 interface CommandPaletteProps {
   isOpen: boolean
@@ -12,7 +15,7 @@ interface CommandPaletteProps {
   onSelectTemplate: (template: StarterTemplate | null) => void
   onToggleDependency: (depId: string) => void
   onFormChange: (updates: Partial<ProjectFormValues>) => void
-  /** View-contributed actions (see commands.ts) — listed first, run on select, close the palette. */
+  /** Registered actions (see commands.ts) — listed first, run on select, close the palette. */
   actions?: PaletteAction[]
 }
 
@@ -25,8 +28,38 @@ interface PaletteItem {
   title: string
   description?: string
   icon: string
-  active?: boolean
-  payload?: any
+  shortcut?: string
+  payload?: unknown
+}
+
+interface Row {
+  item: PaletteItem
+  /** Matched stretches of the title, when the query hit it. */
+  ranges?: [number, number][]
+  /** Heading drawn above this row (the empty-query view is grouped; results are ranked). */
+  heading?: string
+}
+
+/** Rows drawn at once. The catalog alone is hundreds of dependencies; nobody reads past a screen
+ *  or two, and rendering them all made the palette slow to open. Typing narrows it. */
+export const MAX_ROWS = 50
+const RECENT_KEY = 'palette:recent'
+const MAX_RECENT = 8
+
+function readRecent(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as unknown
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string').slice(0, MAX_RECENT) : []
+  } catch {
+    return []
+  }
+}
+
+function rememberRecent(id: string): void {
+  try {
+    const next = [id, ...readRecent().filter(x => x !== id)].slice(0, MAX_RECENT)
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+  } catch { /* private mode: the list simply does not persist */ }
 }
 
 export function CommandPalette({
@@ -43,38 +76,34 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
+  // Read once per opening: the order must not jump while the palette is in use.
+  const [recent] = useState(readRecent)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Reset state when opened
-  useEffect(() => {
-    if (!isOpen) return
-    setQuery('')
-    setSelectedIndex(0)
-    const t = setTimeout(() => inputRef.current?.focus(), 50)
-    return () => clearTimeout(t)
-  }, [isOpen])
+  // Escape closes, Tab stays in the palette, and focus goes back to where it was.
+  useModal(dialogRef, { onClose, active: isOpen, lockScroll: false })
 
-  // Build the catalog items. This depends only on the (rarely changing) metadata and
-  // templates — the per-item `active` flag is derived at render time so typing in the
-  // project form doesn't rebuild the whole list.
+  // Everything the palette can do. This depends only on the (rarely changing) metadata,
+  // templates and registered actions — a row's "active" mark is derived at render time, so
+  // typing in the project form does not rebuild the list.
   const allItems = useMemo(() => {
     const items: PaletteItem[] = []
 
-    // 0. Actions contributed by the active view (Fullstack tab: add entity, explore, …)
     actions.forEach(a => {
       items.push({
         id: `act-${a.id}`,
         type: 'action',
         group: a.group,
         title: a.title,
-        description: a.shortcut ? `${a.description ? a.description + ' · ' : ''}${a.shortcut}` : a.description,
+        description: a.description,
         icon: a.icon,
+        shortcut: a.shortcut,
         payload: a,
       })
     })
 
-    // 1. Templates
     templates.forEach(t => {
       items.push({
         id: `tpl-${t.id}`,
@@ -83,11 +112,10 @@ export function CommandPalette({
         title: t.name,
         description: t.description,
         icon: t.icon && t.icon !== '' ? t.icon : 'rocket_launch',
-        payload: t
+        payload: t,
       })
     })
 
-    // 2. Dependencies
     if (metadata) {
       metadata.dependencies.values.forEach(group => {
         group.values.forEach(dep => {
@@ -98,24 +126,26 @@ export function CommandPalette({
             title: dep.name,
             description: dep.description,
             icon: 'extension',
-            payload: dep.id
+            payload: dep.id,
           })
         })
       })
-    }
 
-    // 3. Configurations
-    if (metadata) {
-      const addConfigs = (field: any, groupName: string, icon: string, formKey: keyof ProjectFormValues) => {
+      const addConfigs = (
+        field: { values: { id: string; name: string }[] } | undefined,
+        groupName: string,
+        icon: string,
+        formKey: keyof ProjectFormValues,
+      ) => {
         if (!field) return
-        field.values.forEach((val: any) => {
+        field.values.forEach(val => {
           items.push({
             id: `cfg-${formKey}-${val.id}`,
             type: 'config',
             group: groupName,
             title: `Set ${groupName} to ${val.name}`,
             icon,
-            payload: { [formKey]: val.id }
+            payload: { [formKey]: val.id },
           })
         })
       }
@@ -139,196 +169,202 @@ export function CommandPalette({
     return false
   }
 
-  // Filter items
-  const filteredItems = useMemo(() => {
-    if (!query.trim()) return allItems
-
-    const q = query.toLowerCase()
-    
-    // Sort and score
-    return allItems
-      .map(item => {
-        let score = -1
-        const title = item.title.toLowerCase()
-        const desc = item.description?.toLowerCase() || ''
-        
-        if (title === q) score = 100
-        else if (title.startsWith(q)) score = 50
-        else if (title.includes(q)) score = 10
-        else if (desc.includes(q)) score = 1
-
-        return { item, score }
-      })
-      .filter(x => x.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map(x => x.item)
-  }, [allItems, query])
-
-  // Reset selection on query change
-  useEffect(() => {
-    setSelectedIndex(0)
-  }, [query])
-
-  // Ensure selected item is in view
-  useEffect(() => {
-    if (listRef.current && isOpen) {
-      const selectedEl = listRef.current.querySelector('[data-selected="true"]') as HTMLElement
-      if (selectedEl) {
-        selectedEl.scrollIntoView({ block: 'nearest' })
-      }
+  // No query: what was used last, then everything in its groups. A query: the best matches
+  // first, whatever group they are in.
+  const { rows, total } = useMemo((): { rows: Row[]; total: number } => {
+    const q = query.trim()
+    if (!q) {
+      const byId = new Map(allItems.map(i => [i.id, i]))
+      const recentItems = recent.map(id => byId.get(id)).filter((i): i is PaletteItem => i !== undefined)
+      const recentIds = new Set(recentItems.map(i => i.id))
+      const ordered: Row[] = [
+        ...recentItems.map(item => ({ item, section: 'Recent' })),
+        ...allItems.filter(i => !recentIds.has(i.id)).map(item => ({ item, section: item.group })),
+      ].map((row, i, list) => ({
+        item: row.item,
+        heading: i === 0 || list[i - 1].section !== row.section ? row.section : undefined,
+      }))
+      return { rows: ordered.slice(0, MAX_ROWS), total: ordered.length }
     }
-  }, [selectedIndex, isOpen, filteredItems])
 
-  // Click & Enter handling. Kept in a ref so the document keydown listener below always
-  // calls the latest callbacks without re-subscribing on every prop change.
-  const handleSelect = (item: PaletteItem) => {
+    const recentIds = new Set(recent)
+    const scored: { row: Row; score: number }[] = []
+    for (const item of allItems) {
+      const inTitle = fuzzyMatch(q, item.title)
+      // A description is prose: letters-in-order there would match almost anything.
+      const inDescription = inTitle ? null : substringMatch(q, item.description ?? '')
+      if (!inTitle && !inDescription) continue
+      const base = inTitle ? inTitle.score : 5
+      // Ties go to what was used before, then to actions over catalog entries.
+      const score = base + (recentIds.has(item.id) ? 3 : 0) + (item.type === 'action' ? 1 : 0)
+      scored.push({ row: { item, ranges: inTitle?.ranges }, score })
+    }
+    scored.sort((a, b) => b.score - a.score)
+    return { rows: scored.slice(0, MAX_ROWS).map(s => s.row), total: scored.length }
+  }, [allItems, query, recent])
+
+  useEffect(() => { setSelectedIndex(0) }, [query])
+
+  // Keep the selected row in view.
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')
+    el?.scrollIntoView?.({ block: 'nearest' })
+  }, [selectedIndex, rows])
+
+  function handleSelect(item: PaletteItem) {
+    rememberRecent(item.id)
     if (item.type === 'action') {
       onClose()
       ;(item.payload as PaletteAction).run()
     } else if (item.type === 'template') {
-      onSelectTemplate(item.payload)
+      onSelectTemplate(item.payload as StarterTemplate)
       onClose()
     } else if (item.type === 'dependency') {
-      onToggleDependency(item.payload)
+      // Stays open: picking several dependencies in a row is the common case.
+      onToggleDependency(item.payload as string)
     } else if (item.type === 'config') {
-      onFormChange(item.payload)
+      onFormChange(item.payload as Partial<ProjectFormValues>)
       onClose()
     }
   }
-  const handleSelectRef = useRef(handleSelect)
-  handleSelectRef.current = handleSelect
-  const filteredItemsRef = useRef(filteredItems)
-  filteredItemsRef.current = filteredItems
-  const selectedIndexRef = useRef(selectedIndex)
-  selectedIndexRef.current = selectedIndex
 
-  // Keyboard navigation
-  useEffect(() => {
-    if (!isOpen) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const items = filteredItemsRef.current
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSelectedIndex(prev => (prev + 1) % Math.max(1, items.length))
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSelectedIndex(prev => (prev - 1 + items.length) % Math.max(1, items.length))
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        const item = items[selectedIndexRef.current]
-        if (item) handleSelectRef.current(item)
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
-      }
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSelectedIndex(prev => (prev + 1) % Math.max(1, rows.length))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSelectedIndex(prev => (prev - 1 + rows.length) % Math.max(1, rows.length))
+    } else if (e.key === 'Home' && rows.length > 0) {
+      e.preventDefault()
+      setSelectedIndex(0)
+    } else if (e.key === 'End' && rows.length > 0) {
+      e.preventDefault()
+      setSelectedIndex(rows.length - 1)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const row = rows[selectedIndex]
+      if (row) handleSelect(row.item)
     }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
+  }
 
   if (!isOpen) return null
 
+  const actionsOnly = actions.length > 0 && !metadata
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-background/60 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
-      />
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-3">
+      <div className="fixed inset-0 bg-background/60 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Search Modal */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Search dependencies, templates, or config"
-        className="relative w-full max-w-2xl bg-surface-container/90 backdrop-blur-xl border border-outline-variant rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[60vh] animate-fade-in-up origin-top"
+        aria-label="Command palette"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="relative w-full max-w-2xl bg-surface-container/90 backdrop-blur-xl border border-outline-variant rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[60vh] animate-fade-in-up origin-top outline-none"
       >
-        {/* Search Input Container */}
         <div className="flex items-center px-4 border-b border-outline-variant/50">
-          <span className="material-symbols-outlined text-secondary text-2xl ml-2">search</span>
+          <span className="material-symbols-outlined text-secondary text-2xl ml-2" aria-hidden="true">search</span>
           <input
             ref={inputRef}
             type="text"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="palette-list"
+            aria-activedescendant={rows[selectedIndex] ? `palette-opt-${selectedIndex}` : undefined}
+            aria-autocomplete="list"
+            aria-label="Search actions, dependencies, templates and settings"
+            autoComplete="off"
+            spellCheck={false}
             className="flex-1 bg-transparent border-none outline-none py-5 px-4 text-lg text-on-surface placeholder:text-on-surface-variant font-medium h-full"
-            placeholder={actions.length > 0 && !metadata
-              ? 'Search actions… (e.g. \'add entity\', \'generate\')'
-              : 'Search dependencies, templates, or config... (e.g. \'web\', \'kotlin\')'}
+            placeholder={actionsOnly
+              ? "Search actions… (e.g. 'add entity', 'generate')"
+              : "Search actions, dependencies, templates… (e.g. 'web', 'generate')"}
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
-          <div className="flex items-center gap-1.5 opacity-50 text-[10px] font-bold tracking-widest text-on-surface-variant hidden sm:flex">
+          <div className="items-center gap-1.5 opacity-50 text-[10px] font-bold tracking-widest text-on-surface-variant hidden sm:flex">
             <kbd className="px-2 py-1 rounded bg-surface border border-outline-variant">ESC</kbd>
             <span>TO CLOSE</span>
           </div>
         </div>
 
-        {/* Results List */}
-        <div 
-          ref={listRef}
-          className="overflow-y-auto overflow-x-hidden py-2"
-        >
-          {filteredItems.length === 0 ? (
+        <div ref={listRef} id="palette-list" role="listbox" aria-label="Results" className="overflow-y-auto overflow-x-hidden py-2">
+          {rows.length === 0 ? (
             <div className="py-12 px-6 text-center">
-              <span className="material-symbols-outlined text-4xl text-on-surface-variant/50 mb-3 block">search_off</span>
+              <span className="material-symbols-outlined text-4xl text-on-surface-variant/50 mb-3 block" aria-hidden="true">search_off</span>
               <p className="text-secondary font-medium">No results found for "{query}"</p>
             </div>
           ) : (
-            filteredItems.map((item, index) => {
+            rows.map(({ item, ranges, heading }, index) => {
               const isSelected = index === selectedIndex
               const active = isActive(item)
               return (
-                <div
-                  key={item.id}
-                  data-selected={isSelected}
-                  className={`
-                    flex items-center px-4 py-3 mx-2 my-0.5 rounded-lg cursor-pointer transition-colors
-                    ${isSelected ? 'bg-primary/10 border-l-2 border-primary' : 'hover:bg-on-surface/5 border-l-2 border-transparent'}
-                  `}
-                  onClick={() => handleSelect(item)}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isSelected ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-secondary'}`}>
-                    <span 
-                      className={`material-symbols-outlined text-[18px] ${item.icon === 'star' || item.icon.startsWith('rocket') ? '!text-lg' : ''} ${item.icon === 'bug_report' ? '!text-red-500' : ''}`}
-                    >
-                      {item.icon}
-                    </span>
-                  </div>
-                  <div className="ml-3 flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <h4 className={`text-sm tracking-tight truncate flex-1 ${isSelected ? 'font-bold text-on-surface' : 'font-medium text-on-surface/90'}`}>
-                        {item.title}
-                      </h4>
-                      <span className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant/50 shrink-0 ml-4 hidden sm:block">
-                        {item.group}
-                      </span>
+                <div key={item.id}>
+                  {heading && (
+                    <div role="presentation" className="px-6 pt-3 pb-1 text-[10px] font-bold tracking-widest uppercase text-on-surface-variant/60">
+                      {heading}
                     </div>
-                    {item.description && (
-                      <p className="text-xs text-on-surface-variant truncate mt-0.5">
-                        {item.description}
-                      </p>
-                    )}
-                  </div>
-                  
-                  {/* Action Icon / Status */}
-                  <div className="ml-4 shrink-0 flex items-center justify-end w-8">
-                    {item.type === 'dependency' && active && (
-                      <span className="material-symbols-outlined text-primary text-[20px]">check_circle</span>
-                    )}
-                    {item.type === 'config' && active && (
-                      <span className="material-symbols-outlined text-tertiary text-[20px]">radio_button_checked</span>
-                    )}
-                    {(item.type === 'template' || item.type === 'action') && (
-                      <span className={`material-symbols-outlined text-[18px] ${isSelected ? 'text-primary' : 'opacity-0'}`}>arrow_forward</span>
-                    )}
+                  )}
+                  <div
+                    id={`palette-opt-${index}`}
+                    role="option"
+                    aria-selected={isSelected}
+                    className={`flex items-center px-4 py-3 mx-2 my-0.5 rounded-lg cursor-pointer transition-colors border-l-2 ${
+                      isSelected ? 'bg-primary/10 border-primary' : 'hover:bg-on-surface/5 border-transparent'
+                    }`}
+                    onClick={() => handleSelect(item)}
+                    onMouseMove={() => { if (!isSelected) setSelectedIndex(index) }}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isSelected ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-secondary'}`}>
+                      <span className="material-symbols-outlined text-[18px]" aria-hidden="true">{item.icon}</span>
+                    </div>
+                    <div className="ml-3 flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <h4 className={`text-sm tracking-tight truncate flex-1 ${isSelected ? 'font-bold text-on-surface' : 'font-medium text-on-surface/90'}`}>
+                          <Highlight text={item.title} ranges={ranges} />
+                        </h4>
+                        {/* Ranked results mix groups, so each row says its own; the grouped view has headings. */}
+                        {!heading && query.trim() && (
+                          <span className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant/50 shrink-0 ml-4 hidden sm:block">
+                            {item.group}
+                          </span>
+                        )}
+                      </div>
+                      {item.description && (
+                        <p className="text-xs text-on-surface-variant truncate mt-0.5">{item.description}</p>
+                      )}
+                    </div>
+
+                    <div className="ml-4 shrink-0 flex items-center justify-end gap-2 min-w-8">
+                      {item.shortcut && (
+                        <kbd className="hidden sm:inline-block px-1.5 py-0.5 rounded border border-outline-variant bg-surface-container-low font-mono text-[10px] text-secondary whitespace-nowrap">
+                          {item.shortcut}
+                        </kbd>
+                      )}
+                      {item.type === 'dependency' && active && (
+                        <span className="material-symbols-outlined text-primary text-[20px]" aria-label="Selected">check_circle</span>
+                      )}
+                      {item.type === 'config' && active && (
+                        <span className="material-symbols-outlined text-tertiary text-[20px]" aria-label="Current">radio_button_checked</span>
+                      )}
+                      {(item.type === 'template' || item.type === 'action') && !item.shortcut && (
+                        <span className={`material-symbols-outlined text-[18px] ${isSelected ? 'text-primary' : 'opacity-0'}`} aria-hidden="true">arrow_forward</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )
             })
           )}
         </div>
+
+        {total > rows.length && (
+          <div className="px-6 py-2 border-t border-outline-variant/50 text-[11px] text-on-surface-variant" data-palette-more>
+            Showing {rows.length} of {total} — type to narrow it down.
+          </div>
+        )}
       </div>
     </div>
   )

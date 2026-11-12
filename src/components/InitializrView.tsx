@@ -1,8 +1,10 @@
+import { Suspense, lazy, useMemo } from 'react'
 import { TemplatePicker } from './TemplatePicker'
 import { PresetPicker } from './PresetPicker'
 import { OptionsPanel } from './OptionsPanel'
 import { ProjectForm } from './ProjectForm'
-import { ModuleSelector } from './ModuleSelector'
+// Only with the multi-module switch on — not part of what the tab needs to paint.
+const ModuleSelector = lazy(() => import('./ModuleSelector').then(m => ({ default: m.ModuleSelector })))
 import { DependencySelector } from './DependencySelector'
 import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, EventsByDep, EventsWizardEntry, PreviewError } from '../types'
 import type { FormErrors } from '../utils/projectUtils'
@@ -93,9 +95,15 @@ export function InitializrView({
   onPresetDelete,
   onRecentDelete,
 }: InitializrViewProps) {
+  // The dependencies of the projects generated or explored lately, newest first — the picker's
+  // Quick picks offer them again.
+  const recentDepIds = useMemo(
+    () => [...new Set(recents.flatMap(r => r.snapshot.selected ?? []))],
+    [recents],
+  )
   return (
     <>
-      <div className="max-w-7xl mx-auto px-8 relative z-10 animate-fade-in-up">
+      <div className="max-w-7xl mx-auto px-4 sm:px-8 relative z-10 animate-fade-in-up">
         <TemplatePicker
           templates={templates}
           activeTemplateId={activeTemplate}
@@ -112,9 +120,9 @@ export function InitializrView({
           onDeleteRecent={onRecentDelete}
         />
       </div>
-      <div className="max-w-7xl mx-auto px-8 grid grid-cols-12 gap-10 relative z-10 animate-fade-in-up">
+      <div className="max-w-7xl mx-auto px-4 sm:px-8 grid grid-cols-1 lg:grid-cols-12 gap-10 relative z-10 animate-fade-in-up">
         {/* Left Column */}
-        <section className="col-span-12 lg:col-span-5 space-y-8">
+        <section className="lg:col-span-5 space-y-8 min-w-0" data-tour="project-setup">
           <div className="mb-2">
             <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">
               Project Setup
@@ -150,18 +158,20 @@ export function InitializrView({
                 </button>
               </div>
               {multiModuleEnabled && (
-                <ModuleSelector
-                  modules={moduleTemplates}
-                  selectedModules={selectedModules}
-                  onChange={onModulesChange}
-                />
+                <Suspense fallback={null}>
+                  <ModuleSelector
+                    modules={moduleTemplates}
+                    selectedModules={selectedModules}
+                    onChange={onModulesChange}
+                  />
+                </Suspense>
               )}
             </div>
           )}
         </section>
 
         {/* Right Column — Dependencies */}
-        <section className="col-span-12 lg:col-span-7">
+        <section className="lg:col-span-7 min-w-0">
           <DependencySelector
             metadata={metadata}
             selected={selectedDeps}
@@ -183,6 +193,7 @@ export function InitializrView({
             eventsByDep={eventsByDep}
             onEventsByDepChange={onEventsByDepChange}
             sqlParseError={sqlParseError}
+            recentDepIds={recentDepIds}
           />
         </section>
       </div>

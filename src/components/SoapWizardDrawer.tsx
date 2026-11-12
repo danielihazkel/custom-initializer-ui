@@ -291,7 +291,7 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
         </div>
 
         {parseError && (
-          <div className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 leading-relaxed">
+          <div className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg p-3 leading-relaxed">
             {parseError}
           </div>
         )}

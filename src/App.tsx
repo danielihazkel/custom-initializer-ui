@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
 import { useMetadata } from './hooks/useMetadata'
 import { useExtensions } from './hooks/useExtensions'
@@ -26,19 +26,60 @@ const AdminPage = lazy(() => import('./components/admin/AdminPage').then(m => ({
 const GuideView = lazy(() => import('./components/guide/GuideView').then(m => ({ default: m.GuideView })))
 const FrontendView = lazy(() => import('./components/FrontendView').then(m => ({ default: m.FrontendView })))
 const FullstackView = lazy(() => import('./components/fullstack/FullstackView').then(m => ({ default: m.FullstackView })))
-import { CommandPalette } from './components/CommandPalette'
-import { useRegisteredCommands } from './commands'
+// Not needed to paint the page: the palette exists only while it is open, the confirm only while
+// it asks, and the "cannot reach backend" screen only when the catalog failed to load.
+const loadCommandPalette = () => import('./components/CommandPalette')
+const CommandPalette = lazy(() => loadCommandPalette().then(m => ({ default: m.CommandPalette })))
+const ConfirmDialog = lazy(() => import('./components/ConfirmDialog').then(m => ({ default: m.ConfirmDialog })))
+const BackendUnreachable = lazy(() => import('./components/BackendUnreachable').then(m => ({ default: m.BackendUnreachable })))
+import { registerCommands, runCommand, useRegisteredCommands } from './commands'
+import { useBusy } from './utils/busy'
+import { withViewTransition } from './utils/viewTransition'
+import { livePreviewFor } from './utils/livePreviewCache'
+import type { BackendRun } from './components/backend/BackendNextSteps'
+// The card after a successful Generate: exists only once a project has been generated.
+// The file dock (its tree, and the hook that keeps it current) is not needed to paint the tab.
+const FileDock = lazy(() => import('./components/backend/FileDock').then(m => ({ default: m.FileDock })))
+// A tab's guided tour (see components/tours.tsx): opened once per browser, then from Help.
+const Tour = lazy(() => import('./components/tours').then(m => ({ default: m.Tour })))
+/** The tabs that have a tour, and a part of each that is on screen once the tab has loaded. */
+const TOUR_READY: Partial<Record<View, { id: 'backend' | 'frontend' | 'fullstack'; anchor: string }>> = {
+  initializr: { id: 'backend', anchor: '[data-tour="dep-search"]' },
+  frontend: { id: 'frontend', anchor: '[data-tour="fe-deps"]' },
+  fullstack: { id: 'fullstack', anchor: '#fs-entities' },
+}
+const BackendNextSteps = lazy(() => import('./components/backend/BackendNextSteps').then(m => ({ default: m.BackendNextSteps })))
+import { useHotkeys } from './hooks/useHotkeys'
+// The `?` sheet with the Backend tab's list. The list lives in the sheet's own module, so
+// neither is in the entry chunk.
+const BackendShortcuts = lazy(() => import('./components/fullstack/ShortcutsOverlay').then(m => ({
+  default: (props: { onClose: () => void }) => <m.ShortcutsOverlay {...props} shortcuts={m.BACKEND_SHORTCUTS} />,
+})))
 import { AppToast } from './components/AppToast'
 import { InitializrSkeleton, ViewSkeleton } from './components/Skeletons'
-import { ConfirmDialog } from './components/ConfirmDialog'
+import { PageHeader } from './components/shared/PageHeader'
+import { PopoverMenu, type MenuItem } from './components/shared/PopoverMenu'
 
-import { triggerDownload, captureSnapshot, validateForm } from './utils/projectUtils'
-import type { Toast } from './types'
+import { triggerDownload, buildProjectRequest, captureSnapshot, validateForm } from './utils/projectUtils'
+import type { PreviewResponse, Toast } from './types'
+
+type View = 'initializr' | 'tutorial' | 'admin' | 'guide' | 'frontend' | 'fullstack'
+
+/** The header's tabs, in order — one list for the row on a wide window and the menu on a narrow
+ *  one. A `toggle` tab (the reference views) returns to Backend when clicked while open. */
+const NAV: { view: View; label: string; icon: string; toggle?: boolean }[] = [
+  { view: 'initializr', label: 'Backend', icon: 'dns' },
+  { view: 'frontend', label: 'Frontend', icon: 'web' },
+  { view: 'fullstack', label: 'Fullstack', icon: 'stacks' },
+  { view: 'tutorial', label: 'Training', icon: 'school', toggle: true },
+  { view: 'guide', label: 'Guide', icon: 'menu_book', toggle: true },
+  { view: 'admin', label: 'Config', icon: 'tune', toggle: true },
+]
 
 export default function App() {
   // The guide topic another tab asked to open (the page editor's help button).
   const [guideTopic, setGuideTopic] = useState<{ id: string; n: number } | undefined>(undefined)
-  const [view, setView] = useState<'initializr' | 'tutorial' | 'admin' | 'guide' | 'frontend' | 'fullstack'>(() => {
+  const [view, setView] = useState<View>(() => {
     const tab = new URLSearchParams(window.location.search).get('tab')
     if (tab === 'frontend') return 'frontend'
     if (tab === 'fullstack') return 'fullstack'
@@ -70,7 +111,7 @@ export default function App() {
     } catch { /* history API unavailable */ }
   }, [view])
 
-  const { metadata, loading, error } = useMetadata()
+  const { metadata, loading, error, retrying, reload: reloadMetadata } = useMetadata()
   const { extensions } = useExtensions()
   const { dialects: sqlDialects } = useSqlDialects()
   const { depIds: openApiCapableDeps } = useOpenApiCapable()
@@ -79,7 +120,7 @@ export default function App() {
   const { rules: compatibilityRules } = useCompatibility('BACKEND')
   const { templates } = useStarterTemplates('BACKEND')
   const { modules: moduleTemplates } = useModuleTemplates()
-  const { preview, previousPreview, loading: previewLoading, error: previewError, fetchPreview, clearPreview, clearError: clearPreviewError } = useProjectPreview()
+  const { preview, previousPreview, loading: previewLoading, error: previewError, fetchPreview, showPreview, clearPreview, clearError: clearPreviewError } = useProjectPreview()
 
   const {
     form,
@@ -165,6 +206,14 @@ export default function App() {
   const paletteActions = useRegisteredCommands()
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
 
+  // Fetch the palette's chunk once the page is idle, so the first Ctrl+K opens without a wait.
+  useEffect(() => {
+    const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500))
+    const cancel = window.cancelIdleCallback ?? window.clearTimeout
+    const handle = idle(() => { void loadCommandPalette() })
+    return () => cancel(handle)
+  }, [])
+
   // Command Palette global hotkey
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -237,18 +286,69 @@ export default function App() {
     sqlByDep, openApiByDep, soapByDep, eventsByDep,
   ] as const
 
+  // Generating: the button says so, a second click cannot start another, and — once it has
+  // taken long enough to be worth it — a Cancel appears.
+  const [generating, setGenerating] = useState(false)
+  const [generatingSlow, setGeneratingSlow] = useState(false)
+  const generateAbort = useRef<AbortController | null>(null)
+  // What the last successful Generate made, for the next-steps card (memory only).
+  const [lastRun, setLastRun] = useState<BackendRun | null>(null)
+
+  const currentRequest = () => buildProjectRequest('zip', ...downloadArgs())
+
   async function downloadProject(): Promise<boolean> {
+    if (generateAbort.current) return false
+    const ctrl = new AbortController()
+    generateAbort.current = ctrl
+    setGenerating(true)
+    const slow = window.setTimeout(() => setGeneratingSlow(true), 700)
     try {
-      await triggerDownload(...downloadArgs())
+      const request = currentRequest()
+      await triggerDownload(...downloadArgs(), ctrl.signal)
       pushRecent(currentSnapshot)
       // The project now exists: a later change of the model is an update of it.
       backendUpdate.rememberGenerated(currentSnapshot)
+      const wizards = [sqlByDep, openApiByDep, soapByDep, eventsByDep]
+        .flatMap(byDep => Object.keys(byDep ?? {}))
+        .filter(depId => selectedDeps.includes(depId))
+      setLastRun({
+        artifactId: form.artifactId,
+        dependencyCount: selectedDeps.length,
+        wizardCount: wizards.length,
+        moduleCount: request.kind === 'multimodule' ? selectedModules.length : 0,
+        key: request.key,
+      })
       return true
     } catch (err) {
-      setAppToast({ message: `Couldn't generate project: ${err instanceof Error ? err.message : String(err)}`, type: 'error' })
+      // Cancelled on purpose: nothing to report.
+      if (!ctrl.signal.aborted) {
+        setAppToast({ message: `Couldn't generate project: ${err instanceof Error ? err.message : String(err)}`, type: 'error' })
+      }
       return false
+    } finally {
+      window.clearTimeout(slow)
+      generateAbort.current = null
+      setGenerating(false)
+      setGeneratingSlow(false)
     }
   }
+
+  function cancelGenerate(): void {
+    generateAbort.current?.abort()
+  }
+
+  // The call Generate makes, as a command to run from a script or a CI job.
+  async function copyCurl(): Promise<void> {
+    const { curlFor } = await import('./utils/curl')
+    const { copyToClipboard } = await import('./utils/clipboard')
+    const ok = await copyToClipboard(curlFor(currentRequest(), window.location.origin, `${form.artifactId}.zip`))
+    setAppToast(ok
+      ? { message: 'curl command copied', type: 'success' }
+      : { message: "Couldn't copy the curl command", type: 'error' })
+  }
+
+  // The header's conveyor and gears run while a request is out (see utils/busy.ts).
+  useBusy(generating || previewLoading)
 
   async function handleGenerate(): Promise<void> {
     if (!formValid) {
@@ -275,17 +375,186 @@ export default function App() {
     setAppToast({ message: 'Project reset to defaults', type: 'success' })
   }
 
+  // ── The file dock: the project's files, live, at the right edge of the Backend tab ─────────
+  // Open by default only where it is a column of its own (a wide window); the choice is kept.
+  const [dockOpen, setDockOpen] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem('backend:fileDock')
+      if (stored === 'open' || stored === 'closed') return stored === 'open'
+    } catch { /* fall through to the default */ }
+    return window.matchMedia?.('(min-width: 1600px)').matches ?? false
+  })
+  function changeDock(open: boolean): void {
+    setDockOpen(open)
+    try { localStorage.setItem('backend:fileDock', open ? 'open' : 'closed') } catch { /* this visit only */ }
+  }
+  // The preview request of the setup on screen (what Explore would ask); null while it cannot generate.
+  const previewRequest = useMemo(
+    () => (formValid
+      ? buildProjectRequest('preview', form, selectedDeps, selectedOptions,
+        { enabled: multiModuleEnabled, modules: selectedModules }, sqlByDep, openApiByDep, soapByDep, eventsByDep)
+      : null),
+    [formValid, form, selectedDeps, selectedOptions, multiModuleEnabled, selectedModules, sqlByDep, openApiByDep, soapByDep, eventsByDep],
+  )
+  const depNames = useMemo(() => {
+    const names = new Map<string, string>()
+    for (const group of metadata?.dependencies?.values ?? []) for (const dep of group.values ?? []) names.set(dep.id, dep.name)
+    return names
+  }, [metadata])
+  const depName = useCallback((id: string) => depNames.get(id) ?? id, [depNames])
+  // The file Explore opens on, when it was opened from the dock's tree.
+  const [previewPath, setPreviewPath] = useState<string | undefined>(undefined)
+  const openDockFile = useCallback((path: string, data: PreviewResponse) => {
+    setPreviewPath(path)
+    showPreview(data)
+  }, [showPreview])
+
+  function handleExplore(): void {
+    if (!formValid) {
+      setAppToast({ message: firstFormError ? `Fix project metadata: ${firstFormError}` : 'Fix project metadata first', type: 'error' })
+      return
+    }
+    setPreviewPath(undefined)
+    // The dock may already hold exactly this preview: then Explore opens at once.
+    const inHand = previewRequest ? livePreviewFor(previewRequest.key) : undefined
+    if (inHand) showPreview(inHand)
+    else void fetchPreview(...downloadArgs())
+    pushRecent(currentSnapshot)
+  }
+
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+
+  // ── Guidance: a tour per generator tab, once per browser, and a Help menu to run it again ──
+  const [tour, setTour] = useState<'backend' | 'frontend' | 'fullstack' | null>(null)
+  useEffect(() => {
+    const ready = TOUR_READY[view]
+    if (!ready) return
+    try {
+      if (localStorage.getItem(`tour:${ready.id}`) === 'done') return
+    } catch {
+      return
+    }
+    // Someone who followed a shared link came for that setup, not for a tour.
+    const params = new URLSearchParams(window.location.search)
+    params.delete('tab')
+    if ([...params.keys()].length > 0) return
+    // The tab may still be loading (a lazy chunk, the catalog): wait for one of its parts, and
+    // never open over a dialog.
+    let tries = 0
+    const timer = window.setInterval(() => {
+      tries += 1
+      if (document.querySelector(ready.anchor) && !document.querySelector('[role="dialog"]')) {
+        window.clearInterval(timer)
+        setTour(ready.id)
+      } else if (tries > 20) {
+        window.clearInterval(timer)
+      }
+    }, 600)
+    return () => window.clearInterval(timer)
+  }, [view])
+
+  function openShortcuts(): void {
+    // Each generator tab owns its sheet; the other two register it as a command.
+    if (view === 'initializr') setShortcutsOpen(true)
+    else if (!runCommand('fe-shortcuts')) runCommand('fs-shortcuts')
+  }
+
+  // What the palette and the keyboard can ask of the shell. Through a ref, so the commands are
+  // registered once and still run the latest closures — and registering (which re-renders this
+  // component, a subscriber of the registry) can never depend on something that render changed.
+  const toggleDock = () => changeDock(!dockOpen)
+  const shellNow = {
+    generate: handleGenerate, explore: handleExplore, reset: handleReset, share: handleShare, toggleDock,
+    goToView: (next: View) => withViewTransition(() => setView(next), { name: 'view' }),
+    toggleTheme: () => withViewTransition(() => setIsDark(d => !d), { name: 'theme', origin: { x: window.innerWidth - 80, y: 32 } }),
+    startTour: () => {
+      const id = TOUR_READY[view]?.id
+      if (id) setTour(id)
+      else setAppToast({ message: 'Open the Backend, Frontend or Fullstack tab to take its tour', type: 'error' })
+    },
+  }
+  const shell = useRef(shellNow)
+  shell.current = shellNow
+
+  // ⌘K, on every tab: the tabs themselves and the app's own switches.
+  useEffect(() => registerCommands([
+    ...NAV.map(item => ({
+      id: `go-${item.view}`, title: `Go to ${item.label}`, icon: item.icon, group: 'Go to',
+      run: () => shell.current.goToView(item.view),
+    })),
+    { id: 'app-theme', title: 'Switch between light and dark', icon: 'contrast', group: 'App', run: () => shell.current.toggleTheme() },
+    { id: 'app-motion', title: 'Turn animations on or off', icon: 'motion_photos_on', group: 'App', run: () => setMotionEnabled(m => !m) },
+    { id: 'app-share', title: 'Copy a link to this setup', icon: 'share', group: 'App', run: () => shell.current.share() },
+    { id: 'app-tour', title: 'Take the tour of this tab', icon: 'tour', group: 'App', run: () => shell.current.startTour() },
+  ], 'global'), [])
+
+  // ⌘K on the Backend tab: the header's actions. The dependency picker, the presets and the model
+  // bar register their own (`backend-deps`, `backend-presets`, `backend-model`).
+  useEffect(() => {
+    if (view !== 'initializr') return
+    return registerCommands([
+      { id: 'backend-generate', title: 'Generate and download the project', icon: 'download', group: 'Backend', shortcut: 'Ctrl+Enter', run: () => { void shell.current.generate() } },
+      { id: 'backend-explore', title: 'Explore the generated files', icon: 'folder_open', group: 'Backend', shortcut: 'Ctrl+Shift+E', run: () => shell.current.explore() },
+      { id: 'backend-compare', title: 'Compare starter templates', icon: 'compare_arrows', group: 'Backend', run: () => setCompareOpen(true) },
+      { id: 'backend-multi-module', title: 'Turn the multi-module project on or off', icon: 'account_tree', group: 'Backend', run: () => setMultiModuleEnabled(v => !v) },
+      { id: 'backend-file-dock', title: 'Show or hide the project files', description: 'The files this setup generates, kept current as you change it', icon: 'account_tree', group: 'Backend', run: () => shell.current.toggleDock() },
+      { id: 'backend-reset', title: 'Reset the project to defaults', icon: 'restart_alt', group: 'Backend', run: () => shell.current.reset() },
+      { id: 'backend-shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', group: 'Backend', shortcut: '?', run: () => setShortcutsOpen(true) },
+    ], 'backend')
+  }, [view, setMultiModuleEnabled])
+
+  // The Backend tab's keys ("/" is the dependency picker's, Ctrl+S the preset picker's).
+  useHotkeys([
+    { key: 'Enter', ctrl: true, run: () => { void shell.current.generate() } },
+    { key: 'e', ctrl: true, shift: true, run: () => shell.current.explore() },
+    { key: '?', run: () => setShortcutsOpen(true) },
+  ], view === 'initializr')
+
   if (error) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="bg-surface-container border border-error-container rounded-xl p-8 max-w-md text-center space-y-3">
-          <h2 className="text-lg font-bold text-on-surface">Cannot reach backend</h2>
-          <p className="text-sm text-secondary">Make sure the Spring Initializr backend is running on port 8080.</p>
-          <code className="block text-xs text-error bg-surface-container-lowest rounded p-3">{error}</code>
-        </div>
-      </div>
+      <Suspense fallback={<div className="min-h-screen bg-background" />}>
+        <BackendUnreachable error={error} retrying={retrying} onRetry={reloadMetadata} />
+      </Suspense>
     )
   }
+
+  function goTo(item: (typeof NAV)[number]): void {
+    withViewTransition(() => setView(v => (item.toggle && v === item.view ? 'initializr' : item.view)), { name: 'view' })
+  }
+
+  // The theme changes in a circle growing from wherever it was asked for.
+  function toggleTheme(from?: { x: number; y: number }): void {
+    withViewTransition(() => setIsDark(d => !d), { name: 'theme', origin: from ?? { x: window.innerWidth - 80, y: 32 } })
+  }
+
+  // The Frontend and Fullstack tabs portal their own Reset / Explore / Generate into the header;
+  // on every other view the header shows the Backend generator's.
+  const backendActions = view !== 'frontend' && view !== 'fullstack'
+  const navItems: MenuItem[] = NAV.map(item => ({
+    id: item.view, label: item.label, icon: item.icon, current: view === item.view, onSelect: () => goTo(item),
+  }))
+  // The header's secondary actions, for the "more" menu that stands in for them below `lg`.
+  const tourOfView = TOUR_READY[view]?.id
+  const helpItems: MenuItem[] = [
+    ...(tourOfView ? [
+      { id: 'tour', label: 'Take the tour', icon: 'tour', onSelect: () => setTour(tourOfView) },
+      { id: 'keys', label: 'Keyboard shortcuts', icon: 'keyboard', onSelect: openShortcuts },
+    ] : []),
+    { id: 'guide', label: 'Guide', icon: 'menu_book', onSelect: () => shell.current.goToView('guide') },
+    { id: 'training', label: 'Training', icon: 'school', onSelect: () => shell.current.goToView('tutorial') },
+  ]
+  const moreItems: MenuItem[] = [
+    { id: 'share', label: 'Copy share link', icon: 'share', onSelect: handleShare },
+    ...(backendActions ? [{ id: 'reset', label: 'Reset to defaults', icon: 'restart_alt', onSelect: handleReset }] : []),
+    {
+      id: 'motion', label: motionEnabled ? 'Disable animations' : 'Enable animations',
+      icon: motionEnabled ? 'motion_photos_on' : 'motion_photos_paused', onSelect: () => setMotionEnabled(m => !m),
+    },
+    {
+      id: 'theme', label: isDark ? 'Switch to light mode' : 'Switch to dark mode',
+      icon: isDark ? 'light_mode' : 'dark_mode', onSelect: () => toggleTheme(),
+    },
+  ]
 
   return (
     <MotionConfig reducedMotion={motionEnabled ? 'user' : 'always'}>
@@ -294,72 +563,53 @@ export default function App() {
       <header className="fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 glass-header">
         {/* Conveyor belt accent running along the bottom of the header */}
         <div className="factory-conveyor absolute bottom-0 left-0 right-0 h-[3px] pointer-events-none" aria-hidden="true" />
-        <div className="flex items-center gap-8">
-          <span className="flex items-center gap-2 text-xl font-bold text-on-surface tracking-tighter">
+        <div className="flex items-center gap-2 lg:gap-6 xl:gap-8 min-w-0">
+          {/* Below `lg` the tabs do not fit in a row beside the actions: the same list, as a menu. */}
+          <PopoverMenu className="lg:hidden" label="Open navigation" icon="menu" items={navItems} align="left" />
+          <span className="flex items-center gap-2 text-xl font-bold text-on-surface tracking-tighter whitespace-nowrap">
             <span className="relative inline-flex items-center justify-center w-6 h-5 text-primary" aria-hidden="true">
               <span className="factory-gear-cw material-symbols-outlined absolute -left-0.5" style={{ fontSize: '18px' }}>settings</span>
               <span className="factory-gear-ccw material-symbols-outlined absolute right-0 bottom-0 text-primary/70" style={{ fontSize: '12px' }}>settings</span>
             </span>
-            Menora Initializr
+            <span className="hidden sm:inline">Menora Initializr</span>
           </span>
-          <nav className="hidden md:flex items-center gap-6">
-            <button
-              onClick={() => setView('initializr')}
-              className={`text-sm transition-colors duration-200 ${view === 'initializr' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
-            >
-              Backend
-            </button>
-            <button
-              onClick={() => setView('frontend')}
-              className={`text-sm transition-colors duration-200 ${view === 'frontend' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
-            >
-              Frontend
-            </button>
-            <button
-              onClick={() => setView('fullstack')}
-              className={`text-sm transition-colors duration-200 ${view === 'fullstack' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
-            >
-              Fullstack
-            </button>
-            <button
-              onClick={() => setView(v => v === 'tutorial' ? 'initializr' : 'tutorial')}
-              className={`text-sm transition-colors duration-200 ${view === 'tutorial' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
-            >
-              Training
-            </button>
-            <button
-              onClick={() => setView(v => v === 'guide' ? 'initializr' : 'guide')}
-              className={`text-sm transition-colors duration-200 ${view === 'guide' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
-            >
-              Guide
-            </button>
-            <button
-              onClick={() => setView(v => v === 'admin' ? 'initializr' : 'admin')}
-              className={`text-sm transition-colors duration-200 ${view === 'admin' ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
-            >
-              Config
-            </button>
+          <nav className="hidden lg:flex items-center gap-4 xl:gap-6" aria-label="Sections">
+            {NAV.map(item => (
+              <button
+                key={item.view}
+                type="button"
+                onClick={() => goTo(item)}
+                aria-current={view === item.view ? 'page' : undefined}
+                className={`relative py-1 text-sm transition-colors duration-200 ${view === item.view ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'}`}
+              >
+                {item.label}
+                {view === item.view && <span className="nav-indicator" aria-hidden="true" />}
+              </button>
+            ))}
           </nav>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           {/* Search button */}
           <button
             onClick={() => setCommandPaletteOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-high transition-colors duration-200 text-secondary hover:text-on-surface group shadow-sm"
-            aria-label="Search dependencies"
-            title="Search dependencies (Cmd/Ctrl + K)"
+            aria-label="Open the command palette"
+            data-tip="Search and commands · Ctrl+K"
           >
             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>search</span>
-            <span className="hidden sm:inline text-xs font-medium">Search</span>
+            <span className="hidden sm:inline lg:hidden xl:inline text-xs font-medium">Search</span>
             <span className="hidden sm:flex border border-outline-variant bg-surface-container rounded px-1.5 py-0.5 text-[10px] font-bold text-secondary group-hover:text-on-surface">⌘K</span>
           </button>
 
+          {/* Share, Reset, animations and theme sit in the row from `xl` up; below it they are
+              the "more" menu further down, so the row keeps room for Explore and Generate. */}
+          <div className="hidden xl:contents">
           {/* Share button */}
           <button
             onClick={handleShare}
             className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
             aria-label="Copy share link"
-            title="Copy link to current configuration"
+            data-tip="Copy a link to this setup"
           >
             <AnimatePresence mode="wait">
               {shareCopied ? (
@@ -390,24 +640,26 @@ export default function App() {
             </AnimatePresence>
           </button>
           {/* Reset button — backend views only; FrontendView portals its own reset into header-frontend-reset (same slot) */}
-          {view !== 'frontend' && view !== 'fullstack' && (
+          {backendActions && (
           <button
             onClick={handleReset}
             className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
             aria-label="Reset to defaults"
-            title="Reset project to defaults (clears form & dependencies)"
+            data-tip="Reset to defaults"
           >
             <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>restart_alt</span>
           </button>
           )}
+          </div>
           <div id="header-frontend-reset" className="contents" />
+          <div className="hidden xl:contents">
           {/* Animations toggle */}
           <button
             onClick={() => setMotionEnabled(m => !m)}
             className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
             aria-label="Toggle animations"
             aria-pressed={motionEnabled}
-            title={motionEnabled ? 'Disable animations' : 'Enable animations'}
+            data-tip={motionEnabled ? 'Disable animations' : 'Enable animations'}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
               {motionEnabled ? 'motion_photos_on' : 'motion_photos_paused'}
@@ -415,18 +667,26 @@ export default function App() {
           </button>
           {/* Theme toggle */}
           <button
-            onClick={() => setIsDark(d => !d)}
+            onClick={e => {
+              const box = e.currentTarget.getBoundingClientRect()
+              toggleTheme({ x: box.left + box.width / 2, y: box.top + box.height / 2 })
+            }}
             className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
             aria-label="Toggle theme"
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            data-tip={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
               {isDark ? 'light_mode' : 'dark_mode'}
             </span>
           </button>
-          {view !== 'frontend' && view !== 'fullstack' && (
+          </div>
+          <PopoverMenu className="xl:hidden" label="More actions" icon="more_vert" items={moreItems} />
+          <PopoverMenu label="Help" icon="help" items={helpItems} />
+          {/* The tours point at this group: Explore and Generate, whichever tab drew them. */}
+          <div className="flex items-center gap-1.5 sm:gap-3" data-tour="actions">
+          {backendActions && (
           <button
-            onClick={() => { void fetchPreview(...downloadArgs()); pushRecent(currentSnapshot) }}
+            onClick={handleExplore}
             disabled={previewLoading || !formValid}
             title={!formValid ? (firstFormError ? `Fix project metadata: ${firstFormError}` : 'Fix project metadata first') : previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview project files before downloading'}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${previewError && formValid ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
@@ -436,17 +696,39 @@ export default function App() {
               : 'Explore'}
           </button>
           )}
-          {view !== 'frontend' && view !== 'fullstack' && (
+          {backendActions && generatingSlow && (
+          <button
+            type="button"
+            onClick={cancelGenerate}
+            className="px-3 py-1.5 rounded text-sm font-medium text-secondary hover:text-on-surface transition-colors animate-fade-in"
+          >
+            Cancel
+          </button>
+          )}
+          {backendActions && (
           <button
             onClick={handleGenerate}
-            disabled={!formValid}
-            aria-disabled={!formValid}
-            title={!formValid ? (firstFormError ? `Fix project metadata: ${firstFormError}` : 'Fix project metadata first') : 'Generate and download the project'}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn ${generateSuccess ? 'generate-success' : ''} ${!formValid ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
+            disabled={!formValid || generating}
+            aria-disabled={!formValid || generating}
+            aria-busy={generating}
+            title={!formValid ? (firstFormError ? `Fix project metadata: ${firstFormError}` : 'Fix project metadata first') : 'Generate and download the project (Ctrl+Enter)'}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn ${generateSuccess ? 'generate-success' : ''} ${!formValid ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''} ${generating ? 'cursor-progress' : ''}`}
             style={{ minWidth: '110px' }}
           >
             <AnimatePresence mode="wait">
-              {generateSuccess ? (
+              {generating ? (
+                <motion.span
+                  key="building"
+                  className="flex items-center justify-center gap-1.5"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.12 }}
+                >
+                  <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }} aria-hidden="true">progress_activity</span>
+                  Building…
+                </motion.span>
+              ) : generateSuccess ? (
                 <motion.span
                   key="success"
                   className="flex items-center justify-center gap-1.5"
@@ -473,11 +755,13 @@ export default function App() {
           </button>
           )}
           <div id="header-frontend-actions" className="contents" />
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="pt-20 pb-8 min-h-screen bg-background relative overflow-clip">
+      {/* With the file dock open on a wide window, the page makes room for it: a column of its own. */}
+      <main className={`pt-20 pb-8 min-h-screen bg-background relative overflow-clip transition-[padding] duration-200 ${view === 'initializr' && dockOpen ? 'min-[1600px]:pr-[300px]' : ''}`}>
         {/* Blueprint factory-floor grid behind the glow blobs */}
         <div className="factory-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
         {/* Decorative ambient background blobs */}
@@ -526,7 +810,7 @@ export default function App() {
         ) : (
           <>
           {genericPreviewError && (
-            <div className="max-w-7xl mx-auto px-8 relative z-10 mb-6">
+            <div className="max-w-7xl mx-auto px-4 sm:px-8 relative z-10 mb-6">
               <div role="alert" className="glass-panel border-error-container rounded-xl px-4 py-3 flex items-start gap-3">
                 <span className="material-symbols-outlined text-error mt-0.5" style={{ fontSize: '20px' }}>error</span>
                 <div className="flex-1 min-w-0">
@@ -550,7 +834,31 @@ export default function App() {
               </div>
             </div>
           )}
-          <BackendModelBar update={backendUpdate} />
+          <div className="max-w-7xl mx-auto px-4 sm:px-8 relative z-10">
+            <BackendModelBar update={backendUpdate}>
+              <PageHeader icon="dns" title="Spring Boot Generator">
+                Pick a stack and its dependencies and get a Menora-standard Spring Boot project as a ZIP.
+              </PageHeader>
+            </BackendModelBar>
+            {lastRun && (
+              <div className="mb-6">
+                <Suspense fallback={null}>
+                  <BackendNextSteps
+                    run={lastRun}
+                    stale={formValid && currentRequest().key !== lastRun.key}
+                    onDismiss={() => setLastRun(null)}
+                    onSavePreset={() => { runCommand('backend-save-preset') }}
+                    onCopyCurl={() => { void copyCurl() }}
+                    onShareLink={handleShare}
+                    onExplore={handleExplore}
+                    onCopied={(ok, what) => setAppToast(ok
+                      ? { message: `${what} copied`, type: 'success' }
+                      : { message: `Couldn't copy the ${what.toLowerCase()}`, type: 'error' })}
+                  />
+                </Suspense>
+              </div>
+            )}
+          </div>
           <InitializrView
             metadata={metadata}
             templates={templates}
@@ -617,19 +925,35 @@ export default function App() {
             artifactId={form.artifactId}
             onClose={clearPreview}
             onDownload={() => { void downloadProject(); clearPreview() }}
+            initialPath={previewPath}
+          />
+        </Suspense>
+      )}
+
+      {view === 'initializr' && !loading && metadata && (
+        <Suspense fallback={null}>
+          <FileDock
+            open={dockOpen}
+            onOpenChange={changeDock}
+            request={previewRequest}
+            invalidReason={firstFormError}
+            selected={selectedDeps}
+            depName={depName}
+            onOpenFile={openDockFile}
           />
         </Suspense>
       )}
 
       {/* Command Palette — mounted only while open so its catalog memos don't run on every keystroke */}
       {commandPaletteOpen && (
+      <Suspense fallback={null}>
       <CommandPalette
         isOpen={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         // The catalog items (deps/templates/config) act on the Backend tab's form; on the
         // Fullstack tab the palette lists that tab's own actions instead.
-        metadata={view === 'fullstack' ? null : metadata}
-        templates={view === 'fullstack' ? [] : templates}
+        metadata={view === 'initializr' ? metadata : null}
+        templates={view === 'initializr' ? templates : []}
         actions={paletteActions}
         form={form}
         selectedDeps={selectedDeps}
@@ -642,17 +966,32 @@ export default function App() {
         }}
         onFormChange={handleFormChange}
       />
+      </Suspense>
+      )}
+
+      {shortcutsOpen && (
+        <Suspense fallback={null}>
+          <BackendShortcuts onClose={() => setShortcutsOpen(false)} />
+        </Suspense>
+      )}
+
+      {tour && (
+        <Suspense fallback={null}>
+          <Tour tour={tour} onClose={() => setTour(null)} />
+        </Suspense>
       )}
 
       {resetConfirmOpen && (
-        <ConfirmDialog
-          title="Reset project to defaults?"
-          message="Your current form values and selected dependencies will be lost."
-          confirmLabel="Reset"
-          tone="danger"
-          onConfirm={confirmReset}
-          onCancel={() => setResetConfirmOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <ConfirmDialog
+            title="Reset project to defaults?"
+            message="Your current form values and selected dependencies will be lost."
+            confirmLabel="Reset"
+            tone="danger"
+            onConfirm={confirmReset}
+            onCancel={() => setResetConfirmOpen(false)}
+          />
+        </Suspense>
       )}
 
       <AppToast toast={appToast} onClear={() => setAppToast(null)} />

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { PreviewError, PreviewResponse, ProjectFormValues, SqlByDep, OpenApiByDep, SoapByDep, EventsByDep } from '../types'
-import { activeWizardEntries, buildWizardBody } from '../utils/projectUtils'
+import { buildProjectRequest } from '../utils/projectUtils'
 import { readErrorBody } from '../utils/previewErrors'
 
 export function useProjectPreview() {
@@ -39,72 +39,15 @@ export function useProjectPreview() {
     setLoading(true)
     setError(null)
     try {
-      const activeSql = sqlByDep
-        ? Object.fromEntries(Object.entries(sqlByDep).filter(([id]) => selected.includes(id)))
-        : {}
-      const activeOpenApi = openApiByDep
-        ? Object.fromEntries(Object.entries(openApiByDep).filter(([id]) => selected.includes(id)))
-        : {}
-      const activeSoap = soapByDep
-        ? Object.fromEntries(Object.entries(soapByDep).filter(([id]) => selected.includes(id)))
-        : {}
-      const activeEvents = activeWizardEntries(eventsByDep, selected)
-      const hasWizard = Object.keys(activeSql).length > 0
-          || Object.keys(activeOpenApi).length > 0
-          || Object.keys(activeSoap).length > 0
-          || Object.keys(activeEvents).length > 0
-
-      let data: PreviewResponse
-      if (hasWizard) {
-        const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap, activeEvents)
-        const res = await fetch('/starter-wizard.preview', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: ctrl.signal,
-        })
-        if (!res.ok) {
-          const err = await readErrorBody(res)
-          if (!stale()) setError(err)
-          return
-        }
-        data = await res.json() as PreviewResponse
-      } else {
-        const isMultiModule = multiModule?.enabled && multiModule.modules.length > 0
-        const url = new URL(
-          isMultiModule ? '/starter-multimodule.preview' : '/starter.preview',
-          window.location.origin
-        )
-        url.searchParams.set('type',        form.type)
-        url.searchParams.set('language',    form.language)
-        url.searchParams.set('bootVersion', form.bootVersion)
-        url.searchParams.set('groupId',     form.groupId)
-        url.searchParams.set('artifactId',  form.artifactId)
-        url.searchParams.set('name',        form.name)
-        url.searchParams.set('description', form.description)
-        url.searchParams.set('packageName', form.packageName)
-        url.searchParams.set('packaging',   form.packaging)
-        url.searchParams.set('javaVersion', form.javaVersion)
-        if (form.department) url.searchParams.set('department', form.department)
-        if (isMultiModule) {
-          url.searchParams.set('modules', multiModule!.modules.join(','))
-        }
-        if (selected.length > 0) {
-          url.searchParams.set('dependencies', selected.join(','))
-        }
-        for (const [depId, optIds] of Object.entries(selectedOptions)) {
-          if (optIds.length > 0 && selected.includes(depId)) {
-            url.searchParams.set(`opts-${depId}`, optIds.join(','))
-          }
-        }
-        const res = await fetch(url.toString(), { signal: ctrl.signal })
-        if (!res.ok) {
-          const err = await readErrorBody(res)
-          if (!stale()) setError(err)
-          return
-        }
-        data = await res.json() as PreviewResponse
+      const request = buildProjectRequest(
+        'preview', form, selected, selectedOptions, multiModule, sqlByDep, openApiByDep, soapByDep, eventsByDep)
+      const res = await fetch(request.url, { ...request.init, signal: ctrl.signal })
+      if (!res.ok) {
+        const err = await readErrorBody(res)
+        if (!stale()) setError(err)
+        return
       }
+      const data = await res.json() as PreviewResponse
       if (stale()) return
       setPreviousPreview(previewRef.current)
       previewRef.current = data
@@ -117,6 +60,20 @@ export function useProjectPreview() {
     }
   }, [])
 
+  /** Opens the modal on a preview that is already in hand (the file dock's), without a request. */
+  const showPreview = useCallback((data: PreviewResponse) => {
+    // Whatever was in flight is superseded.
+    reqIdRef.current += 1
+    abortRef.current?.abort()
+    setLoading(false)
+    setError(null)
+    if (previewRef.current !== data) {
+      setPreviousPreview(previewRef.current)
+      previewRef.current = data
+    }
+    setPreview(data)
+  }, [])
+
   const clearPreview = useCallback(() => {
     setPreview(null)
     setError(null)
@@ -125,5 +82,5 @@ export function useProjectPreview() {
 
   const clearError = useCallback(() => setError(null), [])
 
-  return { preview, previousPreview, loading, error, fetchPreview, clearPreview, clearError }
+  return { preview, previousPreview, loading, error, fetchPreview, showPreview, clearPreview, clearError }
 }

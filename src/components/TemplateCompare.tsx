@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { useModal } from '../hooks/useModal'
 import type { StarterTemplate, InitializrMetadata, DependencyExtensions } from '../types'
 import { useTemplateComparison } from '../hooks/useTemplateComparison'
 import { TemplateCompareSelectionGrid } from './TemplateCompareSelectionGrid'
@@ -34,12 +35,22 @@ export function TemplateCompare({ templates, metadata, extensions, onClose }: Pr
     setPhase('select')
   }
 
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useModal(dialogRef, { onClose })
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-3">
-      <div className="w-full h-full bg-surface-container border border-outline-variant rounded-2xl flex flex-col overflow-hidden shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Compare templates"
+        tabIndex={-1}
+        className="w-full h-full bg-surface-container border border-outline-variant rounded-2xl flex flex-col overflow-hidden shadow-2xl outline-none panel-enter"
+      >
 
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-outline-variant flex-shrink-0 bg-surface-container-high">
+        <div className="flex items-center justify-between px-4 py-2.5 flex-shrink-0 surface-toolbar">
           <div className="flex items-center gap-3">
             {phase === 'compare' && (
               <button

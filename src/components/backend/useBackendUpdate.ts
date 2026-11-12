@@ -1,7 +1,9 @@
 import { useCallback, useState } from 'react'
 import type { ProjectSnapshot, Toast } from '../../types'
 import { downloadBlob } from '../../utils/projectUtils'
-import { countsOf, describeCounts } from '../fullstack/updateBaseline'
+// Not from '../fullstack/updateBaseline': that module imports the layout engine, and this hook is
+// in the entry chunk.
+import { countsOf, describeCounts } from '../../utils/updateCounts'
 import {
   backendUpdateRequest, readBackendBaseline, updateOffered, writeBackendBaseline, type BackendBaseline,
 } from './backendBaseline'

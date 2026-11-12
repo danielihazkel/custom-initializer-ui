@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useRef } from 'react'
+import { useModal } from '../../hooks/useModal'
 
 /** Every keyboard shortcut the fullstack tab answers to — the cheat sheet renders this list and
  *  the tests pin it, so a new binding in `FullstackView` must be added here too. */
@@ -25,17 +26,42 @@ export const FULLSTACK_SHORTCUTS: { keys: string; action: string }[] = [
   { keys: '?', action: 'Show this list' },
 ]
 
+/** The Backend tab's shortcuts — bound in `App.tsx`, `DependencySelector` and `PresetPicker`. */
+export const BACKEND_SHORTCUTS: { keys: string; action: string }[] = [
+  { keys: 'Ctrl+K', action: 'Command palette — every action, dependency and setting' },
+  { keys: 'Ctrl+Enter', action: 'Generate and download the project' },
+  { keys: 'Ctrl+Shift+E', action: 'Explore the generated files' },
+  { keys: 'Ctrl+S', action: 'Save the current setup as a preset' },
+  { keys: '/', action: 'Search dependencies' },
+  { keys: '↓ / ↑', action: 'From the search box, move through the results' },
+  { keys: 'Enter', action: 'In the search box: add (or remove) the first result' },
+  { keys: 'Space', action: 'On a dependency: select it' },
+  { keys: 'Esc', action: 'Clear the search; close a dialog, drawer or menu' },
+  { keys: '?', action: 'Show this list' },
+]
+
+/** The Frontend tab's shortcuts — bound in `FrontendView` and `AvailableDependenciesFE`. */
+export const FRONTEND_SHORTCUTS: { keys: string; action: string }[] = [
+  { keys: 'Ctrl+K', action: 'Command palette' },
+  { keys: 'Ctrl+Enter', action: 'Generate and download the project' },
+  { keys: 'Ctrl+Shift+E', action: 'Explore the generated files' },
+  { keys: '/', action: 'Search dependencies' },
+  { keys: 'Esc', action: 'Close a dialog or menu' },
+  { keys: '?', action: 'Show this list' },
+]
+
 /**
- * The `?` cheat sheet: a glass dialog listing {@link FULLSTACK_SHORTCUTS}. Escape and the
- * backdrop close it. Marked `data-shortcuts` so the view's global key handler can tell it apart
- * from the confirm dialogs that own the keyboard while open.
+ * The `?` cheat sheet: a glass dialog listing a tab's shortcuts ({@link FULLSTACK_SHORTCUTS}
+ * unless another list is given). Escape and the backdrop close it. Marked `data-shortcuts` so the
+ * Fullstack view's global key handler can tell it apart from the confirm dialogs that own the
+ * keyboard while open.
  */
-export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+export function ShortcutsOverlay({ onClose, shortcuts = FULLSTACK_SHORTCUTS }: {
+  onClose: () => void
+  shortcuts?: { keys: string; action: string }[]
+}) {
+  const sheetRef = useRef<HTMLDivElement>(null)
+  useModal(sheetRef, { onClose, lockScroll: false })
 
   return (
     <>
@@ -45,7 +71,9 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-label="Keyboard shortcuts"
         data-shortcuts
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-full max-w-md glass-panel border border-outline-variant rounded-xl shadow-2xl p-6 space-y-4"
+        ref={sheetRef}
+        tabIndex={-1}
+        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-full max-w-md max-h-[85vh] overflow-y-auto glass-panel border border-outline-variant rounded-xl shadow-2xl p-6 space-y-4 outline-none dialog-enter"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">
@@ -60,7 +88,7 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
-          {FULLSTACK_SHORTCUTS.map(s => (
+          {shortcuts.map(s => (
             <div key={s.keys} className="contents">
               <dt>
                 <kbd className="inline-block px-1.5 py-0.5 rounded border border-outline-variant bg-surface-container-low font-mono text-[11px] text-on-surface whitespace-nowrap">{s.keys}</kbd>

@@ -122,10 +122,88 @@ export function validateForm(form: ProjectFormValues): { valid: boolean; errors:
   return { valid: Object.keys(errors).length === 0, errors }
 }
 
+/** Which answer is asked for: the ZIP, or the file list the Explore modal and the file dock show. */
+export type RequestTarget = 'zip' | 'preview'
+
+/** One call to a generation endpoint, ready for `fetch`. */
+export interface ProjectRequest {
+  /** Path and query, relative to the app's origin. */
+  url: string
+  init: RequestInit
+  /** `wizard` is a JSON POST carrying the pasted documents; the other two are GETs. */
+  kind: 'plain' | 'multimodule' | 'wizard'
+  /** Identifies the request: two snapshots with the same key generate the same project. */
+  key: string
+}
+
 /**
- * Starts the project download. Resolves once the download has been handed to the
- * browser; rejects (with a user-facing message) when a wizard generation fails
- * server-side, so callers can report the failure instead of a false success.
+ * The one place a Backend-tab snapshot becomes a request — for Generate, Explore, the file dock,
+ * and "Copy as curl". It used to be written out three times (the download, the wizard download
+ * and the preview hook), which is how a parameter gets added to one and forgotten in another.
+ *
+ * Any wizard payload of a still-selected dependency makes it a single POST to the wizard
+ * endpoint; otherwise it is a GET, to the multi-module endpoint when modules are ticked.
+ */
+export function buildProjectRequest(
+  target: RequestTarget,
+  form: ProjectFormValues,
+  selected: string[],
+  selectedOptions: Record<string, string[]>,
+  multiModule?: { enabled: boolean; modules: string[] },
+  sqlByDep?: SqlByDep,
+  openApiByDep?: OpenApiByDep,
+  soapByDep?: SoapByDep,
+  eventsByDep?: EventsByDep,
+): ProjectRequest {
+  const activeSql = activeWizardEntries(sqlByDep, selected)
+  const activeOpenApi = activeWizardEntries(openApiByDep, selected)
+  const activeSoap = activeWizardEntries(soapByDep, selected)
+  const activeEvents = activeWizardEntries(eventsByDep, selected)
+  const hasWizard = [activeSql, activeOpenApi, activeSoap, activeEvents].some(m => Object.keys(m).length > 0)
+
+  if (hasWizard) {
+    const url = `/starter-wizard.${target}`
+    const body = JSON.stringify(
+      buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap, activeEvents))
+    return {
+      url,
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body },
+      kind: 'wizard',
+      key: `${url}
+${body}`,
+    }
+  }
+
+  const isMultiModule = Boolean(multiModule?.enabled && multiModule.modules.length > 0)
+  const params = new URLSearchParams()
+  params.set('type', form.type)
+  params.set('language', form.language)
+  params.set('bootVersion', form.bootVersion)
+  params.set('groupId', form.groupId)
+  params.set('artifactId', form.artifactId)
+  params.set('name', form.name)
+  params.set('description', form.description)
+  params.set('packageName', form.packageName)
+  params.set('packaging', form.packaging)
+  params.set('javaVersion', form.javaVersion)
+  if (form.department) params.set('department', form.department)
+  if (isMultiModule) params.set('modules', multiModule!.modules.join(','))
+  if (selected.length > 0) params.set('dependencies', selected.join(','))
+  for (const [depId, optIds] of Object.entries(selectedOptions)) {
+    if (optIds.length > 0 && selected.includes(depId)) params.set(`opts-${depId}`, optIds.join(','))
+  }
+  const url = `/${isMultiModule ? 'starter-multimodule' : 'starter'}.${target}?${params.toString()}`
+  return { url, init: {}, kind: isMultiModule ? 'multimodule' : 'plain', key: url }
+}
+
+/**
+ * Generates the project and hands the ZIP to the browser. Resolves once the download has
+ * started; rejects with a user-facing message when the server refuses, so callers report the
+ * failure instead of a false success — and with an `AbortError` when `signal` aborts.
+ *
+ * Every path is a `fetch` now. The plain one used to be an `<a download>` click, which told the
+ * page nothing: no "building" state was possible, and a server error was saved to disk as a
+ * broken `.zip`.
  */
 export async function triggerDownload(
   form: ProjectFormValues,
@@ -136,84 +214,16 @@ export async function triggerDownload(
   openApiByDep?: OpenApiByDep,
   soapByDep?: SoapByDep,
   eventsByDep?: EventsByDep,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const activeSql = sqlByDep
-    ? Object.fromEntries(Object.entries(sqlByDep).filter(([id]) => selected.includes(id)))
-    : {}
-  const activeOpenApi = openApiByDep
-    ? Object.fromEntries(Object.entries(openApiByDep).filter(([id]) => selected.includes(id)))
-    : {}
-  const activeSoap = soapByDep
-    ? Object.fromEntries(Object.entries(soapByDep).filter(([id]) => selected.includes(id)))
-    : {}
-  const activeEvents = activeWizardEntries(eventsByDep, selected)
-  const hasWizard = Object.keys(activeSql).length > 0
-      || Object.keys(activeOpenApi).length > 0
-      || Object.keys(activeSoap).length > 0
-      || Object.keys(activeEvents).length > 0
-
-  // Branch: any wizard active → single POST carrying all payloads.
-  if (hasWizard) {
-    await triggerWizardDownload(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap, activeEvents)
-    return
-  }
-
-  const isMultiModule = multiModule?.enabled && multiModule.modules.length > 0
-  const url = new URL(isMultiModule ? '/starter-multimodule.zip' : '/starter.zip', window.location.origin)
-
-  url.searchParams.set('type', form.type)
-  url.searchParams.set('language', form.language)
-  url.searchParams.set('bootVersion', form.bootVersion)
-  url.searchParams.set('groupId', form.groupId)
-  url.searchParams.set('artifactId', form.artifactId)
-  url.searchParams.set('name', form.name)
-  url.searchParams.set('description', form.description)
-  url.searchParams.set('packageName', form.packageName)
-  url.searchParams.set('packaging', form.packaging)
-  url.searchParams.set('javaVersion', form.javaVersion)
-  if (form.department) url.searchParams.set('department', form.department)
-
-  if (isMultiModule) {
-    url.searchParams.set('modules', multiModule!.modules.join(','))
-  }
-  if (selected.length > 0) {
-    url.searchParams.set('dependencies', selected.join(','))
-  }
-  for (const [depId, optIds] of Object.entries(selectedOptions)) {
-    if (optIds.length > 0 && selected.includes(depId)) {
-      url.searchParams.set(`opts-${depId}`, optIds.join(','))
-    }
-  }
-
-  const a = document.createElement('a')
-  a.href = url.toString()
-  a.download = `${form.artifactId}.zip`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-}
-
-async function triggerWizardDownload(
-  form: ProjectFormValues,
-  selected: string[],
-  selectedOptions: Record<string, string[]>,
-  activeSql: SqlByDep,
-  activeOpenApi: OpenApiByDep,
-  activeSoap: SoapByDep,
-  activeEvents: EventsByDep = {},
-): Promise<void> {
-  const body = buildWizardBody(form, selected, selectedOptions, activeSql, activeOpenApi, activeSoap, activeEvents)
-  const res = await fetch('/starter-wizard.zip', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  const request = buildProjectRequest(
+    'zip', form, selected, selectedOptions, multiModule, sqlByDep, openApiByDep, soapByDep, eventsByDep)
+  const res = await fetch(request.url, { ...request.init, signal })
   if (!res.ok) {
     const err = await readErrorBody(res)
     throw new Error(err.kind ? `${err.kind}: ${err.message}` : err.message)
   }
-  const blob = await res.blob()
-  downloadBlob(blob, `${form.artifactId}.zip`)
+  downloadBlob(await res.blob(), `${form.artifactId}.zip`)
 }
 
 /** Hands a Blob to the browser as a file download (anchor click) and releases the object URL. */
