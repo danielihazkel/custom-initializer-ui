@@ -506,6 +506,9 @@ export interface FullstackWorkflow {
   initial?: string
   assigneeField?: string
   dueField?: string
+  /** Keep a log of every move — who, when, how long in the state left: the record page's
+   *  history and the time-in-state widget read it. Absent: no log. */
+  trackMoves?: boolean
   transitions: FullstackTransition[]
 }
 
@@ -664,6 +667,7 @@ export interface FullstackListSort {
  *  date field, the latest rows, the largest groups ranked, or one number against a target. */
 export interface FullstackWidgetDef {
   kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'pivot' | 'line' | 'recent' | 'top' | 'progress' | 'activity' | 'text' | 'links' | 'list'
+    | 'funnel' | 'gauge' | 'timeInState'
   /** The entity the widget reads — empty for a text, links or activity widget. */
   entity: string
   title?: string

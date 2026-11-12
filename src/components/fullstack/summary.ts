@@ -84,6 +84,7 @@ export function summarizeEntity(entity: FullstackEntityDef, projectOpts: string[
   if (optOn('bulkUpdate')) endpoints.push({ method: 'PATCH', path: `${path}/bulk` })
   if (entity.workflow && !readOnly) {
     endpoints.push({ method: 'POST', path: `${path}/{id}/transitions/{name}` })
+    if (entity.workflow.trackMoves) endpoints.push({ method: 'GET', path: `${path}/{id}/moves` }, { method: 'GET', path: `${path}/moves/time-in-state` })
     if (entity.workflow.assigneeField) endpoints.push({ method: 'POST', path: `${path}/{id}/claim` }, { method: 'POST', path: `${path}/{id}/release` }, { method: 'POST', path: `${path}/{id}/assign` })
   }
   const opts = (['audit', 'softDelete', 'csvExport', 'xlsxExport', 'savedViews', 'bulkDelete', 'bulkUpdate', 'tests', 'inlineEdit', 'optimisticLocking'] as FullstackEntityOptKey[]).filter(optOn)

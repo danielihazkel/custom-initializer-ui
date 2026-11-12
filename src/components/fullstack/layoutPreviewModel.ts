@@ -10,6 +10,7 @@ import {
   defaultSpan,
   defaultWizardSteps,
   defaultTopGroupBy,
+  funnelStageFields,
   reportCharts,
   NAV_ICONS,
   defaultBarGroupBy,
@@ -606,6 +607,8 @@ export function buildLayoutPreview(
                 trend: w.trend ? series(w.trend, w.agg, valueField, `${seed}:trend`).map(p => p.value) : null,
               }
             }
+            // A gauge is drawn as the tile it fills in for: a number against its full scale.
+            case 'gauge':
             case 'progress': {
               const target = Number(w.target)
               const percent = Math.round(20 + seeded(seed)() * 75)
@@ -641,6 +644,30 @@ export function buildLayoutPreview(
                 ...base, kind: 'top',
                 title: w.title || t('topXByY', { x: measured, y: groupLabel }),
                 rows: rows.sort((a, b) => b.value - a.value),
+              }
+            }
+            // A funnel: its stages as bars, each everything that got that far.
+            case 'funnel': {
+              const group = fieldOf(e, w.groupBy ?? funnelStageFields(e)[0]?.name)
+              if (!group) return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} has no enum field for the stages` }
+              const now = breakdown(group, w.agg, valueField, seed)
+              return {
+                ...base, kind: 'bar',
+                title: w.title || t('xByY', { x: measured, y: fieldLabel(group) }),
+                bars: now.map((b, i) => ({ label: b.label, value: now.slice(i).reduce((sum, x) => sum + x.value, 0) })),
+              }
+            }
+            // Time in state: a bar per state rows leave, in days.
+            case 'timeInState': {
+              const status = fieldOf(e, e.workflow?.statusField)
+              if (!status || !e.workflow?.trackMoves) {
+                return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name}’s workflow keeps no log of its moves` }
+              }
+              const rand = seeded(seed)
+              return {
+                ...base, kind: 'bar',
+                title: w.title || (ctx.locale === 'he' ? `זמן בכל מצב — ${plural}` : `Time in each state — ${plural}`),
+                bars: breakdown(status, undefined, undefined, seed).slice(0, -1).map(b => ({ label: b.label, value: Math.round(1 + rand() * 9) })),
               }
             }
             case 'bar':

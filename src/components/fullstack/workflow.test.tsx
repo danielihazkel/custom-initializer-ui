@@ -135,6 +135,23 @@ describe('workflow panel', () => {
     expect(screen.getByText(/never reached: Archived/)).toBeTruthy()
   })
 
+  it('switches the log of moves on and off, and lists its endpoints', () => {
+    const onChange = vi.fn()
+    const { rerender } = render(<WorkflowPanel entity={claim(approvals)} onChange={onChange} ldapAuth />)
+    fireEvent.click(screen.getByLabelText('Keep a log of moves'))
+    expect((onChange.mock.calls[0][0] as FullstackWorkflow).trackMoves).toBe(true)
+
+    const logged = claim({ ...approvals, trackMoves: true })
+    expect(summarizeEntity(logged, []).endpoints.map(e => e.path)).toEqual(expect.arrayContaining([
+      '/api/claims/{id}/moves', '/api/claims/moves/time-in-state',
+    ]))
+    expect(summarizeEntity(claim(approvals), []).endpoints.map(e => e.path)).not.toContain('/api/claims/{id}/moves')
+    rerender(<WorkflowPanel entity={logged} onChange={onChange} ldapAuth />)
+    fireEvent.click(screen.getByLabelText('Keep a log of moves'))
+    // Off again is no setting at all, so the request is what it was before.
+    expect(JSON.stringify(onChange.mock.calls[1][0])).not.toContain('trackMoves')
+  })
+
   it('offers roles only with an LDAP dependency, and a way to add one', () => {
     const onAddDep = vi.fn()
     render(<WorkflowPanel entity={claim(approvals)} onChange={() => {}} ldapAuth={false} onAddDep={onAddDep} />)

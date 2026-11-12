@@ -207,7 +207,7 @@ export const reloads = (w: FullstackWidgetDef) => w.kind !== 'text' && w.kind !=
 
 /** Grid columns a widget takes when it names none: a tile one, a chart or list two, a launcher the row. */
 export function defaultSpan(kind: FullstackWidgetDef['kind']): number {
-  return kind === 'kpi' || kind === 'progress' ? 1 : kind === 'links' || kind === 'list' || kind === 'pivot' ? 4 : 2
+  return kind === 'kpi' || kind === 'progress' || kind === 'gauge' ? 1 : kind === 'links' || kind === 'list' || kind === 'pivot' ? 4 : 2
 }
 
 /** What a stacked chart splits by when no series is named: the next enum/boolean after `groupBy`. */
@@ -1443,7 +1443,40 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
             checkDrill(w, wi, e)
             return
           }
+          if (w.kind === 'timeInState') {
+            // It reads the workflow's move log — every row ever moved — so it takes an entity, a
+            // title and a width, and nothing that filters or measures.
+            if (!e.workflow?.trackMoves) {
+              add(`widget.${wi}.entity`, e.workflow ? `${e.name}’s workflow keeps no log of its moves` : `${e.name} has no workflow`,
+                `${where} shows time in state for ${e.name}, ${e.workflow ? 'whose workflow keeps no log of its moves' : 'which has no workflow'}`)
+            }
+            if (w.agg || w.field || w.groupBy || w.series || w.target || w.dateField || w.sortBy || w.drillTo
+              || Object.keys(w.presetFilter ?? {}).length > 0) {
+              add(`widget.${wi}.entity`, 'takes only an entity, a title and a width',
+                `${where} has a time-in-state widget with settings it does not take`,
+                patchPage(index, 'Drop the extra settings', p => ({
+                  ...p, widgets: (p.widgets ?? []).map((x, j) => (j === wi ? { kind: x.kind, entity: x.entity, ...(x.title ? { title: x.title } : {}), ...(x.span ? { span: x.span } : {}) } : x)),
+                })))
+            }
+            if (w.span != null && (!Number.isInteger(w.span) || w.span < 1 || w.span > MAX_SPAN)) {
+              add(`widget.${wi}.span`, `spans 1 to ${MAX_SPAN} columns`, `${where} has a widget ${w.span} columns wide (1–${MAX_SPAN})`)
+            }
+            return
+          }
           checkDrill(w, wi, e)
+          if (w.kind === 'funnel') {
+            const stages = funnelStageFields(e)
+            if (w.groupBy && !stages.some(f => f.name.toLowerCase() === w.groupBy!.toLowerCase())) {
+              add(`widget.${wi}.groupBy`, `${e.name} has no enum field “${w.groupBy}”`,
+                `${where} draws a funnel over “${w.groupBy}”, which is not an enum field of ${e.name}`)
+            } else if (!w.groupBy && stages.length === 0) {
+              add(`widget.${wi}.groupBy`, `${e.name} has no enum field for the stages`,
+                `${where} draws a funnel of ${e.name}, which has no enum field for its stages`)
+            }
+            if (w.agg && w.agg !== 'count' && w.agg !== 'sum') {
+              add(`widget.${wi}.agg`, 'a funnel counts rows or sums a field', `${where} has a funnel that takes the ${w.agg} — only a count or a sum adds up across stages`)
+            }
+          }
           if (w.series && w.kind !== 'stacked' && w.kind !== 'pivot') {
             add(`widget.${wi}.series`, 'only a stacked chart or a pivot takes a series', `${where} splits a ${w.kind} widget by a series`)
           }
@@ -1513,10 +1546,10 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
                 `${where} ranks ${e.name}, which has nothing to rank by`)
             }
           }
-          if (w.kind === 'progress') {
+          if (w.kind === 'progress' || w.kind === 'gauge') {
             const target = Number(w.target)
             if (!w.target?.trim()) {
-              add(`widget.${wi}.target`, 'needs a target', `${where} has a progress tile without a target`)
+              add(`widget.${wi}.target`, 'needs a target', `${where} has a ${w.kind === 'gauge' ? 'gauge' : 'progress tile'} without a target`)
             } else if (!Number.isFinite(target) || target <= 0) {
               add(`widget.${wi}.target`, 'the target must be a number above 0', `${where} has a progress target of “${w.target}”`)
             }
@@ -1911,11 +1944,14 @@ export function describePage(page: FullstackPageDef, pages: FullstackPageDef[]):
       return parts.join(' · ')
     }
     case 'dashboard': {
-      const counts = { kpi: 0, bar: 0, donut: 0, stacked: 0, pivot: 0, line: 0, recent: 0, top: 0, progress: 0, activity: 0, text: 0, links: 0, list: 0 }
+      const counts = { kpi: 0, bar: 0, donut: 0, stacked: 0, pivot: 0, line: 0, recent: 0, top: 0, progress: 0, activity: 0, text: 0, links: 0, list: 0, funnel: 0, gauge: 0, timeInState: 0 }
       for (const w of page.widgets ?? []) if (w.kind in counts) counts[w.kind]++
       const parts = [
         counts.kpi && `${counts.kpi} number tile${counts.kpi === 1 ? '' : 's'}`,
         counts.progress && `${counts.progress} progress tile${counts.progress === 1 ? '' : 's'}`,
+        counts.gauge && `${counts.gauge} gauge${counts.gauge === 1 ? '' : 's'}`,
+        counts.funnel && `${counts.funnel} funnel${counts.funnel === 1 ? '' : 's'}`,
+        counts.timeInState && `${counts.timeInState} time-in-state chart${counts.timeInState === 1 ? '' : 's'}`,
         counts.bar && `${counts.bar} breakdown chart${counts.bar === 1 ? '' : 's'}`,
         counts.donut && `${counts.donut} donut chart${counts.donut === 1 ? '' : 's'}`,
         counts.stacked && `${counts.stacked} stacked chart${counts.stacked === 1 ? '' : 's'}`,
@@ -2158,6 +2194,13 @@ export function defaultLineGroupBy(entity: FullstackEntityDef | undefined): stri
 
 /** Why a widget of `kind` cannot read `entity`, or undefined when it can — the validator's own
  *  rules, told before the widget exists (the Add-widget gallery, the kind switcher). */
+/** The fields a funnel can read as stages: an entity's enums (its workflow's status first). */
+export function funnelStageFields(entity: FullstackEntityDef | undefined): FullstackFieldDef[] {
+  const enums = (entity?.fields ?? []).filter(f => f.type === 'ENUM' && !f.primaryKey)
+  const status = entity?.workflow?.statusField
+  return [...enums.filter(f => f.name === status), ...enums.filter(f => f.name !== status)]
+}
+
 export function widgetKindDisabledReason(kind: FullstackWidgetDef['kind'], entity: FullstackEntityDef | undefined,
                                           audit?: { entities: FullstackEntityDef[]; scaffoldOpts: string[] }): string | undefined {
   if (kind === 'text' || kind === 'links') return undefined
@@ -2179,6 +2222,11 @@ export function widgetKindDisabledReason(kind: FullstackWidgetDef['kind'], entit
       return dateFields(entity).length > 0 ? undefined : `${name} has no date field to plot over`
     case 'top':
       return rankableKeys(entity).length > 0 ? undefined : `${name} has no enum, boolean or relation to rank by`
+    case 'funnel':
+      return funnelStageFields(entity).length > 0 ? undefined : `${name} has no enum field for the stages`
+    case 'timeInState':
+      return entity.workflow?.trackMoves ? undefined
+        : entity.workflow ? `Turn on “Keep a log of moves” in ${name}’s workflow first` : `${name} has no workflow`
     default:
       return undefined
   }
@@ -2192,6 +2240,7 @@ export function newWidget(kind: FullstackWidgetDef['kind'], entity: string, page
     case 'activity': return { kind, entity: '' }
     case 'links': return { kind, entity: '', pages: linkablePages(pages).slice(0, 4).map(p => p.id) }
     case 'progress': return { kind, entity, target: '100' }
+    case 'gauge': return { kind, entity, target: '100' }
     default: return { kind, entity }
   }
 }
@@ -3053,14 +3102,16 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
       : kind === 'stacked' ? groupByFields(entity).some(f => f.name === next.groupBy)
       : kind === 'line' ? dateFields(entity).some(f => f.name === next.groupBy)
         : kind === 'top' ? rankableKeys(entity).includes(next.groupBy)
-          : false
+          : kind === 'funnel' ? funnelStageFields(entity).some(f => f.name === next.groupBy)
+            : false
     if (!fits) drop(['groupBy'], 'group by')
   }
   if (kind !== 'line') drop(['bucket'], 'bucket')
   if (next.series != null && (kind === 'pivot'
     ? !rankableKeys(entity).includes(next.series) || next.series === next.groupBy
     : kind !== 'stacked' || !groupByFields(entity).some(f => f.name === next.series))) drop(['series'], 'split by')
-  if (kind === 'recent' || kind === 'list') drop(['agg', 'field'], 'aggregate')
+  if (kind === 'recent' || kind === 'list' || kind === 'timeInState') drop(['agg', 'field'], 'aggregate')
+  else if (kind === 'funnel' && next.agg && next.agg !== 'count' && next.agg !== 'sum') drop(['agg', 'field'], 'aggregate')
   else if (next.field != null && !numericFields(entity).some(f => f.name === next.field)) drop(['agg', 'field'], 'aggregate')
   if (kind !== 'recent' && kind !== 'top' && kind !== 'list') drop(['limit'], 'row limit')
   if (next.sortBy != null && (kind !== 'recent' || !((entity?.fields ?? []).some(f => !f.primaryKey && f.name === next.sortBy)
@@ -3070,7 +3121,13 @@ export function retargetWidget(widget: FullstackWidgetDef, patch: { kind?: Fulls
   if (kind !== 'kpi') drop(['compare'], 'period comparison')
   if (kind !== 'kpi') drop(['trend'], 'trend line')
   if (kind === 'kpi' && next.trend && dateFields(entity).length === 0) drop(['trend'], 'trend line')
-  if (kind !== 'progress') drop(['target'], 'target')
+  if (kind !== 'progress' && kind !== 'gauge') drop(['target'], 'target')
+  // Time in state reads the move log, which nothing here filters.
+  if (kind === 'timeInState') {
+    if (next.presetFilter && Object.keys(next.presetFilter).length > 0) drop(['presetFilter'], 'filter')
+    drop(['dateField'], 'period date')
+    drop(['drillTo'], 'click target')
+  }
   // A trend may name any date; the period picker only a filterable one.
   const dated = kind === 'kpi' && next.trend ? dateFields(entity) : filterableDateFields(entity)
   if (next.dateField != null && !dated.some(f => f.name === next.dateField)) drop(['dateField'], 'period date')
