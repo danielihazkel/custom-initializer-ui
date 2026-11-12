@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { PreviewResponse } from '../../types'
 import type { ProjectRequest } from '../../utils/projectUtils'
 import { useLiveProjectTree } from '../../hooks/useLiveProjectTree'
@@ -89,6 +89,20 @@ export function FileDock({ open, onOpenChange, request, invalidReason, selected,
     )
     : null
 
+  // Below 1440px the dock lies over the dependency panels (from there up the page makes room for
+  // it — see App's <main>), so there it is a drawer: Escape closes it, as does the scrim below.
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      if (!window.matchMedia?.('(max-width: 1439px)').matches) return
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return
+      onOpenChange(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [open, onOpenChange])
+
   if (!open) {
     return (
       <button
@@ -110,6 +124,14 @@ export function FileDock({ open, onOpenChange, request, invalidReason, selected,
   const fileCount = live.current?.preview.files.length
 
   return (
+    <>
+    {/* The drawer's scrim: only where the dock overlaps the page. A click on the page closes it. */}
+    <div
+      className="fixed inset-0 top-16 z-30 bg-background/50 animate-fade-in min-[1440px]:hidden"
+      onClick={() => onOpenChange(false)}
+      aria-hidden="true"
+      data-file-dock-scrim
+    />
     <aside
       aria-label="Project files"
       className="fixed top-16 right-0 bottom-0 z-40 w-[300px] max-w-[85vw] flex flex-col border-l border-outline-variant bg-surface-container shadow-2xl dock-enter"
@@ -174,5 +196,6 @@ export function FileDock({ open, onOpenChange, request, invalidReason, selected,
         Click a file to open it in Explore.
       </p>
     </aside>
+    </>
   )
 }

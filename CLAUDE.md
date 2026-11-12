@@ -491,7 +491,11 @@ usage** (CSS transitions, `@starting-style`, View Transitions), no new `backdrop
   30 s while the tab is visible — `useMetadata` gained `reload` / `retrying`. `CommandPalette`,
   `ConfirmDialog` and `BackendUnreachable` are lazy in `App.tsx` (the palette's chunk is fetched on idle).
 - *Narrow windows.* The Backend body is `grid-cols-1 lg:grid-cols-12` (twelve tracks with 40px gaps were
-  440px wide before any content); the two dependency panels sit side by side, pinned, only from `xl`.
+  440px wide before any content). The two dependency panels sit side by side, pinned, from `lg` — every
+  desktop width — and below it Selected comes first, capped at 45vh. **A picked dependency's options and
+  wizard buttons are in the Selected panel, so it must be in sight while picking**: this round first
+  stacked the panels below `xl` with the catalog on top, which put them a screen below the fold on a
+  1280px window (a 1920px monitor at 150% scaling). Pinned by `DependencySelector.test.tsx`.
 - The Frontend tab's Reset uses `ConfirmDialog`, not `window.confirm`.
 
 Pinned by `toast.test.tsx`, `hooks/useModal.test.tsx` and `components/BackendUnreachable.test.tsx`.
@@ -589,8 +593,11 @@ Pinned by `explore/FileTree.test.tsx` (rows, tree, the diff model, `searchFiles`
 current as it changes, with what the last change did ("Kafka adds 4 files, changes 2").
 - `backend/FileDock.tsx` (lazy; its tree is `FileTree`, so no editor on the page). Closed it is a
   "Project files" button at the bottom right; open, a 300px panel at the right edge — a column of its
-  own from 1600px (`App`'s `<main>` gets `min-[1600px]:pr-[300px]`), an overlay below. `App` owns
-  `dockOpen` (`localStorage` `backend:fileDock`; default open only from 1600px) and `previewRequest`
+  own from 1440px (`App`'s `<main>` gets `min-[1440px]:pr-[300px]`), and below that a **drawer**: a
+  scrim over the page (`data-file-dock-scrim`, hidden by CSS from 1440px), closed by a click beside it
+  or Escape. It must never lie over the dependency panels unasked — it once did, hiding the catalog's
+  wizard badges — so a stored "open" is honoured only from 1440px. `App` owns `dockOpen`
+  (`localStorage` `backend:fileDock`; open by default only from 1600px) and `previewRequest`
   (`buildProjectRequest('preview', …)`, null while the form cannot generate). Added files flash
   (`.tree-flash`) and are marked against the previous answer; `describeChange` words the change, naming
   the dependency when exactly one was added or removed between the two.

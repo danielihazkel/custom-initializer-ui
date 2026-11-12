@@ -376,13 +376,17 @@ export default function App() {
   }
 
   // ── The file dock: the project's files, live, at the right edge of the Backend tab ─────────
-  // Open by default only where it is a column of its own (a wide window); the choice is kept.
+  // From 1440px it is a column of its own (`<main>` makes room below); narrower, it is a drawer
+  // over the dependency panels, so there it never opens by itself: a stored "open" is honoured
+  // only where it is a column, and it is open by default only on a wide window.
   const [dockOpen, setDockOpen] = useState<boolean>(() => {
+    const atLeast = (px: number) => window.matchMedia?.(`(min-width: ${px}px)`).matches ?? false
     try {
       const stored = localStorage.getItem('backend:fileDock')
-      if (stored === 'open' || stored === 'closed') return stored === 'open'
+      if (stored === 'closed') return false
+      if (stored === 'open') return atLeast(1440)
     } catch { /* fall through to the default */ }
-    return window.matchMedia?.('(min-width: 1600px)').matches ?? false
+    return atLeast(1600)
   })
   function changeDock(open: boolean): void {
     setDockOpen(open)
@@ -760,8 +764,9 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-      {/* With the file dock open on a wide window, the page makes room for it: a column of its own. */}
-      <main className={`pt-20 pb-8 min-h-screen bg-background relative overflow-clip transition-[padding] duration-200 ${view === 'initializr' && dockOpen ? 'min-[1600px]:pr-[300px]' : ''}`}>
+      {/* With the file dock open, the page makes room for it from 1440px: a column of its own, never
+          on top of the dependency panels. (Narrower, the dock is a drawer with a scrim — FileDock.) */}
+      <main className={`pt-20 pb-8 min-h-screen bg-background relative overflow-clip transition-[padding] duration-200 ${view === 'initializr' && dockOpen ? 'min-[1440px]:pr-[300px]' : ''}`}>
         {/* Blueprint factory-floor grid behind the glow blobs */}
         <div className="factory-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
         {/* Decorative ambient background blobs */}

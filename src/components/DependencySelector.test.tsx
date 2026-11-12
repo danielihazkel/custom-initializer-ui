@@ -123,6 +123,24 @@ describe('DependencySelector — search and keyboard', () => {
     expect((document.activeElement as HTMLInputElement).dataset.depCard).toBe('data-jpa')
   })
 
+  it('keeps a picked dependency’s options and wizard button beside the catalog, not under it', () => {
+    render(<Harness />)
+    fireEvent.click(document.querySelector<HTMLInputElement>('input[data-dep-card="postgresql"]')!)
+
+    // The Selected panel is where they are drawn…
+    const selectedPanel = document.querySelector<HTMLElement>('[data-tour="selected-deps"]')!
+    expect(within(selectedPanel).getByRole('button', { name: /Generate entities from SQL/ })).toBeTruthy()
+
+    // …so it sits beside the catalog on every desktop width, and before it in a single column.
+    // (Stacking below `xl` with the catalog first once put it a screen below the fold at 1280px.)
+    const panels = document.querySelector<HTMLElement>('[data-dep-panels]')!
+    expect(panels.className).toContain('lg:grid-cols-2')
+    expect(panels.className).not.toMatch(/\bxl:grid-cols-2\b/)
+    const catalog = document.querySelector<HTMLElement>('[data-dep-catalog]')!
+    expect(selectedPanel.compareDocumentPosition(catalog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(catalog.className).not.toContain('order-first')
+  })
+
   it('says which dependencies have a wizard before they are selected', () => {
     render(<Harness />)
     const badge = (id: string) =>

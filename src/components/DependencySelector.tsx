@@ -330,12 +330,15 @@ export function DependencySelector({
 
   return (
     <>
-      {/* Two panels side by side, pinned and as tall as the window, from `xl` up. Narrower than
-          that they stack and scroll with the page: half of a small window is too little for either. */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 xl:sticky xl:top-20 xl:h-[calc(100vh-12rem)]">
+      {/* Two panels side by side, pinned and as tall as the window, on every desktop width (`lg`
+          up — where the page itself has two columns). **A picked dependency's options and wizard
+          buttons are in the Selected panel, so it must be in sight while picking**: stacking the
+          panels below `xl` once put it a full screen under the catalog on a 1280px window.
+          Below `lg` the page is one column; Selected comes first there, capped, for the same reason. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:sticky lg:top-20 lg:h-[calc(100vh-12rem)]" data-dep-panels>
 
         {/* Panel 1: Selected Dependencies */}
-        <div className="glass-panel rounded-2xl p-6 flex flex-col overflow-hidden text-on-surface max-xl:max-h-[70vh]" data-tour="selected-deps">
+        <div className="glass-panel rounded-2xl p-6 flex flex-col overflow-hidden text-on-surface max-lg:max-h-[45vh]" data-tour="selected-deps">
           <div className="flex items-center justify-between mb-4 pb-4 border-b border-outline-variant/50">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>shopping_cart</span>
@@ -595,7 +598,7 @@ export function DependencySelector({
         </div>
 
         {/* Panel 2: All Available Dependencies */}
-        <div className="glass-panel rounded-2xl p-6 flex flex-col overflow-hidden text-on-surface max-xl:max-h-[80vh] max-xl:order-first">
+        <div className="glass-panel rounded-2xl p-6 flex flex-col overflow-hidden text-on-surface max-lg:max-h-[80vh]" data-dep-catalog>
           <div className="flex items-center gap-2 mb-4 pb-4 border-b border-outline-variant/50">
             <span className="material-symbols-outlined text-tertiary" style={{ fontSize: '20px' }}>explore</span>
             <h3 className="text-xs font-bold uppercase tracking-widest">Explore Dependencies</h3>

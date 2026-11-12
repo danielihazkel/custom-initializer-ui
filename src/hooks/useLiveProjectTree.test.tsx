@@ -174,6 +174,41 @@ describe('FileDock', () => {
     expect(props.onOpenFile).toHaveBeenCalledWith('KafkaConfig.java', expect.objectContaining({ files: expect.any(Array) }))
   })
 
+  it('is a drawer where it overlaps the page: a click beside it, or Escape, closes it', async () => {
+    const onOpenChange = vi.fn()
+    // A window narrower than the width from which the page makes room for the dock.
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('max-width: 1439px') }))
+    render(<FileDock {...props} onOpenChange={onOpenChange} open request={req('web')} />)
+    await settle()
+
+    const scrim = document.querySelector<HTMLElement>('[data-file-dock-scrim]')!
+    // Hidden by CSS from 1440px up, where the dock is a column and covers nothing.
+    expect(scrim.className).toContain('min-[1440px]:hidden')
+    fireEvent.click(scrim)
+    expect(onOpenChange).toHaveBeenLastCalledWith(false)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onOpenChange).toHaveBeenCalledTimes(2)
+
+    // Escape belongs to an open dialog first.
+    const modal = document.createElement('div')
+    modal.setAttribute('role', 'dialog')
+    modal.setAttribute('aria-modal', 'true')
+    document.body.appendChild(modal)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onOpenChange).toHaveBeenCalledTimes(2)
+    modal.remove()
+  })
+
+  it('stays open on Escape where it is a column of its own', async () => {
+    const onOpenChange = vi.fn()
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    render(<FileDock {...props} onOpenChange={onOpenChange} open request={req('web')} />)
+    await settle()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
   it('says why there is nothing to show when the form cannot generate', async () => {
     render(<FileDock {...props} open request={null} invalidReason="Artifact is required" />)
     await settle(2000)
