@@ -126,7 +126,7 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
       if (rendered.has(view)) continue
       const why = view === 'kanban'
         ? (isView || entity.readOnly ? 'it needs a writable entity' : 'it needs an enum or boolean field')
-        : 'it needs a date field'
+        : view === 'gallery' ? 'it needs an image field' : 'it needs a date field'
       issues.push({
         id: `view-dropped:${uid}:${view}`,
         rule: 'view-dropped',

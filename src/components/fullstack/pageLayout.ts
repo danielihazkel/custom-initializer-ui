@@ -64,6 +64,7 @@ export const LIST_VIEWS: { value: FullstackListView; label: string; icon: string
   { value: 'cards', label: 'Cards', icon: 'grid_view' },
   { value: 'kanban', label: 'Board', icon: 'view_kanban' },
   { value: 'calendar', label: 'Calendar', icon: 'calendar_month' },
+  { value: 'gallery', label: 'Gallery', icon: 'photo_library' },
 ]
 
 // ── List presentation (entity-list pages) ───────────────────────────────────
@@ -118,6 +119,7 @@ export function viewDisabledReason(entity: FullstackEntityDef | undefined, view:
   if (view === 'kanban' && readOnly) return 'Kanban needs a writable entity'
   if (view === 'kanban' && !entity.fields.some(f => f.type === 'ENUM' || f.type === 'BOOLEAN')) return 'Kanban needs an enum or boolean field'
   if (view === 'calendar' && !entity.fields.some(f => isDateType(f.type))) return 'Calendar needs a date field'
+  if (view === 'gallery' && !entity.fields.some(f => f.type === 'IMAGE')) return 'Gallery needs an image field'
   return `Not ticked in the list views of ${entity.name}`
 }
 

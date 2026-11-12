@@ -91,10 +91,13 @@ export function summarizeEntity(entity: FullstackEntityDef, projectOpts: string[
 
   const breakdown = entity.fields.find(f => f.type === 'ENUM') ?? entity.fields.find(f => f.type === 'BOOLEAN')
   const calendar = entity.fields.find(isTemporal)
+  // A gallery shows the rows by their first image field.
+  const picture = entity.fields.find(f => f.type === 'IMAGE')
   const requested: string[] = entity.listViews ?? (entity.listView ? [entity.listView] : ['table'])
   const views = requested.flatMap<{ name: string; by?: string }>(v => {
     if (v === 'kanban') return breakdown && !readOnly ? [{ name: 'kanban', by: breakdown.name }] : []
     if (v === 'calendar') return calendar ? [{ name: 'calendar', by: calendar.name }] : []
+    if (v === 'gallery') return picture ? [{ name: 'gallery', by: picture.name }] : []
     return [{ name: v }]
   })
   if (views.length === 0) views.push({ name: 'table' })

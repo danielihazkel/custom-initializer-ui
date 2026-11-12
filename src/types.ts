@@ -655,7 +655,7 @@ export type FullstackBucket = 'day' | 'month' | 'year'
 export type FullstackDateRange = 'all' | '7d' | '30d' | '90d' | 'ytd' | '12m'
 
 /** The list views a generated entity page can offer (see {@link FullstackEntityDef.listViews}). */
-export type FullstackListView = 'table' | 'cards' | 'kanban' | 'calendar'
+export type FullstackListView = 'table' | 'cards' | 'kanban' | 'calendar' | 'gallery'
 
 /** How an entity-list page opens sorted: a sortable column, ascending unless `dir` is `desc`. */
 export interface FullstackListSort {

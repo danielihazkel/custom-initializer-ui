@@ -606,12 +606,13 @@ const EntityCard = memo(function EntityCard({
     const calendarOk = entity.fields.some(f => isDateType(f.type))
     // Which list views are enabled (back-compat: fall back to the legacy single listView, else table).
     const views: string[] = entity.listViews ?? (entity.listView ? [entity.listView] : ['table'])
-    const VIEW_ORDER = ['table', 'cards', 'kanban', 'calendar']
+    const VIEW_ORDER = ['table', 'cards', 'kanban', 'calendar', 'gallery']
     const viewOptions = [
       { key: 'table', label: 'Table', applicable: true, hint: '' },
       { key: 'cards', label: 'Cards', applicable: true, hint: '' },
       { key: 'kanban', label: 'Kanban', applicable: kanbanOk, hint: 'Needs an enum/boolean field' },
       { key: 'calendar', label: 'Calendar', applicable: calendarOk, hint: 'Needs a date field' },
+      { key: 'gallery', label: 'Gallery', applicable: entity.fields.some(f => f.type === 'IMAGE'), hint: 'Needs an image field' },
     ] as const
     function toggleView(key: string) {
       const has = views.includes(key)

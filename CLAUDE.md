@@ -230,7 +230,9 @@ Pinned by `schemaParity.test.ts`, `fixturesInSync.test.ts`, `serverIssue.test.ts
 - *Move log:* `WorkflowPanel` has **Keep a log of moves** (`FullstackWorkflow.trackMoves`; switched off it is no setting at all), and `summary.ts` lists the two endpoints it adds.
 - *Widgets:* `funnel`, `gauge` and `timeInState` join the kind union, `WIDGET_KINDS` and the library's groups. `pageLayout.ts`: `funnelStageFields` (an entity's enums, its workflow's status first), the validator's rules mirrored (a funnel's stages are an enum and it counts or sums; a gauge needs a target; time in state needs the workflow's log and takes nothing that measures or filters — with a fix that drops the extras), `widgetKindDisabledReason`, `newWidget`, `retargetWidget` and the dashboard's summary line. `WidgetCard` has a Stages select for a funnel and the Target box for a gauge. The canvas draws them with the shapes it has: a gauge as a progress tile, a funnel and time in state as bars.
 
-Pinned by `pageLayoutFlowWidgets.test.ts` and the "log of moves" case of `workflow.test.tsx`.
+- *Gallery view:* `FullstackListView` gains `gallery`; `summary.ts` offers it where the entity has an IMAGE field (the view's `by`), the entity card's Views row and `viewDisabledReason` say "needs an image field", `lint.ts` `view-dropped` covers it, and the canvas draws it as tiles.
+
+Pinned by `pageLayoutFlowWidgets.test.ts`, `galleryView.test.ts` and the "log of moves" case of `workflow.test.tsx`.
 
 **Generator round 10, phase 9 (2026-11)** — saved views (*Round 10, phase 9* in `backend/CLAUDE.md`): `savedViews` is a scaffold option like any other (`scaffoldOptions.ts`, `FULLSTACK_ENTITY_OPT_KEYS`, `summary.ts`). Nothing else in the editor changes — the menu and its endpoints follow the option. The Tickets example has it on.
 

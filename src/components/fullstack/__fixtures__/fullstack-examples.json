@@ -918,7 +918,8 @@
         "name": "Item",
         "listViews": [
           "table",
-          "cards"
+          "cards",
+          "gallery"
         ],
         "fields": [
           {
@@ -949,6 +950,10 @@
             "name": "reorderLevel",
             "type": "INTEGER",
             "min": 0
+          },
+          {
+            "name": "photo",
+            "type": "IMAGE"
           }
         ]
       },
