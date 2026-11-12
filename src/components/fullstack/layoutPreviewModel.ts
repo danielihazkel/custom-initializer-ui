@@ -213,6 +213,8 @@ export type PreviewScreen =
     lanes: { label: string; count: number; limit: number | null; cards: { heading: string; details: string[] }[] }[]
   }
   | { type: 'content'; title: string; description?: string; blocks: ContentBlock[] }
+  /** A tree page: sample rows as an outline, each with how deep it sits. */
+  | { type: 'tree'; title: string; description?: string; rows: { label: string; depth: number; children: number }[] }
   | {
     type: 'import'; title: string; description?: string; entity: string; fields: { label: string; required: boolean }[]
     /** The generated import's step names, drop zone and columns heading, in the app's language. */
@@ -1054,6 +1056,16 @@ export function buildLayoutPreview(
           columnsLabel: t('columns'),
         }
       }
+      case 'tree': {
+        const e = entityOf(page.entity)
+        if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
+        // A small outline of sample rows: two branches, one of them two levels deep.
+        const shape: [number, number][] = [[0, 2], [1, 1], [2, 0], [1, 0], [0, 1], [1, 0], [0, 0]]
+        return {
+          type: 'tree', title: page.title || labels(e).plural, description,
+          rows: shape.map(([depth, children], i) => ({ label: rowLabel(e, i + 1), depth, children })),
+        }
+      }
       case 'search': {
         const names = page.entities ?? defaultSearchEntities(named)
         const groups = names.map(entityOf).filter((e): e is FullstackEntityDef => e != null).map((e, gi) => ({
@@ -1081,6 +1093,7 @@ export function buildLayoutPreview(
       case 'inbox': return t('myTasks')
       case 'record': return e ? labels(e).singular : p.id
       case 'calendar':
+      case 'tree':
       case 'board': return e ? labels(e).plural : p.id
       case 'import': return e ? `Import ${labels(e).plural}` : p.id
       case 'search': return t('search').replace('…', '')

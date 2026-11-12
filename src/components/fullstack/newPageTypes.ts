@@ -280,6 +280,8 @@ export function describeNewTypePage(page: FullstackPageDef, entities: FullstackE
       const words = (page.body ?? '').trim().split(/\s+/).filter(Boolean).length
       return `Text · ${words} word${words === 1 ? '' : 's'}`
     }
+    case 'tree':
+      return `${page.entity ?? '?'} as a tree${page.via ? ` by ${page.via}` : ''}`
     case 'import':
       return `CSV import of ${page.entity ?? '?'}`
     case 'inbox': {

@@ -631,7 +631,7 @@ export interface ExampleModel {
 
 /** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
 export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record' | 'report' | 'wizard'
-  | 'form' | 'calendar' | 'board' | 'content' | 'import' | 'search' | 'inbox'
+  | 'form' | 'calendar' | 'board' | 'content' | 'import' | 'search' | 'inbox' | 'tree'
 
 /** An inbox page's queues: the user's own open rows, nobody's, or every open one. */
 export type FullstackInboxQueue = 'mine' | 'unassigned' | 'open'

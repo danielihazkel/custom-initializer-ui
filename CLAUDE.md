@@ -232,7 +232,9 @@ Pinned by `schemaParity.test.ts`, `fixturesInSync.test.ts`, `serverIssue.test.ts
 
 - *Gallery view:* `FullstackListView` gains `gallery`; `summary.ts` offers it where the entity has an IMAGE field (the view's `by`), the entity card's Views row and `viewDisabledReason` say "needs an image field", `lint.ts` `view-dropped` covers it, and the canvas draws it as tiles.
 
-Pinned by `pageLayoutFlowWidgets.test.ts`, `galleryView.test.ts` and the "log of moves" case of `workflow.test.tsx`.
+- *Tree page:* `'tree'` joins `FullstackPageType`. `pageLayout.ts`: `selfLinks` (an entity's many-to-ones to itself), `treeReason` (why an entity cannot have one — the page gallery's entity chooser shows it), the validator mirrored in `validatePages` (no link; several and none named, with a fix that takes the first; a `via` that is not such a link), `blankPage`/`newPageChoices`, `PAGE_TYPE_META` and `DEFAULT_NAV_ICON`. `pages/TreeForm.tsx` (entity, and the Parent link select when there is a choice); `newPageTypes.ts` words its summary; the canvas draws a small sample outline (`data-preview-tree`).
+
+Pinned by `pageLayoutFlowWidgets.test.ts`, `galleryView.test.ts`, `pageLayoutTree.test.ts` and the "log of moves" case of `workflow.test.tsx`.
 
 **Generator round 10, phase 9 (2026-11)** — saved views (*Round 10, phase 9* in `backend/CLAUDE.md`): `savedViews` is a scaffold option like any other (`scaffoldOptions.ts`, `FULLSTACK_ENTITY_OPT_KEYS`, `summary.ts`). Nothing else in the editor changes — the menu and its endpoints follow the option. The Tickets example has it on.
 

@@ -262,6 +262,7 @@ export const DEFAULT_NAV_ICON: Record<FullstackPageType, FullstackNavIcon> = {
   import: 'Upload',
   search: 'Search',
   inbox: 'Inbox',
+  tree: 'Layers',
 }
 
 /** Whether a page is listed in the generated nav (a record page never is). */
@@ -1889,6 +1890,29 @@ function collect(pages: FullstackPageDef[], entities: FullstackEntityDef[], scaf
         checkOneCreatePage(e, page, where, add)
         break
       }
+      case 'tree': {
+        const e = entityOf(page.entity)
+        if (!e) {
+          add('entity', page.entity ? `“${page.entity}” is no longer an entity` : 'needs an entity',
+            page.entity ? `${where} shows “${page.entity}”, which is no longer an entity` : `${where} names no entity`,
+            page.entity ? removePage(index) : undefined)
+          break
+        }
+        const links = selfLinks(e)
+        if (e.fields.filter(f => f.primaryKey).length !== 1) {
+          add('entity', `${e.name} has a composite key`, `${where} draws a tree of ${e.name}, which has a composite key`)
+        } else if (links.length === 0) {
+          add('entity', `${e.name} has no relation to itself`, `${where} draws a tree of ${e.name}, which has no relation to itself (a parent)`)
+        } else if (page.via && !links.some(r => r.fieldName.toLowerCase() === page.via!.toLowerCase())) {
+          add('via', `“${page.via}” is not a relation of ${e.name} to itself`,
+            `${where} draws its tree by “${page.via}”, which is not a relation of ${e.name} to itself`,
+            patchPage(index, `Use ${links[0].fieldName}`, p => ({ ...p, via: links.length === 1 ? undefined : links[0].fieldName })))
+        } else if (!page.via && links.length > 1) {
+          add('via', 'say which link makes the tree', `${where} draws a tree of ${e.name}, which points at itself through ${links.map(r => r.fieldName).join(' and ')}`,
+            patchPage(index, `Use ${links[0].fieldName}`, p => ({ ...p, via: links[0].fieldName })))
+        }
+        break
+      }
       case 'calendar':
       case 'board':
       case 'inbox':
@@ -2175,6 +2199,20 @@ export const PAGE_TYPE_META: Record<FullstackPageType, { icon: string; label: st
   import: { icon: 'upload_file', label: 'Import', blurb: 'Upload a CSV file, match its columns, check every row, then create them all at once.' },
   search: { icon: 'search', label: 'Search', blurb: 'One search box over several entities, results grouped by entity — optionally in the app’s header.' },
   inbox: { icon: 'inbox', label: 'Inbox', blurb: 'A workflow’s tasks — mine, unassigned, all open — with each row’s next steps, Claim and Release.' },
+  tree: { icon: 'account_tree', label: 'Tree', blurb: 'One entity’s rows as an outline — each under the row it belongs to. Needs a relation of the entity to itself (a parent).' },
+}
+
+/** An entity's many-to-one relations to itself: what a tree page can be drawn by. */
+export function selfLinks(entity: FullstackEntityDef | undefined): FullstackRelationDef[] {
+  if (!entity) return []
+  const own = entity.name.trim().toLowerCase()
+  return (entity.relations ?? []).filter(r => (r.type ?? 'MANY_TO_ONE') === 'MANY_TO_ONE' && r.targetEntity?.trim().toLowerCase() === own)
+}
+
+/** Why a tree page cannot be about `entity`, or undefined when it can. */
+export function treeReason(entity: FullstackEntityDef): string | undefined {
+  if (entity.fields.filter(f => f.primaryKey).length !== 1) return 'Needs a single primary key'
+  return selfLinks(entity).length === 0 ? 'No relation to itself (a parent)' : undefined
 }
 
 // ── Defaults the generator resolves ─────────────────────────────────────────
@@ -2803,6 +2841,11 @@ export function blankPage(type: FullstackPageType, entities: FullstackEntityDef[
     case 'content':
     case 'search':
       return blankNewTypePage(type, undefined, entities, id)
+    case 'tree': {
+      // The picked entity, else the first one that points at itself.
+      const e = picked ?? entities.find(x => !treeReason(x)) ?? entities[0]
+      return { id: id(`${e?.name ?? 'rows'}-tree`), type, entity: e?.name ?? first, title: `${e?.name ?? 'Rows'} tree` }
+    }
   }
 }
 
@@ -2850,6 +2893,8 @@ export function newPageChoices(type: FullstackPageType, entities: FullstackEntit
     case 'content':
     case 'search':
       return null
+    case 'tree':
+      return named.map(e => one(e, treeReason(e)))
   }
 }
 
