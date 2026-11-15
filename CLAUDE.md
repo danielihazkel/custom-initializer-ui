@@ -488,7 +488,11 @@ usage** (CSS transitions, `@starting-style`, View Transitions), no new `backdrop
   "more" `PopoverMenu` below. `shared/PageHeader` is the heading of all three generator tabs (the
   Backend one sits in `BackendModelBar`'s row, which takes it as `children`). `BackendUnreachable`
   (lazy) replaces the dead "Cannot reach backend" card: Retry, and an automatic retry after 2, 4, 8, 15,
-  30 s while the tab is visible — `useMetadata` gained `reload` / `retrying`. `CommandPalette`,
+  30 s while the tab is visible — `useMetadata` gained `reload` / `retrying`. Its sibling
+  `AccessBlocked` (lazy) is shown when the backend's access gate refused the catalog — a 403 whose
+  body carries `code: "USERINFO_REQUIRED"` (`useMetadata`'s `blocked`; *Access gate* in
+  `backend/CLAUDE.md`): "No access", the backend's words, a Try again button and no automatic
+  retry. Pinned by `components/AccessBlocked.test.tsx`. `CommandPalette`,
   `ConfirmDialog` and `BackendUnreachable` are lazy in `App.tsx` (the palette's chunk is fetched on idle).
 - *Narrow windows.* The Backend body is `grid-cols-1 lg:grid-cols-12` (twelve tracks with 40px gaps were
   440px wide before any content). The two dependency panels sit side by side, pinned, from `lg` — every

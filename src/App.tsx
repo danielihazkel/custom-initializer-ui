@@ -32,6 +32,7 @@ const loadCommandPalette = () => import('./components/CommandPalette')
 const CommandPalette = lazy(() => loadCommandPalette().then(m => ({ default: m.CommandPalette })))
 const ConfirmDialog = lazy(() => import('./components/ConfirmDialog').then(m => ({ default: m.ConfirmDialog })))
 const BackendUnreachable = lazy(() => import('./components/BackendUnreachable').then(m => ({ default: m.BackendUnreachable })))
+const AccessBlocked = lazy(() => import('./components/AccessBlocked').then(m => ({ default: m.AccessBlocked })))
 import { registerCommands, runCommand, useRegisteredCommands } from './commands'
 import { useBusy } from './utils/busy'
 import { withViewTransition } from './utils/viewTransition'
@@ -111,7 +112,7 @@ export default function App() {
     } catch { /* history API unavailable */ }
   }, [view])
 
-  const { metadata, loading, error, retrying, reload: reloadMetadata } = useMetadata()
+  const { metadata, loading, error, blocked, retrying, reload: reloadMetadata } = useMetadata()
   const { extensions } = useExtensions()
   const { dialects: sqlDialects } = useSqlDialects()
   const { depIds: openApiCapableDeps } = useOpenApiCapable()
@@ -513,6 +514,16 @@ export default function App() {
     { key: 'e', ctrl: true, shift: true, run: () => shell.current.explore() },
     { key: '?', run: () => setShortcutsOpen(true) },
   ], view === 'initializr')
+
+  // The backend answered, and refused: its access gate is on and this browser carries no sign-in
+  // header. Not the "cannot reach" screen — that one keeps knocking, which would never help here.
+  if (error && blocked) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-background" />}>
+        <AccessBlocked detail={error} retrying={retrying} onRetry={reloadMetadata} />
+      </Suspense>
+    )
+  }
 
   if (error) {
     return (

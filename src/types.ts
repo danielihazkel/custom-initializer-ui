@@ -51,6 +51,9 @@ export interface UseMetadataResult {
   metadata: InitializrMetadata | null
   loading:  boolean
   error:    string | null
+  /** The failed load was the backend's access gate refusing this browser (no sign-in header), not
+   *  a backend that is down: the "No access" screen is shown instead of "cannot reach backend". */
+  blocked:  boolean
   /** True while a {@link reload} is in flight. The last error stays set meanwhile, so the
    *  "cannot reach backend" screen does not flicker to a skeleton and back on every attempt. */
   retrying: boolean
