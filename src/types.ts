@@ -462,10 +462,22 @@ export interface FullstackRelationDef {
   label?: string
 }
 
+/** Who may call an entity's generated endpoints, weakest first (the schema's `accessLevels`). */
+export type FullstackAccessLevel = 'SIGNED_IN' | 'USER' | 'ADMIN'
+
+/** An entity's own levels; a missing one is its default (read for users, write for admins). */
+export interface FullstackAccess {
+  read?: FullstackAccessLevel
+  write?: FullstackAccessLevel
+}
+
 export interface FullstackEntityDef {
   /** Client-only editor row identity (React key); stripped before the request is sent. */
   uid?: string
   name: string
+  /** Who may read and who may change this entity's rows through the generated API, checked when
+   *  the project has an ldap-auth dependency. Absent: the defaults. See `fullstack/access.ts`. */
+  access?: FullstackAccess
   tableName?: string
   schema?: string
   fields: FullstackFieldDef[]

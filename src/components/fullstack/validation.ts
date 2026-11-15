@@ -1,6 +1,7 @@
 import type { FullstackEntityDef } from '../../types'
 import { formSectionsProblem } from './formSections'
 import { workflowProblem } from './workflow'
+import { accessProblem } from './access'
 import { columnOf, joinColumnOf } from './naming'
 import { compositionProblem, linksBetween, resolveLink } from './childLists'
 import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
@@ -220,6 +221,8 @@ export interface EntityErrors {
   relations?: Record<number, RelationErrors>
   /** The form sections name a field twice, one that is gone, or have no title. */
   formSections?: string
+  /** Writing is open to more people than reading (the server's rule; see `access.ts`). */
+  access?: string
   /** The workflow would be rejected (a state, field or role it names). */
   workflow?: string
 }
@@ -548,13 +551,18 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       eErr.formSections = sectionsErr
       result.count += 1
     }
+    const accessErr = accessProblem(entity)
+    if (accessErr) {
+      eErr.access = accessErr
+      result.count += 1
+    }
     const workflowErr = workflowProblem(entity, context)
     if (workflowErr) {
       eErr.workflow = workflowErr
       result.count += 1
     }
     const hasRelErrs = eErr.relations && Object.keys(eErr.relations).length > 0
-    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || eErr.workflow || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
+    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || eErr.access || eErr.workflow || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
       result.entities[eIdx] = eErr
     }
   })

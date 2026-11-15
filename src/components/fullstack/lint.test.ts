@@ -72,10 +72,23 @@ describe('lintModel', () => {
   })
 
   it('checks project options against the dependency list', () => {
-    const secured = rules([{ name: 'A', fields: [pk, { name: 'n', type: 'STRING' }] }], ['secured', 'openapi'], ['web'])
-    expect(secured.find(i => i.rule === 'secured-needs-ldap')?.fix!.apply({ entities: [], scaffoldOpts: [], selectedDeps: ['web'] }).selectedDeps).toEqual(['web', 'ldap-auth-rest'])
-    expect(secured.find(i => i.rule === 'openapi-adds-dep')?.severity).toBe('info')
+    const withOpenApi = rules([{ name: 'A', fields: [pk, { name: 'n', type: 'STRING' }] }], ['secured', 'openapi'], ['web'])
+    expect(withOpenApi.find(i => i.rule === 'openapi-adds-dep')?.severity).toBe('info')
+    // The retired `secured` option is nobody's problem: it does nothing with or without LDAP.
+    expect(withOpenApi.map(i => i.rule)).toEqual(['openapi-adds-dep'])
     expect(rules([{ name: 'A', fields: [pk, { name: 'n', type: 'STRING' }] }], ['secured', 'openapi'], ['ldap-auth-rest', 'openapi'])).toEqual([])
+  })
+
+  it('says when access levels have nothing to check them', () => {
+    // The server refuses such a model; the fix is the dependency the template sets default to.
+    const open = { name: 'Note', access: { read: 'SIGNED_IN' as const }, fields: [pk, { name: 'n', type: 'STRING' as const }] }
+    const plain = { name: 'A', fields: [pk, { name: 'n', type: 'STRING' as const }] }
+    const issue = rules([open, plain], [], ['web']).find(i => i.rule === 'access-needs-ldap')!
+    expect(issue.message).toContain('Note sets access levels')
+    expect(issue.fix!.apply({ entities: [], scaffoldOpts: [], selectedDeps: ['web'] }).selectedDeps).toEqual(['web', 'ldap-auth-rest'])
+    expect(rules([open, plain], [], ['web', 'ldap-auth-rest']).some(i => i.rule === 'access-needs-ldap')).toBe(false)
+    // The default levels are no setting at all.
+    expect(rules([plain], [], ['web']).some(i => i.rule === 'access-needs-ldap')).toBe(false)
   })
 
   describe('fk-lookalike', () => {

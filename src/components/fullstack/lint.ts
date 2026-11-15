@@ -4,6 +4,7 @@ import { joinColumnOf, pluralize, toCamelCase, toSnakeCase, uniqueName } from '.
 import { newUid } from './uid'
 import { ambiguousMoves, stateLabel, unreachableStates } from './workflow'
 import { isTextualType } from './fieldTypes'
+import { cleanAccess } from './access'
 
 /**
  * Model lint: things that are *valid* (the server would accept them) but will produce a
@@ -306,12 +307,15 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
   }
 
   // Project-wide options that depend on the dependency list.
-  if (scaffoldOpts.includes('secured') && !LDAP_DEPS.some(d => selectedDeps.includes(d))) {
+  // An entity's access levels are checked by the ldap-auth classes: without them the server
+  // refuses the model (it would otherwise accept a setting that does nothing).
+  const withAccess = entities.filter(e => cleanAccess(e.access))
+  if (withAccess.length > 0 && !LDAP_DEPS.some(d => selectedDeps.includes(d))) {
     issues.push({
-      id: 'secured-needs-ldap',
-      rule: 'secured-needs-ldap',
+      id: 'access-needs-ldap',
+      rule: 'access-needs-ldap',
       severity: 'warn',
-      message: 'Permission hints are on, but no LDAP auth dependency is selected — the option generates nothing.',
+      message: `${withAccess.map(e => e.name).join(', ')} ${withAccess.length === 1 ? 'sets' : 'set'} access levels, which are checked against LDAP groups — the project has no ldap-auth dependency.`,
       // ldap-auth-rest is the template sets' default variant (groups from the LDAP REST service).
       fix: { label: 'Add ldap-auth-rest', apply: m => ({ ...m, selectedDeps: [...m.selectedDeps, 'ldap-auth-rest'] }) },
     })

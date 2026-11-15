@@ -3,6 +3,8 @@ import type { EntityErrors } from './validation'
 import { Labeled, inputClass } from './controls'
 import { askableFields } from './pageLayout'
 import { MAX_FORM_SECTIONS } from './formSections'
+import { ACCESS_LEVELS, ACCESS_LEVEL_LABELS, accessSummary, cleanAccess, readLevel, writeLevel } from './access'
+import type { FullstackAccessLevel } from '../../types'
 
 interface Props {
   entity: FullstackEntityDef
@@ -23,6 +25,8 @@ export function settingsSummary(entity: FullstackEntityDef): string[] {
   if (entity.viewQuery != null) parts.push(entity.viewQuery.trim() ? 'SELECT view' : 'SELECT view (query missing)')
   const sections = entity.formSections?.length ?? 0
   if (sections) parts.push(`${sections} form section${sections === 1 ? '' : 's'}`)
+  const access = accessSummary(entity)
+  if (access) parts.push(access)
   return parts
 }
 
@@ -55,6 +59,25 @@ export function EntitySettingsPanel({ entity, errors, onUpdate, onTickView }: Pr
                  value={entity.tableName ?? ''} disabled={isView}
                  onChange={e => onUpdate({ tableName: e.target.value || undefined })} />
         </Labeled>
+      </div>
+
+      <div data-entity-access>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Labeled label="Who may read" hint="The list, a row, the statistics and the exports. Checked against the caller's roles when the project has ldap-auth or ldap-auth-rest (the default).">
+            <select aria-label="Who may read" className={inputClass()} value={readLevel(entity)}
+                    onChange={e => onUpdate({ access: cleanAccess({ ...entity.access, read: e.target.value as FullstackAccessLevel }) })}>
+              {ACCESS_LEVELS.map(level => <option key={level} value={level}>{ACCESS_LEVEL_LABELS[level]}</option>)}
+            </select>
+          </Labeled>
+          <Labeled label="Who may write" hint={entity.readOnly ? 'A read-only entity has nothing to write.' : 'Create, edit, delete, import and bulk changes. An admin is a user too.'}>
+            <select aria-label="Who may write" className={inputClass()} value={writeLevel(entity)} disabled={entity.readOnly}
+                    aria-invalid={errors?.access ? true : undefined}
+                    onChange={e => onUpdate({ access: cleanAccess({ ...entity.access, write: e.target.value as FullstackAccessLevel }) })}>
+              {ACCESS_LEVELS.map(level => <option key={level} value={level}>{ACCESS_LEVEL_LABELS[level]}</option>)}
+            </select>
+          </Labeled>
+        </div>
+        {errors?.access && <p className="mt-1 text-xs text-error" data-error>{errors.access}</p>}
       </div>
 
       <FormSectionsEditor entity={entity} error={errors?.formSections} onChange={formSections => onUpdate({ formSections })} />

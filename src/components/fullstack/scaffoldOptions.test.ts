@@ -14,7 +14,11 @@ describe('scaffoldOptions', () => {
   it('keeps RTL out of the Options section and lists the project-only flags', () => {
     expect(RTL_OPTION.value).toBe('rtl')
     expect(OPTIONS_SECTION.some(o => o.value === 'rtl')).toBe(false)
-    expect(PROJECT_ONLY_OPTS.map(o => o.value)).toEqual(['inverseCollections', 'openapi', 'secured', 'seedData'])
+    expect(PROJECT_ONLY_OPTS.map(o => o.value)).toEqual(['inverseCollections', 'openapi', 'seedData'])
+    // `secured` is retired: the server still takes it (older models name it), the editor no
+    // longer offers it — access is checked whenever an ldap-auth dependency is selected.
+    expect(SCAFFOLD_OPTIONS.find(o => o.value === 'secured')?.retired).toBe(true)
+    expect(OPTIONS_SECTION.some(o => o.value === 'secured')).toBe(false)
   })
 
   it('reports which entities a project option reaches and why the others are skipped', () => {

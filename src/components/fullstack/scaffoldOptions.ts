@@ -23,6 +23,8 @@ export interface ScaffoldOption {
   entityHint?: string
   perEntity: boolean
   requiresAnyDep?: string[]
+  /** The server still takes the key (older models name it) but it does nothing: not offered. */
+  retired?: boolean
 }
 
 export const SCAFFOLD_OPTIONS: ScaffoldOption[] = [
@@ -31,7 +33,7 @@ export const SCAFFOLD_OPTIONS: ScaffoldOption[] = [
   { value: 'inverseCollections', label: 'Inverse collections', hint: 'Read-only @OneToMany on the referenced side', perEntity: false },
   { value: 'tests', label: 'Controller tests', hint: 'Per-entity @WebMvcTest', entityHint: '@WebMvcTest for this entity', perEntity: true },
   { value: 'openapi', label: 'OpenAPI annotations', hint: 'springdoc @Tag/@Operation on every controller; adds the openapi starter', perEntity: false },
-  { value: 'secured', label: 'Permission hints', hint: 'Commented @RequiresPermission per endpoint; needs ldap-auth or ldap-auth-rest selected', perEntity: false, requiresAnyDep: ['ldap-auth', 'ldap-auth-rest'] },
+  { value: 'secured', label: 'Permission hints', hint: 'Retired: with ldap-auth or ldap-auth-rest selected every endpoint is checked, at each entity\'s access levels (entity Settings)', perEntity: false, retired: true },
   { value: 'csvExport', label: 'CSV export', hint: 'GET /export.csv (streamed, honors search/filters/sort) + Export button', entityHint: 'GET /export.csv + Export button', perEntity: true },
   { value: 'xlsxExport', label: 'Excel export', hint: 'GET /export.xlsx — the list as a workbook (column names as the UI shows them, numbers as numbers), streamed like the CSV + an Excel button', entityHint: 'GET /export.xlsx + Excel button', perEntity: true },
   { value: 'savedViews', label: 'Saved views', hint: 'A Views menu on the list: its search, filters, sort and columns kept under a name on the server (/api/views), per user, shareable, one the default', entityHint: 'Views menu + /api/views for this list', perEntity: true },
@@ -48,8 +50,8 @@ export const SCAFFOLD_OPTIONS: ScaffoldOption[] = [
  *  per-entity scaffolding extras. */
 export const RTL_OPTION = SCAFFOLD_OPTIONS.find(o => o.value === 'rtl')!
 
-/** The Options-section list: everything but the frontend-only RTL flag. */
-export const OPTIONS_SECTION = SCAFFOLD_OPTIONS.filter(o => o.value !== 'rtl')
+/** The Options-section list: everything but the frontend-only RTL flag and what is retired. */
+export const OPTIONS_SECTION = SCAFFOLD_OPTIONS.filter(o => o.value !== 'rtl' && !o.retired)
 
 /** Flags an entity cannot override — they either touch every entity at once (inverse
  *  collections, demo data) or the build (OpenAPI, permission hints). */
