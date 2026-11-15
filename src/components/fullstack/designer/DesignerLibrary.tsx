@@ -14,8 +14,8 @@ import { startLibraryDrag, type LibraryDrag } from './dragPayload'
 export type LibraryTab = 'pages' | 'widgets' | 'templates'
 
 const WIDGET_GROUPS: { label: string; kinds: FullstackWidgetDef['kind'][] }[] = [
-  { label: 'Numbers', kinds: ['kpi', 'progress'] },
-  { label: 'Charts', kinds: ['bar', 'donut', 'stacked', 'line', 'pivot'] },
+  { label: 'Numbers', kinds: ['kpi', 'progress', 'gauge'] },
+  { label: 'Charts', kinds: ['bar', 'donut', 'stacked', 'line', 'pivot', 'funnel', 'timeInState'] },
   { label: 'Lists', kinds: ['recent', 'top', 'list', 'activity'] },
   { label: 'Other', kinds: ['text', 'links'] },
 ]

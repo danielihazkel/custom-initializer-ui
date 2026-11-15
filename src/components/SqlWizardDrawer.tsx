@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { AdminFormDrawer } from './admin/shared/AdminFormDrawer'
 import { CodeEditor } from './admin/file-contributions/CodeEditor'
 import type { SqlApiMode, SqlTableConfig, SqlWizardEntry } from '../types'
@@ -68,11 +68,38 @@ function hasSelect(sql: string): boolean {
   return SELECT_REGEX.test(sql)
 }
 
+/** One on/off line of the "other dependencies" box. */
+function ExtraToggle({ checked, disabled, onChange, label, note }: {
+  checked: boolean
+  disabled?: boolean
+  onChange: (next: boolean) => void
+  label: string
+  note: ReactNode
+}) {
+  return (
+    <label className={`flex items-start gap-2 text-xs ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={e => onChange(e.target.checked)}
+        className="mt-0.5 accent-primary"
+      />
+      <span>
+        <span className="font-semibold text-on-surface">{label}</span>
+        <span className="block text-[10px] text-on-surface-variant leading-relaxed">{note}</span>
+      </span>
+    </label>
+  )
+}
+
 export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, initial, selected, onSave, parseError }: Props) {
   const [sql, setSql] = useState<string>(initial?.sql ?? '')
   const [subPackage, setSubPackage] = useState<string>(initial?.subPackage ?? 'entity')
   const [tables, setTables] = useState<SqlTableConfig[]>(initial?.tables ?? [])
   const [apiMode, setApiMode] = useState<SqlApiMode>(initial?.apiMode ?? 'NONE')
+  const [flywayBaseline, setFlywayBaseline] = useState<boolean>(initial?.flywayBaseline ?? true)
+  const [generateTests, setGenerateTests] = useState<boolean>(initial?.generateTests ?? false)
 
   // Re-seed drawer state when it re-opens for a different dep
   useEffect(() => {
@@ -81,6 +108,8 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
       setSubPackage(initial?.subPackage ?? 'entity')
       setTables(initial?.tables ?? [])
       setApiMode(initial?.apiMode ?? 'NONE')
+      setFlywayBaseline(initial?.flywayBaseline ?? true)
+      setGenerateTests(initial?.generateTests ?? false)
     }
   }, [isOpen, depId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -106,6 +135,9 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
         subPackage: subPackage.trim() || 'entity',
         tables,
         apiMode,
+        // Kept only when they differ from the defaults, so an untouched entry stays as it was.
+        ...(flywayBaseline ? {} : { flywayBaseline: false }),
+        ...(generateTests && apiMode !== 'NONE' ? { generateTests: true } : {}),
       })
     }
     onClose()
@@ -197,6 +229,41 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
           )}
         </div>
 
+        <div data-sql-extras>
+          <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
+            With the project's other dependencies
+          </label>
+          <div className="space-y-2 border border-outline-variant rounded-lg p-3 bg-surface-container-lowest">
+            <ExtraToggle
+              checked={flywayBaseline}
+              onChange={setFlywayBaseline}
+              label="Use this script as the Flyway baseline"
+              note={selected.includes('flyway')
+                ? <>Written to <code className="text-primary">db/migration/V1__init.sql</code>, in place of the placeholder migration.</>
+                : <>Takes effect when <code className="text-primary">flyway</code> is selected — it is not, so no migration is written.</>}
+            />
+            <ExtraToggle
+              checked={generateTests && apiMode !== 'NONE'}
+              disabled={apiMode === 'NONE'}
+              onChange={setGenerateTests}
+              label="Generate controller tests"
+              note={apiMode === 'NONE'
+                ? <>Needs a REST API mode: a test is written per controller.</>
+                : <>A <code className="text-primary">@WebMvcTest</code> per controller, the service mocked.</>}
+            />
+            <div className="flex items-start gap-2 text-[10px] text-on-surface-variant leading-relaxed">
+              <span className={`material-symbols-outlined ${selected.includes('validation') ? 'text-primary' : 'text-secondary'}`} style={{ fontSize: '13px' }}>
+                {selected.includes('validation') ? 'check_circle' : 'info'}
+              </span>
+              <span>
+                {selected.includes('validation')
+                  ? <><code className="text-primary">validation</code> is selected: <code className="text-primary">NOT NULL</code> and column lengths become <code className="text-primary">@NotNull</code> / <code className="text-primary">@Size</code>, and request bodies are <code className="text-primary">@Valid</code>.</>
+                  : <>Select <code className="text-primary">validation</code> to turn <code className="text-primary">NOT NULL</code> and column lengths into Bean Validation on the request bodies.</>}
+              </span>
+            </div>
+          </div>
+        </div>
+
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-bold uppercase tracking-widest text-secondary">
@@ -218,7 +285,9 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
             targetPath="init.sql"
           />
           <p className="text-[10px] text-on-surface-variant mt-1.5 leading-relaxed">
-            Paste one or more <code className="text-primary">CREATE TABLE</code> statements. Entities + optional
+            Paste one or more <code className="text-primary">CREATE TABLE</code> statements — keys, foreign keys and unique
+            constraints added by <code className="text-primary">ALTER TABLE</code> are read too, and a{' '}
+            <code className="text-primary">CHECK (col IN (…))</code> becomes an enum. Entities + optional
             JPA repositories are generated into your project when downloaded. A <code className="text-primary">SELECT</code>{' '}
             becomes a read-only <code className="text-primary">@Subselect</code> view (GET-only; fields are generated as
             {' '}<code className="text-primary">String</code> with a TODO to set the real type in source).{' '}
@@ -287,7 +356,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
         )}
 
         {sql.trim().length > 0 && tables.length === 0 && !selectPresent && (
-          <div className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+          <div className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg p-3">
             No <code className="font-mono">CREATE TABLE</code> or <code className="font-mono">SELECT</code> statements
             detected. Check your SQL syntax.
           </div>

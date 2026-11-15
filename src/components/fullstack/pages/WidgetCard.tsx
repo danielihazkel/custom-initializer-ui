@@ -1,11 +1,12 @@
 import type { FullstackDateRange, FullstackEntityDef, FullstackPageDef, FullstackWidgetDef } from '../../../types'
 import { inputClass } from '../controls'
 import { fieldOption, keyOption } from '../fieldOptions'
+import { isSortableType } from '../fieldTypes'
 import { pluralize } from '../naming'
 import { dropIndicatorClass, useDragReorder } from '../useDragReorder'
 import {
   MAX_RECENT_LIMIT, MAX_TEXT, MAX_WIDGETS, dateFields, defaultBarGroupBy, defaultSeries, defaultSpan, drillToPages,
-  defaultTopGroupBy, defaultLineGroupBy, defaultOptionLabel, linkablePages, LIST_WIDGET_LIMITS, MAX_LINKS,
+  defaultTopGroupBy, defaultLineGroupBy, defaultOptionLabel, funnelStageFields, linkablePages, LIST_WIDGET_LIMITS, MAX_LINKS,
   MAX_TITLE, filterableDateFields, groupByFields, listColumns, pageLabel, rankableKeys, sortableKeys,
   widgetKindDisabledReason, activityEntities, auditOn, defaultPivotColumns, MAX_ACTIVITY_ENTITIES, MIN_ACTIVITY_LIMIT,
 } from '../pageLayout'
@@ -460,6 +461,22 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
                 </select>
               </MiniField>
             )}
+            {widget.kind === 'funnel' && (
+              <MiniField label="Stages" hint="An enum field: its values, in their order, are the pipeline. Limit the widget to some of them (its filter) to leave a state off the main line out">
+                <select
+                  aria-label="Stages"
+                  value={widget.groupBy ?? ''}
+                  onChange={e => onChange({ groupBy: e.target.value || undefined })}
+                  className={`${inputClass(err('groupBy'))} max-w-[11rem] py-1 text-xs`}
+                >
+                  <option value="">{defaultOptionLabel(funnelStageFields(entity)[0]?.name, 'enum', labelOf)}</option>
+                  {funnelStageFields(entity).map(f => <option key={f.name} value={f.name}>{labelOf(f.name)}</option>)}
+                  {widget.groupBy && !funnelStageFields(entity).some(f => f.name === widget.groupBy) && (
+                    <option value={widget.groupBy}>{widget.groupBy}</option>
+                  )}
+                </select>
+              </MiniField>
+            )}
             {widget.kind === 'stacked' && (
               <MiniField label="Group by" hint="One bar per value">
                 <select
@@ -563,15 +580,15 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
                 </select>
               </MiniField>
             )}
-            {widget.kind !== 'recent' && (
+            {widget.kind !== 'recent' && widget.kind !== 'timeInState' && (
               <MiniField label="Measure" hint={AGG_HINT}>
                 <span className="inline-flex flex-wrap gap-2">
                   <AggFields agg={widget.agg} field={widget.field} entity={entity} error={err('field') ?? err('agg')} onChange={onChange} />
                 </span>
               </MiniField>
             )}
-            {widget.kind === 'progress' && (
-              <MiniField label="Target" hint="The value the bar fills up to">
+            {(widget.kind === 'progress' || widget.kind === 'gauge') && (
+              <MiniField label="Target" hint={widget.kind === 'gauge' ? 'The value at which the dial is full' : 'The value the bar fills up to'}>
                 <input
                   type="number"
                   min={0}
@@ -678,7 +695,7 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
                   className={`${inputClass()} max-w-[11rem] py-1 text-xs`}
                 >
                   <option value="">{defaultOptionLabel(pk, 'key', labelOf)}</option>
-                  {(entity?.fields ?? []).filter(f => !f.primaryKey).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
+                  {(entity?.fields ?? []).filter(f => !f.primaryKey && isSortableType(f.type)).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
                   {auditOn(entity, projectOpts) && (
                     <>
                       <option value="createdAt">Created at (createdAt)</option>

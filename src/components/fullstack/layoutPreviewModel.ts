@@ -1,6 +1,6 @@
 import type { FullstackAgg, FullstackBucket, FullstackChartKind, FullstackEntityDef, FullstackFieldDef, FullstackListDetail, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
 import { enumLabel } from './enumLabels'
-import { humanize } from './naming'
+import { humanize, relationLabel } from './naming'
 import { describePresetValue, pageLabel as linkLabel } from './pageLayout'
 import {
   DEFAULT_NAV_ICON,
@@ -10,6 +10,7 @@ import {
   defaultSpan,
   defaultWizardSteps,
   defaultTopGroupBy,
+  funnelStageFields,
   reportCharts,
   NAV_ICONS,
   defaultBarGroupBy,
@@ -29,10 +30,11 @@ import {
 } from './pageLayout'
 import { buildUiPreview, fieldLabel } from './uiPreview'
 import { parseContent, type ContentBlock } from './contentMarkdown'
-import { auditText, cellText, detailText, sampleRaw, seeded } from './previewSample'
+import { auditText, detailText, sampleRaw, seeded } from './previewSample'
 import {
   CALENDAR_MODES, DEFAULT_INBOX_QUEUES, cardFieldOptions, defaultCardFields, defaultInboxFields, defaultLaneField, defaultSearchEntities, laneValues,
 } from './newPageTypes'
+import { isDecimalType, isNumericType, isTextualType } from './fieldTypes'
 
 /**
  * View-model for the Fullstack tab's layout preview: a wireframe of the app the page layout
@@ -211,6 +213,8 @@ export type PreviewScreen =
     lanes: { label: string; count: number; limit: number | null; cards: { heading: string; details: string[] }[] }[]
   }
   | { type: 'content'; title: string; description?: string; blocks: ContentBlock[] }
+  /** A tree page: sample rows as an outline, each with how deep it sits. */
+  | { type: 'tree'; title: string; description?: string; rows: { label: string; depth: number; children: number }[] }
   | {
     type: 'import'; title: string; description?: string; entity: string; fields: { label: string; required: boolean }[]
     /** The generated import's step names, drop zone and columns heading, in the app's language. */
@@ -338,14 +342,14 @@ function formatNumber(n: number, locale: 'en' | 'he'): string {
 function magnitude(agg: FullstackAgg | undefined, field: FullstackFieldDef | undefined): [number, number] {
   if (!agg || agg === 'count') return [4, 60]
   const lo = field?.min != null ? Number(field.min) : 10
-  const hi = field?.max != null ? Number(field.max) : field?.type === 'BIG_DECIMAL' ? 900 : 120
+  const hi = field?.max != null ? Number(field.max) : field && isDecimalType(field.type) ? 900 : 120
   const [a, b] = [Number.isFinite(lo) ? lo : 10, Number.isFinite(hi) && hi > lo ? hi : lo + 100]
   return agg === 'sum' ? [a * 20 + 50, b * 20 + 100] : [a, b]
 }
 
 /** The field the generated app labels a row with: the first non-key string (EntityScaffoldContext). */
 function labelFieldOf(e: FullstackEntityDef): FullstackFieldDef | undefined {
-  return e.fields.find(f => !f.primaryKey && (f.type === 'STRING' || f.type === 'TEXT'))
+  return e.fields.find(f => !f.primaryKey && (isTextualType(f.type)))
 }
 
 // ── Builder ──────────────────────────────────────────────────────────────────
@@ -369,7 +373,10 @@ export function buildLayoutPreview(
   const fieldOf = (e: FullstackEntityDef, name: string | undefined) => (name ? e.fields.find(f => f.name === name) : undefined)
   // Sample rows: a list cell shows the value as the API sends it, the details format it.
   const raw = (e: FullstackEntityDef, f: FullstackFieldDef, row: number) => sampleRaw(f, row, { locale: ctx.locale, entity: e.name, today: ctx.today })
-  const cell = (e: FullstackEntityDef, f: FullstackFieldDef, row: number) => cellText(f, raw(e, f, row))
+  // A list cell reads like the details since the generator writes both with one function
+  // (EntityScaffoldContext.displayTs): booleans worded, dates for the app's locale.
+  const cell = (e: FullstackEntityDef, f: FullstackFieldDef, row: number) =>
+    detailText(f, raw(e, f, row), ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') })
   const detail = (e: FullstackEntityDef, f: FullstackFieldDef, row: number) =>
     detailText(f, raw(e, f, row), ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') })
   /** What a row of `e` is called: its label field's value, else "Order #3". */
@@ -397,16 +404,16 @@ export function buildLayoutPreview(
       return {
         key: f.name,
         label: fieldLabel(f),
-        kind: f.type === 'ENUM' ? 'enum' : !f.primaryKey && (f.type === 'LONG' || f.type === 'INTEGER' || f.type === 'BIG_DECIMAL') ? 'number' : 'text',
-        value: (row: number) => (pinned != null ? cellText(f, pinned) : cell(e, f, row)),
+        kind: f.type === 'ENUM' ? 'enum' : !f.primaryKey && (isNumericType(f.type)) ? 'number' : 'text',
+        value: (row: number) => (pinned != null ? detailText(f, pinned, ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') }) : cell(e, f, row)),
         detail: (row: number) => (pinned != null ? detailText(f, pinned, ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') }) : detail(e, f, row)),
       }
     })
     for (const r of e.relations ?? []) {
-      if (!r.fieldName.trim() || r.fieldName === hideRelation) continue
+      if (!r.fieldName.trim() || r.fieldName === hideRelation || r.type === 'ONE_TO_MANY') continue
       const target = entityOf(r.targetEntity)
       const named = (row: number) => (target ? rowLabel(target, row) : `#${row}`)
-      cells.push({ key: r.fieldName, label: humanize(r.fieldName), value: named, detail: named })
+      cells.push({ key: r.fieldName, label: relationLabel(r), value: named, detail: named })
     }
     if (auditOn(e, ctx.projectOpts)) {
       const created = (row: number) => auditText(row, false, ctx.locale, ctx.today)
@@ -481,7 +488,7 @@ export function buildLayoutPreview(
       const f = fieldOf(e, name)
       if (!f) {
         const relation = (e.relations ?? []).find(r => `${r.fieldName}Id` === name)
-        return relation ? `${humanize(relation.fieldName)}: ${value.split(',').map(id => `#${id.trim()}`).join(', ')}` : `${name}: ${value}`
+        return relation ? `${relationLabel(relation)}: ${value.split(',').map(id => `#${id.trim()}`).join(', ')}` : `${name}: ${value}`
       }
       const shown = f.type === 'ENUM' ? value.split(',').map(v => enumLabel(f, v.trim())).join(' / ')
         : f.type === 'BOOLEAN' ? (value === 'true' ? t('trueLabel') : t('falseLabel'))
@@ -602,6 +609,8 @@ export function buildLayoutPreview(
                 trend: w.trend ? series(w.trend, w.agg, valueField, `${seed}:trend`).map(p => p.value) : null,
               }
             }
+            // A gauge is drawn as the tile it fills in for: a number against its full scale.
+            case 'gauge':
             case 'progress': {
               const target = Number(w.target)
               const percent = Math.round(20 + seeded(seed)() * 75)
@@ -622,7 +631,7 @@ export function buildLayoutPreview(
               let groupLabel: string
               if (relation) {
                 const target = entityOf(relation.targetEntity)
-                groupLabel = humanize(relation.fieldName)
+                groupLabel = relationLabel(relation)
                 rows = Array.from({ length: Math.min(limit, 5) }, (_, i) => ({
                   label: target ? rowLabel(target, i + 1) : `#${i + 1}`,
                   value: between(rand, lo, hi),
@@ -639,6 +648,30 @@ export function buildLayoutPreview(
                 rows: rows.sort((a, b) => b.value - a.value),
               }
             }
+            // A funnel: its stages as bars, each everything that got that far.
+            case 'funnel': {
+              const group = fieldOf(e, w.groupBy ?? funnelStageFields(e)[0]?.name)
+              if (!group) return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} has no enum field for the stages` }
+              const now = breakdown(group, w.agg, valueField, seed)
+              return {
+                ...base, kind: 'bar',
+                title: w.title || t('xByY', { x: measured, y: fieldLabel(group) }),
+                bars: now.map((b, i) => ({ label: b.label, value: now.slice(i).reduce((sum, x) => sum + x.value, 0) })),
+              }
+            }
+            // Time in state: a bar per state rows leave, in days.
+            case 'timeInState': {
+              const status = fieldOf(e, e.workflow?.statusField)
+              if (!status || !e.workflow?.trackMoves) {
+                return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name}’s workflow keeps no log of its moves` }
+              }
+              const rand = seeded(seed)
+              return {
+                ...base, kind: 'bar',
+                title: w.title || (ctx.locale === 'he' ? `זמן בכל מצב — ${plural}` : `Time in each state — ${plural}`),
+                bars: breakdown(status, undefined, undefined, seed).slice(0, -1).map(b => ({ label: b.label, value: Math.round(1 + rand() * 9) })),
+              }
+            }
             case 'bar':
             case 'donut': {
               const by = w.groupBy ?? defaultTopGroupBy(e)
@@ -650,7 +683,7 @@ export function buildLayoutPreview(
                 const [lo, hi] = magnitude(w.agg, valueField)
                 return {
                   ...base, kind: w.kind,
-                  title: w.title || t('xByY', { x: measured, y: humanize(relation.fieldName) }),
+                  title: w.title || t('xByY', { x: measured, y: relationLabel(relation) }),
                   bars: Array.from({ length: 5 }, (_, i) => ({
                     label: target ? rowLabel(target, i + 1) : `#${i + 1}`,
                     value: between(rand, lo, hi),
@@ -905,7 +938,7 @@ export function buildLayoutPreview(
           } else {
             bars = !group ? [] : line ? series(chart.bucket, chart.agg, valueField, seed) : breakdown(group, chart.agg, valueField, seed)
           }
-          const groupLabel = relation ? humanize(relation.fieldName) : group ? fieldLabel(group) : undefined
+          const groupLabel = relation ? relationLabel(relation) : group ? fieldLabel(group) : undefined
           const title = groupLabel ? (line ? t('xOverTime', { x: measured }) : t('xByY', { x: measured, y: groupLabel })) : measured
           // The totals table: the chart's own choice, else the first chart only.
           return { groupLabel, reduces, measured, line, bars, title, table: chart.kind === 'table' || (chart.table ?? ci === 0), kind: chart.kind }
@@ -1014,13 +1047,23 @@ export function buildLayoutPreview(
         if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
         const fields = [
           ...e.fields.filter(f => !(f.primaryKey && f.generated) && !f.readOnly).map(f => ({ label: fieldLabel(f), required: Boolean(f.required) || Boolean(f.primaryKey) })),
-          ...(e.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => ({ label: humanize(r.fieldName), required: Boolean(r.required) })),
+          ...(e.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => ({ label: relationLabel(r), required: Boolean(r.required) })),
         ]
         return {
           type: 'import', title: page.title || t('importX', { x: labels(e).plural }), description, entity: labels(e).plural, fields,
           steps: [t('importChooseFile'), t('importMatchColumns'), t('importReview')],
           drop: t('importDropFile', { x: labels(e).plural }),
           columnsLabel: t('columns'),
+        }
+      }
+      case 'tree': {
+        const e = entityOf(page.entity)
+        if (!e) return { type: 'broken', title: page.title || page.id, message: `No entity “${page.entity ?? ''}”` }
+        // A small outline of sample rows: two branches, one of them two levels deep.
+        const shape: [number, number][] = [[0, 2], [1, 1], [2, 0], [1, 0], [0, 1], [1, 0], [0, 0]]
+        return {
+          type: 'tree', title: page.title || labels(e).plural, description,
+          rows: shape.map(([depth, children], i) => ({ label: rowLabel(e, i + 1), depth, children })),
         }
       }
       case 'search': {
@@ -1050,6 +1093,7 @@ export function buildLayoutPreview(
       case 'inbox': return t('myTasks')
       case 'record': return e ? labels(e).singular : p.id
       case 'calendar':
+      case 'tree':
       case 'board': return e ? labels(e).plural : p.id
       case 'import': return e ? `Import ${labels(e).plural}` : p.id
       case 'search': return t('search').replace('…', '')

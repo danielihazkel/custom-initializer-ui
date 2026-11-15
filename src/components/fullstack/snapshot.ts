@@ -1,5 +1,6 @@
-import type { FullstackEntityDef, FullstackNav, FullstackPageDef } from '../../types'
-import { describePagesChange } from './pageLayout'
+import type { FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackStarterRequest } from '../../types'
+import { describePagesChange, requestPages } from './pageLayout'
+import { hasNavSettings, requestNav } from './navTools'
 import { stripUids } from './uid'
 
 export interface ProjectMeta {
@@ -80,7 +81,7 @@ export function makeSnapshot(s: FullstackSnapshot): FullstackSnapshot {
     frontendSet: s.frontendSet,
     ...(s.colorPalette ? { colorPalette: s.colorPalette } : {}),
     ...(s.pages && s.pages.length > 0 ? { pages: JSON.parse(JSON.stringify(s.pages)) as FullstackPageDef[] } : {}),
-    ...(s.nav && (s.nav.style || s.nav.collapsibleGroups) ? { nav: { ...s.nav } } : {}),
+    ...(hasNavSettings(s.nav) ? { nav: { ...s.nav } } : {}),
     ...(s.dismissedWarnings && s.dismissedWarnings.length > 0 ? { dismissedWarnings: [...s.dismissedWarnings] } : {}),
   }
 }
@@ -179,8 +180,8 @@ export function snapshotChangeKey(prev: FullstackSnapshot, next: FullstackSnapsh
 function isReordered(a: readonly unknown[], b: readonly unknown[]): boolean {
   if (a.length !== b.length || a.length < 2) return false
   const sa = a.map(x => JSON.stringify(x)); const sb = b.map(x => JSON.stringify(x))
-  if (sa.join(' ') === sb.join(' ')) return false
-  return [...sa].sort().join(' ') === [...sb].sort().join(' ')
+  if (sa.join('\u0000') === sb.join('\u0000')) return false
+  return [...sa].sort().join('\u0000') === [...sb].sort().join('\u0000')
 }
 
 /** Minimal shape check for data that arrived from storage, a URL or an imported file. */
@@ -248,23 +249,56 @@ export function snapshotFromRequest(request: Record<string, unknown>): Fullstack
 /** Parses an exported file (or a bare snapshot pasted from elsewhere, or a generated zip's
  *  `menora-model.json` in either of its shapes). Returns a plain snapshot without the file-level
  *  marker fields, or an error message for the user. */
-export function parseExportedModel(text: string): { snapshot: FullstackSnapshot } | { error: string } {
+export function parseExportedModel(text: string): ParsedModel | { error: string } {
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
   } catch {
     return { error: 'Not valid JSON' }
   }
+  // A generated project's model file says what it was rendered with; an export does not.
+  const generator = parsed && typeof parsed === 'object' ? (parsed as { generator?: unknown }).generator : undefined
+  const fromProject = generator != null && typeof generator === 'object'
+  const hash = fromProject ? (generator as { templatesHash?: unknown }).templatesHash : undefined
+  const origin = { fromProject, ...(typeof hash === 'string' ? { templatesHash: hash } : {}) }
   if (parsed && typeof parsed === 'object' && (parsed as { format?: unknown }).format === REQUEST_MODEL_FORMAT) {
     const request = (parsed as { request?: unknown }).request
     if (!request || typeof request !== 'object' || !Array.isArray((request as { entities?: unknown }).entities)) {
       return { error: 'Not a fullstack model file (the request in it has no entities)' }
     }
-    return { snapshot: snapshotFromRequest(request as Record<string, unknown>) }
+    return { snapshot: snapshotFromRequest(request as Record<string, unknown>), ...origin }
   }
   if (!isSnapshot(parsed)) {
     return { error: 'Not a fullstack model file (expected meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet)' }
   }
   const { format: _format, exportedAt: _at, ...rest } = parsed as Partial<ExportedModel> & FullstackSnapshot
-  return { snapshot: makeSnapshot(rest) }
+  return { snapshot: makeSnapshot(rest), ...origin }
+}
+
+/** A parsed model file: the model, and whether it is a generated project's `menora-model.json`
+ *  (it then carries a `generator` block, with the id of the templates it was rendered with). */
+export interface ParsedModel {
+  snapshot: FullstackSnapshot
+  fromProject: boolean
+  templatesHash?: string
+}
+
+/**
+ * The generation request a snapshot stands for — what Generate, Explore and an update's two
+ * sides send. Editor-only state (dismissed warnings, locked page ids) stays behind.
+ */
+export function requestFromSnapshot(s: FullstackSnapshot): FullstackStarterRequest {
+  const pages = s.pages ?? []
+  return {
+    ...s.meta,
+    department: s.meta.department || undefined,
+    backendTemplateSet: s.backendSet,
+    frontendTemplateSet: s.frontendSet,
+    dependencies: s.selectedDeps,
+    opts: s.scaffoldOpts.length ? { scaffold: s.scaffoldOpts } : undefined,
+    colorPalette: s.colorPalette || undefined,
+    entities: stripUids(s.entities),
+    pages: pages.length ? requestPages(pages) : undefined,
+    nav: pages.length ? requestNav(s.nav, s.entities) : undefined,
+  }
 }

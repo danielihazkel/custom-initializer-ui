@@ -12,6 +12,19 @@ const validEntity = (over: Partial<FullstackEntityDef> = {}): FullstackEntityDef
 })
 
 describe('validateEntities', () => {
+  it('takes a relation label of up to the schema limit', () => {
+    const withLabel = (label: string) => validateEntities([
+      validEntity({ name: 'Customer' }),
+      validEntity({
+        name: 'Order',
+        relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer', label }],
+      }),
+    ])
+    expect(withLabel('לקוח מס\' "1"').count).toBe(0)
+    expect(withLabel('  ' + 'x'.repeat(80) + '  ').count).toBe(0)
+    expect(withLabel('x'.repeat(81)).entities[1].relations?.[0].label).toBe('Label is too long (max 80 characters)')
+  })
+
   it('checks DB column names: identifier characters only, not on a view, never shared', () => {
     const withColumn = (column: string, over: Partial<FullstackEntityDef> = {}) => validateEntities([validEntity({
       fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'email', type: 'STRING', column }],
@@ -55,6 +68,27 @@ describe('validateEntities', () => {
     const result = validateEntities([validEntity()])
     expect(result.count).toBe(0)
     expect(result.entities).toEqual({})
+  })
+
+  it('checks a many-to-many: two single-key ends, never itself, a valid join table, no column of its own', () => {
+    const tag: FullstackEntityDef = { name: 'Tag', fields: [{ name: 'id', type: 'LONG', primaryKey: true, generated: true }] }
+    const post = (relation: Partial<NonNullable<FullstackEntityDef['relations']>[number]>, over: Partial<FullstackEntityDef> = {}) =>
+      validateEntities([validEntity({
+        name: 'Post',
+        relations: [{ type: 'MANY_TO_MANY', fieldName: 'tags', targetEntity: 'Tag', ...relation }],
+        ...over,
+      }), tag])
+    expect(post({}).count).toBe(0)
+    expect(post({ joinTable: 'T_POST_TAGS' }).count).toBe(0)
+    expect(post({ joinTable: 'post tags;' }).entities[0].relations?.[0].joinTable).toContain('Letters, digits')
+    expect(post({ targetEntity: 'Post' }).entities[0].relations?.[0].targetEntity).toContain("Can't link an entity to itself")
+    // A foreign key to itself is still fine.
+    expect(post({ type: 'MANY_TO_ONE', fieldName: 'parent', targetEntity: 'Post' }).count).toBe(0)
+    const composite = post({}, { fields: [{ name: 'a', type: 'LONG', primaryKey: true }, { name: 'b', type: 'LONG', primaryKey: true }] })
+    expect(composite.entities[0].relations?.[0].joinTable).toBe('A composite-key entity cannot own a many-to-many')
+    // Its columns are in the join table: a field may spell the same column in this one.
+    const sameColumn = post({}, { fields: [{ name: 'id', type: 'LONG', primaryKey: true }, { name: 'legacy', type: 'LONG', column: 'tags_id' }] })
+    expect(sameColumn.count).toBe(0)
   })
 
   it('flags an invalid identifier as the entity name', () => {

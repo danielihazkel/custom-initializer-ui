@@ -1,16 +1,19 @@
 import { useState } from 'react'
-import type { FullstackRelationDef } from '../../types'
+import type { FullstackRelationDef, FullstackRelationType } from '../../types'
+import { linkKey, type LinkIndex } from './childLists'
 import type { RelationErrors } from './validation'
 import { newUid } from './uid'
 import { focusRowWhenRendered } from './focus'
 import { moveItem } from './reorder'
-import { pluralize, toCamelCase, toSnakeCase, uniqueName } from './naming'
+import { inverseCollectionName, toSnakeCase, uniqueName } from './naming'
 import { dropIndicatorClass, useDragReorder } from './useDragReorder'
 
 interface Props {
   relations: FullstackRelationDef[]
   /** All entity names in the request (valid FK targets; self-references are allowed). */
   entityNames: string[]
+  /** Every (child, parent) pair's foreign keys — the links a one-to-many of this entity can read. */
+  linkIndex?: LinkIndex
   /** The owning entity's field names — a duplicated relation must not collide with them. */
   fieldNames?: string[]
   onChange: (relations: FullstackRelationDef[]) => void
@@ -30,6 +33,18 @@ interface Props {
   showInverse?: boolean
 }
 
+const many = (rel: FullstackRelationDef) => rel.type === 'MANY_TO_MANY'
+const childList = (rel: FullstackRelationDef) => rel.type === 'ONE_TO_MANY'
+
+/** What a row keeps when its kind changes: each kind's own settings mean nothing to the others. */
+const KIND_RESET: Record<FullstackRelationType, Partial<FullstackRelationDef>> = {
+  MANY_TO_ONE: { type: 'MANY_TO_ONE', joinTable: undefined, inverseJoinColumn: undefined, mappedBy: undefined, composition: undefined },
+  // A set of rows is never required and has no single foreign-key column.
+  MANY_TO_MANY: { type: 'MANY_TO_MANY', required: false, joinColumn: undefined, mappedBy: undefined, composition: undefined },
+  // The other side holds the column, and says whether it is required.
+  ONE_TO_MANY: { type: 'ONE_TO_MANY', required: false, joinColumn: undefined, joinTable: undefined, inverseJoinColumn: undefined },
+}
+
 function newRelation(defaultTarget: string): FullstackRelationDef {
   return { uid: newUid(), type: 'MANY_TO_ONE', fieldName: '', targetEntity: defaultTarget, required: false }
 }
@@ -37,16 +52,19 @@ function newRelation(defaultTarget: string): FullstackRelationDef {
 const ICON_BUTTON = 'p-1 rounded text-secondary hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-secondary'
 
 /**
- * Per-entity editor for `MANY_TO_ONE` relations (the FK-owning side). v1 supports only
- * MANY_TO_ONE — the inverse `@OneToMany` is auto-derived server-side via the
- * `inverseCollections` opt, so there is no inverse editor here; the hint under each target
- * shows what that derivation will name.
+ * Per-entity editor for an entity's relations: `MANY_TO_ONE` (a foreign key), `MANY_TO_MANY`
+ * (a set of rows through a join table) and `ONE_TO_MANY` (the rows of another entity whose
+ * foreign key points here — read-only from this side). The inverse `@OneToMany` of a foreign key
+ * is derived server-side by the `inverseCollections` opt, so there is no inverse editor here; the
+ * hint under each target shows what that derivation will name.
  */
-export function RelationsEditor({ relations, entityNames, fieldNames = [], onChange, onRemoved, onAddJoinEntity, errors, addDisabledReason, ownerName, showInverse }: Props) {
+export function RelationsEditor({ relations, entityNames, linkIndex, fieldNames = [], onChange, onRemoved, onAddJoinEntity, errors, addDisabledReason, ownerName, showInverse }: Props) {
   const dnd = useDragReorder((_list, from, to) => onChange(moveItem(relations, from, to)))
   // The inline "join entity" picker: which entity the many-to-many goes to.
   const [joinTarget, setJoinTarget] = useState<string | null>(null)
   const joinChoices = entityNames.filter(n => n !== ownerName?.trim())
+
+  const linksOf = (rel: FullstackRelationDef) => linkIndex?.get(linkKey(rel.targetEntity, ownerName ?? '')) ?? []
 
   function update(idx: number, updates: Partial<FullstackRelationDef>) {
     onChange(relations.map((r, i) => (i === idx ? { ...r, ...updates } : r)))
@@ -73,8 +91,10 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
     onChange([...relations.slice(0, idx + 1), copy, ...relations.slice(idx + 1)])
     focusRowWhenRendered(copy.uid)
   }
-  // Mirrors EntityScaffoldContext: the parent's collection is the pluralized camel-case child name.
-  const inverseName = ownerName?.trim() ? pluralize(toCamelCase(ownerName.trim())) : ''
+  // Mirrors EntityScaffoldContext.inverseCollectionName: the owner's plural, told apart by the
+  // relation when the owner links to one target twice.
+  const inverseNameOf = (rel: FullstackRelationDef) => (ownerName?.trim()
+    ? inverseCollectionName(ownerName.trim(), rel.fieldName, rel.targetEntity, relations) : '')
 
   return (
     <div className="space-y-2 border-t border-outline-variant pt-3">
@@ -83,13 +103,13 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
         <span className="text-[11px] text-secondary/70">@ManyToOne — foreign key to another entity</span>
         {onAddJoinEntity && (
           <span className="inline-flex items-center gap-1.5 text-[11px] text-secondary/70 ml-auto" data-join-entity>
-            <span>Many-to-many?</span>
+            <span>Links with their own columns?</span>
             {joinTarget === null ? (
               <button
                 type="button"
                 onClick={() => setJoinTarget(joinChoices[0] ?? ownerName?.trim() ?? '')}
                 className="font-semibold text-primary underline hover:no-underline"
-                title="Only MANY_TO_ONE is generated: model a many-to-many as a join entity that references both sides"
+                title="A many-to-many only links two rows. To keep something about each link (a quantity, a date), model it as a join entity that references both sides"
               >
                 Add a join entity…
               </button>
@@ -124,6 +144,7 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
           <thead>
             <tr className="text-[11px] font-bold uppercase tracking-wider text-secondary">
               <th className="w-6"></th>
+              <th className="text-left py-1 px-2 w-32">Kind</th>
               <th className="text-left py-1 px-2">Field name</th>
               <th className="text-left py-1 px-2">Target entity</th>
               <th className="text-center py-1 px-2 w-12">Req</th>
@@ -135,6 +156,7 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
               const rErr = errors?.[rIdx]
               const indicator = dnd.indicatorFor('relations', rIdx)
               const target = rel.targetEntity.trim()
+              const inverseName = inverseNameOf(rel)
               return (
                 <tr
                   key={rel.uid ?? `i${rIdx}`}
@@ -157,6 +179,19 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
                     )}
                   </td>
                   <td className="py-1.5 px-2 align-top">
+                    <select
+                      aria-label="Relation kind"
+                      className="w-full bg-background border border-outline-variant rounded px-2 py-1 text-xs focus:ring-1 focus:ring-primary/20 focus:border-primary outline-none"
+                      value={rel.type}
+                      title="Many-to-one: this entity holds a foreign key to one row. Many-to-many: it links to any number of rows, through a join table. One-to-many: the rows of another entity that point at this one — read-only here, a table in the details."
+                      onChange={e => update(rIdx, KIND_RESET[e.target.value as FullstackRelationType])}
+                    >
+                      <option value="MANY_TO_ONE">Many-to-one</option>
+                      <option value="MANY_TO_MANY">Many-to-many</option>
+                      <option value="ONE_TO_MANY">One-to-many</option>
+                    </select>
+                  </td>
+                  <td className="py-1.5 px-2 align-top">
                     <input
                       type="text"
                       aria-label="Relation field name"
@@ -164,9 +199,57 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
                       className={`w-full bg-background border rounded px-2 py-1 text-xs font-mono focus:ring-1 outline-none ${rErr?.fieldName ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
                       value={rel.fieldName}
                       onChange={e => update(rIdx, { fieldName: e.target.value })}
-                      placeholder="customer"
+                      placeholder={many(rel) ? 'tags' : childList(rel) ? 'lines' : 'customer'}
                     />
                     {rErr?.fieldName && <p className="mt-0.5 text-[11px] text-error">{rErr.fieldName}</p>}
+                    {childList(rel) ? (
+                      <>
+                        <select
+                          aria-label="Linked by"
+                          aria-invalid={Boolean(rErr?.mappedBy)}
+                          className={`mt-1 w-full bg-background border rounded px-2 py-0.5 text-[11px] font-mono focus:ring-1 outline-none ${rErr?.mappedBy ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
+                          value={rel.mappedBy ?? ''}
+                          onChange={e => update(rIdx, { mappedBy: e.target.value || undefined })}
+                          title="The many-to-one on the target that points back here. With only one there is nothing to pick."
+                        >
+                          <option value="">
+                            {linksOf(rel).length === 1 ? `by ${linksOf(rel)[0]} (the only link)` : linksOf(rel).length === 0 ? 'no link back yet' : '— pick the link —'}
+                          </option>
+                          {linksOf(rel).map(l => <option key={l} value={l}>by {l}</option>)}
+                          {/* Keep a stale link visible so it isn't silently dropped. */}
+                          {rel.mappedBy && !linksOf(rel).includes(rel.mappedBy) && <option value={rel.mappedBy}>by {rel.mappedBy}</option>}
+                        </select>
+                        {rErr?.mappedBy && <p className="mt-0.5 text-[11px] text-error">{rErr.mappedBy}</p>}
+                        <label
+                          className="mt-1 flex items-center gap-1.5 text-[11px] text-on-surface-variant cursor-pointer"
+                          title="Composition: the rows are part of this entity. Its form edits them in a table, a save carries them, and a row left out is removed. Without it the list is read-only here and the rows are edited on their own page."
+                        >
+                          <input
+                            type="checkbox"
+                            className="accent-primary"
+                            checked={rel.composition === true}
+                            aria-invalid={Boolean(rErr?.composition)}
+                            onChange={e => update(rIdx, { composition: e.target.checked ? true : undefined })}
+                          />
+                          Edit the rows in this form
+                        </label>
+                        {rErr?.composition && <p className="mt-0.5 text-[11px] text-error" data-error>{rErr.composition}</p>}
+                      </>
+                    ) : many(rel) ? (
+                      <>
+                        <input
+                          type="text"
+                          aria-label="Join table"
+                          aria-invalid={Boolean(rErr?.joinTable)}
+                          className={`mt-1 w-full bg-background border rounded px-2 py-0.5 text-[11px] font-mono focus:ring-1 outline-none ${rErr?.joinTable ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
+                          value={rel.joinTable ?? ''}
+                          onChange={e => update(rIdx, { joinTable: e.target.value || undefined })}
+                          placeholder={ownerName?.trim() && rel.fieldName.trim() ? `${toSnakeCase(ownerName.trim())}_${toSnakeCase(rel.fieldName.trim())}` : 'join table'}
+                          title="The table that holds the links, exactly as the schema spells it. Leave blank for <entity>_<field>."
+                        />
+                        {rErr?.joinTable && <p className="mt-0.5 text-[11px] text-error">{rErr.joinTable}</p>}
+                      </>
+                    ) : (
                     <input
                       type="text"
                       aria-label="Join column"
@@ -177,6 +260,7 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
                       placeholder={rel.fieldName.trim() ? `${toSnakeCase(rel.fieldName.trim())}_id` : 'join column'}
                       title="The foreign-key column, exactly as the schema spells it. Leave blank for <field>_id. Filled in by Import from DDL."
                     />
+                    )}
                     {rErr?.joinColumn && <p className="mt-0.5 text-[11px] text-error">{rErr.joinColumn}</p>}
                   </td>
                   <td className="py-1.5 px-2 align-top">
@@ -196,7 +280,18 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
                       )}
                     </select>
                     {rErr?.targetEntity && <p className="mt-0.5 text-[11px] text-error">{rErr.targetEntity}</p>}
-                    {!rErr?.targetEntity && showInverse && target && inverseName && (
+                    <input
+                      type="text"
+                      aria-label="Relation label"
+                      aria-invalid={Boolean(rErr?.label)}
+                      className={`mt-1 w-full bg-background border rounded px-2 py-0.5 text-[11px] focus:ring-1 outline-none ${rErr?.label ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant/60 focus:ring-primary/20 focus:border-primary'}`}
+                      value={rel.label ?? ''}
+                      onChange={e => update(rIdx, { label: e.target.value || undefined })}
+                      placeholder="Label (optional)"
+                      title="What the generated app calls this relation: its column heading, form label and filter. Leave blank for the field name."
+                    />
+                    {rErr?.label && <p className="mt-0.5 text-[11px] text-error">{rErr.label}</p>}
+                    {!rErr?.targetEntity && showInverse && target && inverseName && rel.type === 'MANY_TO_ONE' && (
                       <p className="mt-0.5 text-[10px] text-secondary font-mono" data-inverse-hint
                          title="With the Inverse collections option on, the target gets a read-only @OneToMany collection and its DTO a count of these rows">
                         + {target}.{inverseName} · {inverseName}Count
@@ -208,6 +303,8 @@ export function RelationsEditor({ relations, entityNames, fieldNames = [], onCha
                       type="checkbox"
                       className="h-4 w-4 accent-primary"
                       aria-label="Required (not null)"
+                      disabled={rel.type !== 'MANY_TO_ONE'}
+                      title={many(rel) ? 'A many-to-many may always be empty' : childList(rel) ? 'Require the many-to-one on the other side instead' : undefined}
                       checked={!!rel.required}
                       onChange={e => update(rIdx, { required: e.target.checked })}
                     />

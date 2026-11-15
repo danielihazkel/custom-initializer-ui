@@ -40,7 +40,7 @@ describe('useProjectPreview.fetchPreview', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const url = new URL(fetchMock.mock.calls[0][0] as string)
+    const url = new URL(fetchMock.mock.calls[0][0] as string, 'http://localhost')
     expect(url.pathname).toBe('/starter.preview')
     expect(url.searchParams.get('type')).toBe('maven-project')
     expect(url.searchParams.get('bootVersion')).toBe('3.2.1')
@@ -56,7 +56,7 @@ describe('useProjectPreview.fetchPreview', () => {
       await result.current.fetchPreview({ ...form, department: 'fin' }, [], {})
     })
 
-    const url = new URL(fetchMock.mock.calls[0][0] as string)
+    const url = new URL(fetchMock.mock.calls[0][0] as string, 'http://localhost')
     expect(url.searchParams.get('department')).toBe('fin')
   })
 
@@ -66,7 +66,7 @@ describe('useProjectPreview.fetchPreview', () => {
       await result.current.fetchPreview(form, [], {}, { enabled: true, modules: ['api', 'core'] })
     })
 
-    const url = new URL(fetchMock.mock.calls[0][0] as string)
+    const url = new URL(fetchMock.mock.calls[0][0] as string, 'http://localhost')
     expect(url.pathname).toBe('/starter-multimodule.preview')
     expect(url.searchParams.get('modules')).toBe('api,core')
   })

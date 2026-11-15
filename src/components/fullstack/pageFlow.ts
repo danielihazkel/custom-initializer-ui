@@ -39,7 +39,7 @@ export interface PageFlow {
 }
 
 /** The widgets whose card opens the rows behind them (or, for a list or recent rows, View all). */
-const OPENS: ReadonlySet<FullstackWidgetDef['kind']> = new Set(['kpi', 'progress', 'bar', 'donut', 'stacked', 'pivot', 'line', 'top', 'list', 'recent'])
+const OPENS: ReadonlySet<FullstackWidgetDef['kind']> = new Set(['kpi', 'progress', 'gauge', 'bar', 'donut', 'funnel', 'stacked', 'pivot', 'line', 'top', 'list', 'recent'])
 
 /**
  * How the layout's pages lead to each other: the menu, the header search, tabs, and every link

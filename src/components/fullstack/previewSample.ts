@@ -1,6 +1,7 @@
 import type { FullstackFieldDef } from '../../types'
 import { enumLabel } from './enumLabels'
 import { fieldLabel } from './uiPreview'
+import { DEFAULT_CURRENCY, isNumericType } from './fieldTypes'
 
 /**
  * Made-up rows for the layout preview: values that read like the entity's own data — a person's
@@ -209,7 +210,7 @@ export function sampleRaw(f: FullstackFieldDef, row: number, ctx: SampleContext)
   if (row === 1 && f.defaultValue != null && f.defaultValue !== '') {
     const v = f.defaultValue
     if (f.type === 'BOOLEAN') return v === 'true'
-    if (f.type === 'LONG' || f.type === 'INTEGER' || f.type === 'BIG_DECIMAL') return Number(v)
+    if (isNumericType(f.type)) return Number(v)
     return v
   }
   switch (f.type) {
@@ -220,8 +221,9 @@ export function sampleRaw(f: FullstackFieldDef, row: number, ctx: SampleContext)
     }
     case 'LONG':
     case 'INTEGER':
-    case 'BIG_DECIMAL': {
-      const decimal = f.type === 'BIG_DECIMAL'
+    case 'BIG_DECIMAL':
+    case 'MONEY': {
+      const decimal = f.type !== 'LONG' && f.type !== 'INTEGER'
       let [lo, hi] = numberRange(f.name.toLowerCase(), decimal)
       if (f.min != null && Number.isFinite(Number(f.min))) lo = Number(f.min)
       if (f.max != null && Number.isFinite(Number(f.max))) hi = Number(f.max)
@@ -236,6 +238,14 @@ export function sampleRaw(f: FullstackFieldDef, row: number, ctx: SampleContext)
       const d = dateFor(f.name.toLowerCase(), row, rand, today)
       return `${isoDate(d)}T${pad(8 + Math.floor(rand() * 10))}:${pad(Math.floor(rand() * 4) * 15)}:00`
     }
+    case 'LOCAL_TIME': return `${pad(8 + Math.floor(rand() * 10))}:${pad(Math.floor(rand() * 4) * 15)}:00`
+    case 'INSTANT': {
+      const d = dateFor(f.name.toLowerCase(), row, rand, today)
+      return `${isoDate(d)}T${pad(8 + Math.floor(rand() * 10))}:${pad(Math.floor(rand() * 4) * 15)}:00Z`
+    }
+    // What the generated list shows for a file: its name.
+    case 'FILE': return `${f.name}-${row}.pdf`
+    case 'IMAGE': return `${f.name}-${row}.png`
     case 'UUID': return uuid(rand)
     default: {
       const fallback = `${fieldLabel(f)} ${row}`
@@ -246,25 +256,45 @@ export function sampleRaw(f: FullstackFieldDef, row: number, ctx: SampleContext)
   }
 }
 
-/** A value as a generated list cell shows it: an enum's label, anything else as the API sent it
- *  (`String(value)` — ISO dates, `true`/`false`, plain numbers). */
+/** A value before the wording and date formatting `detailText` adds: an enum's label, money in
+ *  its currency, an instant in the reader's zone, anything else as the API sent it. The generated
+ *  list cell, details and cards all read like `detailText` (one function writes them). */
 export function cellText(f: FullstackFieldDef, raw: SampleRaw): string {
   if (f.type === 'ENUM' && typeof raw === 'string') return raw ? enumLabel(f, raw) : '—'
+  // The generated app's format.ts: money in its currency, an instant in the reader's zone.
+  if (f.type === 'MONEY') return moneyText(f, raw)
+  if (f.type === 'INSTANT' && typeof raw === 'string') {
+    const d = new Date(raw)
+    return Number.isNaN(d.getTime()) ? raw : d.toLocaleString('en')
+  }
   return String(raw)
 }
 
-/** A value as the generated details (drawer, record page, review) show it: booleans worded,
- *  dates and date-times in the app's locale. */
+/** An amount as the generated `formatMoney` prints it: in the field's currency (ILS when it names none). */
+export function moneyText(f: FullstackFieldDef, raw: SampleRaw, locale: string = 'en'): string {
+  const amount = Number(raw)
+  if (!Number.isFinite(amount)) return String(raw)
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: f.currency?.trim() || DEFAULT_CURRENCY }).format(amount)
+  } catch {
+    // A currency code Intl does not know: the validator flags it; the preview just shows the number.
+    return String(raw)
+  }
+}
+
+/** A value as the generated app shows it — in a list cell, the details (drawer, record page,
+ *  review) and a card alike: booleans worded, dates and date-times in the app's locale. */
 export function detailText(f: FullstackFieldDef, raw: SampleRaw, locale: SampleLocale, words: { yes: string; no: string }): string {
   if (f.type === 'BOOLEAN') return raw === true || raw === 'true' ? words.yes : words.no
   if (f.type === 'LOCAL_DATE' && typeof raw === 'string') {
     const d = new Date(`${raw}T00:00:00`)
     return Number.isNaN(d.getTime()) ? raw : d.toLocaleDateString(locale)
   }
-  if (f.type === 'LOCAL_DATE_TIME' && typeof raw === 'string') {
+  if ((f.type === 'LOCAL_DATE_TIME' || f.type === 'INSTANT') && typeof raw === 'string') {
     const d = new Date(raw)
     return Number.isNaN(d.getTime()) ? raw : d.toLocaleString(locale)
   }
+  if (f.type === 'MONEY') return moneyText(f, raw, locale)
   return cellText(f, raw)
 }
 

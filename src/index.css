@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "./fonts.css";
 
+/* `dark:` follows the app's own theme class, not the OS setting. Without this, Tailwind v4's
+   default (prefers-color-scheme) coloured `dark:` text for the OS theme even after the user had
+   switched the app the other way. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-background: #050508;
   --color-on-background: #f8fafc;
@@ -150,6 +155,17 @@ html.light [class*="stroke-primary"]:not([class*="stroke-primary-"]) {
   stroke: var(--color-tertiary);
 }
 
+/* What the browser draws itself — the popup of a native <select>, scrollbars, date pickers,
+   number spinners, an unstyled field — follows the app's theme. Without this they were always
+   light: a white dropdown list over the dark editor. */
+html.dark {
+  color-scheme: dark;
+}
+
+html.light {
+  color-scheme: light;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--color-background);
@@ -158,9 +174,54 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Keyboard focus ─────────────────────────────────────────────
+   One ring for everything focusable. `:where()` keeps the specificity at zero, so a control that
+   styles its own focus (the text inputs' `outline-none focus:ring-*`) keeps doing so. */
+:root {
+  --focus-ring: var(--color-primary);
+}
+
+/* Gold on white is too faint to find; the light theme rings in its royal blue. */
+html.light {
+  --focus-ring: var(--color-tertiary);
+}
+
+:where(button, a, summary, select, [role="button"], [role="tab"], [role="switch"], [role="option"], [role="menuitem"], [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* The custom checkboxes, radios and pills are a visually hidden input inside a label: focus
+   lands on the hidden input, so the ring is drawn on the label that shows it. */
+:where(label):has(input.sr-only:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 ::selection {
   background-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
   color: var(--color-primary);
+}
+
+/* ── Flat surfaces ──────────────────────────────────────────────────────────
+   The dense screens (the layout designer, Explore, Config) do not use the glass panels: a
+   backdrop blur over a full-screen tool is paid for on every scroll. These are their two
+   surfaces, defined once so the three read as one product: a bar across the top of a tool, and a
+   raised panel. No blur. */
+.surface-toolbar {
+  background: var(--color-surface-container-high);
+  border-bottom: 1px solid var(--color-outline-variant);
+}
+
+.surface-panel {
+  background: var(--color-surface-container);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+html.dark .surface-panel {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 /* Glassmorphism Utilities */
@@ -213,6 +274,116 @@ html.dark .glass-drawer {
   box-shadow: -8px 0 40px rgba(0, 0, 0, 0.4);
 }
 
+/* ── Tooltips without script ────────────────────────────────────────────────
+   `data-tip="…"` on a control (the header's icon buttons) shows a small label under it on hover
+   and on keyboard focus, after a short delay. It replaces `title`, which cannot be styled, shows
+   late and never on focus. `:where()` keeps a positioned control positioned. */
+:where([data-tip]) {
+  position: relative;
+}
+
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  translate: -50% -4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--color-inverse-surface);
+  color: var(--color-inverse-on-surface);
+  font: 500 11px/1.3 var(--font-sans);
+  letter-spacing: 0;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s, translate 0.12s;
+  z-index: 60;
+}
+
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+  opacity: 1;
+  translate: -50% 0;
+  transition-delay: 0.35s;
+}
+
+/* The stretch of a name a search matched (components/shared/Highlight.tsx). */
+.search-hit {
+  background: color-mix(in srgb, var(--color-primary) 42%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 42%, transparent);
+}
+
+/* ── Code drawn without an editor (the diff view) ───────────────────────────
+   `utils/highlightCode.ts` names tokens with @lezer/highlight's stable `tok-*` classes; these
+   are their colours, per theme. CodeMirror colours its own editors — this is only for `.code-tokens`. */
+:root {
+  --tok-keyword: #c792ea;
+  --tok-string: #c3e88d;
+  --tok-comment: #7c8aa5;
+  --tok-number: #f78c6c;
+  --tok-type: #82aaff;
+  --tok-property: #89ddff;
+  --tok-meta: #ffcb6b;
+}
+
+html.light {
+  --tok-keyword: #7c3aed;
+  --tok-string: #15803d;
+  --tok-comment: #64748b;
+  --tok-number: #c2410c;
+  --tok-type: #1d4ed8;
+  --tok-property: #0369a1;
+  --tok-meta: #a16207;
+}
+
+.code-tokens .tok-keyword,
+.code-tokens .tok-operatorKeyword,
+.code-tokens .tok-modifier { color: var(--tok-keyword); }
+.code-tokens .tok-string,
+.code-tokens .tok-string2,
+.code-tokens .tok-inserted { color: var(--tok-string); }
+.code-tokens .tok-comment { color: var(--tok-comment); font-style: italic; }
+.code-tokens .tok-number,
+.code-tokens .tok-bool,
+.code-tokens .tok-atom,
+.code-tokens .tok-literal { color: var(--tok-number); }
+.code-tokens .tok-typeName,
+.code-tokens .tok-className,
+.code-tokens .tok-namespace { color: var(--tok-type); }
+.code-tokens .tok-propertyName,
+.code-tokens .tok-labelName,
+.code-tokens .tok-url,
+.code-tokens .tok-link { color: var(--tok-property); }
+.code-tokens .tok-meta,
+.code-tokens .tok-macroName,
+.code-tokens .tok-heading { color: var(--tok-meta); }
+.code-tokens .tok-heading,
+.code-tokens .tok-strong { font-weight: 700; }
+.code-tokens .tok-emphasis { font-style: italic; }
+
+/* The file dock sliding in from the right edge (components/backend/FileDock.tsx). */
+@keyframes dock-enter {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.dock-enter {
+  animation: dock-enter 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* A file that has just appeared in the file dock's tree: one flash, then it settles. */
+@keyframes tree-flash {
+  from { background: color-mix(in srgb, var(--color-tertiary) 45%, transparent); }
+  to   { background: transparent; }
+}
+
+.tree-flash {
+  animation: tree-flash 1.4s ease-out;
+}
+
 /* Gradients and Animations */
 .signature-gradient {
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-container) 100%);
@@ -260,6 +431,52 @@ html.dark .glass-drawer {
   animation: glow-burst 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
 }
 
+/* Primary-coloured glows. From the token, not a literal violet: the light theme's primary is
+   gold, and a hard-coded rgba(139, 92, 246, …) stayed violet there. */
+.glow-primary-soft {
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.glow-primary {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-primary) 50%, transparent);
+}
+
+/* The tick of a custom checkbox popping in — a one-shot keyframe instead of a spring per row. */
+@keyframes check-pop {
+  from { transform: scale(0); }
+  70%  { transform: scale(1.15); }
+  to   { transform: scale(1); }
+}
+
+.check-pop {
+  animation: check-pop 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* A collapsible block that animates its height with no JS measuring: the row goes 1fr ↔ 0fr and
+   the single child clips. `visibility` rides the same transition, so a collapsed block leaves the
+   tab order and the accessibility tree once it has closed. */
+.collapse-rows {
+  display: grid;
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition: grid-template-rows 0.2s ease-in-out, visibility 0.2s;
+}
+
+.collapse-rows[data-collapsed="true"] {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+}
+
+/* The child clips (that is what hides the collapsed rows), so it is padded by the width of a
+   focus ring and pulled back by the same amount: a ring or a glow on a row at the edge is not
+   cut off. */
+.collapse-rows > * {
+  min-height: 0;
+  overflow: hidden;
+  padding: 4px;
+  margin: -4px;
+}
+
 /* Animations map */
 @keyframes fade-in-up {
   from {
@@ -275,6 +492,25 @@ html.dark .glass-drawer {
 
 .animate-fade-in-up {
   animation: fade-in-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* A toast arriving in the stack (components/Toaster.tsx). */
+@keyframes toast-enter {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.toast-enter {
+  animation: toast-enter 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* The page's decorative backdrop and "factory" motifs are drawn still: they used to loop forever,
@@ -299,6 +535,40 @@ html.dark .glass-drawer {
 .factory-gear-cw,
 .factory-gear-ccw {
   display: inline-block;
+}
+
+/* …and they run while the factory works: `html[data-busy]` is set for as long as a generation or
+   a preview request is in flight (utils/busy.ts). `infinite` here is bounded by that request —
+   the rule against endless decorative motion is about an idle page. */
+@keyframes conveyor-run {
+  to { background-position: 44px 0; }
+}
+
+@keyframes gear-turn {
+  to { transform: rotate(360deg); }
+}
+
+html[data-busy] .factory-conveyor {
+  animation: conveyor-run 0.5s linear infinite;
+  opacity: 1;
+}
+
+html[data-busy] .factory-gear-cw {
+  animation: gear-turn 1.6s linear infinite;
+}
+
+html[data-busy] .factory-gear-ccw {
+  animation: gear-turn 1.1s linear infinite reverse;
+}
+
+/* The card that follows a successful Generate (components/shared/NextSteps.tsx). */
+@keyframes next-steps-enter {
+  from { opacity: 0; transform: translateY(-8px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.next-steps-enter {
+  animation: next-steps-enter 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* Pipeline divider: a highlight on the line */
@@ -359,6 +629,76 @@ html.dark .glass-drawer {
 .tutorial-scroll::-webkit-scrollbar-thumb {
   background: var(--color-outline-variant);
   border-radius: 3px;
+}
+
+/* ── View transitions (utils/viewTransition.ts) ─────────────────────────────
+   The browser cross-fades the page before and after a tab switch, and slides whatever carries a
+   `view-transition-name` from its old place to its new one — no script, nothing in the bundle.
+   Without the API the change is simply instant. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 160ms;
+}
+
+/* The header does not change with the tab: it is its own layer, so it does not fade. */
+.glass-header {
+  view-transition-name: app-header;
+}
+
+/* The line under the active tab. One element carries the name at a time, so a tab switch slides it. */
+.nav-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--color-primary);
+  view-transition-name: nav-indicator;
+}
+
+::view-transition-group(nav-indicator) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Light and dark: the new theme grows in a circle from the toggle. The header and the indicator
+   give up their own layers for it, or they would sit above the circle in the old colours. */
+@keyframes theme-reveal {
+  from { clip-path: circle(0 at var(--vt-x, 100%) var(--vt-y, 0)); }
+  to   { clip-path: circle(150vmax at var(--vt-x, 100%) var(--vt-y, 0)); }
+}
+
+html[data-transition="theme"]::view-transition-old(root) {
+  animation: none;
+}
+
+html[data-transition="theme"]::view-transition-new(root) {
+  animation: theme-reveal 420ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html[data-transition="theme"] .glass-header,
+html[data-transition="theme"] .nav-indicator {
+  view-transition-name: none;
+}
+
+/* A dialog arriving: a small one scales in, a full-screen panel only fades and lifts. */
+@keyframes dialog-enter {
+  from { opacity: 0; scale: 0.96; }
+  to   { opacity: 1; scale: 1; }
+}
+
+.dialog-enter {
+  animation: dialog-enter 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes panel-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.panel-enter {
+  animation: panel-enter 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* Respect the OS "reduce motion" preference — neutralize continuous/large motion */

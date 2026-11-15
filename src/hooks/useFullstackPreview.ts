@@ -51,6 +51,54 @@ export function useFullstackPreview() {
     }
   }, [])
 
+  /**
+   * Two generations side by side: `base` becomes the "before" the preview's diff compares with,
+   * `body` what is shown. Both are fetched before either is, so the preview never opens on the
+   * old project alone. A problem in `body` is reported like Explore's, with its path; one in
+   * `base` says so and carries no path — there is nothing in the editor it could point at.
+   */
+  const fetchComparison = useCallback(async (base: FullstackStarterRequest, body: FullstackStarterRequest) => {
+    abortRef.current?.abort()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+    const reqId = ++reqIdRef.current
+    const stale = () => reqId !== reqIdRef.current
+
+    setLoading(true)
+    setError(null)
+    const one = async (side: 'base' | 'target', request: FullstackStarterRequest) => {
+      const res = await fetch('/starter-fullstack.preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+        signal: ctrl.signal,
+      })
+      if (!res.ok) {
+        const failure = await readErrorBody(res)
+        // A path in the old model points at nothing in the editor: say which model it is instead.
+        throw Object.assign(new Error('preview failed'), {
+          failure: side === 'target'
+            ? failure
+            : { message: `The model the project was generated from is no longer accepted: ${failure.message}` },
+        })
+      }
+      return await res.json() as PreviewResponse
+    }
+    try {
+      const [before, after] = await Promise.all([one('base', base), one('target', body)])
+      if (stale()) return
+      setPreviousPreview(before)
+      previewRef.current = after
+      setPreview(after)
+    } catch (err) {
+      if (stale() || (err instanceof Error && err.name === 'AbortError')) return
+      const failure = (err as { failure?: PreviewError }).failure
+      setError(failure ?? { message: err instanceof Error ? err.message : String(err) })
+    } finally {
+      if (!stale()) setLoading(false)
+    }
+  }, [])
+
   const clearPreview = useCallback(() => {
     setPreview(null)
     setError(null)
@@ -67,5 +115,5 @@ export function useFullstackPreview() {
   // failure once the user edits the inputs, so the Explore button doesn't stay stuck.
   const clearError = useCallback(() => setError(null), [])
 
-  return { preview, previousPreview, loading, error, fetchPreview, clearPreview, clearError, cancel }
+  return { preview, previousPreview, loading, error, fetchPreview, fetchComparison, clearPreview, clearError, cancel }
 }

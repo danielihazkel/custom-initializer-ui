@@ -1,5 +1,7 @@
 import type { FullstackCalendarMode, FullstackEntityDef, FullstackFieldDef, FullstackInboxQueue, FullstackPageDef, FullstackPageType } from '../../types'
 import { contentLinks, isExternalLink } from './contentMarkdown'
+import { CHOICES, LIMITS } from './schema'
+import { isDateType, isLongTextType, isTextualType } from './fieldTypes'
 
 /**
  * The calendar, board, content, import and search page types: their choices, defaults and the
@@ -12,15 +14,15 @@ export const CALENDAR_MODES: { value: FullstackCalendarMode; label: string }[] =
   { value: 'agenda', label: 'Agenda' },
   { value: 'timeline', label: 'Timeline' },
 ]
-export const LANE_SIZES = [10, 20, 50]
-export const DEFAULT_LANE_SIZE = 20
-export const MAX_CARD_FIELDS = 4
-export const MAX_WIP_LIMIT = 999
-export const MAX_BODY = 8000
-export const MAX_SEARCH_ENTITIES = 8
-export const MIN_PER_ENTITY = 3
-export const MAX_PER_ENTITY = 10
-export const DEFAULT_PER_ENTITY = 5
+export const LANE_SIZES = CHOICES.laneSizes
+export const DEFAULT_LANE_SIZE = LIMITS.defaultLaneSize
+export const MAX_CARD_FIELDS = LIMITS.maxCardFields
+export const MAX_WIP_LIMIT = LIMITS.maxWipLimit
+export const MAX_BODY = LIMITS.maxBody
+export const MAX_SEARCH_ENTITIES = LIMITS.maxSearchEntities
+export const MIN_PER_ENTITY = LIMITS.minPerEntity
+export const MAX_PER_ENTITY = LIMITS.maxPerEntity
+export const DEFAULT_PER_ENTITY = LIMITS.defaultPerEntity
 export const INBOX_QUEUES: { value: FullstackInboxQueue; label: string }[] = [
   { value: 'mine', label: 'My tasks' },
   { value: 'unassigned', label: 'Unassigned' },
@@ -39,7 +41,7 @@ export function defaultInboxFields(e: FullstackEntityDef | undefined): string[] 
 }
 
 const eq = (a: string | undefined, b: string | undefined) => a != null && b != null && a.trim().toLowerCase() === b.trim().toLowerCase()
-const isDate = (f: FullstackFieldDef) => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'
+const isDate = (f: FullstackFieldDef) => isDateType(f.type)
 
 /** What a calendar can place rows by: a filterable, non-key date (the period travels as its filter). */
 export const calendarDateFields = (e: FullstackEntityDef | undefined): FullstackFieldDef[] =>
@@ -72,12 +74,12 @@ export function cardFieldOptions(e: FullstackEntityDef | undefined): string[] {
  *  the first text field, else the key — the next two fields but the lane, then the first relation. */
 export function defaultCardFields(e: FullstackEntityDef | undefined, lane: string | undefined): string[] {
   if (!e || e.fields.length === 0) return []
-  const heading = e.fields.find(f => !f.primaryKey && (f.type === 'STRING' || f.type === 'TEXT'))
+  const heading = e.fields.find(f => !f.primaryKey && (isTextualType(f.type)))
     ?? e.fields.find(f => f.primaryKey) ?? e.fields[0]
   const out = [heading.name]
   for (const f of e.fields) {
     if (out.length >= 3) break
-    if (f.primaryKey || f.name === lane || out.includes(f.name) || f.type === 'TEXT') continue
+    if (f.primaryKey || f.name === lane || out.includes(f.name) || isLongTextType(f.type)) continue
     out.push(f.name)
   }
   const relation = (e.relations ?? []).find(r => r.type === 'MANY_TO_ONE')
@@ -87,7 +89,7 @@ export function defaultCardFields(e: FullstackEntityDef | undefined, lane: strin
 
 /** Whether a search can find an entity's rows: some searchable text field. */
 export const searchableEntity = (e: FullstackEntityDef) =>
-  e.fields.some(f => f.searchable !== false && (f.type === 'STRING' || f.type === 'TEXT'))
+  e.fields.some(f => f.searchable !== false && (isTextualType(f.type)))
 
 /** The entities a search page asks when it names none. */
 export const defaultSearchEntities = (entities: FullstackEntityDef[]) =>
@@ -278,6 +280,8 @@ export function describeNewTypePage(page: FullstackPageDef, entities: FullstackE
       const words = (page.body ?? '').trim().split(/\s+/).filter(Boolean).length
       return `Text · ${words} word${words === 1 ? '' : 's'}`
     }
+    case 'tree':
+      return `${page.entity ?? '?'} as a tree${page.via ? ` by ${page.via}` : ''}`
     case 'import':
       return `CSV import of ${page.entity ?? '?'}`
     case 'inbox': {

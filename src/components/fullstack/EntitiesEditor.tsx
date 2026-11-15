@@ -1,4 +1,5 @@
 import { Fragment, memo, useDeferredValue, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { linkIndexKey, parseLinkIndex, type LinkIndex } from './childLists'
 import {
   FULLSTACK_ENTITY_OPT_KEYS,
   type FullstackEntityDef, type FullstackEntityOptKey, type FullstackFieldDef, type FullstackFieldType, type FullstackRelationDef,
@@ -24,14 +25,11 @@ import type { EntityCodeFile } from './entityCode'
 import { ENTITY_OPT_LABELS, PROJECT_ONLY_OPTS } from './scaffoldOptions'
 import { joinEntity } from './joinEntity'
 import { enumLabel, pruneLabels } from './enumLabels'
+import { DEFAULT_CURRENCY, FIELD_TYPES, FIELD_TYPE_LABELS, isAttachmentType, isDateType, isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
 
 /** A one-click follow-up on a notice — "Undo" after a removal. */
 export type NoticeAction = { label: string; onClick: () => void }
 
-const FIELD_TYPES: FullstackFieldType[] = [
-  'STRING', 'TEXT', 'LONG', 'INTEGER', 'BOOLEAN',
-  'LOCAL_DATE', 'LOCAL_DATE_TIME', 'BIG_DECIMAL', 'UUID', 'ENUM',
-]
 
 /** Field-table density. Compact hides the Label column (the label moves into the row's More
  *  panel and shows as a chip) and tightens the row padding. */
@@ -41,6 +39,9 @@ interface Props {
   entities: FullstackEntityDef[]
   onChange: (entities: FullstackEntityDef[]) => void
   errors?: Record<number, EntityErrors>
+  /** A problem only the server found (a Generate / Explore 400), on the entity it names — and its
+   *  field or relation, when it names one. Shown on that card until the model changes. */
+  serverIssue?: EntityServerIssue | null
   /** True when the model has no entities at all — rendered as an error in the empty state. */
   noEntities?: boolean
   /** Entity uids whose card is collapsed to its header (owned by the parent so "jump to first
@@ -113,6 +114,26 @@ export function newEntity(): FullstackEntityDef {
   }
 }
 
+/** A server-side problem on one entity (see `serverIssue.ts`): which, and where in it. */
+export interface EntityServerIssue {
+  entity: number
+  field?: number
+  relation?: number
+  panel?: 'workflow' | 'formSections'
+  message: string
+}
+
+/** What the server's message is about, in the model's own names. */
+function serverIssueSubject(entity: FullstackEntityDef, issue: EntityServerIssue): string {
+  const field = issue.field != null ? entity.fields[issue.field] : undefined
+  if (field) return `field “${field.name.trim() || `#${issue.field! + 1}`}”`
+  const relation = issue.relation != null ? entity.relations?.[issue.relation] : undefined
+  if (relation) return `relation “${relation.fieldName.trim() || `#${issue.relation! + 1}`}”`
+  if (issue.panel === 'workflow') return 'this entity’s workflow'
+  if (issue.panel === 'formSections') return 'this entity’s form sections'
+  return 'this entity'
+}
+
 function newField(): FullstackFieldDef {
   return { uid: newUid(), name: '', type: 'STRING' }
 }
@@ -128,7 +149,7 @@ const SMALL_ICON_BTN = 'p-1 rounded text-secondary hover:text-primary hover:bg-p
 /** Memoized: the Fullstack tab re-renders on every edit anywhere (the layout designer, the setup
  *  panel), and redrawing every entity card for those was most of the cost of a keystroke. */
 export const EntitiesEditor = memo(function EntitiesEditor({
-  entities, onChange: onChangeRaw, errors, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = NO_OPTS, onNotice,
+  entities, onChange: onChangeRaw, errors, serverIssue, noEntities, collapsed, onToggleCollapsed, onDestructive, projectOpts = NO_OPTS, onNotice,
   onRowAdded, lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx, onGoToOptions, onCodeFiles, codeState,
   ldapAuth, onAddDep,
 }: Props) {
@@ -268,12 +289,17 @@ export const EntitiesEditor = memo(function EntitiesEditor({
     if (type !== 'LONG' && type !== 'INTEGER' && type !== 'UUID') updates.generated = undefined
     // Constraints follow the same "clear what no longer applies" rule the backend enforces:
     // numeric bounds only on numeric types, regex/email only on STRING.
-    const numeric = type === 'LONG' || type === 'INTEGER' || type === 'BIG_DECIMAL'
+    const numeric = isNumericType(type)
     if (!numeric) { updates.min = undefined; updates.max = undefined }
     if (type !== 'STRING') { updates.pattern = undefined; updates.email = undefined }
     // The search/filter opt-out flags only apply to eligible types — clear them when leaving.
-    if (type !== 'STRING' && type !== 'TEXT') updates.searchable = undefined
-    const temporal = type === 'LOCAL_DATE' || type === 'LOCAL_DATE_TIME'
+    if (!isTextualType(type)) updates.searchable = undefined
+    // A currency belongs to money; a key cannot be one of the types a URL cannot carry.
+    if (type !== 'MONEY') updates.currency = undefined
+    if (!isKeyableType(type)) { updates.primaryKey = undefined; updates.generated = undefined }
+    // A file has no typed default, and every upload is its own file.
+    if (isAttachmentType(type)) { updates.unique = undefined }
+    const temporal = isDateType(type)
     if (!(type === 'ENUM' || type === 'BOOLEAN' || temporal || numeric)) updates.filterable = undefined
     // A default is typed per field type: keep it across the lossless pairs (STRING↔TEXT,
     // LONG↔INTEGER), otherwise drop it.
@@ -340,6 +366,9 @@ export const EntitiesEditor = memo(function EntitiesEditor({
   // typing an entity's name redraws the other cards' target lists after the keystroke, not in it.
   const entityNamesKey = useDeferredValue(entities.map(e => e.name.trim()).filter(Boolean).join('\n'))
   const entityNames = useMemo(() => (entityNamesKey ? entityNamesKey.split('\n') : []), [entityNamesKey])
+  // Which foreign keys point where — what a one-to-many can read. Compared by value, like the names.
+  const linkKey = useDeferredValue(linkIndexKey(entities))
+  const linkIndex = useMemo(() => parseLinkIndex(linkKey), [linkKey])
   function duplicateField(eIdx: number, fIdx: number) {
     let copyUid: string | undefined
     onChange(entities.map((e, i) => {
@@ -421,12 +450,14 @@ export const EntitiesEditor = memo(function EntitiesEditor({
             eIdx={eIdx}
             entityCount={entities.length}
             eErr={errors?.[eIdx]}
+            serverIssue={serverIssue?.entity === eIdx ? serverIssue : undefined}
             lintCount={lintCounts?.get(entityKey) ?? 0}
             isCollapsed={Boolean(collapsed?.has(entityKey))}
             panelKind={panelKind}
             expandedRows={expandedRowsOf(entityKey)}
             quickAddOpen={quickAddFor === entityKey}
             entityNames={entityNames}
+            linkIndex={linkIndex}
             previewEntities={panelKind === 'preview' ? entities : undefined}
             dnd={dnd}
             dndKey={dnd.stateKey}
@@ -523,6 +554,8 @@ interface EntityCardProps {
   eIdx: number
   entityCount: number
   eErr?: EntityErrors
+  /** Set only on the card the server's issue names (the others keep their props, and their render). */
+  serverIssue?: EntityServerIssue
   lintCount: number
   isCollapsed: boolean
   /** The secondary panel open on this card, if any. */
@@ -531,6 +564,8 @@ interface EntityCardProps {
   expandedRows: string
   quickAddOpen: boolean
   entityNames: string[]
+  /** Every (child, parent) pair's foreign keys — the links a one-to-many can read. */
+  linkIndex: LinkIndex
   /** The whole model, only while this card's UI preview is open (it draws relation pickers). */
   previewEntities?: FullstackEntityDef[]
   dnd: ReturnType<typeof useDragReorder>
@@ -553,7 +588,7 @@ interface EntityCardProps {
  *  a model of a dozen entities was most of the cost of a keystroke. `api` is stable and `dnd` is
  *  compared through `dndKey`; every other prop by identity. */
 const EntityCard = memo(function EntityCard({
-  entity, eIdx, entityCount, eErr, lintCount, isCollapsed, panelKind, expandedRows, quickAddOpen, entityNames,
+  entity, eIdx, entityCount, eErr, serverIssue, lintCount, isCollapsed, panelKind, expandedRows, quickAddOpen, entityNames, linkIndex,
   previewEntities, dnd, density, projectOpts, previewCtx, codeState, onCodeFiles, onGoToOptions, ldapAuth, onAddDep,
   onShowLint, onToggleCollapsed, onNotice, api,
 }: EntityCardProps) {
@@ -568,15 +603,16 @@ const EntityCard = memo(function EntityCard({
     const isView = entity.viewQuery != null
     const kanbanOk = !entity.readOnly && !isView
       && entity.fields.some(f => f.type === 'ENUM' || f.type === 'BOOLEAN')
-    const calendarOk = entity.fields.some(f => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME')
+    const calendarOk = entity.fields.some(f => isDateType(f.type))
     // Which list views are enabled (back-compat: fall back to the legacy single listView, else table).
     const views: string[] = entity.listViews ?? (entity.listView ? [entity.listView] : ['table'])
-    const VIEW_ORDER = ['table', 'cards', 'kanban', 'calendar']
+    const VIEW_ORDER = ['table', 'cards', 'kanban', 'calendar', 'gallery']
     const viewOptions = [
       { key: 'table', label: 'Table', applicable: true, hint: '' },
       { key: 'cards', label: 'Cards', applicable: true, hint: '' },
       { key: 'kanban', label: 'Kanban', applicable: kanbanOk, hint: 'Needs an enum/boolean field' },
       { key: 'calendar', label: 'Calendar', applicable: calendarOk, hint: 'Needs a date field' },
+      { key: 'gallery', label: 'Gallery', applicable: entity.fields.some(f => f.type === 'IMAGE'), hint: 'Needs an image field' },
     ] as const
     function toggleView(key: string) {
       const has = views.includes(key)
@@ -617,6 +653,13 @@ const EntityCard = memo(function EntityCard({
         cardDrop === 'before' ? 'border-t-4 border-t-primary' : cardDrop === 'after' ? 'border-b-4 border-b-primary' : ''} ${
         dnd.isDragging('entities', eIdx) ? 'opacity-40' : ''}`}
     >
+      {serverIssue && (
+        <p role="alert" data-error data-server-issue tabIndex={-1}
+           className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-xs text-error outline-none focus-visible:ring-2 focus-visible:ring-error/40">
+          <span className="font-semibold">The server rejected {serverIssueSubject(entity, serverIssue)}:</span>{' '}
+          {serverIssue.message}
+        </p>
+      )}
       {/* Header: identity (row 1), then the generated-page behaviour with the endpoint
           headline on its right (row 2), then the derivation detail behind one disclosure.
           Secondary attributes (labels, mapping, read-only, SELECT view) live behind Settings,
@@ -1000,12 +1043,12 @@ const EntityCard = memo(function EntityCard({
               const fieldKey = field.uid ?? `i${fIdx}`
               // A generated key requires a single PK (JPA IDENTITY can't target one column of a composite key).
               const canGenerate = !!field.primaryKey && pkCount === 1 && (field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'UUID')
-              const isNumeric = field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'BIG_DECIMAL'
+              const isNumeric = isNumericType(field.type)
               const isString = field.type === 'STRING'
               // Per-field search/filter eligibility mirrors the backend collection loops:
               // search → STRING/TEXT; filter bar → non-PK enum/boolean/temporal/numeric.
-              const isTextSearch = isString || field.type === 'TEXT'
-              const isTemporal = field.type === 'LOCAL_DATE' || field.type === 'LOCAL_DATE_TIME'
+              const isTextSearch = isTextualType(field.type)
+              const isTemporal = isDateType(field.type)
               const isFilterableType = !field.primaryKey
                 && (field.type === 'ENUM' || field.type === 'BOOLEAN' || isTemporal || isNumeric)
               // A generated key takes no constraints, default, lock or search/filter — its
@@ -1013,7 +1056,7 @@ const EntityCard = memo(function EntityCard({
               const generatedKey = Boolean(field.primaryKey && field.generated)
               const hasMorePanel = !generatedKey || compact
               const hasErr = Boolean(
-                fErr?.length || fErr?.min || fErr?.max || fErr?.pattern || fErr?.email || fErr?.enumValues || fErr?.defaultValue)
+                fErr?.length || fErr?.min || fErr?.max || fErr?.pattern || fErr?.email || fErr?.enumValues || fErr?.defaultValue || fErr?.currency)
               const rowKey = `${entityKey}-${fieldKey}`
               // Force open on error so the message is never hidden behind a collapsed panel.
               const isOpen = hasMorePanel && (expanded.has(rowKey) || hasErr)
@@ -1022,7 +1065,9 @@ const EntityCard = memo(function EntityCard({
               return (
               <Fragment key={fieldKey}>
               <tr
-                className={`${rowDrop ? dropIndicatorClass(rowDrop) : 'border-t border-outline-variant'} ${dnd.isDragging(fieldList, fIdx) ? 'opacity-40' : ''}`}
+                className={`${rowDrop ? dropIndicatorClass(rowDrop) : 'border-t border-outline-variant'} ${dnd.isDragging(fieldList, fIdx) ? 'opacity-40' : ''} ${
+                  serverIssue?.field === fIdx ? 'bg-error/10' : ''}`}
+                data-server-issue-row={serverIssue?.field === fIdx ? '' : undefined}
                 data-row-uid={field.uid}
                 {...dnd.rowProps(fieldList, fIdx)}
               >
@@ -1059,7 +1104,7 @@ const EntityCard = memo(function EntityCard({
                     value={field.type}
                     onChange={e => api.changeFieldType(eIdx, fIdx, e.target.value as FullstackFieldType)}
                   >
-                    {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    {FIELD_TYPES.map(t => <option key={t} value={t}>{FIELD_TYPE_LABELS[t] ?? t}</option>)}
                   </select>
                 </td>
                 {!compact && (
@@ -1196,6 +1241,7 @@ const EntityCard = memo(function EntityCard({
       <RelationsEditor
         relations={entity.relations ?? []}
         entityNames={entityNames}
+        linkIndex={linkIndex}
         fieldNames={entity.fields.map(f => f.name)}
         onChange={rels => api.updateRelations(eIdx, rels)}
         onRemoved={(rel, rIdx) => onNotice?.(
@@ -1241,7 +1287,8 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
     `w-full bg-background border rounded px-2 py-1.5 text-xs tabular-nums focus:ring-1 outline-none ${
       error ? 'border-error focus:ring-error/20 focus:border-error'
         : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`
-  const takesConstraints = !(field.primaryKey && field.generated)
+  // A generated key takes no constraints; neither does a file, which has nothing to constrain.
+  const takesConstraints = !(field.primaryKey && field.generated) && !isAttachmentType(field.type)
   const hasBehaviour = !field.primaryKey || isTextSearch
   return (
     <div className="flex flex-wrap items-start gap-x-5 gap-y-3 rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-3" data-field-more>
@@ -1344,6 +1391,20 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
           />
         </ConstraintBox>
       )}
+      {field.type === 'MONEY' && (
+        <ConstraintBox label="Currency" error={fErr?.currency}>
+          <input
+            aria-label="Currency"
+            aria-invalid={Boolean(fErr?.currency)}
+            className={inputClass(fErr?.currency)}
+            value={field.currency ?? ''}
+            placeholder={DEFAULT_CURRENCY}
+            maxLength={3}
+            title="ISO 4217 code the amounts are printed in (ILS, USD, EUR…). Blank = ILS."
+            onChange={e => onUpdate({ currency: e.target.value.trim() === '' ? undefined : e.target.value.toUpperCase() })}
+          />
+        </ConstraintBox>
+      )}
       {takesConstraints && (
         <ConstraintBox label="Default value" error={fErr?.defaultValue}>
           <DefaultValueInput field={field} invalid={Boolean(fErr?.defaultValue)} className={inputClass(fErr?.defaultValue)}
@@ -1408,11 +1469,13 @@ function DefaultValueInput({ field, invalid, className, onChange }: {
   }
   if (field.type === 'LOCAL_DATE') return <input {...common} type="date" value={value} onChange={e => onChange(e.target.value)} />
   if (field.type === 'LOCAL_DATE_TIME') return <input {...common} type="datetime-local" value={value} onChange={e => onChange(e.target.value)} />
+  if (field.type === 'LOCAL_TIME') return <input {...common} type="time" value={value} onChange={e => onChange(e.target.value)} />
   const placeholder = field.type === 'UUID' ? '00000000-0000-…'
     : field.type === 'LONG' || field.type === 'INTEGER' ? '0'
-    : field.type === 'BIG_DECIMAL' ? '0.00' : 'none'
+    : isDecimalType(field.type) ? '0.00'
+    : field.type === 'INSTANT' ? '2026-01-31T08:00:00Z' : 'none'
   return (
-    <input {...common} type="text" inputMode={field.type === 'STRING' || field.type === 'TEXT' ? undefined : 'decimal'}
+    <input {...common} type="text" inputMode={isTextualType(field.type) ? undefined : 'decimal'}
       value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)} />
   )
 }

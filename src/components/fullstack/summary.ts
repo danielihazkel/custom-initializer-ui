@@ -1,5 +1,6 @@
 import type { FullstackEntityDef, FullstackEntityOptKey, FullstackFieldDef } from '../../types'
 import { pluralize, toKebabCase } from './naming'
+import { isDateType, isNumericType, isTextualType } from './fieldTypes'
 
 /** Whether each per-entity scaffold override can take effect on this entity, mirroring the
  *  `*Applicable` derivations in `EntityScaffoldContext.buildEntityContext`: audit/soft delete/bulk
@@ -21,6 +22,8 @@ export function entityOptApplicability(entity: FullstackEntityDef): EntityOptApp
     audit: gate([mutable, readOnlyReason]),
     softDelete: gate([mutable, readOnlyReason], [!composite, 'composite primary key']),
     csvExport: { applicable: true },
+    xlsxExport: { applicable: true },
+    savedViews: { applicable: true },
     bulkDelete: gate([mutable, readOnlyReason], [!composite, 'composite primary key']),
     bulkUpdate: gate([mutable, readOnlyReason], [!composite, 'composite primary key'], [editable, 'no editable field']),
     tests: { applicable: true },
@@ -56,8 +59,8 @@ export interface EntitySummary {
   opts: FullstackEntityOptKey[]
 }
 
-const isTemporal = (f: FullstackFieldDef) => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'
-const isNumeric = (f: FullstackFieldDef) => f.type === 'LONG' || f.type === 'INTEGER' || f.type === 'BIG_DECIMAL'
+const isTemporal = (f: FullstackFieldDef) => isDateType(f.type)
+const isNumeric = (f: FullstackFieldDef) => isNumericType(f.type)
 
 export function summarizeEntity(entity: FullstackEntityDef, projectOpts: string[] = []): EntitySummary {
   const name = entity.name.trim() || 'Entity'
@@ -75,33 +78,41 @@ export function summarizeEntity(entity: FullstackEntityDef, projectOpts: string[
   const endpoints: { method: string; path: string }[] = [{ method: 'GET', path }, { method: 'GET', path: `${path}/${idPath}` }]
   if (!readOnly) endpoints.push({ method: 'POST', path }, { method: 'PUT', path: `${path}/${idPath}` }, { method: 'DELETE', path: `${path}/${idPath}` })
   if (optOn('csvExport')) endpoints.push({ method: 'GET', path: `${path}/export.csv` })
+  if (optOn('xlsxExport')) endpoints.push({ method: 'GET', path: `${path}/export.xlsx` })
   if (optOn('softDelete')) endpoints.push({ method: 'POST', path: `${path}/{id}/restore` })
   if (optOn('bulkDelete')) endpoints.push({ method: 'DELETE', path: `${path}/bulk` })
   if (optOn('bulkUpdate')) endpoints.push({ method: 'PATCH', path: `${path}/bulk` })
   if (entity.workflow && !readOnly) {
     endpoints.push({ method: 'POST', path: `${path}/{id}/transitions/{name}` })
-    if (entity.workflow.assigneeField) endpoints.push({ method: 'POST', path: `${path}/{id}/claim` }, { method: 'POST', path: `${path}/{id}/release` })
+    if (entity.workflow.trackMoves) endpoints.push({ method: 'GET', path: `${path}/{id}/moves` }, { method: 'GET', path: `${path}/moves/time-in-state` })
+    if (entity.workflow.assigneeField) endpoints.push({ method: 'POST', path: `${path}/{id}/claim` }, { method: 'POST', path: `${path}/{id}/release` }, { method: 'POST', path: `${path}/{id}/assign` })
   }
-  const opts = (['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests', 'inlineEdit', 'optimisticLocking'] as FullstackEntityOptKey[]).filter(optOn)
+  const opts = (['audit', 'softDelete', 'csvExport', 'xlsxExport', 'savedViews', 'bulkDelete', 'bulkUpdate', 'tests', 'inlineEdit', 'optimisticLocking'] as FullstackEntityOptKey[]).filter(optOn)
 
   const breakdown = entity.fields.find(f => f.type === 'ENUM') ?? entity.fields.find(f => f.type === 'BOOLEAN')
   const calendar = entity.fields.find(isTemporal)
+  // A gallery shows the rows by their first image field.
+  const picture = entity.fields.find(f => f.type === 'IMAGE')
   const requested: string[] = entity.listViews ?? (entity.listView ? [entity.listView] : ['table'])
   const views = requested.flatMap<{ name: string; by?: string }>(v => {
     if (v === 'kanban') return breakdown && !readOnly ? [{ name: 'kanban', by: breakdown.name }] : []
     if (v === 'calendar') return calendar ? [{ name: 'calendar', by: calendar.name }] : []
+    if (v === 'gallery') return picture ? [{ name: 'gallery', by: picture.name }] : []
     return [{ name: v }]
   })
   if (views.length === 0) views.push({ name: 'table' })
 
   const search = entity.fields
-    .filter(f => (f.type === 'STRING' || f.type === 'TEXT') && f.searchable !== false)
+    .filter(f => (isTextualType(f.type)) && f.searchable !== false)
     .map(f => f.name)
   const filters = entity.fields
     .filter(f => !f.primaryKey && f.filterable !== false
       && (f.type === 'ENUM' || f.type === 'BOOLEAN' || isTemporal(f) || isNumeric(f)))
     .map(f => f.name)
-  for (const r of entity.relations ?? []) if (r.fieldName.trim()) filters.push(`${r.fieldName.trim()}Id`)
+  // A foreign key and a many-to-many filter by the ids they hold; a one-to-many holds none.
+  for (const r of entity.relations ?? []) {
+    if (r.fieldName.trim() && r.type !== 'ONE_TO_MANY') filters.push(`${r.fieldName.trim()}Id`)
+  }
 
   return { path, verbs, views, search, filters, endpoints, opts }
 }

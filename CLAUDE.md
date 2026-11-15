@@ -204,6 +204,46 @@ with `ldap-auth-rest`, the sets' default. The layout templates open a wide entit
 columns (`narrowColumns`, the wide-list fix). Pinned by `pageLayoutKpiTrend.test.ts`,
 `pageLayoutFormPage.test.ts`, `workflow.test.tsx` and `pageLayoutInbox.test.ts`.
 
+**Generator round 9 (2026-11)** — the editor side of *Round 9* in `backend/CLAUDE.md`.
+- *One schema.* `schema/fullstack-schema.json` is the backend's `GET /metadata/fullstack/schema`, checked in; `schema/index.ts` exposes it (`LIMITS`, `CHOICES`, `NAME_RULES`, field types, scaffold options) and `pageLayout.ts`, `validation.ts`, `workflow.ts`, `formSections.ts`, `newPageTypes.ts` and `scaffoldOptions.ts` derive their constants from it — only the TS unions stay hand-written. `npm run sync:schema` (`scripts/sync-backend-fixtures.mjs`) rewrites it and the examples fixture from `../backend`; `fixturesInSync.test.ts` fails when either copy is stale, `schemaParity.test.ts` when a union and the schema disagree. Do not hand-edit either JSON.
+- *Server errors land where they belong.* `serverIssue.ts` reads the 400's `path` (`parseServerPath`) and `FullstackView` keeps one `serverIssue`, cleared when the model changes: an entity card shows it (`EntityServerIssue`, `[data-server-issue]`), a page problem opens that page. Generate reads failures with `readErrorBody`, like Explore.
+- *Field types.* `fieldTypes.ts` holds the predicates (`isTextualType`, `isNumericType`, `isDateType`, …) every other module asks instead of comparing type names; the four new scalar types, a currency box for MONEY and FILE/IMAGE are in the type select, `quickAdd.ts` takes the schema's aliases, and the UI mock and layout preview draw them.
+- *Relations have a kind* (`RelationsEditor`): Many-to-one (join column), Many-to-many (join table; never required; not to itself; not from a composite key) and One-to-many (a "Linked by" pick over the target's many-to-ones to this entity — `childLists.ts` `linksBetween`/`resolveLink`, the validator's `linkBehind` mirrored; nothing to pick when there is one). `types.ts` `FullstackRelationType` and `joinTable`/`inverseJoinColumn`/`mappedBy`. Every place that means "a foreign key" filters `r.type === 'MANY_TO_ONE'` (form sections, workflow step fields, page-layout columns/grouping, the column-uniqueness check); a one-to-many is also out of the form preview and the filters. The link index reaches each memoized card as one deferred string (`linkIndexKey` → `parseLinkIndex`), like `entityNames`. Renames follow: an entity's into every relation's target (`relationRefs.ts`), a many-to-one's into the one-to-manys that name it (`renameLinkInChildLists`), each in the rename's own undo step. `EntityRelationGraph` marks a many-to-many edge (⋈) and names a one-to-many on its own box instead of drawing the foreign key twice. `lint.ts` `join-entity-to-m2m` (info): an entity that is only a generated key and two required links, with nothing pointing at it, can be a many-to-many — the fix keeps its table and column names. "Add a join entity…" stays, for links that carry columns of their own.
+- *Updating a project.* `updateBaseline.ts`: the model a project was made from, in `localStorage` `fullstack:baseline` — set by a successful Generate (with the response's `X-Templates-Hash`) and by Import JSON of a project's own `menora-model.json` (`parseExportedModel` reports `fromProject`/`templatesHash` from its `generator` block; a plain export sets nothing). While the editor's model differs from it and the artifact id is the same, `UpdatePanel` offers Preview changes (`useFullstackPreview.fetchComparison`: both generations fetched, then shown in the existing file preview with the old one as "previous"), Download update (`POST /starter-fullstack.patch`, body from `updateRequest`), Mark as applied (the current model becomes the baseline) and Forget. A rejected update goes onto the card it is about when the problem is in the current model (`sideOfPath`), and names the stored model otherwise. `snapshot.ts` `requestFromSnapshot` is the one request builder — `FullstackView.buildBody` is `requestFromSnapshot(currentSnapshot)`. A new backend endpoint needs a line in `vite.config.ts`' proxy.
+- Admin → Build Customizations has the Boot-range field.
+
+Pinned by `schemaParity.test.ts`, `fixturesInSync.test.ts`, `serverIssue.test.ts`, `RelationsEditor.test.tsx`, `childLists.test.ts`, `updateBaseline.test.ts`, and the "offers an update" / "puts an update the server rejects" cases of `FullstackView.test.tsx`.
+
+**Generator round 10, phase 1 (2026-11)** — the editor side of the fix sweep in `backend/CLAUDE.md`.
+- *Relation labels:* a relation row has a Label input (`FullstackRelationDef.label`, ≤ `LIMITS.maxRelationLabel`); `naming.ts` `relationLabel` (label, else the field name in words) names it in the layout preview, the UI mock and the list-column picker.
+- *Workflow assignee:* locked like the status. `workflow.ts`: a required field is not an assignee choice and `workflowProblem` flags one; `requirableNames` leaves it out. `pageLayout.ts`: `wizardFields` / `defaultWizardSteps` skip it and a step naming it is flagged. `summary.ts` lists `POST /{id}/assign`.
+- *Formatting:* the preview's list cells read like the details (`layoutPreviewModel` `cell` → `detailText`), since the generator writes cells, details and cards with one function.
+- *Sorting:* `fieldTypes.ts` `isSortableType` (not long text, not a file) decides `listColumns().sortable` and the recent widget's "Newest by" choices; a recent list sorted by one is flagged.
+
+**Generator round 10, phase 3 (2026-11)** — the editor side of *wizard depth* in `backend/CLAUDE.md`. The SQL drawer (`components/SqlWizardDrawer.tsx`) has a "With the project's other dependencies" box: *Use this script as the Flyway baseline* (on by default; says whether `flyway` is selected), *Generate controller tests* (needs a REST API mode) and a line on what selecting `validation` adds. The OpenAPI drawer (`OpenApiWizardDrawer.tsx`) offers what a client calls through (RestTemplate / RestClient, only where a client is generated) and *Keep the spec in the project*. `SqlWizardEntry.flywayBaseline`/`generateTests` and `OpenApiWizardEntry.clientKind`/`copySpec` are optional and are stored and sent (`projectUtils.buildWizardBody`) only where they differ from the server's defaults, so entries saved before keep their shape. The starters a wizard needs (`web`, `openapi`, `web-services`) are added by the server. Pinned by `SqlWizardDrawer.test.tsx`, `OpenApiWizardDrawer.test.tsx` and `projectUtils.test.ts`.
+
+**Generator round 10, phase 4 (2026-11)** — the events wizard's drawer (*Round 10, phase 4* in `backend/CLAUDE.md`). A dependency listed by `GET /metadata/events-capable-deps` (`hooks/useEventsCapable.ts`; today `kafka`) gets *Generate from AsyncAPI…* in `DependencySelector`, opening `components/EventsWizardDrawer.tsx`: the document (paste or upload), sub-packages, consumer group, *Generate tests*, and — from `POST /starter-wizard.detect-channels`, debounced and aborted like the OpenAPI drawer's detection — the channels, each with Produce / Consume boxes. `choices === null` means nothing was chosen by hand: the boxes show what the application the document describes does (`asDescribed`), and **no channel list is saved**, so the server keeps following the document; *the other party* flips every channel (`asOtherParty`); any change by hand saves every channel code can be written for, so one left out is left out on purpose. A channel with a `problem` is disabled with the reason; a refused document shows the server's `messages`. The entry is `EventsWizardEntry` in `eventsByDep` — state, persistence and reset in `useProjectState` (`normalizeEventsByDep`), in snapshots and presets only when there is one (`captureSnapshot`), dropped with its dependency, sent by `buildWizardBody`'s seventh argument only when present (`asyncApiByDep` + `eventOptions`). The props are optional down `InitializrView` → `DependencySelector`. `vite.config.ts` proxies the endpoint. `normalizeOpenApiByDep` now keeps `clientKind`/`copySpec` (a reload used to drop them). Pinned by `EventsWizardDrawer.test.tsx`, `projectUtils.test.ts` and the "wizard entries across a reload" case of `useProjectState.test.ts`.
+
+**Generator round 10, phase 5 (2026-11)** — the Backend tab reopens and updates a project (*Round 10, phase 5* in `backend/CLAUDE.md`). `components/backend/`: `backendModel.ts` is the one mapping between the tab's `ProjectSnapshot` and a model's `request` — `requestOfSnapshot` (what Generate sends, via `buildWizardBody`; `modules` when the project is multi-module and no wizard is in play, as on Generate), `snapshotOfRequest`, `parseBackendModel` (a `menora-model.json` or a bare request; a fullstack model is refused with a pointer to its tab; the server's `REST_CLIENT` reads as `restClient`) and `sameProject`. `backendBaseline.ts` keeps the model a project was generated or imported from (`localStorage` `backend:baseline`, with the file's `catalogHash`); `updateOffered` is true for the same artifact whose **request** has changed — edits that do not reach the request are no change. `useBackendUpdate` (import, remember a generation, `POST /starter.patch`, mark applied, forget) feeds `BackendModelBar`, mounted above `InitializrView` in `App.tsx`: *Import model…* and, while an update is on offer, `BackendUpdatePanel`. `App.downloadProject` calls `rememberGenerated`. `vite.config.ts` proxies `/starter.patch`. The fullstack tab's own baseline and panel (`fullstack/updateBaseline.ts`, `UpdatePanel`) are separate; `countsOf`/`describeCounts` are shared from there. Pinned by `backendModel.test.ts` and `BackendModelBar.test.tsx`.
+
+**Generator round 10, phase 10 (2026-11)** — new visuals (*Round 10, phase 10* in `backend/CLAUDE.md`).
+- *Move log:* `WorkflowPanel` has **Keep a log of moves** (`FullstackWorkflow.trackMoves`; switched off it is no setting at all), and `summary.ts` lists the two endpoints it adds.
+- *Widgets:* `funnel`, `gauge` and `timeInState` join the kind union, `WIDGET_KINDS` and the library's groups. `pageLayout.ts`: `funnelStageFields` (an entity's enums, its workflow's status first), the validator's rules mirrored (a funnel's stages are an enum and it counts or sums; a gauge needs a target; time in state needs the workflow's log and takes nothing that measures or filters — with a fix that drops the extras), `widgetKindDisabledReason`, `newWidget`, `retargetWidget` and the dashboard's summary line. `WidgetCard` has a Stages select for a funnel and the Target box for a gauge. The canvas draws them with the shapes it has: a gauge as a progress tile, a funnel and time in state as bars.
+
+- *Gallery view:* `FullstackListView` gains `gallery`; `summary.ts` offers it where the entity has an IMAGE field (the view's `by`), the entity card's Views row and `viewDisabledReason` say "needs an image field", `lint.ts` `view-dropped` covers it, and the canvas draws it as tiles.
+
+- *Tree page:* `'tree'` joins `FullstackPageType`. `pageLayout.ts`: `selfLinks` (an entity's many-to-ones to itself), `treeReason` (why an entity cannot have one — the page gallery's entity chooser shows it), the validator mirrored in `validatePages` (no link; several and none named, with a fix that takes the first; a `via` that is not such a link), `blankPage`/`newPageChoices`, `PAGE_TYPE_META` and `DEFAULT_NAV_ICON`. `pages/TreeForm.tsx` (entity, and the Parent link select when there is a choice); `newPageTypes.ts` words its summary; the canvas draws a small sample outline (`data-preview-tree`).
+
+Pinned by `pageLayoutFlowWidgets.test.ts`, `galleryView.test.ts`, `pageLayoutTree.test.ts` and the "log of moves" case of `workflow.test.tsx`.
+
+**Generator round 10, phase 9 (2026-11)** — saved views (*Round 10, phase 9* in `backend/CLAUDE.md`): `savedViews` is a scaffold option like any other (`scaffoldOptions.ts`, `FULLSTACK_ENTITY_OPT_KEYS`, `summary.ts`). Nothing else in the editor changes — the menu and its endpoints follow the option. The Tickets example has it on.
+
+**Generator round 10, phase 8 (2026-11)** — the shell's tools (*Round 10, phase 8* in `backend/CLAUDE.md`). `FullstackNav` gains `userMenu`, `notifications` and `commandPalette`. `navTools.ts` is the one place that knows them: `NAV_TOOLS`, `navToolDisabledReason` (the bell needs an entity whose workflow has an assignee — the validator's rule), `cleanNav` (what an edit leaves: the default style and switched-off flags out, `undefined` when nothing is left — **every nav edit goes through it**, the style radios and the Collapsible box included, so one setting never drops another), `hasNavSettings` and `requestNav` (a bell whose workflow has since gone is left out of the request rather than sent to be refused). `pages/NavTools.tsx` `NavToolsFields` draws the three switches in the pages editor's navigation strip and the Sitemap view's side panel — for both skins (`data-nav-tools`; the style row, `data-nav-options`, is still tailwind only). The Approvals example has all three on. Not drawn: the canvas does not show the tools. Pinned by `navTools.test.ts` and the "header’s tools" case of `PagesEditor.test.tsx`.
+
+**Generator round 10, phase 7 (2026-11)** — rich fields and output (*Round 10, phase 7* in `backend/CLAUDE.md`). `xlsxExport` is a scaffold option like any other (`scaffoldOptions.ts`, `FULLSTACK_ENTITY_OPT_KEYS`, `summary.ts` lists `GET …/export.xlsx`), and counts as an export for a list page's hidden actions (`pageLayout.ts`). A record page has **Offer Print** (`RecordForm`, `FullstackPageDef.printable`; `retargetPage` keeps it only on a record page and names it when dropped). The Markdown editor, card pictures and the attachment drop zone need nothing from the editor: they follow the field's type.
+
+**Generator round 10, phase 6 (2026-11)** — composition in the editor (*Round 10, phase 6* in `backend/CLAUDE.md`). A one-to-many row in `RelationsEditor` has *Edit the rows in this form* (`FullstackRelationDef.composition`; cleared when the kind changes). `childLists.ts` `compositionProblem(parent, rel, mappedBy, entities)` mirrors the server's `checkComposition` rule for rule (required link, single generated key, writable, no workflow, no attachment, no lists of its own, one owner — the first composition of a child in the model's order), and `validation.ts` reports it as the relation's `composition` error once the link is settled. The Orders example composes its lines. Not drawn: the canvas and the form mock do not show the rows editor, nor the step a wizard gains for it. Pinned by `childLists.test.ts` and `RelationsEditor.test.tsx`.
+
 *Uncreatable entities:* `collectWarnings` raises a layout-level `uncreatable:<entity>` warning when a writable entity has no page that creates it, but an entity the layout does create needs it through a required `MANY_TO_ONE`. The message reads "No page creates Customer rows — Order needs one, so it cannot be saved either", and the fix is `addListPage`. These count as creating:
 - a reachable list page that keeps New;
 - a form, wizard, import or calendar page;
@@ -402,8 +442,236 @@ goes (`enumLabels.ts` `pruneLabels`), mirrored by `quickAdd` `values="OPEN:Open|
 the UI mock (`enumLabel` = explicit else `humanizeConstant`, mirroring `EntityScaffoldContext`) and
 validated like the server's `canonicalEnumLabels` (key must be a value, non-blank, ≤ 80 chars, ENUM only). The tickets example carries labels so the path is exercised.
 
+## Round 11 (2026-11) — the site's own UX, speed first
+
+The plan is `~/.claude/plans/stay-on-the-same-temporal-matsumoto.md` (nine phases, 0–8). Its rules hold
+for every phase: **no new npm packages**, new surfaces are `lazy()` chunks, **no new framer-motion
+usage** (CSS transitions, `@starting-style`, View Transitions), no new `backdrop-filter` surfaces, no
+`infinite` animations, nothing waits on an animation.
+
+**Phase 0 — baseline.**
+- `npm run build:check` builds and runs `scripts/check-bundle-budget.mjs`: it prints what first paint
+  downloads (entry, react, motion, CSS — raw and gzip) and **fails when the entry chunk passes
+  `ENTRY_BUDGET`** (112 800 bytes). Raise the budget deliberately, never to turn a build green.
+- The entry had grown to 235 KB because `backend/useBackendUpdate.ts` imported `countsOf`/`describeCounts`
+  from `fullstack/updateBaseline.ts`, which imports `snapshot.ts` → `pageLayout.ts` (91 KB) and friends.
+  They live in `utils/updateCounts.ts` now (re-exported from `updateBaseline.ts`). **Nothing the Backend
+  tab renders at first paint may import from `components/fullstack/`.** To see what a chunk holds:
+  `npx vite build --sourcemap --outDir <scratch>` and read which `sources` its map names.
+- The dependency catalog is off framer-motion: `DependencyCard` is a plain `<label>` (accent bar = a
+  `scale-y` transition, tick = the `check-pop` keyframe), and a group collapses with `.collapse-rows`
+  (`grid-template-rows: 1fr ↔ 0fr` + `visibility`, in `index.css`) instead of a measured `height: auto`
+  animation — in `DependencySelector` and `frontend/AvailableDependenciesFE`. The Selected ("cart") list
+  keeps its framer animations: it is a handful of rows.
+
+**Phase 1 — foundation.**
+- *Theme.* `@custom-variant dark (&:where(.dark, .dark *))` in `index.css`: `dark:` follows the app's
+  class, not the OS. Glows come from the token (`.glow-primary`, `.glow-primary-soft`), warnings from
+  `text-warning` / `bg-warning/10` — never a literal violet or `yellow-*`. `hooks/useTheme.ts`
+  `useIsDark()` reads the `html` class (a `MutationObserver` store); the two CodeMirror hosts
+  (`ReadOnlyCodeViewer`, admin `CodeEditor`) pass it as their `theme`.
+- *Focus.* One `:focus-visible` ring (`--focus-ring`: primary, tertiary in light) at zero specificity,
+  and `label:has(input.sr-only:focus-visible)` rings the label of every custom checkbox, radio and pill.
+  `.collapse-rows > *` is padded 4px and pulled back so a ring at the edge is not clipped.
+- *Toasts.* `src/toast.ts` is the one stack (`showToast` / `dismissToast`, at most three, 3 s — 6 s with
+  an action — paused while hovered); `components/Toaster.tsx` draws it bottom centre. `AppToast` and
+  `admin/shared/StatusToast` are adapters (`useToastProp`) that keep their `toast` / `onClear` props, so
+  no caller changed; each renders a `Toaster` and only the first mounted one draws. New code calls
+  `showToast` directly. `src/test/setup.ts` runs `resetToasts()` between tests.
+- *Modals.* `hooks/useModal.ts(ref, { onClose, active, initialFocus, lockScroll })`: Escape (top modal
+  only, skipped when an inner widget `preventDefault`ed it), a real Tab trap, counted scroll lock, focus
+  back to the opener (read at render time — an `autoFocus` inside runs before effects — and not during
+  StrictMode's test unmount). Used by `ConfirmDialog`, `ShortcutsOverlay`, `AdminFormDrawer`,
+  `TemplateCompare`, `ProjectPreview`. A new dialog uses it rather than its own `keydown` listener.
+- *Shell.* `App.tsx` `NAV` is the one list of tabs: a row with `aria-current` from `lg`, a
+  `shared/PopoverMenu` below it; Share / Reset / animations / theme are in the row from `xl` and a
+  "more" `PopoverMenu` below. `shared/PageHeader` is the heading of all three generator tabs (the
+  Backend one sits in `BackendModelBar`'s row, which takes it as `children`). `BackendUnreachable`
+  (lazy) replaces the dead "Cannot reach backend" card: Retry, and an automatic retry after 2, 4, 8, 15,
+  30 s while the tab is visible — `useMetadata` gained `reload` / `retrying`. Its sibling
+  `AccessBlocked` (lazy) is shown when the backend's access gate refused the catalog — a 403 whose
+  body carries `code: "USERINFO_REQUIRED"` (`useMetadata`'s `blocked`; *Access gate* in
+  `backend/CLAUDE.md`): "No access", the backend's words, a Try again button and no automatic
+  retry. Pinned by `components/AccessBlocked.test.tsx`. `CommandPalette`,
+  `ConfirmDialog` and `BackendUnreachable` are lazy in `App.tsx` (the palette's chunk is fetched on idle).
+- *Narrow windows.* The Backend body is `grid-cols-1 lg:grid-cols-12` (twelve tracks with 40px gaps were
+  440px wide before any content). The two dependency panels sit side by side, pinned, from `lg` — every
+  desktop width — and below it Selected comes first, capped at 45vh. **A picked dependency's options and
+  wizard buttons are in the Selected panel, so it must be in sight while picking**: this round first
+  stacked the panels below `xl` with the catalog on top, which put them a screen below the fold on a
+  1280px window (a 1920px monitor at 150% scaling). Pinned by `DependencySelector.test.tsx`.
+- The Frontend tab's Reset uses `ConfirmDialog`, not `window.confirm`.
+
+Pinned by `toast.test.tsx`, `hooks/useModal.test.tsx` and `components/BackendUnreachable.test.tsx`.
+
+**Phase 2 — keyboard, palette, dependency search.**
+- *Matching.* `utils/fuzzy.ts` `fuzzyMatch(query, text)` → `{score, ranges}`: a substring (exact > prefix
+  > start of a word > inside), else the letters in order when they sit at word starts or run on
+  (`sdj` → **S**pring **D**ata **J**PA; quality below `FUZZY_QUALITY_MIN` is no match, so `gen` does not
+  hit "Go to Backend"). `substringMatch` is for prose (descriptions). `shared/Highlight` draws the ranges
+  as `mark.search-hit`. In-house — no library.
+- *Commands.* `commands.ts` is **scoped**: `registerCommands(list, scope = 'view')`, scopes merged with
+  `global` last. Whoever owns a piece of state registers the actions on it: `App` (`global`: the tabs,
+  theme, animations, share; `backend`: Generate, Explore, Compare, multi-module, Reset, shortcuts),
+  `DependencySelector` (`backend-deps`: search, and the wizard of each selected dependency),
+  `PresetPicker` (`backend-presets`: save, load each preset / recent), `BackendModelBar`
+  (`backend-model`), `FrontendView` and `FullstackView` (`view`). **An effect that registers must not
+  depend on a callback prop** — registering re-renders `App`, a subscriber — read it through a ref.
+- *Palette* (`CommandPalette.tsx`, lazy): no query → "Recent" (`localStorage` `palette:recent`, last 8),
+  then everything under its group heading; a query → ranked across groups, the title's match marked. At
+  most `MAX_ROWS` (50) rows are drawn, with a "Showing 50 of N" footer. `role="combobox"` /
+  `listbox` / `option` with `aria-activedescendant`. The catalog items (dependencies, templates, settings)
+  are offered on the Backend tab only.
+- *Keys.* `hooks/useHotkeys(bindings, enabled)`: a chord (Ctrl/⌘) fires while typing, a bare key only
+  outside a field, nothing under a modal. Backend: Ctrl+Enter, Ctrl+Shift+E, `?` (`App`), `/`
+  (`DependencySelector`), Ctrl+S (`PresetPicker`). Frontend: the same but Ctrl+S. `ShortcutsOverlay`
+  takes `shortcuts` (`BACKEND_SHORTCUTS`, `FRONTEND_SHORTCUTS` beside `FULLSTACK_SHORTCUTS`) — **a new
+  binding goes into its list too**. The Fullstack tab keeps its own handler.
+- *Dependency picker.* Search is `fuzzyMatch` on the name, `substringMatch` on the description, a
+  substring of the id; the catalog keeps its order. From the search box ↓ enters the results, ↑/↓ move
+  between cards (`input[data-dep-card]`, open groups only), Enter toggles the first result, Escape clears.
+  A card shows a **wizard badge** (`SQL` / `OpenAPI` / `WSDL` / `AsyncAPI`) before it is selected and a
+  star (`hooks/useDepFavorites`, `localStorage` `depFavorites`). **Quick picks** above the catalog:
+  favourites, then the dependencies of recent projects (`InitializrView` → `recentDepIds`), then the
+  most used here (`hooks/usePopularDeps` → `GET /metadata/popular-deps`, through `catalogCache`; empty
+  when it fails).
+- `BackendUpdatePanel` and `ModuleSelector` are lazy. The entry budget was re-based once, to 120 000
+  bytes, when the picker's search and keyboard code (first-paint code) used up the first one — the
+  history is in `scripts/check-bundle-budget.mjs`.
+
+Pinned by `utils/fuzzy.test.ts`, `components/CommandPalette.test.tsx` (palette, the registry's scopes,
+`useHotkeys`) and `components/DependencySelector.test.tsx`.
+
+**Phase 3 — Generate, and what comes after it.**
+- *One request builder.* `projectUtils.ts` `buildProjectRequest(target, form, selected, …)` →
+  `{url, init, kind, key}` for `'zip'` or `'preview'`: a POST to the wizard endpoint when a selected
+  dependency carries a wizard payload, else a GET (the multi-module endpoint when modules are ticked).
+  `triggerDownload`, `useProjectPreview`, "Copy as curl" (`utils/curl.ts` `curlFor`) and the file dock
+  all go through it — it used to be written out three times. `key` identifies the project a snapshot
+  generates (the staleness check and the dock's cache use it).
+- *Every download is a `fetch`.* The plain path was an `<a download>` click: the page could show no
+  progress and a server error was saved as a broken zip. `triggerDownload(…, signal)` now rejects with
+  the server's words, or an `AbortError`.
+- *While it builds.* `App.downloadProject` keeps `generating` (the button reads "Building…", a second
+  click does nothing) and shows **Cancel** once it has taken 700 ms. `utils/busy.ts` `useBusy(active)`
+  sets `html[data-busy]` (counted) — the three generator tabs call it for their generate and preview
+  requests — and `index.css` runs the header's conveyor and gears **only under that attribute**. That
+  is the one sanctioned `infinite` animation: it is bounded by a request.
+- *Next steps.* `shared/NextSteps` is the card (title, hint, command rows with Copy, an action row, a
+  stale notice, children); `fullstack/NextStepsPanel` wraps it and keeps its `data-next-steps*` hooks.
+  The Backend tab shows `backend/BackendNextSteps` (lazy) from `App`'s `lastRun` — unpack / run / test,
+  Save as preset (`runCommand('backend-save-preset')`: `commands.ts` `runCommand(id)` runs another
+  owner's registered action), Copy as curl, Copy share link, Explore — stale once
+  `buildProjectRequest('zip', …).key` differs from the run's. The Frontend tab renders `NextSteps`
+  itself, with the run command in the project's package manager.
+
+Pinned by `utils/projectRequest.test.ts` (builder, download, curl) and `shared/NextSteps.test.tsx`
+(card, Backend card, `useBusy`, `runCommand`).
+
+**Phase 4 — Explore as a small IDE** (`ProjectPreview.tsx`, shared by all three tabs; a lazy chunk).
+- *Tree.* `explore/FileTree.tsx` — **no editor import**, so the file dock can draw it on the page. Rows
+  are computed flat (`visibleRows(tree, collapsed, filter)`): `role="tree"` / `treeitem`, one Tab stop,
+  ↑ ↓ Home End, → opens or steps in, ← closes or goes to the parent, Enter selects. A `filter` narrows to
+  matching files under their (opened) directories — `fuzzyMatch` on the name, a substring of the path, so
+  a breadcrumb can filter to `src/main/`. `fileStatuses` / `changedDirs` mark a diff, `flash` a new path.
+- *Modal.* Left column: **Files** (filter box; `/` or Ctrl+P) or **Search** (Ctrl+Shift+F —
+  `utils/searchFiles.ts`, a scan of the in-memory files, two letters at least, `MAX_SEARCH_HITS` lines,
+  each hit cut around its match). The column is resizable (drag the separator, or ← → on it;
+  `localStorage` `explore:treeWidth`). The bar over the file: breadcrumbs (a folder filters the tree to
+  it), wrap (`explore:wrap`), copy path, copy file, download file. It opens on `initialPath`, else the
+  file looked at last (`sessionStorage` `explore:lastPath`), else the first. `useModal` gives Escape and
+  the Tab trap; a filter's own Escape clears it first.
+- *Diff.* `utils/diffRows.ts` is the model, apart from the drawing: `diffRows` (rows name lines by
+  number), `foldUnchanged` (runs of 8+ unchanged lines fold, three lines of context kept beside a
+  change), `hunkStarts` (Previous / Next change), `pairRows` (side by side: removed beside added, the
+  shorter side padded). `DiffContentViewer` draws unified or side by side (`explore:diffMode`).
+- *Colour without an editor.* `utils/highlightCode.ts` `tokenizeLines(code, languageExtensions)` runs the
+  grammar `lang-from-path.ts` already loaded through `@lezer/highlight`'s `classHighlighter`; `index.css`
+  colours the `tok-*` classes under `.code-tokens` per theme (`--tok-keyword`…). `@lezer/highlight` was
+  already installed as CodeMirror's dependency; it is listed in `package.json` (and the lockfile's root)
+  only so the import is explicit.
+
+Pinned by `explore/FileTree.test.tsx` (rows, tree, the diff model, `searchFiles`, `tokenizeLines`).
+
+**Phase 5 — the file dock** (Backend tab): the tree of files the setup on screen generates, kept
+current as it changes, with what the last change did ("Kafka adds 4 files, changes 2").
+- `backend/FileDock.tsx` (lazy; its tree is `FileTree`, so no editor on the page). Closed it is a
+  "Project files" button at the bottom right; open, a 300px panel at the right edge — a column of its
+  own from 1440px (`App`'s `<main>` gets `min-[1440px]:pr-[300px]`), and below that a **drawer**: a
+  scrim over the page (`data-file-dock-scrim`, hidden by CSS from 1440px), closed by a click beside it
+  or Escape. It must never lie over the dependency panels unasked — it once did, hiding the catalog's
+  wizard badges — so a stored "open" is honoured only from 1440px. `App` owns `dockOpen`
+  (`localStorage` `backend:fileDock`; open by default only from 1600px) and `previewRequest`
+  (`buildProjectRequest('preview', …)`, null while the form cannot generate). Added files flash
+  (`.tree-flash`) and are marked against the previous answer; `describeChange` words the change, naming
+  the dependency when exactly one was added or removed between the two.
+- **When it may ask the backend** — `hooks/useLiveProjectTree.ts`: only while the dock is open *and* the
+  tab is visible; `LIVE_DEBOUNCE_MS` (500) after the last change, the call in flight aborted; never for a
+  request key it already holds (`utils/livePreviewCache.ts`, the last 8, so ticking a dependency off and
+  on is instant); with the header `X-Preview-Intent: live`, which keeps it out of the generation audit
+  (*Round 11* in `backend/CLAUDE.md`). Refresh asks again. **Do not relax these**: the dock is the one
+  part of the site that calls the backend without being asked.
+- A click on a file opens Explore on the preview the dock holds (`useProjectPreview.showPreview`,
+  `ProjectPreview`'s `initialPath`); the Explore button does the same when the dock already has exactly
+  that request (`livePreviewFor(key)`), so neither costs a call.
+
+Pinned by `hooks/useLiveProjectTree.test.tsx` (the hook's rules, the cache, `describeChange`, the dock).
+
+**Phase 6 — motion, without script.**
+- `utils/viewTransition.ts` `withViewTransition(update, { name?, origin? })` runs a state update inside
+  `document.startViewTransition` (the update is `flushSync`ed — the browser snapshots when the callback
+  returns), sets `html[data-transition=<name>]` for its length, and simply runs the update where the API
+  is missing or motion is off. `App` uses it for a tab switch (`goTo`, the "Go to" commands) and the
+  theme toggle. In `index.css`: the page cross-fades in 160 ms; `.glass-header` is its own layer
+  (`view-transition-name: app-header`) so it does not fade; **`.nav-indicator`** — the line under the
+  active tab, rendered only in that tab — carries a `view-transition-name`, which is what slides it
+  between tabs; `data-transition="theme"` reveals the new theme in a circle from `--vt-x`/`--vt-y`.
+- `dialog-enter` (confirm, shortcuts, tour card), `panel-enter` (Explore, Compare), `dock-enter`,
+  `toast-enter`, `next-steps-enter` are one-shot keyframes. `shared/CopyButton` turns into a tick for a
+  moment after copying (the next-steps commands, Explore's copy path / copy file), so a copy answers
+  where it was clicked; the toast is kept for a refused copy.
+
+**Phase 7 — guidance.**
+- `shared/CoachTour` is the tour (spotlight, card, Back / Next / Skip, arrows, Escape, once per browser
+  under `storageKey`), generalised from `designer/DesignerTour.tsx`, which is now a wrapper with the same
+  exports. It looks its anchors up **after mounting** — a part rendered in the same pass is not in the
+  document during render. `components/tours.tsx` (lazy) holds the Backend, Frontend and Fullstack tours;
+  their stops are parts marked `data-tour="…"` (`quick-start`, `project-setup`, `dep-search`,
+  `selected-deps`, `file-dock`, `actions`, `fe-deps`, `fs-start`, plus `#fs-entities` / `#fs-pages`).
+  A renamed or removed anchor silently drops its stop.
+- `App` opens a tab's tour by itself once (`localStorage` `tour:<backend|frontend|fullstack>` — read
+  directly, so the tours chunk is not loaded to learn one was seen): it waits for the tab's
+  `TOUR_READY` anchor, never opens over a dialog, and not at all on a share link (a query beyond `tab`).
+- The header's **Help** menu (`PopoverMenu`): Take the tour, Keyboard shortcuts (the Backend sheet, or
+  `runCommand('fe-shortcuts' | 'fs-shortcuts')`), Guide, Training. `data-tip="…"` is a CSS-only tooltip
+  (hover and keyboard focus, 0.35 s delay) on the header's icon buttons, in place of `title`.
+- Empty states act: the empty cart says "press /" and has a Search button; "No results" has Clear search.
+
+**Phase 8 — one visual language** (deliberately small).
+- `html.dark { color-scheme: dark }` / `html.light { color-scheme: light }`: what the browser draws
+  itself — a native `<select>`'s list, scrollbars, date pickers, number spinners — follows the app's
+  theme. It was always light before.
+- `.surface-toolbar` and `.surface-panel` (`index.css`) are the flat surfaces of the dense tools — no
+  blur. The designer's header, Explore's, Compare's and the Config sidebar's head use `surface-toolbar`.
+- Not done: restyling the designer's and Config's cards and native selects beyond that; replacing
+  Lucide in Guide / Training; the inline icon `fontSize` styles.
+
+Pinned by `shared/CoachTour.test.tsx` (the tour, the tab tours' keys, `CopyButton`, `withViewTransition`).
+
+**Where the round left first paint.** Entry chunk 235 KB → 113 KB raw (66.6 → 32 KB gzip), with every
+new surface a lazy chunk: `CommandPalette`, `ConfirmDialog`, `BackendUnreachable`, `BackendUpdatePanel`,
+`ModuleSelector`, `BackendNextSteps`, `FileDock` (+ `FileTree`), `tours`, the shortcuts sheet.
+
+**Looking at the site without the Chrome extension.** Start the backend on a scratch database and
+`npx vite`; a headless Chromium can then be driven over its DevTools port from a ~150-line Node script
+(Node 24 has a global `WebSocket`): `Page.navigate`, `Runtime.evaluate`, `Input.dispatchMouseEvent` /
+`dispatchKeyEvent`, `Emulation.setDeviceMetricsOverride`, `Emulation.setEmulatedMedia` for the colour
+scheme, `Page.captureScreenshot`. Unlike `--screenshot`, it can click, type and resize.
+
 ## Performance rules
 
+- **The entry chunk has a budget** — `npm run build:check` (see *Round 11, phase 0*). What is not needed
+  to paint the Backend tab is a `lazy()` chunk.
 - **Catalog lists are fetched once per session.** `useMetadata` (`getMetadata`) and `hooks/catalogCache.ts`
   (`useCatalog`, behind `useCompatibility`, `useStarterTemplates`, `useFrontendMetadata`, `useSqlDialects`,
   `useExtensions`, `useModuleTemplates`, `useOpenApiCapable`, `useSoapCapable`) share one promise per URL.

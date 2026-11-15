@@ -131,6 +131,72 @@ describe('FullstackView — generate and shortcuts', () => {
     expect(screen.queryByRole('region', { name: 'Next steps' })).toBeNull()
   })
 
+  it('offers an update, not a fresh zip, once the model moves on from the project it generated', async () => {
+    storeDraft(draftEntities)
+    const posted: { url: string; body: Record<string, unknown> }[] = []
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method !== 'POST') return Promise.resolve(response(404, {}))
+      posted.push({ url, body: JSON.parse(String(init.body)) as Record<string, unknown> })
+      if (url === '/starter-fullstack.zip') return Promise.resolve(response(200, {}))
+      if (url === '/starter-fullstack.patch') {
+        const headers = new Headers({ 'X-Update-Added': '0', 'X-Update-Changed': '9', 'X-Update-Deleted': '2' })
+        return Promise.resolve({ ...response(200, {}), headers } as Response)
+      }
+      return Promise.resolve(response(404, {}))
+    })
+    render(<FullstackView />)
+    const panel = () => screen.queryByRole('region', { name: 'Update an existing project' })
+    // Nothing has been generated here: there is no project to update.
+    expect(panel()).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Fullstack ZIP' }))
+    await screen.findByRole('region', { name: 'Next steps' })
+    // The project and the model agree.
+    expect(panel()).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Entity name'), { target: { value: 'Bill' } })
+    expect(panel()!.textContent).toContain('The model has changed since demo was generated')
+    fireEvent.click(within(panel()!).getByRole('button', { name: /Download update/ }))
+    await screen.findByText(/Update downloaded \(9 changed, 2 removed\)/)
+    const update = posted.find(p => p.url === '/starter-fullstack.patch')!.body as {
+      base: { entities: { name: string }[]; editorModel: unknown }
+      target: { entities: { name: string }[]; editorModel: unknown }
+    }
+    expect(update.base.entities.map(e => e.name)).toEqual(['Invoice'])
+    expect(update.target.entities.map(e => e.name)).toEqual(['Bill'])
+    expect(update.base.editorModel).toMatchObject({ format: 'menora-fullstack-model/1' })
+
+    // The baseline outlives the page: a reload still knows what the project was made from.
+    expect(JSON.parse(localStorage.getItem('fullstack:baseline')!).snapshot.entities[0].name).toBe('Invoice')
+    // Once the team has applied it, the next update starts from here.
+    fireEvent.click(within(panel()!).getByRole('button', { name: 'Mark as applied' }))
+    expect(panel()).toBeNull()
+    expect(JSON.parse(localStorage.getItem('fullstack:baseline')!).snapshot.entities[0].name).toBe('Bill')
+    fireEvent.change(screen.getByLabelText('Entity name'), { target: { value: 'Receipt' } })
+    fireEvent.click(within(panel()!).getByRole('button', { name: 'Forget' }))
+    expect(panel()).toBeNull()
+    expect(localStorage.getItem('fullstack:baseline')).toBeNull()
+  })
+
+  it('puts an update the server rejects on the card it is about, or names the stored model', async () => {
+    storeDraft(draftEntities)
+    let answer = response(400, { detail: "Unknown field type 'NOPE'", path: 'target.entities[0].fields[1]', side: 'target' })
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => Promise.resolve(
+      init?.method !== 'POST' ? response(404, {}) : url === '/starter-fullstack.zip' ? response(200, {}) : answer))
+    render(<FullstackView />)
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Fullstack ZIP' }))
+    await screen.findByRole('region', { name: 'Next steps' })
+    fireEvent.change(screen.getByLabelText('Entity name'), { target: { value: 'Bill' } })
+    const download = () => fireEvent.click(screen.getByRole('button', { name: /Download update/ }))
+
+    download()
+    await screen.findByText(/Update failed — the server rejected/)
+    expect(document.querySelector('[data-server-issue]')?.textContent).toContain("Unknown field type 'NOPE'")
+
+    answer = response(400, { detail: 'Entity name is reserved', path: 'base.entities[0].name', side: 'base' })
+    download()
+    await screen.findByText(/The model the project was generated from is no longer accepted: Entity name is reserved/)
+  })
+
   it('shows no card when the download fails', async () => {
     storeDraft(draftEntities)
     fetchMock.mockImplementation(() => Promise.resolve(response(500, { detail: 'boom' })))
@@ -139,6 +205,39 @@ describe('FullstackView — generate and shortcuts', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/starter-fullstack.zip', expect.objectContaining({ method: 'POST' })))
     await screen.findByText(/Generation failed: boom/)
     expect(screen.queryByRole('region', { name: 'Next steps' })).toBeNull()
+  })
+
+  it('puts a Generate 400 that says where it is on that entity\'s card, until the model changes', async () => {
+    storeDraft(draftEntities)
+    fetchMock.mockImplementation((url: string) => Promise.resolve(url === '/starter-fullstack.zip'
+      ? response(400, { error: 'Invalid request', detail: 'number may not be that', path: 'entities[0].fields[1].type' })
+      : response(404, { error: `no ${url}` })))
+    render(<FullstackView />)
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true })
+
+    // Not just a toast: the message sits on the card, naming the field, and its row is marked.
+    const issue = await waitFor(() => {
+      const el = document.querySelector('[data-server-issue]')
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+    expect(issue.textContent).toContain('The server rejected field “number”')
+    expect(issue.textContent).toContain('number may not be that')
+    expect(issue.closest('[data-entity-index="0"]')).toBeTruthy()
+    expect(document.querySelectorAll('[data-server-issue-row]')).toHaveLength(1)
+    await screen.findByText(/Generation failed — the server rejected a field/)
+
+    // Any edit to the model retires it: the server has not seen the new one.
+    fireEvent.change(screen.getByLabelText('Entity name'), { target: { value: 'Bill' } })
+    await waitFor(() => expect(document.querySelector('[data-server-issue]')).toBeNull())
+  })
+
+  it('reads a failed Generate like Explore does: detail, else the joined messages', async () => {
+    storeDraft(draftEntities)
+    fetchMock.mockImplementation(() => Promise.resolve(response(400, { error: 'Invalid spec', messages: ['first', 'second'] })))
+    render(<FullstackView />)
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true })
+    await screen.findByText(/Generation failed: first; second/)
   })
 
   it('opens the save prompt on Ctrl+S even while typing, and the cheat sheet on ?', () => {
@@ -248,6 +347,40 @@ describe('FullstackView — editor safety nets', () => {
     fireEvent.click(screen.getByRole('button', { name: /issue.* to fix before generating/ }))
     expect(entityNames()[0]).toBe('class')
     expect(screen.getAllByLabelText('Entity name')[0].getAttribute('aria-invalid')).toBe('true')
+  })
+
+  it('an entity rename follows into the relations that point at it, as one undo step', async () => {
+    storeDraft([
+      { name: 'Customer', fields: [pk, { name: 'name', type: 'STRING' }] },
+      { name: 'Order', fields: [pk], relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer' }] },
+    ])
+    render(<FullstackView />)
+    // The entity's own name input and the relation's target select both say Customer.
+    expect(screen.getAllByDisplayValue('Customer')).toHaveLength(2)
+
+    fireEvent.change(screen.getAllByLabelText('Entity name')[0], { target: { value: 'Client' } })
+    await waitFor(() => expect(screen.getAllByDisplayValue('Client')).toHaveLength(2))
+    expect(screen.queryAllByDisplayValue('Customer')).toHaveLength(0)
+    // Nothing is left aimed at a name that no longer exists.
+    expect(screen.queryByText(/unknown entity/i)).toBeNull()
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(screen.getAllByDisplayValue('Customer')).toHaveLength(2))
+    expect(screen.queryAllByDisplayValue('Client')).toHaveLength(0)
+  })
+
+  it('a name cleared and retyped still carries its relations along', async () => {
+    storeDraft([
+      { name: 'Customer', fields: [pk, { name: 'name', type: 'STRING' }] },
+      { name: 'Order', fields: [pk], relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer' }] },
+    ])
+    render(<FullstackView />)
+    const name = screen.getAllByLabelText('Entity name')[0]
+
+    fireEvent.change(name, { target: { value: '' } })
+    fireEvent.change(name, { target: { value: 'Client' } })
+
+    await waitFor(() => expect(screen.getAllByDisplayValue('Client')).toHaveLength(2))
   })
 
   it('undo keeps the other cards collapsed', () => {

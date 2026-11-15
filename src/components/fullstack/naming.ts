@@ -29,6 +29,12 @@ export function columnOf(field: { name: string; column?: string }): string {
   return field.column?.trim() || toSnakeCase(field.name.trim())
 }
 
+/** What the editor calls a relation: its label, else its field name in words. (The generated
+ *  app falls back to the PascalCase field name — `EntityScaffoldContext.labelOf`.) */
+export function relationLabel(rel: { fieldName: string; label?: string }): string {
+  return rel.label?.trim() || humanize(rel.fieldName)
+}
+
 /** The foreign-key column of a relation — mirrors `EntityScaffoldContext.joinColumnOf`. */
 export function joinColumnOf(rel: { fieldName: string; joinColumn?: string }): string {
   return rel.joinColumn?.trim() || `${toSnakeCase(rel.fieldName.trim())}_id`
@@ -101,4 +107,19 @@ export function pluralize(s: string): string {
   }
   if (/(s|x|z|ch|sh)$/.test(lower)) return s + 'es'
   return s + 's'
+}
+
+/**
+ * The collection a relation gives its target under the `inverseCollections` option — mirrors
+ * `EntityScaffoldContext.inverseCollectionName`: the owner's plural (`orderLines`), or, when the
+ * owner links to that target more than once, one name per link (`transfersBySource`).
+ */
+export function inverseCollectionName(
+  owner: string, fieldName: string, targetEntity: string,
+  siblings: readonly { targetEntity: string }[],
+): string {
+  const plural = pluralize(toCamelCase(owner))
+  const target = targetEntity.trim().toLowerCase()
+  const toSameTarget = siblings.filter(r => r.targetEntity.trim().toLowerCase() === target).length
+  return toSameTarget > 1 && fieldName.trim() ? `${plural}By${toPascalCase(fieldName)}` : plural
 }

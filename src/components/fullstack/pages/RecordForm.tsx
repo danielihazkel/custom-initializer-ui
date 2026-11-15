@@ -118,6 +118,18 @@ export function RecordForm({ page, index, entities, errors, update, lossy, remov
         )}
       </div>
       <HeaderStatsFields page={page} index={index} entities={entities} errors={errors} update={update} lossy={lossy} removed={removed} />
+      <Field label="Print" control="printable" hint={page.printable ? 'A Print button; on paper the page stands alone, without the app around it or its buttons' : 'No Print button'}>
+        <label className="inline-flex items-center gap-1.5 text-xs text-on-surface">
+          <input
+            type="checkbox"
+            className="accent-primary"
+            checked={Boolean(page.printable)}
+            aria-label="Offer a Print button on this page"
+            onChange={e => update(index, { printable: e.target.checked ? true : undefined })}
+          />
+          Offer Print
+        </label>
+      </Field>
     </div>
   )
 }

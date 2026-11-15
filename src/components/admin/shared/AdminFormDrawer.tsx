@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useModal } from '../../../hooks/useModal'
 
 interface AdminFormDrawerProps {
   title: string
@@ -26,12 +27,14 @@ export function AdminFormDrawer({
   // without this guard the throw becomes a console "Uncaught (in promise)".
   const runSave = () => { onSave().catch(() => { /* surfaced inline by the form */ }) }
 
-  // Escape to close and Cmd/Ctrl + Enter to save
+  // Escape closes (not while saving), Tab stays in the drawer, the page behind does not scroll
+  // and focus returns to the opener. The first field is focused below, once the panel is in.
+  useModal(drawerRef, { active: isOpen, onClose: saving ? undefined : onClose, initialFocus: false })
+
+  // Cmd/Ctrl + Enter to save
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return
-
-      if (!saving && e.key === 'Escape') onClose()
 
       const isCmdOrCtrl = e.metaKey || e.ctrlKey
       if (!saving && isCmdOrCtrl && e.key === 'Enter') {
@@ -41,9 +44,9 @@ export function AdminFormDrawer({
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose, onSave, saving])
+  }, [isOpen, onSave, saving])
 
-  // Focus trap and auto-focus first input
+  // Auto-focus the first field
   useEffect(() => {
     if (isOpen && drawerRef.current) {
       const firstInput = drawerRef.current.querySelector('input, textarea, select') as HTMLElement
@@ -51,18 +54,6 @@ export function AdminFormDrawer({
         if (firstInput) firstInput.focus()
         else drawerRef.current?.focus()
       }, 50)
-    }
-  }, [isOpen])
-
-  // Lock background page scrolling
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
-    return () => {
-      document.body.style.overflow = ''
     }
   }, [isOpen])
 

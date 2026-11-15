@@ -533,7 +533,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
         className="fixed inset-0 flex flex-col bg-background text-on-surface outline-none"
         data-layout-designer
       >
-        <header className="flex flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container-lowest px-4 py-2">
+        <header className="flex flex-wrap items-center gap-2 surface-toolbar px-4 py-2">
           <button type="button" onClick={onClose} className={ICON_BUTTON} aria-label="Close the layout designer" title="Close (Esc)">
             <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>close</span>
           </button>

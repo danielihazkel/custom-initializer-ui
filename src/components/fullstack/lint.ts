@@ -1,8 +1,9 @@
 import type { FullstackEntityDef } from '../../types'
 import { entityOptApplicability, summarizeEntity } from './summary'
-import { toCamelCase } from './naming'
+import { joinColumnOf, pluralize, toCamelCase, toSnakeCase, uniqueName } from './naming'
 import { newUid } from './uid'
 import { ambiguousMoves, stateLabel, unreachableStates } from './workflow'
+import { isTextualType } from './fieldTypes'
 
 /**
  * Model lint: things that are *valid* (the server would accept them) but will produce a
@@ -42,6 +43,27 @@ function labelField(entity: FullstackEntityDef) {
   return entity.fields.find(f => !f.primaryKey && f.type === 'STRING')
 }
 
+/**
+ * `entity` as the join entity of a many-to-many: a generated key and nothing else of its own, two
+ * required links to two different single-key tables, and nothing pointing at it. The first link
+ * names the owner.
+ */
+function joinEntityShape(entity: FullstackEntityDef, entities: FullstackEntityDef[], byName: Map<string, FullstackEntityDef>) {
+  if (entity.viewQuery != null || entity.workflow) return null
+  if (entity.fields.length !== 1 || !entity.fields[0].primaryKey || !entity.fields[0].generated) return null
+  const relations = entity.relations ?? []
+  if (relations.length !== 2 || relations.some(r => r.type !== 'MANY_TO_ONE' || !r.required || !r.fieldName.trim())) return null
+  const [ownerRel, targetRel] = relations
+  const owner = byName.get(ownerRel.targetEntity.trim().toLowerCase())
+  const target = byName.get(targetRel.targetEntity.trim().toLowerCase())
+  if (!owner || !target || owner === target || owner === entity || target === entity) return null
+  const linkable = (e: FullstackEntityDef) => e.viewQuery == null && e.fields.filter(f => f.primaryKey).length === 1
+  if (!linkable(owner) || !linkable(target)) return null
+  const self = entity.name.trim().toLowerCase()
+  if (entities.some(e => (e.relations ?? []).some(r => r.targetEntity.trim().toLowerCase() === self))) return null
+  return { owner, target, ownerRel, targetRel }
+}
+
 function replaceEntity(model: LintModel, uid: string | undefined, patch: (e: FullstackEntityDef) => FullstackEntityDef): LintModel {
   return { ...model, entities: model.entities.map(e => e.uid === uid ? patch(e) : e) }
 }
@@ -57,6 +79,8 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
 
     // Relation targets are shown by their first text field; without one the dropdown shows ids.
     for (const rel of entity.relations ?? []) {
+      // A one-to-many shows its rows' own columns, not one label per row.
+      if (rel.type === 'ONE_TO_MANY') continue
       const target = byName.get(rel.targetEntity.trim().toLowerCase())
       if (!target || labelField(target)) continue
       const targetName = target.name.trim()
@@ -78,7 +102,7 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
     }
 
     // Search box: only STRING/TEXT fields feed it, and only while at least one is opted in.
-    const textFields = entity.fields.filter(f => f.type === 'STRING' || f.type === 'TEXT')
+    const textFields = entity.fields.filter(f => isTextualType(f.type))
     if (textFields.length > 0 && textFields.every(f => f.searchable === false)) {
       issues.push({
         id: `no-search:${uid}`,
@@ -102,7 +126,7 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
       if (rendered.has(view)) continue
       const why = view === 'kanban'
         ? (isView || entity.readOnly ? 'it needs a writable entity' : 'it needs an enum or boolean field')
-        : 'it needs a date field'
+        : view === 'gallery' ? 'it needs an image field' : 'it needs a date field'
       issues.push({
         id: `view-dropped:${uid}:${view}`,
         rule: 'view-dropped',
@@ -128,6 +152,42 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
         severity: 'warn',
         entityUid: uid,
         message: `${name} has only key fields — its form and table will carry no data.`,
+      })
+    }
+
+    // Nothing but a generated key and two required links: the join entity of a many-to-many. As a
+    // relation it is a multi-pick control in the owner's form instead of a third page of id pairs.
+    const join = joinEntityShape(entity, entities, byName)
+    if (join) {
+      const { owner, target, ownerRel, targetRel } = join
+      const ownerName = owner.name.trim()
+      const targetName = target.name.trim()
+      const taken = [...owner.fields.map(f => f.name), ...(owner.relations ?? []).map(r => r.fieldName)]
+      const fieldName = uniqueName(pluralize(toCamelCase(targetName)), taken)
+      // The table and columns the model had, so a schema that already exists still fits.
+      const joinTable = entity.tableName?.trim() || toSnakeCase(name)
+      issues.push({
+        id: `join-entity-to-m2m:${uid}`,
+        rule: 'join-entity-to-m2m',
+        severity: 'info',
+        entityUid: uid,
+        message: `${name} only links ${ownerName} and ${targetName} — a many-to-many relation on ${ownerName} does the same with a multi-pick control and no page of its own.`,
+        fix: {
+          label: `Replace ${name} with ${ownerName}.${fieldName} (many-to-many)`,
+          apply: m => ({
+            ...m,
+            entities: m.entities.filter(e => e.uid !== uid).map(e => e.uid !== owner.uid ? e : {
+              ...e,
+              relations: [
+                ...(e.relations ?? []),
+                {
+                  uid: newUid(), type: 'MANY_TO_MANY' as const, fieldName, targetEntity: targetName, required: false,
+                  joinTable, joinColumn: joinColumnOf(ownerRel), inverseJoinColumn: joinColumnOf(targetRel),
+                },
+              ],
+            }),
+          }),
+        },
       })
     }
 

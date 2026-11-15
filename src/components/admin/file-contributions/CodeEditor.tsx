@@ -1,5 +1,6 @@
 import CodeMirror from '@uiw/react-codemirror'
 import { useLanguage } from '../../lang-from-path'
+import { useIsDark } from '../../../hooks/useTheme'
 
 interface Props {
   value: string
@@ -12,13 +13,14 @@ export function CodeEditor({ value, onChange, targetPath }: Props) {
   // language parser) on every keystroke re-configured the editor per character typed.
   // useLanguage hands back the same array until the language changes (or its grammar arrives).
   const extensions = useLanguage(targetPath)
+  const dark = useIsDark()
   return (
     <CodeMirror
       value={value}
       onChange={onChange}
       extensions={extensions}
       basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: true }}
-      theme="dark"
+      theme={dark ? 'dark' : 'light'}
       style={{ fontSize: '12px', borderRadius: '0.375rem', overflow: 'hidden' }}
       minHeight="14rem"
     />

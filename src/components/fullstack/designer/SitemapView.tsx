@@ -4,6 +4,8 @@ import { LayoutPreview } from '../LayoutPreview'
 import { PAGE_TYPE_META, inNav, pageLabel } from '../pageLayout'
 import { dropIndicatorClass } from '../useDragReorder'
 import { GroupChip, MoveButtons } from '../pages/fields'
+import { NavToolsFields } from '../pages/NavTools'
+import { cleanNav } from '../navTools'
 import type { PagesModel } from '../pages/usePagesModel'
 import { PageFlowMap } from './PageFlowMap'
 
@@ -133,7 +135,7 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
                     role="radio"
                     aria-checked={on}
                     aria-label={label}
-                    onClick={() => onNavChange(value === 'sidebar' ? (nav?.collapsibleGroups ? { collapsibleGroups: true } : undefined) : { ...nav, style: value })}
+                    onClick={() => onNavChange(cleanNav({ ...nav, style: value }))}
                     className={`space-y-1.5 rounded-lg border-2 p-2 text-start text-xs ${on ? 'border-primary font-semibold text-on-surface' : 'border-outline-variant text-secondary hover:border-primary/40'}`}
                   >
                     <span aria-hidden="true" className={`flex h-10 gap-1 rounded bg-surface-container p-1 ${value === 'topbar' ? 'flex-col' : ''}`}>
@@ -151,7 +153,7 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
                 className="mt-0.5 accent-primary"
                 checked={Boolean(nav?.collapsibleGroups)}
                 aria-label="Collapsible groups"
-                onChange={e => onNavChange(e.target.checked ? { ...nav, collapsibleGroups: true } : (nav?.style && nav.style !== 'sidebar' ? { style: nav.style } : undefined))}
+                onChange={e => onNavChange(cleanNav({ ...nav, collapsibleGroups: e.target.checked }))}
               />
               <span>Groups fold open and closed<span className="block text-[11px] text-secondary">Nav sections with a name</span></span>
             </label>
@@ -159,6 +161,7 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
         ) : (
           <p className="text-[11px] text-secondary">The Menora Digital set always draws its own top bar.</p>
         )}
+        {onNavChange && pages.length > 0 && <NavToolsFields nav={nav} entities={model.named} onNavChange={onNavChange} stacked />}
         {pages.length > 0 && (
           <div className="space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Preview</p>

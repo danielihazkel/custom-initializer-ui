@@ -1,24 +1,27 @@
 import type { FullstackEntityDef, FullstackFieldDef, FullstackTransition, FullstackWorkflow } from '../../types'
+import { LIMITS, NAME_RULES } from './schema'
+import { isDateType } from './fieldTypes'
 
 /** Mirrors FullstackRequestValidator (parseWorkflow). */
-export const MAX_TRANSITIONS = 20
-export const MAX_TRANSITION_LABEL = 40
+export const MAX_TRANSITIONS = LIMITS.maxTransitions
+export const MAX_TRANSITION_LABEL = LIMITS.maxTransitionLabel
 export const WORKFLOW_ROLES = ['ADMIN', 'USER'] as const
-const TRANSITION_NAME = /^[a-z][A-Za-z0-9]{0,39}$/
+const TRANSITION_NAME = NAME_RULES.transitionName
 
 const same = (a: string | undefined, b: string | undefined) => a != null && b != null && a.trim().toLowerCase() === b.trim().toLowerCase()
 const fieldOf = (entity: FullstackEntityDef, name: string | undefined) => entity.fields.find(f => same(f.name, name))
 const upper = (s: string) => s.trim().toUpperCase()
-const isDate = (f: FullstackFieldDef) => f.type === 'LOCAL_DATE' || f.type === 'LOCAL_DATE_TIME'
+const isDate = (f: FullstackFieldDef) => isDateType(f.type)
 
 /** The enum fields a workflow can move: non-key and filterable (the list, inbox and board filter by it). */
 export function statusFieldChoices(entity: FullstackEntityDef): FullstackFieldDef[] {
   return entity.fields.filter(f => f.name.trim() && !f.primaryKey && f.type === 'ENUM' && f.filterable !== false && (f.enumValues ?? []).length > 0)
 }
 
-/** The text fields that can hold who a row is assigned to. */
+/** The text fields that can hold who a row is assigned to — never a required one: a task
+ *  nobody has taken has no assignee. */
 export function assigneeFieldChoices(entity: FullstackEntityDef): FullstackFieldDef[] {
-  return entity.fields.filter(f => f.name.trim() && !f.primaryKey && !f.unique && f.type === 'STRING')
+  return entity.fields.filter(f => f.name.trim() && !f.primaryKey && !f.unique && !f.required && f.type === 'STRING')
 }
 
 /** The dates a row can be due by. */
@@ -26,11 +29,13 @@ export function dueFieldChoices(entity: FullstackEntityDef): FullstackFieldDef[]
   return entity.fields.filter(f => f.name.trim() && !f.primaryKey && isDate(f))
 }
 
-/** What a transition can ask for: fields and relations, never a key, a read-only field or the status. */
+/** What a transition can ask for: fields and relations, never a key, a read-only field, the
+ *  status or the assignee (which changes by claiming and reassigning). */
 export function requirableNames(entity: FullstackEntityDef): string[] {
   const status = entity.workflow?.statusField
+  const assignee = entity.workflow?.assigneeField
   return [
-    ...entity.fields.filter(f => f.name.trim() && !f.primaryKey && !f.readOnly && !same(f.name, status)).map(f => f.name),
+    ...entity.fields.filter(f => f.name.trim() && !f.primaryKey && !f.readOnly && !same(f.name, status) && !same(f.name, assignee)).map(f => f.name),
     ...(entity.relations ?? []).filter(r => r.type === 'MANY_TO_ONE' && r.fieldName.trim()).map(r => r.fieldName),
   ]
 }
@@ -151,6 +156,7 @@ export function workflowProblem(entity: FullstackEntityDef, context: { ldapAuth?
   if (wf.assigneeField) {
     const f = fieldOf(entity, wf.assigneeField)
     if (!f || f.primaryKey || f.unique || f.type !== 'STRING') return `The assignee “${wf.assigneeField}” must be a non-key, non-unique text field`
+    if (f.required) return `The assignee “${wf.assigneeField}” cannot be required — a task nobody has taken has none`
     if (entity.fields.some(x => same(x.name, 'inbox'))) return 'A field named “inbox” clashes with the inbox queue — rename it'
   }
   if (wf.dueField) {
@@ -199,7 +205,9 @@ export function syncWorkflow(before: FullstackEntityDef, after: FullstackEntityD
     const was = r.uid ? (before.relations ?? []).find(x => x.uid === r.uid) : undefined
     if (was && was.fieldName !== r.fieldName) renamed.set(was.fieldName, r.fieldName)
   }
-  const names = new Set([...after.fields.map(f => f.name), ...(after.relations ?? []).map(r => r.fieldName)])
+  // A step asks for fields and foreign keys; a relation turned into a many-to-many drops out.
+  const names = new Set([...after.fields.map(f => f.name),
+    ...(after.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => r.fieldName)])
   const follow = (n: string | undefined) => (n == null ? n : renamed.get(n) ?? n)
   const next: FullstackWorkflow = {
     ...wf,

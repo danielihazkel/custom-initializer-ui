@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import type {
   EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
 } from '../../types'
-import { EntitiesEditor, countEntityErrors, newEntity, type EditorDensity, type NoticeAction } from './EntitiesEditor'
+import { EntitiesEditor, countEntityErrors, newEntity, type EditorDensity, type EntityServerIssue, type NoticeAction } from './EntitiesEditor'
 import { EntityNavigator, entityMatches, useActiveEntity } from './EntityNavigator'
 import { SectionNav } from './SectionNav'
 import { focusWithoutClipping, scrollToElement } from './scroll'
@@ -13,11 +13,13 @@ import { FullstackPresets, type SaveTarget } from './FullstackPresets'
 import { ImportFromDdlDrawer, type ImportMode, type ImportVariant } from './ImportFromDdlDrawer'
 import { ViewSkeleton } from '../Skeletons'
 import { ConfirmDialog } from '../ConfirmDialog'
+import { PageHeader } from '../shared/PageHeader'
+import { useBusy } from '../../utils/busy'
 import { StatusToast } from '../admin/shared/StatusToast'
 import { newUid, reconcileUids, stripUids, withUids } from './uid'
 import { toCamelCase, uniqueName } from './naming'
 import {
-  DEFAULT_PROJECT_META, describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, snapshotChangeKey, snapshotsEqual, toExportedModel,
+  DEFAULT_PROJECT_META, describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, requestFromSnapshot, snapshotChangeKey, snapshotsEqual, toExportedModel,
   type FullstackSnapshot, type ProjectMeta,
 } from './snapshot'
 import { lintModel, type LintIssue } from './lint'
@@ -40,7 +42,13 @@ import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesSection } from './designer/PagesSection'
 import type { DesignerTarget } from './designer/LayoutDesigner'
 import type { FrontendAppearance } from './designer/FrontendSettings'
-import { pageOfServerError, renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, requestPages, seedLayout, validatePages } from './pageLayout'
+import { renameEntityInRelations } from './relationRefs'
+import { renameLinkInChildLists } from './childLists'
+import { countsOf, describeCounts, readBaseline, sideOfPath, updateRequest, writeBaseline, type UpdateBaseline } from './updateBaseline'
+import { UpdatePanel } from './UpdatePanel'
+import { describeServerTarget, locateServerIssue, type ServerIssue, type ServerTarget } from './serverIssue'
+import { readErrorBody } from '../../utils/previewErrors'
+import { renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, seedLayout, validatePages } from './pageLayout'
 import { downloadBlob } from '../../utils/projectUtils'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
@@ -210,9 +218,19 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // The generated shell's navigation for the layout (sidebar/top bar, folding sections).
   const [nav, setNav] = useState<FullstackNav | undefined>(() => shared ? shared.nav : (loadJson<FullstackNav | null>(LS.nav, null) ?? undefined))
   const [dismissedWarnings, setDismissedWarnings] = useState<string[]>(() => shared ? (shared.dismissedWarnings ?? []) : loadJson<string[]>(LS.dismissed, []))
-  // A Generate 400 that names a page: shown on that page until the layout changes.
-  const [pageServerIssue, setPageServerIssue] = useState<{ page: number; message: string } | null>(null)
-  useEffect(() => { setPageServerIssue(null) }, [pages])
+  // A Generate / Explore 400 that says where it is (or names a page): shown on that entity, field
+  // or page until the model changes.
+  const [serverIssue, setServerIssue] = useState<ServerIssue | null>(null)
+  useEffect(() => { setServerIssue(null) }, [pages, entities])
+  const serverTarget = useMemo(() => locateServerIssue(serverIssue, pages), [serverIssue, pages])
+  const pageServerIssue = useMemo(
+    () => (serverIssue && serverTarget?.kind === 'page' ? { page: serverTarget.page, message: serverIssue.message } : null),
+    [serverIssue, serverTarget])
+  const entityServerIssue = useMemo<EntityServerIssue | null>(
+    () => (serverIssue && serverTarget?.kind === 'entity'
+      ? { entity: serverTarget.entity, field: serverTarget.field, relation: serverTarget.relation, panel: serverTarget.panel, message: serverIssue.message }
+      : null),
+    [serverIssue, serverTarget])
   // Bumped to make the page editor open its first problem (the sticky bar's "jump to error").
   const [pagesReveal, setPagesReveal] = useState(0)
   // Bumped by the command palette: open the "Add page" gallery / the layout preview.
@@ -267,14 +285,18 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const [saveRequest, setSaveRequest] = useState<{ target: SaveTarget; key: number; draft?: { name: string; description: string } } | null>(null)
   const {
     preview, previousPreview, loading: previewLoading, error: previewError,
-    fetchPreview, clearPreview, clearError, cancel: cancelPreview,
+    fetchPreview, fetchComparison, clearPreview, clearError, cancel: cancelPreview,
   } = useFullstackPreview()
+  // The header's conveyor and gears run while a request is out (see utils/busy.ts).
+  useBusy(generating || previewLoading)
   // A preview (Explore) 400 that names a page is shown on that page, like a Generate one is.
   useEffect(() => {
     if (!previewError) return
-    const page = pageOfServerError(previewError.message, pages)
-    if (page != null) setPageServerIssue({ page, message: previewError.message })
-  }, [previewError, pages])
+    const issue: ServerIssue = { message: previewError.message, path: previewError.path }
+    if (locateServerIssue(issue, pages)) showServerIssue(issue)
+    // Only when the answer arrives: `pages` is read as it was sent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewError])
   const { presets, recents, persistFailed: presetsPersistFailed, savePreset, deletePreset, restorePreset, deleteRecent, restoreRecent, pushRecent } = useFullstackPresets()
   const team = useTeamModels()
   const exampleModels = useFullstackExamples()
@@ -388,8 +410,12 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     const enumsNow = new Map<string, string[]>()
     let follow: ((ps: FullstackPageDef[]) => FullstackPageDef[])[] = []
     const followPages = (fn: (ps: FullstackPageDef[]) => FullstackPageDef[]) => { follow = [...follow, fn] }
+    // Relations name their target entity, so an entity rename follows into them too.
+    let followTargets: ((es: FullstackEntityDef[]) => FullstackEntityDef[])[] = []
     for (const e of entities) {
-      if (e.uid) now.set(e.uid, e.name)
+      // A name cleared on the way to a new one keeps its last spelling here, so the references
+      // that still say it follow once the new name is typed.
+      if (e.uid) now.set(e.uid, e.name.trim() ? e.name : (before.get(e.uid) ?? e.name))
       for (const f of e.fields) {
         if (!f.uid) continue
         now.set(f.uid, `${e.name}.${f.name}`)
@@ -414,13 +440,24 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         if (was.includes('#')) {
           const [, wasRelation] = was.split('#')
           const [nowEntity, nowRelation] = name.split('#')
-          if (nowRelation?.trim()) followPages(ps => renameRelationInPages(ps, nowEntity, wasRelation, nowRelation))
+          if (nowRelation?.trim()) {
+            followPages(ps => renameRelationInPages(ps, nowEntity, wasRelation, nowRelation))
+            // The one-to-manys that read this link by name.
+            followTargets = [...followTargets, es => renameLinkInChildLists(es, nowEntity, wasRelation, nowRelation)]
+          }
           continue
         }
         const [wasEntity, wasField] = was.split('.')
         const [nowEntity, nowField] = name.split('.')
-        if (wasField == null && nowEntity.trim()) followPages(ps => renameEntityInPages(ps, wasEntity, nowEntity))
-        else if (wasField != null && nowField?.trim() && wasField !== nowField) {
+        if (wasField == null && nowEntity.trim()) {
+          followPages(ps => renameEntityInPages(ps, wasEntity, nowEntity))
+          // Only while the old name meant one entity: with two entities of that name there is
+          // no telling whose relations these are.
+          const sharedName = [...before].filter(([otherUid, other]) => otherUid !== uid
+            && !other.includes('.') && !other.includes('#')
+            && other.trim().toLowerCase() === wasEntity.trim().toLowerCase()).length > 0
+          if (!sharedName) followTargets = [...followTargets, es => renameEntityInRelations(es, wasEntity, nowEntity)]
+        } else if (wasField != null && nowField?.trim() && wasField !== nowField) {
           followPages(ps => renameFieldInPages(ps, nowEntity, wasField, nowField))
         }
       }
@@ -431,6 +468,16 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       setPages(ps => {
         const next = follow.reduce((acc, fn) => fn(acc), ps)
         if (next !== ps) followsModelRef.current = true
+        return next
+      })
+    }
+    if (followTargets.length > 0) {
+      // Same undo step as the rename, like the layout. The flag is raised inside the updater —
+      // that runs with the next render, after this commit's recording effect has filed the
+      // rename itself.
+      setEntities(es => {
+        const next = followTargets.reduce((acc, fn) => fn(acc), es)
+        if (next !== es) followsModelRef.current = true
         return next
       })
     }
@@ -791,6 +838,11 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         setToast({ message: `Couldn't import ${file.name}: ${result.error}`, type: 'error' })
         return
       }
+      // A generated project's own model file: what its code was made from, so later changes to
+      // the model can be offered as an update to that code.
+      if (result.fromProject) {
+        setBaseline({ snapshot: result.snapshot, templatesHash: result.templatesHash, source: 'imported', at: Date.now() })
+      }
       // With a model already in the editor, offer Append (its entities join yours) as well as
       // the whole-model Replace — the same choice the DDL import gives.
       if (entities.length > 0 && result.snapshot.entities.length > 0) setPendingJsonImport(result.snapshot)
@@ -899,17 +951,65 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const frontendSets = availableSets.filter(s => s.kind === 'FRONTEND_REACT')
 
   function buildBody(): FullstackStarterRequest {
-    return {
-      ...meta,
-      department: meta.department || undefined,
-      backendTemplateSet: backendSet,
-      frontendTemplateSet: frontendSet,
-      dependencies: selectedDeps,
-      opts: scaffoldOpts.length ? { scaffold: scaffoldOpts } : undefined,
-      colorPalette: colorPalette || undefined,
-      entities: stripUids(entities),
-      pages: pages.length ? requestPages(pages) : undefined,
-      nav: pages.length && nav && (nav.style || nav.collapsibleGroups) ? nav : undefined,
+    return requestFromSnapshot(currentSnapshot)
+  }
+
+  // ── Updating a project that already exists ─────────────────────────────────
+  // The model the project in hand was generated from (see updateBaseline.ts). While the editor's
+  // model differs from it, UpdatePanel offers the difference as a patch instead of a fresh zip.
+  const [baseline, setBaselineState] = useState<UpdateBaseline | null>(() => readBaseline())
+  const [updating, setUpdating] = useState(false)
+  // What the open preview's Download does: a fresh project, or the update it is showing.
+  const [previewIsUpdate, setPreviewIsUpdate] = useState(false)
+  function setBaseline(next: UpdateBaseline | null) {
+    setBaselineState(next)
+    writeBaseline(next)
+  }
+
+  function previewUpdate() {
+    if (!baseline || !validateBeforeSubmit()) return
+    previewSnapshotRef.current = currentSnapshot
+    setPreviewIsUpdate(true)
+    void fetchComparison(requestFromSnapshot(baseline.snapshot), buildBody())
+  }
+
+  /** Returns true when the update zip downloaded. */
+  async function downloadUpdate(): Promise<boolean> {
+    if (!baseline || !validateBeforeSubmit()) return false
+    setUpdating(true)
+    try {
+      const res = await fetch('/starter-fullstack.patch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateRequest(baseline, snapshotRef.current)),
+      })
+      if (!res.ok) {
+        const failure = await readErrorBody(res)
+        const where = sideOfPath(failure.path)
+        if (where.side === 'base') {
+          // Nothing in the editor to point at: it is the stored model that no longer generates.
+          setToast({ message: `The model the project was generated from is no longer accepted: ${failure.message}`, type: 'error' })
+          return false
+        }
+        const issue: ServerIssue = { message: failure.message, path: where.path }
+        const target = showServerIssue(issue)
+        setToast({
+          message: target && target.kind !== 'setting'
+            ? `Update failed — the server rejected ${describeServerTarget(target)}`
+            : `Update failed: ${issue.message}`,
+          type: 'error',
+        })
+        return false
+      }
+      const counts = countsOf(res.headers)
+      downloadBlob(await res.blob(), `${meta.artifactId || 'project'}-update.zip`)
+      setToast({ message: `Update downloaded (${describeCounts(counts)}) — UPDATE.md inside says how to apply it`, type: 'success' })
+      return true
+    } catch (err) {
+      setToast({ message: `Update failed: ${err instanceof Error ? err.message : String(err)}`, type: 'error' })
+      return false
+    } finally {
+      setUpdating(false)
     }
   }
 
@@ -966,6 +1066,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     // Stamp the model the preview is being built from, so each card's Code panel can tell
     // whether the files it shows still match what the card describes.
     previewSnapshotRef.current = currentSnapshot
+    setPreviewIsUpdate(false)
     fetchPreview(buildBody())
   }
 
@@ -995,8 +1096,10 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         signal: controller.signal,
       })
       if (!res.ok) {
-        const err = await res.json().catch(() => null) as { detail?: string; error?: string } | null
-        throw new Error(err?.detail || err?.error || `HTTP ${res.status}`)
+        // The same reader Explore uses: detail, else the joined messages, else the error — and
+        // where in the request the problem is.
+        const failure = await readErrorBody(res)
+        throw Object.assign(new Error(failure.message), { path: failure.path })
       }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
@@ -1008,6 +1111,11 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       pushRecent(currentSnapshot)
+      // The project now in the user's hands was made from this model.
+      setBaseline({
+        snapshot: currentSnapshot, templatesHash: res.headers.get('X-Templates-Hash') ?? undefined,
+        source: 'generated', at: Date.now(),
+      })
       setToast({ message: 'Fullstack project downloaded', type: 'success' })
       setLastGenerated({
         at: Date.now(),
@@ -1023,13 +1131,12 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         setToast({ message: 'Generation cancelled', type: 'success' })
         return false
       }
-      const message = (err as Error).message
-      const page = pageOfServerError(message, pages)
-      if (page != null) {
-        setPageServerIssue({ page, message })
-        setToast({ message: 'Generation failed — the server rejected a page; it is highlighted in the page layout', type: 'error' })
+      const issue: ServerIssue = { message: (err as Error).message, path: (err as { path?: string }).path }
+      const target = showServerIssue(issue)
+      if (target && target.kind !== 'setting') {
+        setToast({ message: `Generation failed — the server rejected ${describeServerTarget(target)}`, type: 'error' })
       } else {
-        setToast({ message: `Generation failed: ${message}`, type: 'error' })
+        setToast({ message: `Generation failed: ${issue.message}`, type: 'error' })
       }
       return false
     } finally {
@@ -1084,6 +1191,22 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
    *  collapsed card (expanded) — then focuses its name, or the first control matching
    *  `opts.focus` (jump-to-error). Used by the diagram, the suggestions panel, the coverage chips,
    *  the issue counter, and every add/duplicate/restore so a new row is never created off screen. */
+  /**
+   * Puts a server-side problem where it belongs — on the entity card (revealed and focused), or
+   * on the page — and answers what it was about; null when it names nothing the editor can show
+   * it on, which the caller reports as a plain message.
+   */
+  function showServerIssue(issue: ServerIssue): ServerTarget | null {
+    const target = locateServerIssue(issue, pages)
+    if (!target || target.kind === 'setting') return target
+    setServerIssue(issue)
+    if (target.kind === 'entity') {
+      const uid = entities[target.entity]?.uid
+      if (uid) revealRow(uid, { focus: '[data-server-issue]' })
+    }
+    return target
+  }
+
   function revealRow(uid: string, opts?: { focus?: string }) {
     if (visibleUids && !visibleUids.has(uid)) setEntityFilter('')
     setCollapsed(prev => { if (!prev.has(uid)) return prev; const next = new Set(prev); next.delete(uid); return next })
@@ -1348,14 +1471,10 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
   return (
     <div className="max-w-7xl mx-auto px-8 space-y-8">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-bold text-on-surface tracking-tight">Fullstack CRUD Generator</h1>
-        <p className="text-sm text-secondary max-w-2xl">
-          Define a set of entities with their fields. Get a single ZIP containing a Spring Boot backend
-          (JPA + REST controllers per entity) and a React frontend (Vite + Tailwind, with a table-driven
-          CRUD page per entity), already wired together end-to-end.
-        </p>
-      </header>
+      <PageHeader icon="stacks" title="Fullstack CRUD Generator">
+        Define entities and their fields, and get one ZIP with a Spring Boot backend (JPA and REST per
+        entity) and a React frontend (Vite + Tailwind, a CRUD page per entity), already wired together.
+      </PageHeader>
 
       <ModelNotices
         previewError={previewError}
@@ -1522,6 +1641,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
               entities={entities}
               onChange={setEntities}
               errors={entityErrors.entities}
+              serverIssue={entityServerIssue}
               noEntities={entityErrors.noEntities}
               collapsed={collapsed}
               onToggleCollapsed={editorCallbacks.toggleCollapsed}
@@ -1578,6 +1698,22 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
           onJump: jumpHistory,
         }}
       />
+
+      {/* A project is followed by its artifact id: another model loaded into the editor is not a
+          change to the project in hand. */}
+      {baseline && baseline.snapshot.meta.artifactId === meta.artifactId && !snapshotsEqual(baseline.snapshot, currentSnapshot) && (
+        <UpdatePanel
+          baseline={baseline}
+          busy={updating || previewLoading}
+          onPreview={previewUpdate}
+          onDownload={() => { void downloadUpdate() }}
+          onMarkApplied={() => {
+            setBaseline({ ...baseline, snapshot: currentSnapshot, at: Date.now() })
+            setToast({ message: 'Later updates will start from this model', type: 'success' })
+          }}
+          onForget={() => setBaseline(null)}
+        />
+      )}
 
       {lastGenerated && (
         <NextStepsPanel
@@ -1697,7 +1833,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
             previousPreview={previousPreview}
             artifactId={meta.artifactId || 'demo'}
             onClose={clearPreview}
-            onDownload={async () => { if (await generate()) clearPreview() }}
+            onDownload={async () => { if (await (previewIsUpdate ? downloadUpdate() : generate())) clearPreview() }}
           />
         </Suspense>,
         document.body,

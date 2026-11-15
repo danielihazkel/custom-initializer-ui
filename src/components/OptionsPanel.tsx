@@ -73,7 +73,7 @@ export function OptionsPanel({ metadata, values, onChange, section }: OptionsPan
                   />
                   <div className={`p-4 rounded-xl border transition-all duration-300 flex items-center gap-4
                     ${values.type === t.id
-                      ? 'bg-primary/10 border-primary ring-1 ring-primary/30 shadow-[0_0_15px_rgba(139,92,246,0.1)]'
+                      ? 'bg-primary/10 border-primary ring-1 ring-primary/30 glow-primary-soft'
                       : 'bg-surface-container-high border-outline-variant hover:bg-surface-container-highest hover:border-outline'}`}
                   >
                     <div className={`p-2 rounded-lg flex items-center justify-center transition-colors ${values.type === t.id ? 'bg-primary text-on-primary' : 'bg-surface text-secondary group-hover:text-on-surface'}`}>

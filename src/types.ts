@@ -51,6 +51,14 @@ export interface UseMetadataResult {
   metadata: InitializrMetadata | null
   loading:  boolean
   error:    string | null
+  /** The failed load was the backend's access gate refusing this browser (no sign-in header), not
+   *  a backend that is down: the "No access" screen is shown instead of "cannot reach backend". */
+  blocked:  boolean
+  /** True while a {@link reload} is in flight. The last error stays set meanwhile, so the
+   *  "cannot reach backend" screen does not flicker to a skeleton and back on every attempt. */
+  retrying: boolean
+  /** Asks for the catalog again after a failed load. */
+  reload:   () => void
 }
 
 export interface UseExtensionsResult {
@@ -88,7 +96,12 @@ export interface DependencySelectorProps {
   soapCapableDeps:     string[]
   soapByDep:           SoapByDep
   onSoapByDepChange:   (depId: string, entry: SoapWizardEntry | null) => void
+  eventsCapableDeps?:  string[]
+  eventsByDep?:        EventsByDep
+  onEventsByDepChange?: (depId: string, entry: EventsWizardEntry | null) => void
   sqlParseError?:      PreviewError | null
+  /** Dependencies of the projects generated or explored lately, newest first — for Quick picks. */
+  recentDepIds?:       string[]
 }
 
 // ── SQL Entity Wizard ─────────────────────────────────────────────────────────
@@ -107,12 +120,19 @@ export interface SqlWizardEntry {
   subPackage: string
   tables: SqlTableConfig[]
   apiMode?: SqlApiMode  // defaults to 'NONE' (entities only) when absent
+  /** With the Flyway dependency: write the script as the first migration. Absent = yes. */
+  flywayBaseline?: boolean
+  /** A controller slice test per generated REST controller. Absent = no. */
+  generateTests?: boolean
 }
 
 export type SqlByDep = Record<string, SqlWizardEntry>
 
 // ── OpenAPI Wizard ────────────────────────────────────────────────────────────
 export type OpenApiMode = 'CONTROLLERS' | 'CLIENT' | 'BOTH'
+
+// What a generated client calls through. Absent = RestTemplate, as before.
+export type OpenApiClientKind = 'restTemplate' | 'restClient'
 
 export interface OpenApiWizardEntry {
   spec: string
@@ -121,6 +141,9 @@ export interface OpenApiWizardEntry {
   clientSubPackage: string
   mode: OpenApiMode
   baseUrlProperty: string
+  clientKind?: OpenApiClientKind
+  /** Keep the document in the project (src/main/resources/openapi/). Absent = no. */
+  copySpec?: boolean
 }
 
 export type OpenApiByDep = Record<string, OpenApiWizardEntry>
@@ -140,6 +163,28 @@ export interface SoapWizardEntry {
 
 export type SoapByDep = Record<string, SoapWizardEntry>
 
+// ── Events Wizard (AsyncAPI → Kafka) ──────────────────────────────────────────
+export interface EventsChannelChoice {
+  /** The channel's name in the document. */
+  name: string
+  /** Write a producer / a listener for it. */
+  produce: boolean
+  consume: boolean
+}
+
+export interface EventsWizardEntry {
+  spec: string
+  subPackage: string
+  payloadSubPackage: string
+  /** The listeners' consumer group; blank = the application's own. */
+  groupId: string
+  /** Empty = every channel, as the application the document describes. */
+  channels: EventsChannelChoice[]
+  generateTests: boolean
+}
+
+export type EventsByDep = Record<string, EventsWizardEntry>
+
 export interface GenerateButtonProps {
   form:     ProjectFormValues
   selected: string[]
@@ -153,6 +198,8 @@ export interface ProjectSnapshot {
   sqlByDep: SqlByDep
   openApiByDep: OpenApiByDep
   soapByDep: SoapByDep
+  /** Absent in snapshots saved before the events wizard. */
+  eventsByDep?: EventsByDep
   multiModuleEnabled: boolean
   selectedModules: string[]
 }
@@ -233,6 +280,8 @@ export interface AdminBuildCustomization {
   snapshotsEnabled: boolean
   scope?: string
   subOptionId?: string
+  /** Spring Boot version range the row applies to (`[3.4.0,3.5.0)`); blank = every version. Backend rows. */
+  compatibilityRange?: string | null
   sortOrder: number
   projectKind?: ProjectKind
 }
@@ -323,6 +372,10 @@ export interface AdminEntityTemplateFile {
 export type FullstackFieldType =
   | 'STRING' | 'TEXT' | 'LONG' | 'INTEGER' | 'BOOLEAN'
   | 'LOCAL_DATE' | 'LOCAL_DATE_TIME' | 'BIG_DECIMAL' | 'UUID' | 'ENUM'
+  // Round 9: a time of day, a UTC instant, an amount with a currency, Markdown long text.
+  | 'LOCAL_TIME' | 'INSTANT' | 'MONEY' | 'MARKDOWN'
+  // An uploaded file, and one that must be a picture: the field holds the attachment's id.
+  | 'FILE' | 'IMAGE'
 
 export interface FullstackFieldDef {
   /** Client-only editor row identity (React key); stripped before the request is sent. */
@@ -338,6 +391,8 @@ export interface FullstackFieldDef {
   max?: number
   pattern?: string
   email?: boolean
+  /** A MONEY field's ISO 4217 currency (`USD`); omitted = ILS. MONEY only. */
+  currency?: string
   enumValues?: string[]
   /** Display labels per enum constant (`{ IN_PROGRESS: 'In progress' }` / Hebrew), shown by the
    *  generated dropdowns, filter chips, kanban lanes, table cells and detail rows. A constant
@@ -367,16 +422,20 @@ export interface FullstackFieldDef {
 
 /** Per-entity override of a project-wide scaffold opt (true = force on, false = force off;
  *  absent = inherit). Keys: audit, softDelete, csvExport, bulkDelete, bulkUpdate, tests, csvImport,
- *  optimisticLocking, inlineEdit. */
+ *  optimisticLocking, inlineEdit, xlsxExport, savedViews. */
 export type FullstackEntityOpts = Partial<Record<FullstackEntityOptKey, boolean>>
 export type FullstackEntityOptKey = 'audit' | 'softDelete' | 'csvExport' | 'bulkDelete' | 'bulkUpdate' | 'tests' | 'csvImport'
-  | 'optimisticLocking' | 'inlineEdit'
+  | 'optimisticLocking' | 'inlineEdit' | 'xlsxExport' | 'savedViews'
 export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests', 'csvImport',
-  'optimisticLocking', 'inlineEdit']
+  'optimisticLocking', 'inlineEdit', 'xlsxExport', 'savedViews']
 
 // v1 supports the FK-owning side only (MANY_TO_ONE); the inverse @OneToMany is auto-derived
 // server-side via the inverseCollections opt.
-export type FullstackRelationType = 'MANY_TO_ONE'
+// MANY_TO_MANY is the owning side of a link through a join table: the entity holds a set of the
+// target's rows (the generated DTO carries `<field>Ids` and `<field>Labels`).
+// ONE_TO_MANY is the read side of a MANY_TO_ONE its target declares: the list of the rows that
+// point at this entity (`<field>Count` on the DTO, a table of them in the details).
+export type FullstackRelationType = 'MANY_TO_ONE' | 'MANY_TO_MANY' | 'ONE_TO_MANY'
 
 export interface FullstackRelationDef {
   /** Client-only editor row identity (React key); stripped before the request is sent. */
@@ -386,8 +445,21 @@ export interface FullstackRelationDef {
   targetEntity: string
   required?: boolean
   /** Foreign-key column as the schema spells it (set by the DDL import). Omitted =
-   *  `<snake fieldName>_id`. */
+   *  `<snake fieldName>_id`. On a MANY_TO_MANY: this entity's column in the join table. */
   joinColumn?: string
+  /** MANY_TO_MANY only: the join table. Omitted = `<snake entity>_<snake fieldName>`. */
+  joinTable?: string
+  /** MANY_TO_MANY only: the target's column in the join table. Omitted = `<snake target>_id`. */
+  inverseJoinColumn?: string
+  /** ONE_TO_MANY only: the target's MANY_TO_ONE this list reads. Omitted = the only one it has
+   *  to this entity. */
+  mappedBy?: string
+  /** ONE_TO_MANY only: the rows are part of this entity — edited in its form and saved, and
+   *  removed, with it. */
+  composition?: boolean
+  /** What the generated UI calls the relation (column heading, form label, filter). Omitted =
+   *  the field name. */
+  label?: string
 }
 
 export interface FullstackEntityDef {
@@ -444,6 +516,9 @@ export interface FullstackWorkflow {
   initial?: string
   assigneeField?: string
   dueField?: string
+  /** Keep a log of every move — who, when, how long in the state left: the record page's
+   *  history and the time-in-state widget read it. Absent: no log. */
+  trackMoves?: boolean
   transitions: FullstackTransition[]
 }
 
@@ -566,7 +641,7 @@ export interface ExampleModel {
 
 /** The page types a fullstack frontend layout is built from (FullstackPageValidator). */
 export type FullstackPageType = 'entity-list' | 'dashboard' | 'tabs' | 'master-detail' | 'record' | 'report' | 'wizard'
-  | 'form' | 'calendar' | 'board' | 'content' | 'import' | 'search' | 'inbox'
+  | 'form' | 'calendar' | 'board' | 'content' | 'import' | 'search' | 'inbox' | 'tree'
 
 /** An inbox page's queues: the user's own open rows, nobody's, or every open one. */
 export type FullstackInboxQueue = 'mine' | 'unassigned' | 'open'
@@ -590,7 +665,7 @@ export type FullstackBucket = 'day' | 'month' | 'year'
 export type FullstackDateRange = 'all' | '7d' | '30d' | '90d' | 'ytd' | '12m'
 
 /** The list views a generated entity page can offer (see {@link FullstackEntityDef.listViews}). */
-export type FullstackListView = 'table' | 'cards' | 'kanban' | 'calendar'
+export type FullstackListView = 'table' | 'cards' | 'kanban' | 'calendar' | 'gallery'
 
 /** How an entity-list page opens sorted: a sortable column, ascending unless `dir` is `desc`. */
 export interface FullstackListSort {
@@ -602,6 +677,7 @@ export interface FullstackListSort {
  *  date field, the latest rows, the largest groups ranked, or one number against a target. */
 export interface FullstackWidgetDef {
   kind: 'kpi' | 'bar' | 'donut' | 'stacked' | 'pivot' | 'line' | 'recent' | 'top' | 'progress' | 'activity' | 'text' | 'links' | 'list'
+    | 'funnel' | 'gauge' | 'timeInState'
   /** The entity the widget reads — empty for a text, links or activity widget. */
   entity: string
   title?: string
@@ -760,6 +836,8 @@ export interface FullstackPageDef {
   /** record: number tiles over its related lists (default: one row count per related tab;
    *  an empty array: none). */
   headerStats?: { child: string; agg?: FullstackAgg; field?: string; title?: string; via?: string }[]
+  /** record: a Print button, and the page laid out for paper. Absent: no button. */
+  printable?: boolean
   /** calendar: the date field rows are placed by (default: the entity's first filterable date). */
   dateField?: string
   /** calendar: the date a row ends on (needed by the timeline); absent: rows are one day long. */
@@ -801,10 +879,17 @@ export interface ExampleSettings {
 }
 
 /** The generated shell's navigation, for a page layout: a sidebar (default) or a top bar, and
- *  whether nav sections fold. The Menora set is a top bar already and ignores it. */
+ *  whether nav sections fold — the Menora set is a top bar already and ignores those two — and the
+ *  header's tools, which both sets take. */
 export interface FullstackNav {
   style?: 'sidebar' | 'topbar'
   collapsibleGroups?: boolean
+  /** Who is signed in, their roles and the keyboard shortcuts. */
+  userMenu?: boolean
+  /** A bell over the workflows' queues; needs an entity whose workflow has an assignee. */
+  notifications?: boolean
+  /** The Ctrl+K palette: pages by name, records by theirs. */
+  commandPalette?: boolean
 }
 
 export interface AdminColorPalette {
@@ -930,6 +1015,8 @@ export interface PreviewResponse {
 
 export interface PreviewError {
   message: string
+  /** Where in the request the problem is (`entities[1].fields[3]`, `pages[2]`), when the server says. */
+  path?: string
   kind?: string       // e.g. "Invalid SQL", "Invalid OpenAPI spec", "Invalid WSDL"
   dep?: string        // dependency id whose script failed (when applicable)
   snippet?: string    // offending statement excerpt (SQL wizard only)

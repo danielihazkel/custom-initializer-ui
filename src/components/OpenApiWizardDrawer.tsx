@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AdminFormDrawer } from './admin/shared/AdminFormDrawer'
 import { CodeEditor } from './admin/file-contributions/CodeEditor'
-import type { OpenApiMode, OpenApiWizardEntry } from '../types'
+import type { OpenApiClientKind, OpenApiMode, OpenApiWizardEntry } from '../types'
 
 interface Props {
   isOpen: boolean
@@ -14,8 +14,13 @@ interface Props {
 
 const MODES: { id: OpenApiMode; label: string; hint: string }[] = [
   { id: 'CONTROLLERS', label: 'Controllers', hint: 'Server — @RestController classes' },
-  { id: 'CLIENT', label: 'Client', hint: 'Consumer — RestTemplate client' },
+  { id: 'CLIENT', label: 'Client', hint: 'Consumer — a client per tag' },
   { id: 'BOTH', label: 'Both', hint: 'Controllers + client, shared DTOs' },
+]
+
+const CLIENT_KINDS: { id: OpenApiClientKind; label: string; hint: string }[] = [
+  { id: 'restTemplate', label: 'RestTemplate', hint: 'The classic template, one exchange() per operation' },
+  { id: 'restClient', label: 'RestClient', hint: 'The fluent client of Spring 6.1 / Boot 3.2' },
 ]
 
 export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, onSave }: Props) {
@@ -25,6 +30,8 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
   const [clientSubPackage, setClientSubPackage] = useState<string>(initial?.clientSubPackage ?? 'client')
   const [mode, setMode] = useState<OpenApiMode>(initial?.mode ?? 'CONTROLLERS')
   const [baseUrlProperty, setBaseUrlProperty] = useState<string>(initial?.baseUrlProperty ?? 'openapi.client.base-url')
+  const [clientKind, setClientKind] = useState<OpenApiClientKind>(initial?.clientKind ?? 'restTemplate')
+  const [copySpec, setCopySpec] = useState<boolean>(initial?.copySpec ?? false)
   const [paths, setPaths] = useState<string[]>([])
   const [parseError, setParseError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -38,6 +45,8 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
       setClientSubPackage(initial?.clientSubPackage ?? 'client')
       setMode(initial?.mode ?? 'CONTROLLERS')
       setBaseUrlProperty(initial?.baseUrlProperty ?? 'openapi.client.base-url')
+      setClientKind(initial?.clientKind ?? 'restTemplate')
+      setCopySpec(initial?.copySpec ?? false)
       setPaths([])
       setParseError(null)
     }
@@ -99,6 +108,9 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
         clientSubPackage: clientSubPackage.trim() || 'client',
         mode,
         baseUrlProperty: baseUrlProperty.trim() || 'openapi.client.base-url',
+        // Kept only when they differ from the defaults, so an untouched entry stays as it was.
+        ...(clientKind === 'restClient' && mode !== 'CONTROLLERS' ? { clientKind } : {}),
+        ...(copySpec ? { copySpec: true } : {}),
       })
     }
     onClose()
@@ -220,9 +232,53 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
                   className="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all"
                 />
               </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
+                  Client calls through
+                </label>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Client calls through">
+                  {CLIENT_KINDS.map(k => {
+                    const active = clientKind === k.id
+                    return (
+                      <button
+                        key={k.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => setClientKind(k.id)}
+                        className={
+                          'rounded-lg border px-3 py-2 text-left transition-all ' +
+                          (active
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-outline-variant bg-surface-container-highest text-on-surface hover:border-primary/60')
+                        }
+                      >
+                        <div className="text-xs font-bold">{k.label}</div>
+                        <div className="text-[10px] text-on-surface-variant mt-0.5 leading-tight">{k.hint}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </>
           )}
         </div>
+
+        <label className="flex items-start gap-2 text-xs cursor-pointer">
+          <input
+            type="checkbox"
+            checked={copySpec}
+            onChange={e => setCopySpec(e.target.checked)}
+            className="mt-0.5 accent-primary"
+          />
+          <span>
+            <span className="font-semibold text-on-surface">Keep the spec in the project</span>
+            <span className="block text-[10px] text-on-surface-variant leading-relaxed">
+              Written to <code className="text-primary">src/main/resources/openapi/{depId}.yaml</code> (
+              <code className="text-primary">.json</code> for a JSON document), beside the code generated from it.
+            </span>
+          </span>
+        </label>
 
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -267,13 +323,14 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
             {emitClient && (
               <>Client goes to <code className="text-primary">{clientSubPackage || 'client'}</code> with base URL at <code className="text-primary">{baseUrlProperty || 'openapi.client.base-url'}</code>. </>
             )}
-            Records to <code className="text-primary">{dtoSubPackage || 'dto'}</code>.
+            Records, enums and <code className="text-primary">oneOf</code> interfaces to <code className="text-primary">{dtoSubPackage || 'dto'}</code>.
+            {emitControllers && <> <code className="text-primary">openapi</code> (Swagger UI) is added beside <code className="text-primary">web</code>.</>}
             {emitControllers && ' Controller methods throw UnsupportedOperationException until implemented.'}
           </p>
         </div>
 
         {parseError && (
-          <div className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 leading-relaxed">
+          <div className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg p-3 leading-relaxed">
             {parseError}
           </div>
         )}

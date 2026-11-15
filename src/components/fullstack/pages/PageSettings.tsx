@@ -20,6 +20,7 @@ import { FormPageForm } from './FormPageForm'
 import { InboxForm } from './InboxForm'
 import { ImportForm } from './ImportForm'
 import { SearchForm } from './SearchForm'
+import { TreeForm } from './TreeForm'
 
 /**
  * Every page's own settings: its type, title, route, description and (in the navigation) group
@@ -191,6 +192,8 @@ export function PageTypeForm({ page, index, pages, named, errors, update, lossy,
       return <ImportForm page={page} index={index} entities={named} errors={errors} update={update} />
     case 'search':
       return <SearchForm page={page} index={index} entities={named} errors={errors} update={update} />
+    case 'tree':
+      return <TreeForm page={page} index={index} entities={named} errors={errors} update={update} />
     default:
       return null
   }

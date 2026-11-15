@@ -36,7 +36,7 @@ const pages: FullstackPageDef[] = [
 const ctx = { locale: 'en' as const, projectOpts: ['csvExport'] }
 
 describe('buildLayoutPreview', () => {
-  it('fills lists with realistic rows: raw values in the table, formatted ones in the side pane', () => {
+  it('fills lists with realistic rows, formatted in the table as in the side pane', () => {
     const today = new Date(2026, 9, 27)
     const withFlag: FullstackEntityDef[] = [entities[0], { ...entities[1], fields: [...entities[1].fields, { name: 'paid', type: 'BOOLEAN' }] }]
     const list: FullstackPageDef[] = [
@@ -48,15 +48,16 @@ describe('buildLayoutPreview', () => {
     if (screen.type !== 'entity-list') throw new Error(screen.type)
     expect(screen.table.columns).toEqual(['Placed on', 'Paid', 'Customer', 'נוצר'])
     const [placedOn, paid, customer] = screen.table.rows[0]
-    // As the generated table prints them: an ISO date and a raw boolean.
-    expect(placedOn).toMatch(/^2026-10-2\d$/)
-    expect(paid).toBe('true')
+    // As the generated table prints them — like the details: the date in the app's locale, the
+    // boolean worded (the generator writes both with one function).
+    expect(placedOn).not.toMatch(/^2026-/)
+    expect(paid).toBe('כן')
     // A customer is a person — in Hebrew, under the Hebrew locale.
     expect(customer).toMatch(/^[\u0590-\u05FF]+ [\u0590-\u05FF]+$/)
     // The side pane is the details: the boolean worded, the date in the app's locale.
     const pane = Object.fromEntries((screen.table.sidePane ?? []).map(r => [r.label, r.value]))
-    expect(pane['Paid']).toBe('כן')
-    expect(pane['Placed on']).not.toMatch(/^2026-/)
+    expect(pane['Paid']).toBe(paid)
+    expect(pane['Placed on']).toBe(placedOn)
     // The search page looks for a word its first match holds.
     const search = preview.screens[1]
     if (search.type !== 'search') throw new Error(search.type)

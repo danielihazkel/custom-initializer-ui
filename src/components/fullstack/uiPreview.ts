@@ -1,6 +1,6 @@
 import type { FullstackEntityDef, FullstackFieldDef } from '../../types'
 import { enumLabel } from './enumLabels'
-import { humanize, pluralize, toPascalCase } from './naming'
+import { humanize, pluralize, relationLabel, toPascalCase } from './naming'
 import { entityOptApplicability, summarizeEntity } from './summary'
 
 /**
@@ -59,7 +59,7 @@ export interface UiPreviewContext {
 function columnKind(f: FullstackFieldDef): PreviewColumnKind {
   if (f.primaryKey) return 'key'
   switch (f.type) {
-    case 'LONG': case 'INTEGER': case 'BIG_DECIMAL': return 'number'
+    case 'LONG': case 'INTEGER': case 'BIG_DECIMAL': case 'MONEY': return 'number'
     case 'BOOLEAN': return 'bool'
     case 'LOCAL_DATE': case 'LOCAL_DATE_TIME': return 'date'
     case 'ENUM': return 'enum'
@@ -69,11 +69,11 @@ function columnKind(f: FullstackFieldDef): PreviewColumnKind {
 
 function controlKind(f: FullstackFieldDef): PreviewControlKind {
   switch (f.type) {
-    case 'TEXT': return 'textarea'
-    case 'LONG': case 'INTEGER': case 'BIG_DECIMAL': return 'number'
+    case 'TEXT': case 'MARKDOWN': return 'textarea'
+    case 'LONG': case 'INTEGER': case 'BIG_DECIMAL': case 'MONEY': return 'number'
     case 'BOOLEAN': return 'checkbox'
     case 'LOCAL_DATE': return 'date'
-    case 'LOCAL_DATE_TIME': return 'datetime'
+    case 'LOCAL_DATE_TIME': case 'INSTANT': return 'datetime'
     case 'ENUM': return 'select'
     case 'UUID': return 'uuid'
     default: return 'text'
@@ -109,7 +109,7 @@ export function buildUiPreview(entity: FullstackEntityDef, ctx: UiPreviewContext
   const columns: PreviewColumn[] = entity.fields.map(f => ({ label: fieldLabel(f), kind: columnKind(f) }))
   for (const r of entity.relations ?? []) {
     if (!r.fieldName.trim()) continue
-    columns.push({ label: humanize(r.fieldName), kind: 'relation' })
+    columns.push({ label: relationLabel(r), kind: 'relation' })
   }
   if (optOn('audit')) columns.push({ label: 'Created', kind: 'audit' }, { label: 'Updated', kind: 'audit' })
 
@@ -127,12 +127,13 @@ export function buildUiPreview(entity: FullstackEntityDef, ctx: UiPreviewContext
       hint: controlHint(f),
     }))
   for (const r of entity.relations ?? []) {
-    if (!r.fieldName.trim()) continue
+    // A one-to-many is read-only: a count in the list, a table in the details, nothing in the form.
+    if (!r.fieldName.trim() || r.type === 'ONE_TO_MANY') continue
     const target = byName.get(r.targetEntity.trim().toLowerCase())
     const targetTitle = target?.label?.trim() || toPascalCase(r.targetEntity.trim() || 'target')
     form.push({
       name: r.fieldName,
-      label: humanize(r.fieldName),
+      label: relationLabel(r),
       control: 'select',
       required: Boolean(r.required),
       locked: false,
@@ -145,7 +146,7 @@ export function buildUiPreview(entity: FullstackEntityDef, ctx: UiPreviewContext
     const field = entity.fields.find(f => f.name === fname)
     if (field) return fieldLabel(field)
     const rel = (entity.relations ?? []).find(r => `${r.fieldName.trim()}Id` === fname)
-    return rel ? humanize(rel.fieldName) : fname
+    return rel ? relationLabel(rel) : fname
   })
 
   return {

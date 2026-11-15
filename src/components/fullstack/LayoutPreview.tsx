@@ -819,6 +819,23 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           </Editable>
         </div>
       )
+    case 'tree':
+      return (
+        <div className="space-y-2" data-preview-tree>
+          {heading}
+          <Editable {...link} control="entity" label="Edit the tree's entity" className="block w-full">
+            <ul className="space-y-0.5 rounded border border-outline-variant p-2 text-[10px]">
+              {screen.rows.map((row, i) => (
+                <li key={i} className="flex items-center gap-1" style={{ paddingInlineStart: `${row.depth * 12}px` }}>
+                  <span aria-hidden="true" className="w-2 text-secondary">{row.children > 0 ? '▾' : ''}</span>
+                  <span className="truncate">{row.label}</span>
+                  {row.children > 0 && <span className="rounded-full bg-surface-container-high px-1 text-[9px] text-secondary">{row.children}</span>}
+                </li>
+              ))}
+            </ul>
+          </Editable>
+        </div>
+      )
     case 'import':
       return (
         <div className="space-y-2" data-preview-import>
@@ -1834,7 +1851,7 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
       )}
       <div className={sidePane ? 'grid grid-cols-[minmax(0,1fr)_6rem] gap-1' : ''}>
       <div className="min-w-0 space-y-0.5">
-      {link && table.view !== 'cards' && table.view !== 'kanban' && table.view !== 'calendar' && part('columns', 'Edit the columns', (
+      {link && table.view !== 'cards' && table.view !== 'gallery' && table.view !== 'kanban' && table.view !== 'calendar' && part('columns', 'Edit the columns', (
         <div
           className={`grid gap-x-1 text-start text-[9px] font-semibold text-secondary ${menora ? 'rounded-t px-0.5 py-0.5' : ''}`}
           style={{ gridTemplateColumns: `repeat(${Math.max(1, table.columns.length)}, minmax(0, 1fr))`, ...(menora ? { background: MENORA_HEAD } : {}) }}
@@ -1847,7 +1864,7 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
       <>
       {state !== 'data' ? (
         <ListState table={table} states={preview.strings.states} primary={primary} menora={menora} compact={compact} />
-      ) : table.view === 'cards' ? (
+      ) : table.view === 'cards' || table.view === 'gallery' ? (
         <div className="grid grid-cols-3 gap-1" data-preview-view="cards">
           {table.rows.map((row, i) => (
             <div key={i} {...rowLink(row).props} className={`rounded border border-outline-variant/60 px-1.5 py-1 text-[9px] ${rowLink(row).cls}`}>

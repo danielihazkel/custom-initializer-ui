@@ -58,6 +58,12 @@ describe('workflow', () => {
     expect(workflowProblem(claim({ ...approvals, transitions: [{ name: 'go', from: ['DRAFT'], to: 'SUBMITTED', requires: ['status'] }] })))
       .toBe('Transition “go” asks for “status”, which it cannot set')
     expect(workflowProblem(claim({ ...approvals, assigneeField: 'reason' }))).toMatch(/must be a non-key, non-unique text field/)
+    // The assignee changes only by claiming and reassigning: never required, never asked for by a move.
+    const requiredAssignee = claim()
+    requiredAssignee.fields = requiredAssignee.fields.map(f => (f.name === 'assignee' ? { ...f, required: true } : f))
+    expect(workflowProblem(requiredAssignee)).toMatch(/cannot be required/)
+    expect(workflowProblem(claim({ ...approvals, transitions: [{ name: 'go', from: ['DRAFT'], to: 'SUBMITTED', requires: ['assignee'] }] })))
+      .toBe('Transition “go” asks for “assignee”, which it cannot set')
     expect(workflowProblem({ ...claim(), readOnly: true })).toBe('A read-only entity cannot change state')
     // An entity error, counted towards Generate.
     const errors = validateEntities([claim()], [], { ldapAuth: false })
@@ -88,6 +94,12 @@ describe('workflow', () => {
 
   it('keeps the status out of a wizard, lists its endpoints and lints what a user would trip on', () => {
     expect(defaultWizardSteps(claim()).flatMap(s => s.fields)).not.toContain('status')
+    expect(defaultWizardSteps(claim()).flatMap(s => s.fields)).not.toContain('assignee')
+    const asksAssignee = validatePages([
+      { id: 'claims', type: 'entity-list' as const, entity: 'Claim' },
+      { id: 'new-claim', type: 'wizard' as const, entity: 'Claim', steps: [{ fields: ['title', 'assignee'] }] },
+    ], [claim()])
+    expect(Object.values(asksAssignee.byPage[1] ?? {}).join()).toContain('is set by claiming and reassigning')
     const pages = [
       { id: 'claims', type: 'entity-list' as const, entity: 'Claim' },
       { id: 'new-claim', type: 'wizard' as const, entity: 'Claim', steps: [{ fields: ['title', 'status'] }] },
@@ -96,6 +108,7 @@ describe('workflow', () => {
     expect(Object.values(v.byPage[1] ?? {}).join()).toContain('“status” is set by the workflow')
     expect(summarizeEntity(claim()).endpoints.map(ep => `${ep.method} ${ep.path}`)).toEqual(expect.arrayContaining([
       'POST /api/claims/{id}/transitions/{name}', 'POST /api/claims/{id}/claim', 'POST /api/claims/{id}/release',
+      'POST /api/claims/{id}/assign',
     ]))
     const rules = lintModel([claim()], [], []).map(i => i.rule)
     expect(rules).toContain('workflow-unreachable')
@@ -120,6 +133,23 @@ describe('workflow panel', () => {
     const next = onChange.mock.calls[onChange.mock.calls.length - 1][0] as FullstackWorkflow
     expect(next.transitions[2].requires).toEqual(['reason', 'title'])
     expect(screen.getByText(/never reached: Archived/)).toBeTruthy()
+  })
+
+  it('switches the log of moves on and off, and lists its endpoints', () => {
+    const onChange = vi.fn()
+    const { rerender } = render(<WorkflowPanel entity={claim(approvals)} onChange={onChange} ldapAuth />)
+    fireEvent.click(screen.getByLabelText('Keep a log of moves'))
+    expect((onChange.mock.calls[0][0] as FullstackWorkflow).trackMoves).toBe(true)
+
+    const logged = claim({ ...approvals, trackMoves: true })
+    expect(summarizeEntity(logged, []).endpoints.map(e => e.path)).toEqual(expect.arrayContaining([
+      '/api/claims/{id}/moves', '/api/claims/moves/time-in-state',
+    ]))
+    expect(summarizeEntity(claim(approvals), []).endpoints.map(e => e.path)).not.toContain('/api/claims/{id}/moves')
+    rerender(<WorkflowPanel entity={logged} onChange={onChange} ldapAuth />)
+    fireEvent.click(screen.getByLabelText('Keep a log of moves'))
+    // Off again is no setting at all, so the request is what it was before.
+    expect(JSON.stringify(onChange.mock.calls[1][0])).not.toContain('trackMoves')
   })
 
   it('offers roles only with an LDAP dependency, and a way to add one', () => {

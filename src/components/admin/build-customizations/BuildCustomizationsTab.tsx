@@ -109,10 +109,12 @@ export function BuildCustomizationsTab() {
       return [r.mavenArtifactId, r.version].filter(Boolean).join('@')
     }
     if (r.customizationType === 'ADD_VITE_PLUGIN') return r.mavenGroupId ?? ''
+    // A row pinned to a Spring Boot line says so: a dependency may have one row per line.
+    const onBoot = r.compatibilityRange?.trim() ? ` · Boot ${r.compatibilityRange.trim()}` : ''
     if (r.customizationType === 'ADD_BOM') {
-      return [r.mavenGroupId, r.mavenArtifactId, r.version].filter(Boolean).join(':')
+      return [r.mavenGroupId, r.mavenArtifactId, r.version].filter(Boolean).join(':') + onBoot
     }
-    return [r.mavenGroupId, r.mavenArtifactId].filter(Boolean).join(':')
+    return [r.mavenGroupId, r.mavenArtifactId, onBoot ? r.version : ''].filter(Boolean).join(':') + onBoot
   }
 
   return (

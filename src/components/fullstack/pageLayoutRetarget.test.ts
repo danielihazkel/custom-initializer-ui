@@ -257,6 +257,14 @@ describe('retargetPage', () => {
     expect(wizard.dropped).toEqual([])
   })
 
+  it('keeps a record page’s Print button only while it stays a record page', () => {
+    const record: FullstackPageDef = { id: 'order', type: 'record', entity: 'Order', hidden: true, printable: true }
+    expect(retargetPage(record, 'record', entities, [record])).toEqual({ page: record, dropped: [] })
+    const form = retargetPage(record, 'form', entities, [record])
+    expect(form.page.printable).toBeUndefined()
+    expect(form.dropped).toContain('Print button')
+  })
+
   it('turns a list of a parent into a master-detail over its child, and back', () => {
     const md = retargetPage({ id: 'customers', type: 'entity-list', entity: 'Customer', idLocked: true }, 'master-detail', entities, [])
     expect(md.page).toEqual({ id: 'customers', idLocked: true, type: 'master-detail', parent: 'Customer', child: 'Order', showParent: true })

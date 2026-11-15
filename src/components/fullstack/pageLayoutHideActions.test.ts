@@ -18,6 +18,10 @@ describe('hidden list actions', () => {
     expect(validatePages(list('Summary', ['export']), entities).problems)
       .toEqual(['Page “list” hides actions, but Summary is read-only and exports nothing'])
     expect(validatePages(list('Summary', ['export']), entities, { scaffoldOpts: ['csvExport'] }).problems).toEqual([])
+    // The Excel workbook is an export too — for the project, or for the entity alone.
+    expect(validatePages(list('Summary', ['export']), entities, { scaffoldOpts: ['xlsxExport'] }).problems).toEqual([])
+    const alone = entities.map(e => (e.name === 'Summary' ? { ...e, opts: { xlsxExport: true } } : e))
+    expect(validatePages(list('Summary', ['export']), alone).problems).toEqual([])
   })
 
   it('keeps them only while the page stays a list', () => {

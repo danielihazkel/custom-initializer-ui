@@ -100,6 +100,21 @@ export function WorkflowPanel({ entity, error, onChange, ldapAuth, onAddDep }: P
           </select>
         </Labeled>
       </div>
+      <label className="flex items-start gap-2 text-xs text-on-surface" data-workflow-moves>
+        <input
+          type="checkbox"
+          className="mt-0.5 accent-primary"
+          checked={Boolean(wf.trackMoves)}
+          aria-label="Keep a log of moves"
+          onChange={e => set({ trackMoves: e.target.checked ? true : undefined })}
+        />
+        <span>
+          Keep a log of moves
+          <span className="block text-[11px] text-secondary">
+            Every step of a row — who, when, how long in the state it left — in a table of its own (app_workflow_move): a History section on the record page and the time-in-state widget read it
+          </span>
+        </span>
+      </label>
 
       <div className="space-y-2" role="list" aria-label="Transitions">
         {wf.transitions.map((t, i) => (

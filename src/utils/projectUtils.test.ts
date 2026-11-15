@@ -58,6 +58,63 @@ describe('buildWizardBody', () => {
       'data-jpa': { subPackage: 'domain', tables: [{ name: 'users', generateRepository: true }], apiMode: 'MAPSTRUCT_DTO' },
     })
   })
+
+  it('sends the OpenAPI client kind and spec copy only when set', () => {
+    const entry = {
+      spec: 'openapi: 3.0.0', apiSubPackage: 'api', dtoSubPackage: 'dto', clientSubPackage: 'client',
+      mode: 'BOTH' as const, baseUrlProperty: 'openapi.client.base-url',
+    }
+    const plain = { apiSubPackage: 'api', dtoSubPackage: 'dto', clientSubPackage: 'client', mode: 'BOTH', baseUrlProperty: 'openapi.client.base-url' }
+    const options = (extra: object) =>
+      (buildWizardBody(form, ['web'], {}, {}, { web: { ...entry, ...extra } }, {})
+        .openApiOptions as Record<string, Record<string, unknown>>).web
+
+    expect(options({})).toEqual(plain)
+    expect(options({ clientKind: 'restTemplate', copySpec: false })).toEqual(plain)
+    expect(options({ clientKind: 'restClient', copySpec: true })).toEqual({ ...plain, clientKind: 'restClient', copySpec: true })
+    // No client, no client kind.
+    expect(options({ mode: 'CONTROLLERS', clientKind: 'restClient' })).toEqual({ ...plain, mode: 'CONTROLLERS' })
+  })
+
+  it('carries the events wizard only when it has an entry', () => {
+    // Without one the body keeps the shape it had.
+    expect(buildWizardBody(form, ['kafka'], {}, {}, {}, {})).not.toHaveProperty('asyncApiByDep')
+    expect(buildWizardBody(form, ['kafka'], {}, {}, {}, {}, {})).not.toHaveProperty('eventOptions')
+
+    const entry = {
+      spec: 'asyncapi: 3.0.0', subPackage: 'events', payloadSubPackage: 'events.model',
+      groupId: '', channels: [], generateTests: false,
+    }
+    const followsTheDocument = buildWizardBody(form, ['kafka'], {}, {}, {}, {}, { kafka: entry })
+    expect(followsTheDocument.asyncApiByDep).toEqual({ kafka: 'asyncapi: 3.0.0' })
+    // No channel list, no group, no tests: the server's defaults.
+    expect(followsTheDocument.eventOptions).toEqual({ kafka: { subPackage: 'events', payloadSubPackage: 'events.model' } })
+
+    const chosen = buildWizardBody(form, ['kafka'], {}, {}, {}, {}, {
+      kafka: { ...entry, groupId: ' billing ', generateTests: true, channels: [{ name: 'orders', produce: true, consume: false }] },
+    })
+    expect(chosen.eventOptions).toEqual({
+      kafka: {
+        subPackage: 'events', payloadSubPackage: 'events.model', groupId: 'billing', generateTests: true,
+        channels: [{ name: 'orders', produce: true, consume: false }],
+      },
+    })
+  })
+
+  it('sends the SQL extras only where they differ from the server defaults', () => {
+    const entry = { sql: 'CREATE TABLE users (id INT);', subPackage: 'entity', tables: [] }
+    const options = (extra: Partial<SqlByDep[string]>) =>
+      (buildWizardBody(form, ['postgresql'], {}, { postgresql: { ...entry, ...extra } }, {}, {})
+        .sqlOptions as Record<string, Record<string, unknown>>).postgresql
+
+    // Baseline on and tests off are what the server assumes: nothing to say.
+    expect(options({ apiMode: 'INLINE_DTO', flywayBaseline: true, generateTests: false }))
+      .toEqual({ subPackage: 'entity', tables: [], apiMode: 'INLINE_DTO' })
+    expect(options({ apiMode: 'INLINE_DTO', flywayBaseline: false, generateTests: true }))
+      .toEqual({ subPackage: 'entity', tables: [], apiMode: 'INLINE_DTO', flywayBaseline: false, generateTests: true })
+    // A test needs a controller: without a REST stack the flag is not sent.
+    expect(options({ generateTests: true })).toEqual({ subPackage: 'entity', tables: [], apiMode: 'NONE' })
+  })
 })
 
 describe('requiredSqlDeps', () => {

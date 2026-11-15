@@ -181,6 +181,20 @@ export function BuildCustomizationForm({ data, isEditing, errors, onChange, depe
         </FieldRow>
       )}
 
+      {kind !== 'FRONTEND' && (type === 'ADD_DEPENDENCY' || type === 'ADD_BOM') && (
+        <FieldRow
+          label="Spring Boot Range (optional)"
+          hint="Apply this row only on these Boot versions, e.g. [3.4.0,3.5.0). Give a dependency one row per Boot line to change its version there; a row for coordinates the build already has replaces them. Blank = every version."
+        >
+          <input
+            className={inputClass}
+            value={data.compatibilityRange ?? ''}
+            onChange={e => onChange({ compatibilityRange: e.target.value })}
+            placeholder="[3.4.0,4.0.0)"
+          />
+        </FieldRow>
+      )}
+
       <FieldRow label="Sort Order">
         <input type="number" className={inputClass} value={data.sortOrder ?? 0} onChange={e => onChange({ sortOrder: parseInt(e.target.value) || 0 })} />
       </FieldRow>

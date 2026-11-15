@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { ProjectPreset, ProjectSnapshot } from '../types'
+import { useHotkeys } from '../hooks/useHotkeys'
+import { registerCommands, type PaletteAction } from '../commands'
 
 interface PresetPickerProps {
   presets: ProjectPreset[]
@@ -48,6 +50,31 @@ export function PresetPicker({
     setSavePromptOpen(false)
     setTab('presets')
   }
+
+  // Ctrl+S opens the save prompt (and beats the browser's "save page" dialog); ⌘K offers the
+  // same, plus every preset and recent project by name.
+  useHotkeys([{ key: 's', ctrl: true, run: () => setSavePromptOpen(true) }])
+  // Through a ref: registering re-renders the palette's subscribers (App among them), so the
+  // effect must not depend on a callback whose identity could change with that render.
+  const onLoadRef = useRef(onLoad)
+  onLoadRef.current = onLoad
+  useEffect(() => {
+    const onLoad = (snapshot: ProjectSnapshot) => onLoadRef.current(snapshot)
+    const list: PaletteAction[] = [{
+      id: 'backend-save-preset', title: 'Save the current setup as a preset…', icon: 'bookmark_add',
+      group: 'Backend', shortcut: 'Ctrl+S', run: () => setSavePromptOpen(true),
+    }]
+    for (const p of presets) {
+      list.push({ id: `backend-preset-${p.id}`, title: `Load preset: ${p.name}`, icon: 'bookmark', group: 'Presets', run: () => onLoad(p.snapshot) })
+    }
+    for (const r of recents) {
+      list.push({
+        id: `backend-recent-${r.id}`, title: `Load recent: ${r.name}`, description: relativeTime(r.createdAt),
+        icon: 'history', group: 'Recent projects', run: () => onLoad(r.snapshot),
+      })
+    }
+    return registerCommands(list, 'backend-presets')
+  }, [presets, recents])
 
   const hasAnything = presets.length > 0 || recents.length > 0 || savePromptOpen
   if (!hasAnything) {

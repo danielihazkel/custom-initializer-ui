@@ -2,6 +2,9 @@ import type { FullstackEntityDef } from '../../types'
 import { formSectionsProblem } from './formSections'
 import { workflowProblem } from './workflow'
 import { columnOf, joinColumnOf } from './naming'
+import { compositionProblem, linksBetween, resolveLink } from './childLists'
+import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
+import { isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
 
 /**
  * Client-side mirror of the backend `FullstackRequestValidator` so users see problems
@@ -9,20 +12,11 @@ import { columnOf, joinColumnOf } from './naming'
  * surface the same rules early and gate the Generate button.
  */
 
-// Mirrors RESERVED_JAVA_KEYWORDS in FullstackRequestValidator.java.
-const RESERVED_JAVA_KEYWORDS = new Set([
-  'abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char',
-  'class', 'const', 'continue', 'default', 'do', 'double', 'else', 'enum',
-  'extends', 'final', 'finally', 'float', 'for', 'goto', 'if', 'implements',
-  'import', 'instanceof', 'int', 'interface', 'long', 'native', 'new', 'null',
-  'package', 'private', 'protected', 'public', 'return', 'short', 'static',
-  'strictfp', 'super', 'switch', 'synchronized', 'this', 'throw', 'throws',
-  'transient', 'true', 'false', 'try', 'void', 'volatile', 'while', 'yield',
-  'record', 'sealed', 'permits', 'var',
-])
+// RESERVED_JAVA_KEYWORDS of FullstackRequestValidator.java, from the schema document.
+const RESERVED_JAVA_KEYWORDS = RESERVED_KEYWORDS
 
-// Close enough to Character.isJavaIdentifier* for a UI hint (ASCII identifiers).
-const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+// ASCII Java identifiers — the backend holds names to the same rule (FullstackRequestValidator.IDENTIFIER_RULE).
+const IDENTIFIER_RE = NAME_RULES.identifier
 
 // Valid Java package: dot-separated identifiers. Mirrors PACKAGE_NAME_RE in projectUtils.ts.
 const PACKAGE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/
@@ -115,11 +109,12 @@ export interface FieldErrors {
   email?: string
   defaultValue?: string
   column?: string
+  currency?: string
 }
 
 /** Mirrors FullstackRequestValidator.SQL_NAME: column names are spliced into native SQL. A quoted
  *  name ("OrderDate", `OrderDate`, [OrderDate]) keeps its exact case in the generated entity. */
-const COLUMN_RE = /^(?:[A-Za-z_$#@][A-Za-z0-9_$#@]{0,127}|"[A-Za-z0-9_$#@ .-]{1,128}"|`[A-Za-z0-9_$#@ .-]{1,128}`|\[[A-Za-z0-9_$#@ .-]{1,128}\])$/
+const COLUMN_RE = NAME_RULES.sqlName
 const COLUMN_RULE = 'Letters, digits and _ $ # @, or a quoted name like "OrderDate"'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -146,6 +141,17 @@ export function defaultValueError(field: {
       return /^[+-]?\d+$/.test(v) ? undefined : 'Must be a whole number'
     case 'BIG_DECIMAL':
       return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(v) ? undefined : 'Must be a number'
+    case 'FILE':
+    case 'IMAGE':
+      return 'A file is uploaded, not typed — it cannot have a default'
+    case 'MONEY':
+      // Two decimals at most — what the column keeps.
+      return /^[+-]?(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(v) ? undefined : 'Must be an amount with at most two decimals'
+    case 'LOCAL_TIME':
+      return /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(v) ? undefined : 'Must be a time (HH:MM or HH:MM:SS)'
+    case 'INSTANT':
+      return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?Z$/.test(v) && !Number.isNaN(Date.parse(v))
+        ? undefined : 'Must be a UTC instant (YYYY-MM-DDTHH:MM:SSZ)'
     case 'BOOLEAN':
       return /^(true|false)$/i.test(v) ? undefined : 'Must be true or false'
     case 'LOCAL_DATE':
@@ -175,7 +181,7 @@ export function carryDefaultAcrossTypes(
 ): string | undefined {
   if (value == null || value.trim() === '') return undefined
   if (from === to) return value
-  const text = (from === 'STRING' || from === 'TEXT') && (to === 'STRING' || to === 'TEXT')
+  const text = isTextualType(from) && isTextualType(to)
   if (text) return value
   const integral = (from === 'LONG' || from === 'INTEGER') && (to === 'LONG' || to === 'INTEGER')
   if (integral) {
@@ -190,6 +196,13 @@ export interface RelationErrors {
   fieldName?: string
   targetEntity?: string
   joinColumn?: string
+  /** A MANY_TO_MANY's join table name, or the kind itself when this entity cannot own one. */
+  joinTable?: string
+  /** A ONE_TO_MANY's link: not one of the target's, ambiguous, or already listed. */
+  mappedBy?: string
+  /** Why a ONE_TO_MANY cannot be a composition. */
+  composition?: string
+  label?: string
 }
 
 export interface EntityErrors {
@@ -250,7 +263,12 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
 
     const nameErr = identifierError(entity.name, 'Entity name')
     if (nameErr) eErr.name = nameErr
-    else {
+    // The generated code already names these (ReservedNames.java): a 400 on Generate otherwise.
+    else if (isReservedEntityName(entity.name)) {
+      eErr.name = `'${entity.name.trim()}' is a name the generated code already uses — pick another (a label can still say it)`
+    } else {
+      const owner = ownerOfGeneratedClass(entity.name, entities.filter(other => other !== entity).map(other => other.name))
+      if (owner) eErr.name = `'${owner}' already generates a class called ${entity.name.trim()} — pick another name`
       const lower = entity.name.trim().toLowerCase()
       const bucket = seenEntityNames.get(lower) ?? []
       bucket.push(eIdx)
@@ -291,7 +309,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
           if (fErr.enumValues) break
           if (!known.has(key.trim().toLowerCase())) fErr.enumValues = `Label for '${key}', which is not one of the values`
           else if (!label.trim()) fErr.enumValues = `Label for '${key}' is blank`
-          else if (label.trim().length > 80) fErr.enumValues = `Label for '${key}' is too long (max 80 characters)`
+          else if (label.trim().length > LIMITS.maxEnumLabel) fErr.enumValues = `Label for '${key}' is too long (max ${LIMITS.maxEnumLabel} characters)`
         }
       } else if ((field.enumValues?.length ?? 0) > 0 || Object.keys(field.enumLabels ?? {}).length > 0) {
         // Mirrors the backend rule that enumValues/enumLabels are only allowed when type=ENUM.
@@ -312,7 +330,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       }
 
       // Numeric bounds: only on numeric types, min ≤ max. Regex/email: only on STRING.
-      const isNumeric = field.type === 'LONG' || field.type === 'INTEGER' || field.type === 'BIG_DECIMAL'
+      const isNumeric = isNumericType(field.type)
       if (field.min != null || field.max != null) {
         if (!isNumeric) {
           if (field.min != null) fErr.min = 'Min applies to numeric fields only'
@@ -320,7 +338,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
         } else {
           // Integral bounds must be whole (the DTO renders them into @Min/@Max, which take longs);
           // decimals are only meaningful on BIG_DECIMAL (@DecimalMin/@DecimalMax).
-          if (field.type !== 'BIG_DECIMAL') {
+          if (!isDecimalType(field.type)) {
             const whole = (v: number) => Number.isInteger(v) && (field.type === 'LONG' || (v >= -2147483648 && v <= 2147483647))
             if (field.min != null && !whole(field.min)) fErr.min = field.type === 'INTEGER' && Number.isInteger(field.min) ? 'Out of the int range' : 'Must be a whole number'
             if (field.max != null && !whole(field.max)) fErr.max = field.type === 'INTEGER' && Number.isInteger(field.max) ? 'Out of the int range' : 'Must be a whole number'
@@ -340,6 +358,16 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
 
       const defErr = defaultValueError(field)
       if (defErr) fErr.defaultValue = defErr
+
+      // A currency is a MONEY field's, three letters (the backend upper-cases it; blank = ILS).
+      if (field.currency?.trim()) {
+        if (field.type !== 'MONEY') fErr.currency = 'Currency applies to MONEY only'
+        else if (!/^[A-Za-z]{3}$/.test(field.currency.trim())) fErr.currency = 'A three-letter code such as ILS or USD'
+      }
+      // A key travels in URLs and relation ids, which these types are not fit for.
+      if (field.primaryKey && !isKeyableType(field.type)) {
+        fErr.generated = `A ${field.type} field cannot be the key`
+      }
 
       if (field.column?.trim()) {
         if (entity.viewQuery != null) fErr.column = 'A view maps fields by their names'
@@ -416,6 +444,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
     // Relations (MANY_TO_ONE). fieldName must be a unique, valid identifier across fields and
     // relations; targetEntity must exist and not be a composite-PK entity.
     const relations = entity.relations ?? []
+    const listedLinks = new Set<string>()
     relations.forEach((rel, rIdx) => {
       const rErr: RelationErrors = {}
       const nameErr = identifierError(rel.fieldName, 'Relation field name')
@@ -433,11 +462,41 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       } else {
         const targetPkCount = pkCountByName.get(target.toLowerCase())
         if (targetPkCount === undefined) rErr.targetEntity = `Unknown entity '${target}'`
-        else if (targetPkCount > 1) rErr.targetEntity = "Can't target a composite-PK entity"
+        // A one-to-many holds no key of its target, so its rows may be keyed any way.
+        else if (targetPkCount > 1 && rel.type !== 'ONE_TO_MANY') rErr.targetEntity = "Can't target a composite-PK entity"
         else if (viewNames.has(target.toLowerCase())) rErr.targetEntity = "Can't target a view"
       }
       if (rel.joinColumn?.trim() && !COLUMN_RE.test(rel.joinColumn.trim())) {
         rErr.joinColumn = COLUMN_RULE
+      }
+      if ((rel.label?.trim().length ?? 0) > LIMITS.maxRelationLabel) {
+        rErr.label = `Label is too long (max ${LIMITS.maxRelationLabel} characters)`
+      }
+      // A ONE_TO_MANY reads a link the target holds: which one must be settled, and no two
+      // lists may read the same one.
+      if (rel.type === 'ONE_TO_MANY' && target && !rErr.targetEntity) {
+        const child = entities.find(e => e.name.trim().toLowerCase() === target.toLowerCase())
+        const link = resolveLink(rel, entity.name, linksBetween(child, entity.name))
+        if (link.problem) {
+          rErr[link.problem.on] = link.problem.message
+        } else {
+          const key = `${target.toLowerCase()}>${link.mappedBy!.toLowerCase()}`
+          if (listedLinks.has(key)) rErr.mappedBy = 'Lists the same rows as another one-to-many of this entity'
+          listedLinks.add(key)
+          if (rel.composition) {
+            const problem = compositionProblem(entity, rel, link.mappedBy!, entities)
+            if (problem) rErr.composition = problem
+          }
+        }
+      }
+      // A MANY_TO_MANY keeps one key of each side in its join table, so both sides need a single
+      // one, and an entity cannot be both ends of it.
+      if (rel.type === 'MANY_TO_MANY') {
+        if (target && !rErr.targetEntity && target.toLowerCase() === entity.name.trim().toLowerCase()) {
+          rErr.targetEntity = "Can't link an entity to itself this way — add a join entity"
+        }
+        if (pkCount > 1) rErr.joinTable = 'A composite-key entity cannot own a many-to-many'
+        else if (rel.joinTable?.trim() && !COLUMN_RE.test(rel.joinTable.trim())) rErr.joinTable = COLUMN_RULE
       }
       if (Object.keys(rErr).length > 0) {
         eErr.relations = eErr.relations ?? {}
@@ -466,7 +525,9 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       })
     })
     relations.forEach((rel, rIdx) => {
-      if (!rel.fieldName.trim()) return
+      // Only a foreign key is a column of this table: a many-to-many's are in its join table,
+      // a one-to-many's in its target's.
+      if (!rel.fieldName.trim() || rel.type !== 'MANY_TO_ONE') return
       addMember(joinColumnOf(rel), Boolean(rel.joinColumn?.trim()), () => {
         eErr.relations = eErr.relations ?? {}
         const existing = eErr.relations[rIdx] ?? {}

@@ -29,6 +29,12 @@ const TYPE_ALIASES: Record<string, FullstackFieldType> = {
   datetime: 'LOCAL_DATE_TIME', timestamp: 'LOCAL_DATE_TIME', localdatetime: 'LOCAL_DATE_TIME', local_date_time: 'LOCAL_DATE_TIME',
   decimal: 'BIG_DECIMAL', numeric: 'BIG_DECIMAL', bigdecimal: 'BIG_DECIMAL', big_decimal: 'BIG_DECIMAL', number: 'BIG_DECIMAL', double: 'BIG_DECIMAL', float: 'BIG_DECIMAL',
   uuid: 'UUID', guid: 'UUID',
+  time: 'LOCAL_TIME', localtime: 'LOCAL_TIME', local_time: 'LOCAL_TIME',
+  instant: 'INSTANT',
+  money: 'MONEY', amount: 'MONEY',
+  markdown: 'MARKDOWN', md: 'MARKDOWN', rich_text: 'MARKDOWN', richtext: 'MARKDOWN',
+  file: 'FILE', attachment: 'FILE',
+  image: 'IMAGE', photo: 'IMAGE', picture: 'IMAGE',
   enum: 'ENUM',
 }
 
@@ -108,6 +114,7 @@ export function parseQuickAdd(text: string): QuickAddResult {
           case 'pattern': case 'regex': field.pattern = value; break
           case 'label': field.label = value; break
           case 'default': field.defaultValue = value; break
+          case 'currency': field.currency = value.toUpperCase(); break
           case 'values': case 'enum': case 'options': {
             const values: string[] = []
             const labels: Record<string, string> = {}

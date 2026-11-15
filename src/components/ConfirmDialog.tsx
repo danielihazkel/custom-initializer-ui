@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useRef } from 'react'
+import { useModal } from '../hooks/useModal'
 
 interface ConfirmDialogProps {
   title: string
@@ -30,11 +31,9 @@ export function ConfirmDialog({
   secondaryLabel,
   onSecondary,
 }: ConfirmDialogProps) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  // Escape cancels, Tab stays on the buttons, and focus returns to what opened the dialog.
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useModal(dialogRef, { onClose: onCancel, lockScroll: false })
 
   const confirmClasses = tone === 'danger'
     ? 'border border-error-container text-error hover:bg-error/10'
@@ -44,10 +43,12 @@ export function ConfirmDialog({
     <>
       <div className="fixed inset-0 bg-background/60 z-[60]" onClick={onCancel} />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-full max-w-sm glass-panel border border-outline-variant rounded-xl shadow-2xl p-6 space-y-4"
+        tabIndex={-1}
+        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-full max-w-sm glass-panel border border-outline-variant rounded-xl shadow-2xl p-6 space-y-4 outline-none dialog-enter"
       >
         <div className="flex items-start gap-3">
           <span className={`material-symbols-outlined ${tone === 'danger' ? 'text-error' : 'text-primary'} mt-0.5`} style={{ fontSize: '22px' }}>

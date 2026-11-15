@@ -35,6 +35,24 @@
         ]
       },
       {
+        "name": "Tag",
+        "fields": [
+          {
+            "name": "id",
+            "type": "LONG",
+            "primaryKey": true,
+            "generated": true
+          },
+          {
+            "name": "name",
+            "type": "STRING",
+            "required": true,
+            "unique": true,
+            "length": 40
+          }
+        ]
+      },
+      {
         "name": "Post",
         "listViews": [
           "table",
@@ -56,7 +74,7 @@
           },
           {
             "name": "body",
-            "type": "TEXT"
+            "type": "MARKDOWN"
           },
           {
             "name": "status",
@@ -79,6 +97,11 @@
             "fieldName": "author",
             "targetEntity": "Author",
             "required": true
+          },
+          {
+            "type": "MANY_TO_MANY",
+            "fieldName": "tags",
+            "targetEntity": "Tag"
           }
         ]
       },
@@ -194,6 +217,13 @@
         "entity": "Post"
       },
       {
+        "id": "tags",
+        "type": "entity-list",
+        "group": "Content",
+        "icon": "Tag",
+        "entity": "Tag"
+      },
+      {
         "id": "authors",
         "type": "master-detail",
         "group": "Content",
@@ -307,8 +337,21 @@
       {
         "name": "Order",
         "formSections": [
-          { "title": "The order", "fields": ["reference", "customer", "status"] },
-          { "title": "Amounts and dates", "fields": ["total", "placedAt"] }
+          {
+            "title": "The order",
+            "fields": [
+              "reference",
+              "customer",
+              "status"
+            ]
+          },
+          {
+            "title": "Amounts and dates",
+            "fields": [
+              "total",
+              "placedAt"
+            ]
+          }
         ],
         "listViews": [
           "table",
@@ -357,6 +400,12 @@
             "fieldName": "customer",
             "targetEntity": "Customer",
             "required": true
+          },
+          {
+            "type": "ONE_TO_MANY",
+            "fieldName": "lines",
+            "targetEntity": "OrderLine",
+            "composition": true
           }
         ]
       },
@@ -451,7 +500,11 @@
             "presetFilter": {
               "status": "OPEN"
             },
-            "columns": ["reference", "customer", "total"],
+            "columns": [
+              "reference",
+              "customer",
+              "total"
+            ],
             "sort": {
               "field": "placedAt",
               "dir": "desc"
@@ -476,8 +529,15 @@
         "parent": "Customer",
         "child": "Order",
         "showParent": true,
-        "columns": ["reference", "status", "total"],
-        "sort": { "field": "placedAt", "dir": "desc" }
+        "columns": [
+          "reference",
+          "status",
+          "total"
+        ],
+        "sort": {
+          "field": "placedAt",
+          "dir": "desc"
+        }
       },
       {
         "id": "new-order",
@@ -518,20 +578,29 @@
         "group": "Catalog",
         "icon": "Package",
         "entity": "Product",
-        "hideActions": ["delete"]
+        "hideActions": [
+          "delete"
+        ]
       },
       {
         "id": "order",
         "type": "record",
         "entity": "Order",
         "childTabs": [
-          { "entity": "OrderLine", "sort": { "field": "quantity", "dir": "desc" } }
+          {
+            "entity": "OrderLine",
+            "sort": {
+              "field": "quantity",
+              "dir": "desc"
+            }
+          }
         ]
       }
     ],
     "settings": {
       "scaffold": [
-        "csvExport"
+        "csvExport",
+        "xlsxExport"
       ]
     }
   },
@@ -731,7 +800,10 @@
           {
             "kind": "links",
             "title": "Go to",
-            "pages": ["queue", "teams"],
+            "pages": [
+              "queue",
+              "teams"
+            ],
             "span": 4
           }
         ]
@@ -808,7 +880,8 @@
     ],
     "settings": {
       "scaffold": [
-        "bulkUpdate"
+        "bulkUpdate",
+        "savedViews"
       ]
     }
   },
@@ -845,7 +918,8 @@
         "name": "Item",
         "listViews": [
           "table",
-          "cards"
+          "cards",
+          "gallery"
         ],
         "fields": [
           {
@@ -876,6 +950,10 @@
             "name": "reorderLevel",
             "type": "INTEGER",
             "min": 0
+          },
+          {
+            "name": "photo",
+            "type": "IMAGE"
           }
         ]
       },
@@ -1570,6 +1648,13 @@
             "fieldName": "assignee",
             "targetEntity": "Person",
             "required": false
+          },
+          {
+            "type": "MANY_TO_ONE",
+            "fieldName": "partOf",
+            "label": "Part of",
+            "targetEntity": "Task",
+            "required": false
           }
         ]
       }
@@ -1682,6 +1767,21 @@
         "id": "tasks",
         "type": "entity-list",
         "group": "Work",
+        "entity": "Task",
+        "columns": [
+          "title",
+          "status",
+          "priority",
+          "dueOn",
+          "project",
+          "assignee"
+        ]
+      },
+      {
+        "id": "breakdown",
+        "type": "tree",
+        "title": "Work breakdown",
+        "group": "Work",
         "entity": "Task"
       },
       {
@@ -1764,7 +1864,7 @@
           },
           {
             "name": "budget",
-            "type": "BIG_DECIMAL",
+            "type": "MONEY",
             "min": 0
           }
         ]
@@ -1790,7 +1890,7 @@
           },
           {
             "name": "amount",
-            "type": "BIG_DECIMAL",
+            "type": "MONEY",
             "required": true,
             "min": 0
           },
@@ -1840,12 +1940,16 @@
           },
           {
             "name": "approvedAmount",
-            "type": "BIG_DECIMAL",
+            "type": "MONEY",
             "min": 0
           },
           {
             "name": "rejectionReason",
             "type": "TEXT"
+          },
+          {
+            "name": "receipt",
+            "type": "FILE"
           }
         ],
         "relations": [
@@ -1864,7 +1968,8 @@
               "amount",
               "category",
               "spentOn",
-              "costCenter"
+              "costCenter",
+              "receipt"
             ]
           },
           {
@@ -1876,6 +1981,7 @@
           }
         ],
         "workflow": {
+          "trackMoves": true,
           "statusField": "status",
           "assigneeField": "assignee",
           "dueField": "dueDate",
@@ -2000,6 +2106,19 @@
             "dateField": "spentOn"
           },
           {
+            "kind": "funnel",
+            "entity": "ExpenseClaim",
+            "title": "Claims pipeline",
+            "presetFilter": {
+              "status": "DRAFT,SUBMITTED,APPROVED,PAID"
+            }
+          },
+          {
+            "kind": "timeInState",
+            "entity": "ExpenseClaim",
+            "title": "Time in each step"
+          },
+          {
             "kind": "activity",
             "title": "Latest changes",
             "span": 2
@@ -2066,7 +2185,8 @@
       {
         "id": "claim",
         "type": "record",
-        "entity": "ExpenseClaim"
+        "entity": "ExpenseClaim",
+        "printable": true
       },
       {
         "id": "cost-center",
@@ -2075,6 +2195,11 @@
       }
     ],
     "settings": {
+      "nav": {
+        "userMenu": true,
+        "notifications": true,
+        "commandPalette": true
+      },
       "scaffold": [
         "audit",
         "optimisticLocking",
