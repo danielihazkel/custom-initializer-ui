@@ -239,6 +239,25 @@ export function downloadBlob(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
+/**
+ * The selected dependencies that carry a wizard payload. With any, the project goes to the
+ * wizard endpoint — which generates one module, whatever the multi-module switch says: the
+ * wizards' code cannot be placed in modules. The module selector says so while both are set.
+ */
+export function wizardDepIds(
+  selected: string[],
+  sqlByDep?: SqlByDep,
+  openApiByDep?: OpenApiByDep,
+  soapByDep?: SoapByDep,
+  eventsByDep?: EventsByDep,
+): string[] {
+  const withWizard = new Set<string>()
+  for (const byDep of [sqlByDep, openApiByDep, soapByDep, eventsByDep]) {
+    for (const id of Object.keys(activeWizardEntries<unknown>(byDep, selected))) withWizard.add(id)
+  }
+  return selected.filter(id => withWizard.has(id))
+}
+
 /** The wizard entries of dependencies that are still selected. */
 export function activeWizardEntries<T>(byDep: Record<string, T> | undefined, selected: string[]): Record<string, T> {
   return byDep ? Object.fromEntries(Object.entries(byDep).filter(([id]) => selected.includes(id))) : {}

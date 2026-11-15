@@ -7,7 +7,7 @@ import { ProjectForm } from './ProjectForm'
 const ModuleSelector = lazy(() => import('./ModuleSelector').then(m => ({ default: m.ModuleSelector })))
 import { DependencySelector } from './DependencySelector'
 import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, EventsByDep, EventsWizardEntry, PreviewError } from '../types'
-import type { FormErrors } from '../utils/projectUtils'
+import { wizardDepIds, type FormErrors } from '../utils/projectUtils'
 
 interface InitializrViewProps {
   metadata: InitializrMetadata | null
@@ -163,6 +163,7 @@ export function InitializrView({
                     modules={moduleTemplates}
                     selectedModules={selectedModules}
                     onChange={onModulesChange}
+                    wizardDeps={wizardDepIds(selectedDeps, sqlByDep, openApiByDep, soapByDep, eventsByDep)}
                   />
                 </Suspense>
               )}

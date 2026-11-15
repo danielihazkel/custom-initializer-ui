@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildProjectRequest, triggerDownload } from './projectUtils'
+import { buildProjectRequest, triggerDownload, wizardDepIds } from './projectUtils'
 import { curlFor } from './curl'
 import type { ProjectFormValues, SqlByDep } from '../types'
 
@@ -56,6 +56,23 @@ describe('buildProjectRequest', () => {
 
     // The payload of a dependency that was deselected does not count.
     expect(buildProjectRequest('zip', form, ['web'], {}, undefined, sql).kind).toBe('plain')
+  })
+
+  it('a wizard wins over ticked modules, and wizardDepIds names what made it so', () => {
+    // The wizard endpoint writes one module: the ticked ones are not sent. The module
+    // selector warns about it from the same list (ModuleSelector `wizardDeps`).
+    const req = buildProjectRequest('zip', form, ['web', 'postgresql'], {}, { enabled: true, modules: ['api', 'core'] }, sql)
+    expect(req.kind).toBe('wizard')
+    expect(JSON.parse(req.init.body as string)).not.toHaveProperty('modules')
+
+    expect(wizardDepIds(['web', 'postgresql'], sql)).toEqual(['postgresql'])
+    // In the order the dependencies are selected, each once, over all four wizards.
+    expect(wizardDepIds(['kafka', 'web', 'postgresql'], sql,
+      { web: { spec: 'openapi: 3.0.0' } as never }, undefined, { kafka: { spec: 'asyncapi: 3.0.0' } as never }))
+      .toEqual(['kafka', 'web', 'postgresql'])
+    // Not selected any more, or none set up: nothing overrides the modules.
+    expect(wizardDepIds(['web'], sql)).toEqual([])
+    expect(wizardDepIds(['web', 'postgresql'])).toEqual([])
   })
 
   it('gives the same key to the same project and another to a different one', () => {

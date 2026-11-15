@@ -668,6 +668,8 @@ new surface a lazy chunk: `CommandPalette`, `ConfirmDialog`, `BackendUnreachable
 `dispatchKeyEvent`, `Emulation.setDeviceMetricsOverride`, `Emulation.setEmulatedMedia` for the colour
 scheme, `Page.captureScreenshot`. Unlike `--screenshot`, it can click, type and resize.
 
+**Round 12 (2026-11)** — the UI side of *Round 12* in `backend/CLAUDE.md`. `projectUtils.ts` `wizardDepIds(selected, …)` names the selected dependencies that carry a wizard payload — the condition under which `buildProjectRequest` goes to the wizard endpoint, which writes one module whatever the multi-module switch says. `InitializrView` hands the list to `ModuleSelector` (`wizardDeps`), which shows a warning (`data-modules-unused`, `role="status"`) above the modules while any is ticked: the modules used to be dropped without a word. `admin/AdminLogin` shows the server's message for a 429 (too many wrong passwords) instead of "Invalid password". Pinned by `ModuleSelector.test.tsx` and `utils/projectRequest.test.ts`.
+
 ## Performance rules
 
 - **The entry chunk has a budget** — `npm run build:check` (see *Round 11, phase 0*). What is not needed

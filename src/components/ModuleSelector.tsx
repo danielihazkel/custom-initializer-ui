@@ -4,9 +4,15 @@ interface Props {
   modules: ModuleTemplate[]
   selectedModules: string[]
   onChange: (modules: string[]) => void
+  /**
+   * Selected dependencies with a wizard set up (SQL, OpenAPI, WSDL, AsyncAPI). While there is one,
+   * Generate goes to the wizard endpoint, which writes a single module — the ticked modules are
+   * not used. That used to happen without a word.
+   */
+  wizardDeps?: string[]
 }
 
-export function ModuleSelector({ modules, selectedModules, onChange }: Props) {
+export function ModuleSelector({ modules, selectedModules, onChange, wizardDeps = [] }: Props) {
   function toggle(moduleId: string) {
     onChange(
       selectedModules.includes(moduleId)
@@ -21,8 +27,25 @@ export function ModuleSelector({ modules, selectedModules, onChange }: Props) {
     )
   }
 
+  const modulesUnused = wizardDeps.length > 0 && selectedModules.length > 0
+
   return (
     <div className="space-y-2">
+      {modulesUnused && (
+        <div
+          role="status"
+          data-modules-unused
+          className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-on-surface"
+        >
+          <span className="material-symbols-outlined text-warning shrink-0" style={{ fontSize: '16px' }} aria-hidden="true">warning</span>
+          <span>
+            <strong className="font-semibold">These modules will not be generated.</strong>{' '}
+            {wizardDeps.join(', ')} {wizardDeps.length === 1 ? 'has' : 'have'} a wizard set up, and a wizard's code
+            cannot be placed in modules, so the project is generated as one module. Remove the
+            wizard, or switch multi-module off.
+          </span>
+        </div>
+      )}
       {modules.map(m => {
         const checked = selectedModules.includes(m.moduleId)
         return (

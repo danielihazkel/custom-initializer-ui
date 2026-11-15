@@ -21,6 +21,12 @@ export function AdminLogin({ onSuccess, notice }: AdminLoginProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       })
+      if (res.status === 429) {
+        // Too many wrong passwords from this address: the server says how long to wait.
+        const refused = (await res.json().catch(() => null)) as { error?: unknown } | null
+        setError(typeof refused?.error === 'string' ? refused.error : 'Too many wrong passwords. Try again later.')
+        return
+      }
       if (!res.ok) {
         setError('Invalid password')
         return
