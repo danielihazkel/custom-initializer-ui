@@ -674,6 +674,8 @@ scheme, `Page.captureScreenshot`. Unlike `--screenshot`, it can click, type and 
 
 **Generated tests (2026-11)** — the editor side of *Generated tests* in `backend/CLAUDE.md`. A new model starts with the `tests` option on (`FullstackView` `DEFAULT_SCAFFOLD_OPTS`, also what Reset restores); a stored draft keeps what it chose. The option is labelled *Tests* in `scaffoldOptions.ts`, and `entityCode.ts` shows an entity's `<Entity>ApiTest.java` after its controller. Pinned by the "a new model" case of `FullstackView.test.tsx`, `scaffoldOptions.test.ts` and `entityCode.test.ts`.
 
+**Local run (2026-11).** The next-steps cards name the compose commands: the Fullstack card a *Docker* row (`docker compose up --build`, then :3000), the Backend card a *Services* row (`docker compose up -d`) and the `compose` profile in its *Run* command when a selected dependency has a container — `composeProfiles` in `backend/BackendNextSteps.tsx` keeps the backend's `LocalRun.SERVICES` list; `BackendRun.dependencies` carries the ids. The `testcontainers` dependency comes from the catalog like any other.
+
 ## Performance rules
 
 - **The entry chunk has a budget** — `npm run build:check` (see *Round 11, phase 0*). What is not needed

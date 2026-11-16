@@ -32,6 +32,7 @@ describe('NextStepsPanel', () => {
     expect(screen.getByRole('heading', { name: /shop\.zip is downloaded — 2 entities, 3 endpoints/ })).toBeTruthy()
     expect(screen.getByText('cd backend && mvn spring-boot:run')).toBeTruthy()
     expect(screen.getByText('cd frontend && npm install && npm run dev')).toBeTruthy()
+    expect(screen.getByText('docker compose up --build')).toBeTruthy()
     const endpoints = document.querySelector('[data-next-steps-endpoints]')!
     expect(endpoints.getAttribute('open')).not.toBeNull()
     expect(endpoints.textContent).toContain('Order')

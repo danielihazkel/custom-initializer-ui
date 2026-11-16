@@ -49,13 +49,14 @@ export function NextStepsPanel({ run, stale, onDismiss, onSavePreset, onSaveTeam
   return (
     <NextSteps
       title={`${folder}.zip is downloaded — ${run.entityCount} entit${run.entityCount === 1 ? 'y' : 'ies'}, ${run.endpoints.length} endpoint${run.endpoints.length === 1 ? '' : 's'}`}
-      hint={<>Run it in two terminals, then open <a className="underline" href="http://localhost:5173" target="_blank" rel="noreferrer">http://localhost:5173</a>.</>}
+      hint={<>Run it in two terminals, then open <a className="underline" href="http://localhost:5173" target="_blank" rel="noreferrer">http://localhost:5173</a> — or all of it in Docker, then <a className="underline" href="http://localhost:3000" target="_blank" rel="noreferrer">http://localhost:3000</a>.</>}
       stale={stale}
       staleText="The model has changed since — generate again to get the current version."
       commands={[
         { label: 'Unpack', cmd: `unzip ${folder}.zip -d ${folder} && cd ${folder}` },
         { label: 'Backend', cmd: 'cd backend && mvn spring-boot:run' },
         { label: 'Frontend', cmd: 'cd frontend && npm install && npm run dev' },
+        { label: 'Docker', cmd: 'docker compose up --build' },
       ]}
       actionsLabel="Keep this model:"
       actions={[

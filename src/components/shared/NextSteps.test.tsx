@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NextSteps } from './NextSteps'
-import { BackendNextSteps, type BackendRun } from '../backend/BackendNextSteps'
+import { BackendNextSteps, composeProfiles, type BackendRun } from '../backend/BackendNextSteps'
 import { useBusy } from '../../utils/busy'
 import { registerCommands, runCommand } from '../../commands'
 
@@ -48,6 +48,21 @@ describe('BackendNextSteps', () => {
     render(<BackendNextSteps run={run} stale={false} {...handlers()} />)
     expect(screen.getByRole('heading', { name: 'orders.zip is downloaded — 5 dependencies, 1 wizard' })).toBeTruthy()
     expect(screen.getByText('unzip orders.zip -d orders && cd orders')).toBeTruthy()
+    expect(screen.getByText('mvn spring-boot:run')).toBeTruthy()
+  })
+
+  it('starts the compose services first when the project has some', () => {
+    render(<BackendNextSteps run={{ ...run, dependencies: ['web', 'postgresql', 'ldap-auth'] }} stale={false} {...handlers()} />)
+    expect(screen.getByText('docker compose up -d')).toBeTruthy()
+    expect(screen.getByText('mvn spring-boot:run -Dspring-boot.run.profiles=compose,local')).toBeTruthy()
+  })
+
+  it('names no profile without services', () => {
+    expect(composeProfiles(['web', 'h2', 'db2'])).toBeNull()
+    expect(composeProfiles(undefined)).toBeNull()
+    expect(composeProfiles(['kafka'])).toBe('compose')
+    render(<BackendNextSteps run={{ ...run, dependencies: ['web', 'h2'] }} stale={false} {...handlers()} />)
+    expect(screen.queryByText('docker compose up -d')).toBeNull()
     expect(screen.getByText('mvn spring-boot:run')).toBeTruthy()
   })
 

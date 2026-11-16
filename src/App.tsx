@@ -315,6 +315,7 @@ export default function App() {
       setLastRun({
         artifactId: form.artifactId,
         dependencyCount: selectedDeps.length,
+        dependencies: selectedDeps,
         wizardCount: wizards.length,
         moduleCount: request.kind === 'multimodule' ? selectedModules.length : 0,
         key: request.key,

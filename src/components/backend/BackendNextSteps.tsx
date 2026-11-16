@@ -4,6 +4,8 @@ import { NextSteps } from '../shared/NextSteps'
 export interface BackendRun {
   artifactId: string
   dependencyCount: number
+  /** The dependency ids: the services compose.yaml starts follow from them. */
+  dependencies?: string[]
   /** Dependencies whose wizard (SQL, OpenAPI, WSDL, AsyncAPI) contributed code. */
   wizardCount: number
   /** Modules of a multi-module project; 0 for a single module. */
@@ -26,6 +28,18 @@ interface Props {
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
+/** Dependencies the generated compose.yaml starts a container for (the backend's LocalRun.SERVICES). */
+const COMPOSE_SERVICES = ['postgresql', 'oracle', 'mssql', 'mongodb', 'redis', 'kafka']
+
+/**
+ * The Spring profiles that point the project at its compose services, or null when it has none
+ * (no compose.yaml is generated then).
+ */
+export function composeProfiles(dependencies: string[] | undefined): string | null {
+  if (!dependencies?.some(d => COMPOSE_SERVICES.includes(d))) return null
+  return dependencies.some(d => d === 'ldap-auth' || d === 'ldap-auth-rest') ? 'compose,local' : 'compose'
+}
+
 /**
  * The Backend tab's card after a successful Generate. Lazy: it exists only once a project has
  * been generated.
@@ -37,6 +51,9 @@ export function BackendNextSteps({ run, stale, onDismiss, onSavePreset, onCopyCu
     run.moduleCount > 0 ? plural(run.moduleCount, 'module') : '',
     run.wizardCount > 0 ? plural(run.wizardCount, 'wizard') : '',
   ].filter(Boolean).join(', ')
+  const profiles = composeProfiles(run.dependencies)
+  // A multi-module project's compose file is at its root; the run command is its own business.
+  const runCommand = profiles && run.moduleCount === 0 ? `mvn spring-boot:run -Dspring-boot.run.profiles=${profiles}` : 'mvn spring-boot:run'
 
   return (
     <NextSteps
@@ -48,7 +65,8 @@ export function BackendNextSteps({ run, stale, onDismiss, onSavePreset, onCopyCu
       stale={stale}
       commands={[
         { label: 'Unpack', cmd: `unzip ${folder}.zip -d ${folder} && cd ${folder}` },
-        { label: 'Run', cmd: 'mvn spring-boot:run' },
+        ...(profiles ? [{ label: 'Services', cmd: 'docker compose up -d' }] : []),
+        { label: 'Run', cmd: runCommand },
         { label: 'Test', cmd: 'mvn test' },
       ]}
       actionsLabel="Keep this setup:"
