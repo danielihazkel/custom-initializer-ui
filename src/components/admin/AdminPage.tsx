@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense, type ComponentType, type LazyExoti
 import { motion, AnimatePresence } from 'framer-motion'
 import type { AdminTab } from '../../types'
 import { AdminLogin } from './AdminLogin'
-import { ADMIN_UNAUTHORIZED_EVENT } from '../../hooks/useAdminResource'
+import { ADMIN_UNAUTHORIZED_EVENT, getAuthHeaders } from '../../hooks/useAdminResource'
 import { AdminSidebar } from './AdminSidebar'
 import { AdminGlobalActions } from './AdminGlobalActions'
 import { AdminKindProvider, useAdminKind } from './AdminKindContext'
@@ -13,6 +13,7 @@ import { AdminKindProvider, useAdminKind } from './AdminKindContext'
 const TAB_LOADERS: Record<AdminTab, () => Promise<{ default: ComponentType }>> = {
   'overview': () => import('./overview/OverviewTab').then(m => ({ default: m.OverviewTab })),
   'activity': () => import('./activity/ActivityTab').then(m => ({ default: m.ActivityTab })),
+  'history': () => import('./history/HistoryTab').then(m => ({ default: m.HistoryTab })),
   'groups': () => import('./dependency-groups/DependencyGroupsTab').then(m => ({ default: m.DependencyGroupsTab })),
   'entries': () => import('./dependency-entries/DependencyEntriesTab').then(m => ({ default: m.DependencyEntriesTab })),
   'files': () => import('./file-contributions/FileContributionsTab').then(m => ({ default: m.FileContributionsTab })),
@@ -74,8 +75,9 @@ export function AdminPage() {
     return () => window.removeEventListener(ADMIN_UNAUTHORIZED_EVENT, onUnauthorized)
   }, [])
 
-  function handleLogin(newToken: string) {
+  function handleLogin(newToken: string, user: string) {
     sessionStorage.setItem('adminToken', newToken)
+    sessionStorage.setItem('adminUser', user)
     setToken(newToken)
     setExpired(false)
   }
@@ -89,6 +91,7 @@ export function AdminPage() {
       }).catch(() => {})
     }
     sessionStorage.removeItem('adminToken')
+    sessionStorage.removeItem('adminUser')
     setToken(null)
     setExpired(false)
   }
@@ -133,7 +136,10 @@ function AdminPageInner({ onLogout }: { onLogout: () => void }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
         {/* Header - Project-kind pill + Global Actions */}
         <header className="flex items-center justify-between px-8 py-4 border-b border-outline-variant bg-surface/80 backdrop-blur-md">
-          <ProjectKindPill />
+          <div className="flex items-center gap-4">
+            <ProjectKindPill />
+            <SignedInAs />
+          </div>
           <AdminGlobalActions
             onImportComplete={() => setReloadKey(k => k + 1)}
             onLogout={onLogout}
@@ -158,6 +164,31 @@ function AdminPageInner({ onLogout }: { onLogout: () => void }) {
         </main>
       </div>
     </div>
+  )
+}
+
+/** Who the token names — what the catalog history records as the author of a change. */
+function SignedInAs() {
+  const [user, setUser] = useState<string | null>(() => sessionStorage.getItem('adminUser'))
+  useEffect(() => {
+    if (user) return
+    // A token from before the name was kept: ask who it is.
+    fetch('/admin/me', { headers: { Accept: 'application/json', ...getAuthHeaders() } })
+      .then(res => (res.ok ? res.json() : null))
+      .then((me: { user?: string } | null) => {
+        if (me?.user) {
+          sessionStorage.setItem('adminUser', me.user)
+          setUser(me.user)
+        }
+      })
+      .catch(() => {})
+  }, [user])
+  if (!user) return null
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-secondary" data-admin-user>
+      <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>person</span>
+      Signed in as <span className="font-semibold text-on-surface">{user}</span>
+    </span>
   )
 }
 

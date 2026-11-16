@@ -17,6 +17,7 @@ export const ADMIN_UNAUTHORIZED_EVENT = 'admin-unauthorized'
 function handle401(res: Response): Response {
   if (res.status === 401) {
     sessionStorage.removeItem('adminToken')
+    sessionStorage.removeItem('adminUser')
     invalidateAdminCache()
     window.dispatchEvent(new Event(ADMIN_UNAUTHORIZED_EVENT))
   }

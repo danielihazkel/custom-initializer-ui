@@ -50,9 +50,11 @@ afterEach(() => {
 
 describe('AdminPage', () => {
   it('shows the login form when no token is stored', () => {
+    fetchMock.mockResolvedValue(response(200, { password: true, sso: false, user: null }))
     render(<AdminPage />)
     expect(screen.getByPlaceholderText('Enter admin password')).toBeTruthy()
-    expect(fetchMock).not.toHaveBeenCalled()
+    // Only what the login screen may offer is asked; nothing behind the login.
+    expect(fetchMock.mock.calls.map(c => c[0])).toEqual(['/admin/login/options'])
   })
 
   it('renders the admin shell with a stored token', async () => {

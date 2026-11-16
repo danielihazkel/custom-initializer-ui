@@ -323,7 +323,7 @@ export interface AdminDependencyCompatibility {
   projectKind?: ProjectKind
 }
 
-export type AdminTab = 'overview' | 'activity' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates' | 'versions' | 'departments' | 'fullstack-examples'
+export type AdminTab = 'overview' | 'activity' | 'history' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates' | 'versions' | 'departments' | 'fullstack-examples'
 
 /** Discriminator for {@link AdminVersion} rows — backend Java/Boot plus frontend React/Node/package-manager lists. */
 export type VersionKind = 'JAVA' | 'BOOT' | 'REACT' | 'NODE' | 'PACKAGE_MANAGER'
@@ -980,6 +980,41 @@ export interface ActivitySummary {
     lastEventId: number
   }[]
   retentionDays: number
+}
+
+/** One change to a catalog row, from the catalog history (/admin/history). */
+export interface CatalogChange {
+  id: number
+  changedAt: string
+  /** The signed-in admin, "<user> (password)", "password" or "system". */
+  actor: string
+  /** admin | import | catalog-sync | template-reset | release-sync | restore | system */
+  source: string
+  requestId: string
+  /** The entity's class name, e.g. DependencyEntryEntity. */
+  entityType: string
+  tableName: string
+  rowId: string
+  action: 'CREATE' | 'UPDATE' | 'DELETE'
+  label: string | null
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  changedFields: string[]
+}
+
+export interface CatalogRequest {
+  requestId: string
+  at: string
+  actor: string
+  source: string
+  changes: number
+}
+
+export interface Paged<T> {
+  content: T[]
+  totalElements: number
+  page: number
+  size: number
 }
 
 /** What the events list is narrowed by; empty strings narrow nothing. */
