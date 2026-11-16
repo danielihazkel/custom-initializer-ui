@@ -20,6 +20,7 @@ function normalizeOpenApiByDep(raw: unknown): OpenApiByDep {
       // Kept only when set, like the drawer saves them.
       ...(value.clientKind === 'restClient' ? { clientKind: 'restClient' as const } : {}),
       ...(value.copySpec === true ? { copySpec: true } : {}),
+      ...(value.apiStyle === 'interfaces' ? { apiStyle: 'interfaces' as const } : {}),
     }
   }
   return out

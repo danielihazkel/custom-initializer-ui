@@ -123,7 +123,7 @@ describe('useProjectState — wizard entries across a reload', () => {
     localStorage.setItem('selectedDeps', JSON.stringify(['web', 'data-jpa']))
     localStorage.setItem('openApiByDep', JSON.stringify({
       web: { spec: 's', apiSubPackage: 'api', dtoSubPackage: 'dto', clientSubPackage: 'client', mode: 'BOTH',
-        baseUrlProperty: 'p', clientKind: 'restClient', copySpec: true },
+        baseUrlProperty: 'p', clientKind: 'restClient', copySpec: true, apiStyle: 'interfaces' },
       // …and an entry saved before the client kind existed.
       old: { spec: 'o' },
     }))
@@ -135,7 +135,7 @@ describe('useProjectState — wizard entries across a reload', () => {
     const { result } = renderHook(() => useProjectState(metadata))
 
     // The client kind and the spec copy used to be dropped here, so a reload undid them.
-    expect(result.current.openApiByDep.web).toMatchObject({ clientKind: 'restClient', copySpec: true })
+    expect(result.current.openApiByDep.web).toMatchObject({ clientKind: 'restClient', copySpec: true, apiStyle: 'interfaces' })
     expect(result.current.openApiByDep.old).toEqual({
       spec: 'o', apiSubPackage: 'api', dtoSubPackage: 'dto', clientSubPackage: 'client',
       mode: 'CONTROLLERS', baseUrlProperty: 'openapi.client.base-url',

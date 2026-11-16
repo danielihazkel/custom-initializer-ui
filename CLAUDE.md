@@ -733,3 +733,5 @@ cuts `wght` to 400–700. Rerun it after upgrading `material-symbols`; an icon w
 script changed first. `index.html` preloads it. The backdrop (grid, blobs, pipes, conveyor, gears) is drawn
 still — looping it kept the CPU busy on an idle page — so don't add `infinite` decorative animations back. Container queries (`@container` / `@sm:`) are used where a form must stack
 by its column's width rather than the window's (the page forms in the layout designer's inspector).
+
+**OpenAPI drawer: Server code as (2026-11).** With a server side (Controllers or Both) the drawer offers *Interfaces* (an `Api` interface per tag, regenerated, and a controller class that is the team's) or *Classes*. A new setup (`initial === null`) starts on Interfaces; an entry saved before the choice existed reads as Classes (`styleOf`). The entry keeps `apiStyle: 'interfaces'` only; `buildWizardBody` sends it only with a server side; `backendModel` imports the server's `INTERFACES`; `useProjectState` keeps it in the stored draft.

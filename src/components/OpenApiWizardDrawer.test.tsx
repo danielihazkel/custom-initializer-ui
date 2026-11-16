@@ -45,6 +45,29 @@ describe('OpenApiWizardDrawer options', () => {
     expect(onSave).toHaveBeenCalledWith({ ...entry, clientKind: 'restClient', copySpec: true })
   })
 
+  it('starts a new setup on interfaces and keeps an old one on classes', () => {
+    const onNew = vi.fn()
+    render(<OpenApiWizardDrawer isOpen onClose={() => {}} depId="web" depName="Spring Web" initial={null} onSave={onNew} />)
+    expect(screen.getByRole('radio', { name: /Interfaces/ }).getAttribute('aria-checked')).toBe('true')
+    fireEvent.change(screen.getByLabelText('spec'), { target: { value: 'openapi: 3.0.0' } })
+    fireEvent.click(screen.getByText('Save'))
+    expect(onNew).toHaveBeenCalledWith(expect.objectContaining({ apiStyle: 'interfaces', mode: 'CONTROLLERS' }))
+  })
+
+  it('saves the style only for a server side, and classes as nothing', () => {
+    const onSave = open({ ...entry, apiStyle: 'interfaces' })
+    fireEvent.click(screen.getByRole('radio', { name: /Classes/ }))
+    fireEvent.click(screen.getByText('Save'))
+    expect(onSave).toHaveBeenCalledWith(entry)
+  })
+
+  it('offers no style where no server side is generated', () => {
+    const onSave = open({ ...entry, mode: 'CLIENT', apiStyle: 'interfaces' })
+    expect(screen.queryByRole('radiogroup', { name: /Server code as/ })).toBeNull()
+    fireEvent.click(screen.getByText('Save'))
+    expect(onSave).toHaveBeenCalledWith({ ...entry, mode: 'CLIENT' })
+  })
+
   it('offers no client kind where no client is generated', () => {
     const onSave = open({ ...entry, mode: 'CONTROLLERS', clientKind: 'restClient' })
     expect(screen.queryByRole('radiogroup', { name: /Client calls through/ })).toBeNull()

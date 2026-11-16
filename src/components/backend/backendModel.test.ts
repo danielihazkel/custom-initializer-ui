@@ -54,7 +54,7 @@ describe('backendModel', () => {
         sqlByDep: { postgresql: 'CREATE TABLE a (id INT);' },
         sqlOptions: { postgresql: { subPackage: 'entity', tables: [], apiMode: 'NONE', generateTests: false } },
         specByDep: { web: 'openapi: 3.0.0' },
-        openApiOptions: { web: { mode: 'CLIENT', clientKind: 'REST_CLIENT', copySpec: false } },
+        openApiOptions: { web: { mode: 'CLIENT', clientKind: 'REST_CLIENT', copySpec: false, apiStyle: 'INTERFACES' } },
         wsdlByDep: { 'web-services': '<wsdl/>' },
         soapOptions: { 'web-services': { mode: 'BOTH' } },
       },
@@ -68,7 +68,7 @@ describe('backendModel', () => {
     expect(s.selected).toEqual(['web', 'validation', 'openapi', 'postgresql'])
     expect(s.selectedOptions).toEqual({ postgresql: ['pg-primary'] })
     expect(s.sqlByDep.postgresql).toEqual({ sql: 'CREATE TABLE a (id INT);', subPackage: 'entity', tables: [], apiMode: 'NONE' })
-    expect(s.openApiByDep.web).toMatchObject({ mode: 'CLIENT', clientKind: 'restClient', apiSubPackage: 'api' })
+    expect(s.openApiByDep.web).toMatchObject({ mode: 'CLIENT', clientKind: 'restClient', apiSubPackage: 'api', apiStyle: 'interfaces' })
     expect(s.openApiByDep.web).not.toHaveProperty('copySpec')
     expect(s.soapByDep['web-services']).toMatchObject({ mode: 'BOTH', contextPath: '/ws' })
     expect(s).not.toHaveProperty('eventsByDep')

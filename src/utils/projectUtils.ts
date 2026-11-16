@@ -309,6 +309,7 @@ export function buildWizardBody(
     baseUrlProperty: string
     clientKind?: string
     copySpec?: boolean
+    apiStyle?: string
   }> = {}
   for (const [depId, entry] of Object.entries(activeOpenApi)) {
     specByDep[depId] = entry.spec
@@ -321,6 +322,8 @@ export function buildWizardBody(
       // Sent only where they differ from the server's defaults; a client kind needs a client.
       ...(entry.clientKind === 'restClient' && entry.mode !== 'CONTROLLERS' ? { clientKind: 'restClient' } : {}),
       ...(entry.copySpec ? { copySpec: true } : {}),
+      // Interfaces need a server side; classes are what the server writes without the option.
+      ...(entry.apiStyle === 'interfaces' && entry.mode !== 'CLIENT' ? { apiStyle: 'interfaces' } : {}),
     }
   }
 

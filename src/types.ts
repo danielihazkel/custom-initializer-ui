@@ -134,6 +134,10 @@ export type OpenApiMode = 'CONTROLLERS' | 'CLIENT' | 'BOTH'
 // What a generated client calls through. Absent = RestTemplate, as before.
 export type OpenApiClientKind = 'restTemplate' | 'restClient'
 
+// How the server side is written. Absent = classes (a controller per tag with TODO bodies), as
+// before; interfaces = a <Tag>Api interface the generator rewrites and a <Tag>Controller that is the team's.
+export type OpenApiApiStyle = 'classes' | 'interfaces'
+
 export interface OpenApiWizardEntry {
   spec: string
   apiSubPackage: string
@@ -144,6 +148,8 @@ export interface OpenApiWizardEntry {
   clientKind?: OpenApiClientKind
   /** Keep the document in the project (src/main/resources/openapi/). Absent = no. */
   copySpec?: boolean
+  /** Absent = classes. */
+  apiStyle?: OpenApiApiStyle
 }
 
 export type OpenApiByDep = Record<string, OpenApiWizardEntry>

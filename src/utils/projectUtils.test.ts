@@ -74,6 +74,10 @@ describe('buildWizardBody', () => {
     expect(options({ clientKind: 'restClient', copySpec: true })).toEqual({ ...plain, clientKind: 'restClient', copySpec: true })
     // No client, no client kind.
     expect(options({ mode: 'CONTROLLERS', clientKind: 'restClient' })).toEqual({ ...plain, mode: 'CONTROLLERS' })
+    // The interface style, for a server side only; classes are the server's own default.
+    expect(options({ apiStyle: 'interfaces' })).toEqual({ ...plain, apiStyle: 'interfaces' })
+    expect(options({ apiStyle: 'classes' })).toEqual(plain)
+    expect(options({ mode: 'CLIENT', apiStyle: 'interfaces' })).toEqual({ ...plain, mode: 'CLIENT' })
   })
 
   it('carries the events wizard only when it has an entry', () => {

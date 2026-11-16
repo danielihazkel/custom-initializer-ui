@@ -151,6 +151,8 @@ function openApiOf(request: Json): OpenApiByDep {
       baseUrlProperty: str(o.baseUrlProperty, 'openapi.client.base-url'),
       ...(restClient ? { clientKind: 'restClient' as const } : {}),
       ...(o.copySpec === true ? { copySpec: true } : {}),
+      // The server writes the style as its constant (INTERFACES).
+      ...(str(o.apiStyle).toLowerCase() === 'interfaces' ? { apiStyle: 'interfaces' as const } : {}),
     }
   }
   return out

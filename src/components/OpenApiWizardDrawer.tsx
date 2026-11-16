@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AdminFormDrawer } from './admin/shared/AdminFormDrawer'
 import { CodeEditor } from './admin/file-contributions/CodeEditor'
-import type { OpenApiClientKind, OpenApiMode, OpenApiWizardEntry } from '../types'
+import type { OpenApiApiStyle, OpenApiClientKind, OpenApiMode, OpenApiWizardEntry } from '../types'
 
 interface Props {
   isOpen: boolean
@@ -23,6 +23,16 @@ const CLIENT_KINDS: { id: OpenApiClientKind; label: string; hint: string }[] = [
   { id: 'restClient', label: 'RestClient', hint: 'The fluent client of Spring 6.1 / Boot 3.2' },
 ]
 
+const API_STYLES: { id: OpenApiApiStyle; label: string; hint: string }[] = [
+  { id: 'interfaces', label: 'Interfaces', hint: 'An Api interface per tag, regenerated; your controller implements it and an update never touches it' },
+  { id: 'classes', label: 'Classes', hint: 'A controller per tag with TODO bodies, rewritten with the spec' },
+]
+
+/** A new setup starts on interfaces; one saved before the choice existed keeps its classes. */
+function styleOf(initial: OpenApiWizardEntry | null): OpenApiApiStyle {
+  return initial ? initial.apiStyle ?? 'classes' : 'interfaces'
+}
+
 export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, onSave }: Props) {
   const [spec, setSpec] = useState<string>(initial?.spec ?? '')
   const [apiSubPackage, setApiSubPackage] = useState<string>(initial?.apiSubPackage ?? 'api')
@@ -32,6 +42,7 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
   const [baseUrlProperty, setBaseUrlProperty] = useState<string>(initial?.baseUrlProperty ?? 'openapi.client.base-url')
   const [clientKind, setClientKind] = useState<OpenApiClientKind>(initial?.clientKind ?? 'restTemplate')
   const [copySpec, setCopySpec] = useState<boolean>(initial?.copySpec ?? false)
+  const [apiStyle, setApiStyle] = useState<OpenApiApiStyle>(styleOf(initial))
   const [paths, setPaths] = useState<string[]>([])
   const [parseError, setParseError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -47,6 +58,7 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
       setBaseUrlProperty(initial?.baseUrlProperty ?? 'openapi.client.base-url')
       setClientKind(initial?.clientKind ?? 'restTemplate')
       setCopySpec(initial?.copySpec ?? false)
+      setApiStyle(styleOf(initial))
       setPaths([])
       setParseError(null)
     }
@@ -111,6 +123,7 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
         // Kept only when they differ from the defaults, so an untouched entry stays as it was.
         ...(clientKind === 'restClient' && mode !== 'CONTROLLERS' ? { clientKind } : {}),
         ...(copySpec ? { copySpec: true } : {}),
+        ...(apiStyle === 'interfaces' && mode !== 'CLIENT' ? { apiStyle } : {}),
       })
     }
     onClose()
@@ -178,6 +191,37 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
             })}
           </div>
         </div>
+
+        {emitControllers && (
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
+              Server code as
+            </label>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Server code as">
+              {API_STYLES.map(s => {
+                const active = apiStyle === s.id
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setApiStyle(s.id)}
+                    className={
+                      'rounded-lg border px-3 py-2 text-left transition-all ' +
+                      (active
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-outline-variant bg-surface-container-highest text-on-surface hover:border-primary/60')
+                    }
+                  >
+                    <div className="text-xs font-bold">{s.label}</div>
+                    <div className="text-[10px] text-on-surface-variant mt-0.5 leading-tight">{s.hint}</div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           {emitControllers && (
@@ -325,7 +369,10 @@ export function OpenApiWizardDrawer({ isOpen, onClose, depId, depName, initial, 
             )}
             Records, enums and <code className="text-primary">oneOf</code> interfaces to <code className="text-primary">{dtoSubPackage || 'dto'}</code>.
             {emitControllers && <> <code className="text-primary">openapi</code> (Swagger UI) is added beside <code className="text-primary">web</code>.</>}
-            {emitControllers && ' Controller methods throw UnsupportedOperationException until implemented.'}
+            {emitControllers && (apiStyle === 'interfaces'
+              ? ' Each tag gets an Api interface whose methods answer 501 until your controller overrides them.'
+              : ' Controller methods throw UnsupportedOperationException until implemented.')}
+            {' '}Multipart and form bodies become parameters; the client sends the credentials its security schemes ask for, from properties.
           </p>
         </div>
 
