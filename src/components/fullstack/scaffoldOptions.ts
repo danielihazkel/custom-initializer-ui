@@ -31,7 +31,7 @@ export const SCAFFOLD_OPTIONS: ScaffoldOption[] = [
   { value: 'audit', label: 'Audit timestamps', hint: 'createdAt / updatedAt via JPA auditing', entityHint: 'createdAt / updatedAt columns', perEntity: true },
   { value: 'softDelete', label: 'Soft delete', hint: 'deleted flag + Hibernate @SQLDelete/@SQLRestriction; delete toast gets a real Undo', entityHint: 'deleted flag + restore endpoint', perEntity: true },
   { value: 'inverseCollections', label: 'Inverse collections', hint: 'Read-only @OneToMany on the referenced side', perEntity: false },
-  { value: 'tests', label: 'Controller tests', hint: 'Per-entity @WebMvcTest', entityHint: '@WebMvcTest for this entity', perEntity: true },
+  { value: 'tests', label: 'Tests', hint: 'An API test per entity (its real endpoints on an in-memory H2, whatever the database), and Vitest tests of its form checks and list page', entityHint: 'API test + form-check and list-page tests', perEntity: true },
   { value: 'openapi', label: 'OpenAPI annotations', hint: 'springdoc @Tag/@Operation on every controller; adds the openapi starter', perEntity: false },
   { value: 'secured', label: 'Permission hints', hint: 'Retired: with ldap-auth or ldap-auth-rest selected every endpoint is checked, at each entity\'s access levels (entity Settings)', perEntity: false, retired: true },
   { value: 'csvExport', label: 'CSV export', hint: 'GET /export.csv (streamed, honors search/filters/sort) + Export button', entityHint: 'GET /export.csv + Export button', perEntity: true },

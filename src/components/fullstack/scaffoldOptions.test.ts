@@ -8,7 +8,7 @@ describe('scaffoldOptions', () => {
     expect(Object.keys(ENTITY_OPT_LABELS).sort()).toEqual([...FULLSTACK_ENTITY_OPT_KEYS].sort())
     expect(SCAFFOLD_OPTIONS.filter(o => o.perEntity).map(o => o.value).sort()).toEqual([...FULLSTACK_ENTITY_OPT_KEYS].sort())
     // The entity wording is the shorter, per-entity one where it exists.
-    expect(ENTITY_OPT_LABELS.tests).toEqual({ label: 'Controller tests', hint: '@WebMvcTest for this entity' })
+    expect(ENTITY_OPT_LABELS.tests).toEqual({ label: 'Tests', hint: 'API test + form-check and list-page tests' })
   })
 
   it('keeps RTL out of the Options section and lists the project-only flags', () => {

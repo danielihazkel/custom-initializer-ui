@@ -36,6 +36,8 @@ function storeDraft(entities: FullstackEntityDef[]) {
   localStorage.setItem('fullstack:meta', JSON.stringify(DEFAULT_PROJECT_META))
   localStorage.setItem('fullstack:entities', JSON.stringify(entities))
   localStorage.setItem('fullstack:deps', JSON.stringify(['web']))
+  // The editor writes its options with every draft (a new model starts with `tests` on).
+  localStorage.setItem('fullstack:opts', JSON.stringify([]))
 }
 
 let fetchMock: ReturnType<typeof vi.fn>
@@ -111,6 +113,18 @@ describe('FullstackView — share link over a draft', () => {
     render(<FullstackView />)
     expect(entityNames()).toEqual(['Shipment'])
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+describe('FullstackView — a new model', () => {
+  it('starts with its tests on, and keeps what a stored draft chose', () => {
+    const first = render(<FullstackView />)
+    expect(JSON.parse(localStorage.getItem('fullstack:opts') ?? 'null')).toEqual(['tests'])
+    first.unmount()
+
+    storeDraft(draftEntities)
+    render(<FullstackView />)
+    expect(JSON.parse(localStorage.getItem('fullstack:opts') ?? 'null')).toEqual([])
   })
 })
 

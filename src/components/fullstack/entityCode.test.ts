@@ -58,6 +58,13 @@ describe('entityCodeFiles', () => {
     ])
   })
 
+  it('takes the API test the tests option writes, after the controller', () => {
+    const withApiTest = files.filter(file => !file.path.endsWith('UserControllerTest.java'))
+      .concat(f('backend/src/test/java/com/menora/demo/controller/UserApiTest.java'))
+    const names = entityCodeFiles(entity('User'), withApiTest).filter(c => c.side === 'backend').map(c => c.name)
+    expect(names.slice(-2)).toEqual(['UserController.java', 'UserApiTest.java'])
+  })
+
   it('puts the whole backend stack before the frontend slices', () => {
     const sides = entityCodeFiles(entity('User'), files).map(c => c.side)
     expect(sides.indexOf('frontend')).toBeGreaterThan(sides.lastIndexOf('backend'))

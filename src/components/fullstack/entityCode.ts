@@ -24,7 +24,7 @@ export interface EntityCodeFile {
  * that is not listed simply does not match, which is what keeps `User` from claiming
  * `UserGroupController.java`.
  */
-const JAVA_SUFFIXES = ['', 'Id', 'Repository', 'Dto', 'Service', 'Controller', 'ControllerTest']
+const JAVA_SUFFIXES = ['', 'Id', 'Repository', 'Dto', 'Service', 'Controller', 'ApiTest', 'ControllerTest']
 
 /** Frontend order, mirroring the `react-tailwind-crud` manifest's FSD layout. */
 const FE_ORDER = ['types.ts', 'index.ts', 'validate.ts']

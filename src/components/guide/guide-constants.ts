@@ -1019,13 +1019,13 @@ Each also has a \`…Path\` slash-form variant: \`entityPackage\` / \`entityPack
             title: 'Manifest entry — gate a file with gatedBy',
             language: 'json',
             code: `{
-  "source": "EntityControllerTest.java.mustache",
-  "path": "src/test/java/{{controllerPackagePath}}/{{EntityName}}ControllerTest.java",
+  "source": "EntityApiTest.java.mustache",
+  "path": "src/test/java/{{controllerPackagePath}}/{{EntityName}}ApiTest.java",
   "perEntity": true,
   "substitutionType": "MUSTACHE",
   "fileType": "TEMPLATE",
-  "sortOrder": 60,
-  "gatedBy": "optScaffoldTests"
+  "sortOrder": 62,
+  "gatedBy": "apiTestApplicable"
 }`
           },
           {

@@ -672,6 +672,8 @@ scheme, `Page.captureScreenshot`. Unlike `--screenshot`, it can click, type and 
 
 **Enforced access (2026-11)** — the editor side of *Enforced access* in `backend/CLAUDE.md`. `fullstack/access.ts` is the one place that knows an entity's access levels: `ACCESS_LEVELS` / `DEFAULT_ACCESS` (from the schema document), `readLevel` / `writeLevel`, `cleanAccess` (a level equal to its default is not written, so an untouched entity keeps its shape — **every edit goes through it**), `accessProblem` (the server's rule: write not open to more people than read) and `accessSummary`. `EntitySettingsPanel` has *Who may read* / *Who may write* (`data-entity-access`); `validation.ts` reports the problem as `EntityErrors.access`, which forces the panel open; `lint.ts` `access-needs-ldap` (fix: add ldap-auth-rest) replaces `secured-needs-ldap`. `secured` is `retired` in `scaffoldOptions.ts`: still listed (the schema names it) and no longer offered. Pinned by `access.test.tsx`, `lint.test.ts` and `scaffoldOptions.test.ts`.
 
+**Generated tests (2026-11)** — the editor side of *Generated tests* in `backend/CLAUDE.md`. A new model starts with the `tests` option on (`FullstackView` `DEFAULT_SCAFFOLD_OPTS`, also what Reset restores); a stored draft keeps what it chose. The option is labelled *Tests* in `scaffoldOptions.ts`, and `entityCode.ts` shows an entity's `<Entity>ApiTest.java` after its controller. Pinned by the "a new model" case of `FullstackView.test.tsx`, `scaffoldOptions.test.ts` and `entityCode.test.ts`.
+
 ## Performance rules
 
 - **The entry chunk has a budget** — `npm run build:check` (see *Round 11, phase 0*). What is not needed

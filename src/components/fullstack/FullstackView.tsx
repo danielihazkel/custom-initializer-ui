@@ -157,6 +157,9 @@ function usePersistThrottled<T>(value: T, write: (value: T) => void, ms = 400): 
 /** The stock entity model, normalized like a snapshot so "still untouched" is a plain compare. */
 const DEFAULT_ENTITIES_JSON = JSON.stringify(stripUids(DEFAULT_ENTITIES))
 
+/** The options a new model starts with: its tests (an API test per entity, form-check and list tests). */
+const DEFAULT_SCAFFOLD_OPTS: string[] = ['tests']
+
 /** A load that replaces the editor's model, held while the user confirms it. */
 type PendingLoad =
   | { kind: 'example'; example: ExampleModel }
@@ -170,7 +173,7 @@ function readStoredSnapshot(): FullstackSnapshot {
     meta: normalizeMeta(loadJson<Partial<ProjectMeta>>(LS.meta, DEFAULT_META)),
     entities: loadJson<FullstackEntityDef[]>(LS.entities, DEFAULT_ENTITIES),
     selectedDeps: loadJson<string[]>(LS.deps, []),
-    scaffoldOpts: loadJson<string[]>(LS.opts, []),
+    scaffoldOpts: loadJson<string[]>(LS.opts, DEFAULT_SCAFFOLD_OPTS),
     backendSet: item(LS.backendSet) ?? 'spring-jpa-crud',
     frontendSet: item(LS.frontendSet) ?? 'react-tailwind-crud',
     colorPalette: item(LS.palette) ?? '',
@@ -210,7 +213,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const [toast, setToast] = useState<Toast | null>(null)
   const [importVariant, setImportVariant] = useState<ImportVariant | null>(null)
   const [selectedDeps, setSelectedDeps] = useState<string[]>(() => shared?.selectedDeps ?? loadJson<string[]>(LS.deps, []))
-  const [scaffoldOpts, setScaffoldOpts] = useState<string[]>(() => shared?.scaffoldOpts ?? loadJson<string[]>(LS.opts, []))
+  const [scaffoldOpts, setScaffoldOpts] = useState<string[]>(() => shared?.scaffoldOpts ?? loadJson<string[]>(LS.opts, DEFAULT_SCAFFOLD_OPTS))
   // '' = follow the frontend set's default palette (the backend resolves it; nothing is sent).
   const [colorPalette, setColorPalette] = useState<string>(() => shared ? (shared.colorPalette ?? '') : (localStorage.getItem(LS.palette) ?? ''))
   // The frontend page layout — empty = the classic shell. Arrives with an example / preset / link.
@@ -1164,7 +1167,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     setEntities(withUids(DEFAULT_ENTITIES.map(e => ({ ...e, fields: e.fields.map(f => ({ ...f })) }))))
     setBackendSet('spring-jpa-crud')
     setFrontendSet('react-tailwind-crud')
-    setScaffoldOpts([])
+    setScaffoldOpts([...DEFAULT_SCAFFOLD_OPTS])
     setColorPalette('')
     setPages([])
     setCollapsed(new Set())
