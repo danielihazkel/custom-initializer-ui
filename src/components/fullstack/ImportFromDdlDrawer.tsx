@@ -3,6 +3,8 @@ import { AdminFormDrawer } from '../admin/shared/AdminFormDrawer'
 import type { FullstackEntityDef } from '../../types'
 import { newUid } from './uid'
 import { useSqlDialects } from '../../hooks/useSqlDialects'
+import { LiveSchemaPanel } from '../liveSchema/LiveSchemaPanel'
+import { postLive, type LiveReadRequest } from '../liveSchema/liveSchemaApi'
 
 interface Props {
   isOpen: boolean
@@ -108,6 +110,44 @@ interface ImportError {
   snippet?: string
 }
 
+/** The server's entities as the editor holds them (each with fresh uids). */
+function toEditorEntities(wire: WireEntity[]): FullstackEntityDef[] {
+  return wire.map(e => ({
+    uid: newUid(),
+    name: e.name,
+    tableName: e.tableName ?? undefined,
+    schema: e.schema ?? undefined,
+    readOnly: e.readOnly || undefined,
+    viewQuery: e.viewQuery ?? undefined,
+    sourceSql: e.sourceSql ?? undefined,
+    fields: e.fields.map(f => ({
+      uid: newUid(),
+      name: f.name,
+      type: f.type,
+      primaryKey: f.primaryKey || undefined,
+      generated: f.generated || undefined,
+      required: f.required || undefined,
+      unique: f.unique || undefined,
+      length: f.length ?? undefined,
+      enumValues: f.enumValues.length > 0 ? f.enumValues : undefined,
+      column: f.column ?? undefined,
+    })),
+    relations: e.relations && e.relations.length > 0
+      ? e.relations.map(r => ({
+        uid: newUid(),
+        type: 'MANY_TO_ONE' as const,
+        fieldName: r.fieldName,
+        targetEntity: r.targetEntity,
+        required: r.required || undefined,
+        joinColumn: r.joinColumn ?? undefined,
+      }))
+      : undefined,
+  }))
+}
+
+/** Where the DDL import's tables come from: pasted text, or a live database. */
+type DdlSource = 'paste' | 'database'
+
 export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCount = 0, variant = 'ddl', onImport }: Props) {
   const [sql, setSql] = useState('')
   const [dialect, setDialect] = useState('H2')
@@ -123,7 +163,19 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
   // Which parsed entities to import (uids) — everything by default, so a paste of a whole schema
   // can be trimmed to the tables that matter without re-pasting.
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [source, setSource] = useState<DdlSource>('paste')
+  const fromDatabase = variant === 'ddl' && source === 'database'
   const copy = COPY[variant]
+
+  /** The live panel's read: the entities come back ready, so they go straight to the preview. */
+  async function readFromDatabase(req: LiveReadRequest) {
+    const body = await postLive<ImportResponse>('/metadata/fullstack/import-live', req)
+    const entities = toEditorEntities(body.entities)
+    setError(null)
+    setParsed({ entities, note: body.note ?? undefined })
+    setStale(false)
+    setSelected(new Set(entities.map(e => e.uid!)))
+  }
   const fileInputRef = useRef<HTMLInputElement>(null)
   // A `.sql` file can be picked or dropped onto the textarea instead of pasted; its text replaces
   // the current SQL and, like typing, marks an existing preview stale.
@@ -160,6 +212,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       setStale(false)
       setSelected(new Set())
       setMode(hasExisting ? 'append' : 'replace')
+      setSource('paste')
     }
   }, [isOpen, hasExisting, variant])
 
@@ -185,6 +238,10 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       return
     }
     setError(null)
+    if (fromDatabase) {
+      setError({ detail: 'Connect, pick the tables and read them first' })
+      throw new Error('nothing read')
+    }
     const trimmed = sql.trim()
     if (!trimmed) {
       setError({ detail: copy.emptyHint })
@@ -212,37 +269,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
     } finally {
       setParsing(false)
     }
-    const entities: FullstackEntityDef[] = body.entities.map(e => ({
-      uid: newUid(),
-      name: e.name,
-      tableName: e.tableName ?? undefined,
-      schema: e.schema ?? undefined,
-      readOnly: e.readOnly || undefined,
-      viewQuery: e.viewQuery ?? undefined,
-      sourceSql: e.sourceSql ?? undefined,
-      fields: e.fields.map(f => ({
-        uid: newUid(),
-        name: f.name,
-        type: f.type,
-        primaryKey: f.primaryKey || undefined,
-        generated: f.generated || undefined,
-        required: f.required || undefined,
-        unique: f.unique || undefined,
-        length: f.length ?? undefined,
-        enumValues: f.enumValues.length > 0 ? f.enumValues : undefined,
-        column: f.column ?? undefined,
-      })),
-      relations: e.relations && e.relations.length > 0
-        ? e.relations.map(r => ({
-          uid: newUid(),
-          type: 'MANY_TO_ONE' as const,
-          fieldName: r.fieldName,
-          targetEntity: r.targetEntity,
-          required: r.required || undefined,
-          joinColumn: r.joinColumn ?? undefined,
-        }))
-        : undefined,
-    }))
+    const entities = toEditorEntities(body.entities)
     if (entities.length === 0) {
       setError({ detail: copy.emptyResult })
       throw new Error('empty result')
@@ -271,7 +298,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       saving={parsing}
       saveLabel={parsed && !stale
         ? (nSelected === n ? `Import ${n} entit${n === 1 ? 'y' : 'ies'}` : `Import ${nSelected} of ${n}`)
-        : stale ? 'Parse again' : 'Parse'}
+        : fromDatabase ? 'Import' : stale ? 'Parse again' : 'Parse'}
       savingLabel="Parsing…"
     >
       <div className="space-y-4">
@@ -279,6 +306,28 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
           {copy.blurb}
         </p>
 
+        {variant === 'ddl' && (
+          <div role="radiogroup" aria-label="Where the tables come from" data-ddl-source className="flex gap-1 p-1 rounded-lg bg-surface-container-low border border-outline-variant">
+            {([['paste', 'Paste SQL', 'content_paste'], ['database', 'From a database', 'database']] as const).map(([id, text, icon]) => (
+              <button key={id} type="button" role="radio" aria-checked={source === id}
+                      onClick={() => { if (source !== id) { setSource(id); setParsed(null); setStale(false); setError(null) } }}
+                      className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                        source === id ? 'bg-primary/15 text-primary' : 'text-secondary hover:text-on-surface'}`}>
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{icon}</span>
+                {text}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {fromDatabase && (
+          <LiveSchemaPanel
+            readLabel={n => n === 0 ? 'Pick tables to read' : `Read ${n} into the preview`}
+            onRead={readFromDatabase}
+          />
+        )}
+
+        {!fromDatabase && (<>
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
             SQL Dialect
@@ -326,6 +375,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
             spellCheck={false}
           />
         </div>
+        </>)}
 
         {parsed && (
           <div className={`space-y-2 ${stale ? 'opacity-60' : ''}`} data-import-preview data-stale={stale ? '' : undefined}>

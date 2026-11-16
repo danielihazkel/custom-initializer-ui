@@ -323,7 +323,7 @@ export interface AdminDependencyCompatibility {
   projectKind?: ProjectKind
 }
 
-export type AdminTab = 'overview' | 'activity' | 'history' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates' | 'versions' | 'departments' | 'fullstack-examples'
+export type AdminTab = 'overview' | 'activity' | 'history' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates' | 'versions' | 'departments' | 'fullstack-examples' | 'schema-sources'
 
 /** Discriminator for {@link AdminVersion} rows — backend Java/Boot plus frontend React/Node/package-manager lists. */
 export type VersionKind = 'JAVA' | 'BOOT' | 'REACT' | 'NODE' | 'PACKAGE_MANAGER'
@@ -627,6 +627,27 @@ export interface AdminDepartment {
   name: string
   isDefault: boolean
   sortOrder: number
+}
+
+/** One row of `/admin/schema-sources` — a database everyone may read the schema of. */
+export interface AdminSchemaSource {
+  id: number
+  name: string
+  description?: string | null
+  dialect: 'POSTGRESQL' | 'MSSQL' | 'ORACLE' | 'DB2'
+  host: string
+  port?: number | null
+  databaseName?: string | null
+  library?: string | null
+  username: string
+  /** The env var (SCHEMA_SOURCE_…) or property (menora.live-schema.secrets.…) holding the password. */
+  passwordRef?: string | null
+  trustServerCertificate: boolean
+  defaultSchema?: string | null
+  enabled: boolean
+  sortOrder: number
+  /** Read-only: whether the reference names a value set on the server. */
+  passwordAvailable?: boolean
 }
 
 /** One row of `/admin/fullstack-examples` — a "Start from → Examples" model. */

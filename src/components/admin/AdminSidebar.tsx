@@ -20,6 +20,7 @@ const TABS: { id: AdminTab; label: string; icon: string; desc: string }[] = [
   { id: 'palettes',      label: 'Palettes',      icon: 'palette',        desc: 'Frontend color schemes' },
   { id: 'versions',      label: 'Versions',      icon: 'numbers',        desc: 'Java/Boot/React/Node lists' },
   { id: 'departments',   label: 'Departments',   icon: 'apartment',      desc: 'Shared department list' },
+  { id: 'schema-sources', label: 'Schema sources', icon: 'database',     desc: 'Databases to read tables from' },
 ]
 
 interface AdminSidebarProps {
@@ -35,6 +36,7 @@ export function AdminSidebar({ activeTab, onTabChange }: AdminSidebarProps) {
     if (t.id === 'entity-templates' && kind === 'FRONTEND') return false
     if (t.id === 'fullstack-examples' && kind === 'FRONTEND') return false
     if (t.id === 'palettes' && kind === 'BACKEND') return false
+    if (t.id === 'schema-sources' && kind === 'FRONTEND') return false
     return true
   })
 

@@ -3,6 +3,8 @@ import { AdminFormDrawer } from './admin/shared/AdminFormDrawer'
 import { CodeEditor } from './admin/file-contributions/CodeEditor'
 import type { SqlApiMode, SqlTableConfig, SqlWizardEntry } from '../types'
 import { requiredSqlDeps, isSqlDepSatisfied } from '../utils/projectUtils'
+import { LiveSchemaPanel } from './liveSchema/LiveSchemaPanel'
+import { fetchDdl, type LiveReadRequest } from './liveSchema/liveSchemaApi'
 
 const API_MODES: { id: SqlApiMode; label: string; hint: string }[] = [
   { id: 'NONE', label: 'Entities only', hint: 'JPA entities (+ optional repositories)' },
@@ -100,10 +102,27 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
   const [apiMode, setApiMode] = useState<SqlApiMode>(initial?.apiMode ?? 'NONE')
   const [flywayBaseline, setFlywayBaseline] = useState<boolean>(initial?.flywayBaseline ?? true)
   const [generateTests, setGenerateTests] = useState<boolean>(initial?.generateTests ?? false)
+  // Reading from a live database: the panel is open, and what the last read replaced (for Undo).
+  const [liveOpen, setLiveOpen] = useState(false)
+  const [lastRead, setLastRead] = useState<{ summary: string; warnings: string[]; previous: string } | null>(null)
+
+  async function readFromDatabase(req: LiveReadRequest) {
+    const r = await fetchDdl(req)
+    const previous = sql
+    setSql(r.sql)
+    setLiveOpen(false)
+    setLastRead({
+      summary: `Read ${r.tables} table${r.tables === 1 ? '' : 's'}${r.views ? ` and ${r.views} view${r.views === 1 ? '' : 's'}` : ''} from ${req.schema}${previous.trim() ? ' — the script was replaced' : ''}.`,
+      warnings: r.warnings,
+      previous,
+    })
+  }
 
   // Re-seed drawer state when it re-opens for a different dep
   useEffect(() => {
     if (isOpen) {
+      setLiveOpen(false)
+      setLastRead(null)
       setSql(initial?.sql ?? '')
       setSubPackage(initial?.subPackage ?? 'entity')
       setTables(initial?.tables ?? [])
@@ -269,23 +288,58 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
             <label className="text-xs font-bold uppercase tracking-widest text-secondary">
               SQL Scripts
             </label>
-            {sql.length > 0 && (
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={handleClear}
-                className="text-[10px] text-secondary hover:text-error transition-colors"
+                onClick={() => setLiveOpen(o => !o)}
+                aria-expanded={liveOpen}
+                data-live-toggle
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-secondary hover:text-on-surface transition-colors"
               >
-                Clear
+                <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>database</span>
+                {liveOpen ? 'Close' : 'Read from a database…'}
               </button>
-            )}
+              {sql.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="text-[10px] text-secondary hover:text-error transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
+          {liveOpen && (
+            <div className="mb-3">
+              <LiveSchemaPanel
+                dialect={dialectName}
+                readLabel={n => n === 0 ? 'Pick tables to read' : `Read ${n} into the script${sql.trim() ? ' (replaces it)' : ''}`}
+                onRead={readFromDatabase}
+              />
+            </div>
+          )}
+          {lastRead && (
+            <div role="status" data-live-read className="mb-2 flex items-start gap-2 text-[11px] text-on-surface-variant border border-outline-variant rounded-lg px-3 py-2">
+              <span className="material-symbols-outlined text-primary" style={{ fontSize: '14px' }}>check_circle</span>
+              <span className="flex-1">
+                {lastRead.summary}
+                {lastRead.warnings.map(w => <span key={w} className="block text-warning">{w}</span>)}
+              </span>
+              <button type="button" className="underline hover:no-underline"
+                      onClick={() => { setSql(lastRead.previous); setLastRead(null) }}>
+                Undo
+              </button>
+            </div>
+          )}
           <CodeEditor
             value={sql}
             onChange={setSql}
             targetPath="init.sql"
           />
           <p className="text-[10px] text-on-surface-variant mt-1.5 leading-relaxed">
-            Paste one or more <code className="text-primary">CREATE TABLE</code> statements — keys, foreign keys and unique
+            Paste one or more <code className="text-primary">CREATE TABLE</code> statements, or read them from a database
+            (a view comes in as a <code className="text-primary">SELECT</code> of its columns) — keys, foreign keys and unique
             constraints added by <code className="text-primary">ALTER TABLE</code> are read too, and a{' '}
             <code className="text-primary">CHECK (col IN (…))</code> becomes an enum. Entities + optional
             JPA repositories are generated into your project when downloaded. A <code className="text-primary">SELECT</code>{' '}

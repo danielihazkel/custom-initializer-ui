@@ -676,6 +676,17 @@ scheme, `Page.captureScreenshot`. Unlike `--screenshot`, it can click, type and 
 
 **Local run (2026-11).** The next-steps cards name the compose commands: the Fullstack card a *Docker* row (`docker compose up --build`, then :3000), the Backend card a *Services* row (`docker compose up -d`) and the `compose` profile in its *Run* command when a selected dependency has a container — `composeProfiles` in `backend/BackendNextSteps.tsx` keeps the backend's `LocalRun.SERVICES` list; `BackendRun.dependencies` carries the ids. The `testcontainers` dependency comes from the catalog like any other.
 
+**Read from a database (2026-11).** This is the editor side of *SQL wizard from a live database* in `backend/CLAUDE.md`.
+
+- `components/liveSchema/liveSchemaApi.ts` holds the types, `useLiveSchemaOptions` (the catalog cache, cleared by any admin write, so a new source shows) and `postLive`/`fetchSchemas`/`fetchTables`/`fetchDdl`; an error carries the server's `{error, detail}`.
+- `LiveSchemaPanel` is the shared panel: a database type (unless fixed), *Connect to* (the sources of that type, then *Another database…* when typed connections are allowed), the typed form (host, port with the default as placeholder, database / service name / DB2 library, user, password, SQL Server's *Trust the server's certificate*), Connect, the schema picker, the filterable table list (views marked), *Keep the schema name*, and the read button whose words the host gives. Any change to the connection forgets what was listed through it.
+- **The password stays in the panel's state only**: never stored, never in a snapshot or share link, and sent with each call. A missing driver is said instead of the form.
+- `SqlWizardDrawer` has *Read from a database…* beside the SQL box, with the dialect fixed to the dependency's. The script read replaces the box, with a status line (`data-live-read`: counts, the server's warnings) and **Undo**.
+- `ImportFromDdlDrawer` (DDL variant) switches between *Paste SQL* and *From a database* (`data-ddl-source`). From a database, the panel reads through `/metadata/fullstack/import-live` straight into the existing preview, and the primary button imports as before. The mapping to editor entities is `toEditorEntities`, shared with Parse.
+- Admin → **Schema sources** (`admin/schema-sources/SchemaSourcesTab.tsx`, backend only): the list (where, user, whether the password reference is set on the server), a form whose *Password from* takes a reference, never a password (`PASSWORD_REF` mirrors the server), and *Test connection* on the unsaved form.
+
+Pinned by `liveSchema/LiveSchema.test.tsx`.
+
 ## Performance rules
 
 - **The entry chunk has a budget** — `npm run build:check` (see *Round 11, phase 0*). What is not needed

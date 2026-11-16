@@ -27,6 +27,7 @@ const TAB_LOADERS: Record<AdminTab, () => Promise<{ default: ComponentType }>> =
   'fullstack-examples': () => import('./fullstack-examples/FullstackExamplesTab').then(m => ({ default: m.FullstackExamplesTab })),
   'versions': () => import('./versions/VersionsTab').then(m => ({ default: m.VersionsTab })),
   'departments': () => import('./departments/DepartmentsTab').then(m => ({ default: m.DepartmentsTab })),
+  'schema-sources': () => import('./schema-sources/SchemaSourcesTab').then(m => ({ default: m.SchemaSourcesTab })),
 }
 
 const TABS = Object.fromEntries(
