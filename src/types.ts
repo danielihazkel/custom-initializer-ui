@@ -942,19 +942,63 @@ export interface GenerationEvent {
   errorMessage: string | null
   remoteAddr: string | null
   username: string | null
+  /** backend | wizard | multimodule | fullstack | frontend */
+  kind: string | null
+  /** download | patch | preview (other: a detection call recorded before 2026-11) */
+  action: string | null
+  department: string | null
+  /** The wizards given a document, comma-separated: sql, openapi, soap, events. */
+  wizards: string | null
+  entityCount: number | null
 }
 
+/** Generations (downloads and patches) are counted apart from previews. */
 export interface ActivitySummary {
   days: number
   totalCount: number
   successCount: number
   failureCount: number
   successRate: number
+  previewCount: number
   p50Ms: number
   p95Ms: number
   p99Ms: number
   topDependencies: { depId: string; count: number }[]
   topBootVersions: { bootVersion: string; count: number }[]
+  byKind: { kind: string; generations: number; previews: number }[]
+  byEndpoint: { endpoint: string; count: number }[]
+  byDepartment: { department: string; count: number }[]
+  topUsers: { username: string; count: number }[]
+  perDay: { date: string; byKind: Record<string, number>; generations: number; previews: number }[]
+  failures: {
+    message: string
+    count: number
+    lastAt: string
+    lastEndpoint: string | null
+    lastArtifactId: string | null
+    lastUsername: string | null
+    lastEventId: number
+  }[]
+  retentionDays: number
+}
+
+/** What the events list is narrowed by; empty strings narrow nothing. */
+export interface ActivityFilter {
+  from: string
+  to: string
+  kind: string
+  action: string
+  status: string
+  department: string
+  username: string
+  q: string
+}
+
+export interface ActivityEventsPage {
+  content: GenerationEvent[]
+  totalElements: number
+  page: number
+  size: number
 }
 
 export interface Toast {
