@@ -756,3 +756,8 @@ by its column's width rather than the window's (the page forms in the layout des
 - `summary.ts` gates `history` like soft delete (writable, single key) and lists its two endpoints.
 - A list page's columns and sort accept `createdBy`/`updatedBy` with audit (`pageLayout.ts` `listColumns`, `fieldOptions.ts`).
 - The canvas does not draw the history panel or the *Changed by me* toggle.
+
+**Entity events and notifications (2026-11).** This is the editor side of *Entity events and notifications* in `backend/CLAUDE.md`.
+- `events` is a per-entity scaffold option (`scaffoldOptions.ts`, `FULLSTACK_ENTITY_OPT_KEYS`), gated in `summary.ts` like `history`. It adds no per-entity endpoint (the stream is the app's).
+- `WorkflowPanel` has an *e-mails* row on each step (`data-workflow-notify`): Assignee (disabled without an *Assigned to* field), Creator, Admins, Users → `FullstackTransition.notify`, left out when empty. `workflow.ts` `NOTIFY_RECIPIENTS`; `workflowProblem` mirrors the server (an assignee needs the field; a creator needs audit — `validation.ts` passes `audited`, the entity's override else the project option); `syncWorkflow` drops `assignee` from the e-mails when the assignee field goes.
+- Pinned by the "workflow e-mails" cases of `workflow.test.tsx` and `summary.test.ts`.

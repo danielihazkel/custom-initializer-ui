@@ -431,9 +431,9 @@ export interface FullstackFieldDef {
  *  optimisticLocking, inlineEdit, xlsxExport, savedViews. */
 export type FullstackEntityOpts = Partial<Record<FullstackEntityOptKey, boolean>>
 export type FullstackEntityOptKey = 'audit' | 'softDelete' | 'csvExport' | 'bulkDelete' | 'bulkUpdate' | 'tests' | 'csvImport'
-  | 'optimisticLocking' | 'inlineEdit' | 'xlsxExport' | 'savedViews' | 'history'
+  | 'optimisticLocking' | 'inlineEdit' | 'xlsxExport' | 'savedViews' | 'history' | 'events'
 export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests', 'csvImport',
-  'optimisticLocking', 'inlineEdit', 'xlsxExport', 'savedViews', 'history']
+  'optimisticLocking', 'inlineEdit', 'xlsxExport', 'savedViews', 'history', 'events']
 
 // v1 supports the FK-owning side only (MANY_TO_ONE); the inverse @OneToMany is auto-derived
 // server-side via the inverseCollections opt.
@@ -549,6 +549,9 @@ export interface FullstackTransition {
   to: string
   roles?: FullstackPageRole[]
   requires?: string[]
+  /** Who is e-mailed when a row takes this move: its assignee, its creator (needs audit), every
+   *  holder of a role (addresses set in the generated app's configuration). */
+  notify?: Array<'assignee' | 'creator' | 'ADMIN' | 'USER'>
 }
 
 /** A fullstack model saved on the server for the whole team (`/metadata/fullstack/models`).

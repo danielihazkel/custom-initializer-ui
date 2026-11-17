@@ -138,7 +138,8 @@ export function workflowUnavailableReason(entity: FullstackEntityDef): string | 
 }
 
 /** Why the server would reject the entity's workflow (FullstackRequestValidator.parseWorkflow), or undefined. */
-export function workflowProblem(entity: FullstackEntityDef, context: { ldapAuth?: boolean } = {}): string | undefined {
+export function workflowProblem(entity: FullstackEntityDef,
+                                context: { ldapAuth?: boolean; audited?: boolean } = {}): string | undefined {
   const wf = entity.workflow
   if (!wf) return undefined
   const unavailable = workflowUnavailableReason(entity)
@@ -184,9 +185,19 @@ export function workflowProblem(entity: FullstackEntityDef, context: { ldapAuth?
       if (seen.has(r.toLowerCase())) return `${at} asks for “${r}” twice`
       seen.add(r.toLowerCase())
     }
+    for (const n of t.notify ?? []) {
+      if (!(NOTIFY_RECIPIENTS as readonly string[]).includes(n)) return `${at} e-mails “${n}” (expected assignee, creator, ADMIN or USER)`
+      if (n === 'assignee' && !wf.assigneeField) return `${at} e-mails the assignee, but the workflow assigns nobody`
+      // Who created a row is the audit option's created-by column (undefined: not known here).
+      if (n === 'creator' && context.audited === false) return `${at} e-mails the creator, which needs the audit option on this entity`
+    }
   }
   return undefined
 }
+
+/** Whom a move can e-mail: the row's assignee, who created it, or the addresses set for a role. */
+export const NOTIFY_RECIPIENTS = ['assignee', 'creator', 'ADMIN', 'USER'] as const
+export type NotifyRecipient = typeof NOTIFY_RECIPIENTS[number]
 
 /**
  * An entity's workflow after an edit: a renamed field or relation (matched by uid) is renamed
@@ -220,5 +231,14 @@ export function syncWorkflow(before: FullstackEntityDef, after: FullstackEntityD
   }
   if (!next.assigneeField) delete next.assigneeField
   if (!next.dueField) delete next.dueField
+  // With no assignee left, a move cannot e-mail one.
+  if (!next.assigneeField) {
+    next.transitions = next.transitions.map(t => {
+      if (!t.notify?.includes('assignee')) return t
+      const notify = t.notify.filter(n => n !== 'assignee')
+      const { notify: _dropped, ...rest } = t
+      return notify.length ? { ...rest, notify } : rest
+    })
+  }
   return JSON.stringify(next) === JSON.stringify(wf) ? after : { ...after, workflow: next }
 }

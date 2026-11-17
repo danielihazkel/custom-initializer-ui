@@ -80,6 +80,14 @@ describe('entityOptApplicability mirrors the *Applicable flags in EntityScaffold
     ]))
     expect(s.opts).toContain('history')
   })
+  it('entity events follow the change log’s rule and name the option', () => {
+    const line = entityOptApplicability({ name: 'Line', fields: [
+      { name: 'orderId', type: 'LONG', primaryKey: true }, { name: 'sku', type: 'STRING', primaryKey: true },
+    ] })
+    expect(line.events).toEqual({ applicable: false, reason: 'composite primary key' })
+    const s = summarizeEntity({ name: 'Order', fields: [pk, { name: 'total', type: 'BIG_DECIMAL' }] }, ['events'])
+    expect(s.opts).toContain('events')
+  })
   it('read-only entities and views lose every write-side flag, naming the cause', () => {
     const ro = entityOptApplicability({ name: 'Log', readOnly: true, fields: [pk, { name: 'msg', type: 'STRING' }] })
     expect(ro.audit).toEqual({ applicable: false, reason: 'read-only entity' })

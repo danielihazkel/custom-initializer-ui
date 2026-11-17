@@ -556,7 +556,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       eErr.access = accessErr
       result.count += 1
     }
-    const workflowErr = workflowProblem(entity, context)
+    const workflowErr = workflowProblem(entity, { ...context, audited: entity.opts?.audit ?? projectOpts.includes('audit') })
     if (workflowErr) {
       eErr.workflow = workflowErr
       result.count += 1

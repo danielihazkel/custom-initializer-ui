@@ -34,6 +34,46 @@ const claim = (workflow: FullstackWorkflow | null = approvals): FullstackEntityD
   workflow: workflow ?? undefined,
 })
 
+describe('workflow e-mails', () => {
+  const notifying = (notify: NonNullable<FullstackWorkflow['transitions'][number]['notify']>, wf: FullstackWorkflow = approvals) =>
+    claim({ ...wf, transitions: wf.transitions.map(t => (t.name === 'approve' ? { ...t, notify } : t)) })
+
+  it('names only recipients the model has, as the server does', () => {
+    expect(workflowProblem(notifying(['assignee', 'ADMIN']), { audited: false })).toBeUndefined()
+    expect(workflowProblem(notifying(['creator']), { audited: true })).toBeUndefined()
+    expect(workflowProblem(notifying(['creator']), { audited: false }))
+      .toBe('Transition “approve” e-mails the creator, which needs the audit option on this entity')
+    expect(workflowProblem(notifying(['assignee'], { ...approvals, assigneeField: undefined })))
+      .toBe('Transition “approve” e-mails the assignee, but the workflow assigns nobody')
+    // The validator knows the audit option: the project's, or the entity's own.
+    expect(validateEntities([notifying(['creator'])], [], { ldapAuth: true }).count).toBe(1)
+    expect(validateEntities([notifying(['creator'])], ['audit'], { ldapAuth: true }).count).toBe(0)
+    expect(validateEntities([{ ...notifying(['creator']), opts: { audit: true } }], [], { ldapAuth: true }).count).toBe(0)
+  })
+
+  it('drops the assignee from the e-mails when the assignee field goes', () => {
+    const before = notifying(['assignee', 'ADMIN'])
+    const after = syncWorkflow(before, { ...before, fields: before.fields.filter(f => f.name !== 'assignee') })
+    expect(after.workflow!.assigneeField).toBeUndefined()
+    expect(after.workflow!.transitions[1].notify).toEqual(['ADMIN'])
+  })
+
+  it('picks whom a move e-mails', () => {
+    const onChange = vi.fn()
+    render(<WorkflowPanel entity={claim()} onChange={onChange} ldapAuth />)
+    const group = screen.getByRole('group', { name: 'Transition 2 e-mails' })
+    fireEvent.click(Array.from(group.querySelectorAll('button')).find(b => b.textContent === 'Admins')!)
+    expect((onChange.mock.calls[0][0] as FullstackWorkflow).transitions[1].notify).toEqual(['ADMIN'])
+  })
+
+  it('offers no assignee to e-mail without an assignee field', () => {
+    render(<WorkflowPanel entity={claim({ ...approvals, assigneeField: undefined })} onChange={() => {}} ldapAuth />)
+    const group = screen.getByRole('group', { name: 'Transition 1 e-mails' })
+    const assignee = Array.from(group.querySelectorAll('button')).find(b => b.textContent === 'Assignee')!
+    expect(assignee.disabled).toBe(true)
+  })
+})
+
 describe('workflow', () => {
   it('reads its states as the generated app moves them', () => {
     const e = claim()

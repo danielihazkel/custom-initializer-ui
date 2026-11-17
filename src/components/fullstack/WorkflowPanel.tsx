@@ -1,7 +1,8 @@
 import type { FullstackEntityDef, FullstackPageRole, FullstackTransition, FullstackWorkflow } from '../../types'
 import { Labeled, inputClass } from './controls'
 import {
-  MAX_TRANSITIONS, MAX_TRANSITION_LABEL, WORKFLOW_ROLES, assigneeFieldChoices, dueFieldChoices, finalStates,
+  MAX_TRANSITIONS, MAX_TRANSITION_LABEL, NOTIFY_RECIPIENTS, WORKFLOW_ROLES, assigneeFieldChoices, dueFieldChoices, finalStates,
+  type NotifyRecipient,
   initialState, newTransition, newWorkflow, requirableNames, stateLabel, statusFieldChoices, unreachableStates,
   workflowStates, workflowUnavailableReason,
 } from './workflow'
@@ -14,6 +15,14 @@ interface Props {
   ldapAuth?: boolean
   /** Adds a dependency (the "Add ldap-auth-rest" shortcut next to the roles). */
   onAddDep?: (dep: string) => void
+}
+
+const NOTIFY_LABELS: Record<NotifyRecipient, string> = { assignee: 'Assignee', creator: 'Creator', ADMIN: 'Admins', USER: 'Users' }
+const NOTIFY_HINTS: Record<NotifyRecipient, string> = {
+  assignee: 'Whoever the row is assigned to after the move',
+  creator: 'Whoever created the row (needs the audit option)',
+  ADMIN: 'The addresses set for ADMIN in the app’s configuration (app.events.mail.roles)',
+  USER: 'The addresses set for USER in the app’s configuration (app.events.mail.roles)',
 }
 
 const CHIP = 'px-2 py-0.5 rounded-full border text-[11px] transition-colors'
@@ -175,6 +184,23 @@ export function WorkflowPanel({ entity, error, onChange, ldapAuth, onAddDep }: P
                 ))}
               </div>
             )}
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={`Transition ${i + 1} e-mails`} data-workflow-notify={i}>
+              <span className="w-12 text-[11px] text-secondary">e-mails</span>
+              {NOTIFY_RECIPIENTS.map(who => {
+                const on = Boolean(t.notify?.includes(who))
+                const noAssignee = who === 'assignee' && !wf.assigneeField
+                return (
+                  <button key={who} type="button" aria-pressed={on} className={chip(on)}
+                          disabled={noAssignee && !on}
+                          title={NOTIFY_HINTS[who] + (noAssignee ? ' — pick the "Assigned to" field first' : '')}
+                          onClick={() => {
+                            const notify = toggle<NotifyRecipient>(t.notify, who)
+                            setTransition(i, { notify: notify.length ? notify : undefined })
+                          }}>{NOTIFY_LABELS[who]}</button>
+                )
+              })}
+              {!t.notify?.length && <span className="text-[11px] text-secondary">nobody</span>}
+            </div>
           </div>
         ))}
       </div>
