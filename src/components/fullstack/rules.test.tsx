@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import type { FullstackEntityDef } from '../../types'
 import { checkExpr, exprProblem, renameInExpr } from './expr'
-import { ruleProblems, syncRules } from './rules'
+import { derivationProblem, ruleProblems, syncRules } from './rules'
 import { validateEntities } from './validation'
 import { EntitySettingsPanel } from './EntitySettingsPanel'
 
@@ -90,6 +90,35 @@ describe('rules', () => {
     expect(validateEntities([parent, ruled]).entities[1]?.rules).toMatch(/inside their parent’s form/)
     expect(validateEntities([claim({ rules: [{ check: 'endsOn >= 3', message: 'x' }] })]).entities[0]?.rules)
       .toBe('Rule 1: Cannot compare a date with a number (at character 8)')
+  })
+
+  it('a show-when and a formula are checked as the server checks them', () => {
+    const e = claim()
+    const field = (name: string, over: Partial<FullstackEntityDef['fields'][number]>) =>
+      ({ ...e.fields.find(f => f.name === name)!, ...over })
+    expect(derivationProblem(e, field('reason', { showWhen: "status == 'REJECTED'" }))).toBeUndefined()
+    expect(derivationProblem(e, field('reason', { showWhen: 'not isEmpty(reason)' }))?.message).toBe('It reads the field itself')
+    expect(derivationProblem(e, field('reason', { showWhen: 'status' }))?.message).toContain('This must be a yes/no condition')
+    expect(derivationProblem(e, field('quantity', { formula: 'unitPrice * 2' }))).toBeUndefined()
+    expect(derivationProblem(e, field('quantity', { formula: 'endsOn' }))).toEqual({ part: 'formula', message: 'This must be a number, but it is a date (at character 1)' })
+    expect(derivationProblem(e, field('quantity', { formula: '1', required: true }))?.message).toMatch(/never required/)
+    expect(derivationProblem(e, field('status', { formula: "'OPEN'" }))?.message).toBe('A ENUM field cannot be computed')
+    expect(derivationProblem(e, field('id', { formula: '1' }))?.message).toMatch(/primary key/)
+    const twice = claim({ fields: e.fields.map(f => (f.name === 'unitPrice' ? { ...f, formula: 'quantity * 2' } : f)) })
+    expect(derivationProblem(twice, { ...twice.fields.find(f => f.name === 'quantity')!, formula: 'unitPrice + 1' })?.message)
+      .toMatch(/reads “unitPrice”, which is computed too/)
+    // Counted on the field, by part.
+    const bad = claim({ fields: e.fields.map(f => (f.name === 'reason' ? { ...f, showWhen: 'nope' } : f)) })
+    expect(validateEntities([bad]).entities[0]?.fields[6]?.showWhen).toBe("'nope' is not a field of this entity (at character 1)")
+  })
+
+  it('a renamed field is renamed in show-when conditions and formulas', () => {
+    const before = claim({ fields: claim().fields.map(f => (f.name === 'reason' ? { ...f, showWhen: "status == 'REJECTED'" }
+      : f.name === 'unitPrice' ? { ...f, formula: 'quantity * 2' } : f)) })
+    const after = syncRules(before, { ...before, fields: before.fields.map(f => (f.uid === 'f-qty' ? { ...f, name: 'count' }
+      : f.uid === 'f-status' ? { ...f, name: 'state' } : f)) })
+    expect(after.fields.find(f => f.uid === 'f-price')?.formula).toBe('count * 2')
+    expect(after.fields.find(f => f.uid === 'f-reason')?.showWhen).toBe("state == 'REJECTED'")
   })
 
   it('are written in the entity settings, the problem under the rule', () => {

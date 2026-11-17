@@ -1,6 +1,6 @@
-import type { FullstackEntityDef, FullstackRule } from '../../types'
+import type { FullstackEntityDef, FullstackFieldDef, FullstackRule } from '../../types'
 import { LIMITS } from './schema'
-import { checkExpr, ExprError, renameInExpr } from './expr'
+import { checkExpr, ExprError, renameInExpr, type ExprType } from './expr'
 
 /** Mirrors FullstackRequestValidator.MAX_RULES / MAX_RULE_MESSAGE. */
 export const MAX_RULES = LIMITS.maxRules
@@ -16,6 +16,9 @@ export interface RuleProblem {
 /** The first problem of each rule, or an entity-wide one at index -1. */
 export function ruleProblems(entity: FullstackEntityDef, composedChild = false): RuleProblem[] {
   const rules = entity.rules ?? []
+  if (composedChild && entity.fields.some(f => f.showWhen?.trim() || f.formula?.trim())) {
+    return [{ index: -1, part: 'check', message: 'Rows edited inside their parent’s form cannot have show-when conditions or computed fields yet' }]
+  }
   if (rules.length === 0) return []
   if (entity.readOnly || entity.viewQuery != null) {
     return [{ index: -1, part: 'check', message: 'A read-only entity is never saved, so it has no rules to check' }]
@@ -61,6 +64,65 @@ function ruleProblem(entity: FullstackEntityDef, rule: FullstackRule): Omit<Rule
   return undefined
 }
 
+/** What a formula of a field of this type must come out as; null: the type cannot be computed. */
+export function formulaType(type: FullstackFieldDef['type']): ExprType | null {
+  switch (type) {
+    case 'INTEGER': case 'LONG': case 'BIG_DECIMAL': case 'MONEY': return 'NUMBER'
+    case 'STRING': case 'TEXT': case 'MARKDOWN': return 'TEXT'
+    case 'BOOLEAN': return 'BOOL'
+    case 'LOCAL_DATE': return 'DATE'
+    case 'LOCAL_DATE_TIME': return 'DATETIME'
+    case 'INSTANT': return 'INSTANT'
+    case 'LOCAL_TIME': return 'TIME'
+    default: return null
+  }
+}
+
+/**
+ * Why a field's show-when or formula would be rejected (FullstackRequestValidator.checkDerivations
+ * and the workflow's check), by the part it is in; undefined when both are fine.
+ */
+export function derivationProblem(entity: FullstackEntityDef, field: FullstackFieldDef): { part: 'showWhen' | 'formula'; message: string } | undefined {
+  const showWhen = field.showWhen?.trim()
+  const formula = field.formula?.trim()
+  if (!showWhen && !formula) return undefined
+  const part = formula ? 'formula' : 'showWhen'
+  if (entity.readOnly || entity.viewQuery != null) {
+    return { part, message: `A read-only entity is never saved, so it has no ${formula ? 'computed fields' : 'show-when conditions'}` }
+  }
+  if (field.primaryKey) return { part, message: 'The primary key is never hidden or computed' }
+  const wf = entity.workflow
+  if (wf && (field.name === wf.statusField || field.name === wf.assigneeField)) {
+    return { part, message: 'The workflow’s moves set it: it cannot be hidden or computed' }
+  }
+  if (showWhen) {
+    if (formula) return { part: 'showWhen', message: 'A computed field is not edited, so it has no show-when' }
+    try {
+      if (checkExpr(showWhen, entity).includes(field.name)) return { part: 'showWhen', message: 'It reads the field itself' }
+    } catch (e) {
+      if (e instanceof ExprError) return { part: 'showWhen', message: e.describe() }
+      throw e
+    }
+  }
+  if (formula) {
+    const wanted = formulaType(field.type)
+    if (!wanted) return { part: 'formula', message: `A ${field.type} field cannot be computed` }
+    if (field.required) return { part: 'formula', message: 'A computed field is set by the server, so it is never required' }
+    if (field.defaultValue != null && field.defaultValue !== '') return { part: 'formula', message: 'A computed field has no default' }
+    try {
+      for (const ref of checkExpr(formula, entity, wanted)) {
+        if (entity.fields.find(f => f.name === ref)?.formula?.trim()) {
+          return { part: 'formula', message: `It reads “${ref}”, which is computed too (a formula reads entered fields only)` }
+        }
+      }
+    } catch (e) {
+      if (e instanceof ExprError) return { part: 'formula', message: e.describe() }
+      throw e
+    }
+  }
+  return undefined
+}
+
 /** A one-line summary of an entity's rule problems for the validation count, or undefined. */
 export function rulesProblem(entity: FullstackEntityDef, composedChild = false): string | undefined {
   const problems = ruleProblems(entity, composedChild)
@@ -75,7 +137,8 @@ export function rulesProblem(entity: FullstackEntityDef, composedChild = false):
  * point out — a rule is the user's writing, not something to drop.
  */
 export function syncRules(before: FullstackEntityDef, after: FullstackEntityDef): FullstackEntityDef {
-  if (!after.rules?.length) return after
+  const hasExpressions = after.fields.some(f => f.showWhen || f.formula)
+  if (!after.rules?.length && !hasExpressions) return after
   const renamed: [string, string][] = []
   for (const f of after.fields) {
     const was = f.uid ? before.fields.find(x => x.uid === f.uid) : undefined
@@ -83,7 +146,19 @@ export function syncRules(before: FullstackEntityDef, after: FullstackEntityDef)
   }
   if (renamed.length === 0) return after
   let changed = false
-  const rules = after.rules.map(rule => {
+  // A field's show-when and formula read the others too.
+  const fields = after.fields.map(f => {
+    if (!f.showWhen && !f.formula) return f
+    let { showWhen, formula } = f
+    for (const [from, to] of renamed) {
+      if (showWhen) showWhen = renameInExpr(showWhen, from, to)
+      if (formula) formula = renameInExpr(formula, from, to)
+    }
+    if (showWhen === f.showWhen && formula === f.formula) return f
+    changed = true
+    return { ...f, ...(showWhen !== undefined ? { showWhen } : {}), ...(formula !== undefined ? { formula } : {}) }
+  })
+  const rules = (after.rules ?? []).map(rule => {
     let { when, check, field } = rule
     for (const [from, to] of renamed) {
       check = renameInExpr(check, from, to)
@@ -94,5 +169,6 @@ export function syncRules(before: FullstackEntityDef, after: FullstackEntityDef)
     changed = true
     return { ...rule, check, ...(when !== undefined ? { when } : {}), ...(field !== undefined ? { field } : {}) }
   })
-  return changed ? { ...after, rules } : after
+  if (!changed) return after
+  return { ...after, fields, ...(after.rules ? { rules } : {}) }
 }

@@ -1058,7 +1058,7 @@ const EntityCard = memo(function EntityCard({
               const generatedKey = Boolean(field.primaryKey && field.generated)
               const hasMorePanel = !generatedKey || compact
               const hasErr = Boolean(
-                fErr?.length || fErr?.min || fErr?.max || fErr?.pattern || fErr?.email || fErr?.enumValues || fErr?.defaultValue || fErr?.currency || fErr?.help)
+                fErr?.length || fErr?.min || fErr?.max || fErr?.pattern || fErr?.email || fErr?.enumValues || fErr?.defaultValue || fErr?.currency || fErr?.help || fErr?.showWhen || fErr?.formula)
               const rowKey = `${entityKey}-${fieldKey}`
               // Force open on error so the message is never hidden behind a collapsed panel.
               const isOpen = hasMorePanel && (expanded.has(rowKey) || hasErr)
@@ -1334,6 +1334,38 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
             placeholder="Shown under the input"
             title="A hint under the field's input in the generated form."
             data-field-help
+          />
+        </ConstraintBox>
+      )}
+      {!field.primaryKey && (
+        <ConstraintBox label="Show when" wide error={fErr?.showWhen}>
+          <input
+            type="text"
+            aria-label="Show when"
+            aria-invalid={Boolean(fErr?.showWhen)}
+            className={`${inputClass(fErr?.showWhen)} font-mono`}
+            value={field.showWhen ?? ''}
+            spellCheck={false}
+            onChange={e => onUpdate({ showWhen: e.target.value === '' ? undefined : e.target.value })}
+            placeholder="always — or e.g. status == 'REJECTED'"
+            title="Shown in the form only while this holds; a save clears the field while it does not. A required field is required only while shown."
+            data-field-show-when
+          />
+        </ConstraintBox>
+      )}
+      {!field.primaryKey && (
+        <ConstraintBox label="Computed as" wide error={fErr?.formula}>
+          <input
+            type="text"
+            aria-label="Computed as"
+            aria-invalid={Boolean(fErr?.formula)}
+            className={`${inputClass(fErr?.formula)} font-mono`}
+            value={field.formula ?? ''}
+            spellCheck={false}
+            onChange={e => onUpdate({ formula: e.target.value === '' ? undefined : e.target.value })}
+            placeholder="entered — or e.g. quantity * unitPrice"
+            title="Computed by the server on every save from the row's other fields (a stored column). The form shows it read-only."
+            data-field-formula
           />
         </ConstraintBox>
       )}

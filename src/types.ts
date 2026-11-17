@@ -401,6 +401,11 @@ export interface FullstackFieldDef {
   currency?: string
   /** A hint shown under the field's input in the generated form (at most `LIMITS.maxHelp` characters). */
   help?: string
+  /** A condition (the model's expression language): the form shows the field only while it holds,
+   *  and a save clears it while it does not. A required field is required only while shown. */
+  showWhen?: string
+  /** An expression the field is computed from on every save (stored; never set by a client). */
+  formula?: string
   enumValues?: string[]
   /** Display labels per enum constant (`{ IN_PROGRESS: 'In progress' }` / Hebrew), shown by the
    *  generated dropdowns, filter chips, kanban lanes, table cells and detail rows. A constant

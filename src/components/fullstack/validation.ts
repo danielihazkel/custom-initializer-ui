@@ -3,7 +3,7 @@ import { formSectionsProblem } from './formSections'
 import { workflowProblem } from './workflow'
 import { accessProblem } from './access'
 import { MAX_HELP, uniqueKeysProblem } from './uniqueKeys'
-import { rulesProblem } from './rules'
+import { derivationProblem, rulesProblem } from './rules'
 import { columnOf, joinColumnOf } from './naming'
 import { compositionProblem, linksBetween, resolveLink } from './childLists'
 import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
@@ -114,6 +114,8 @@ export interface FieldErrors {
   column?: string
   currency?: string
   help?: string
+  showWhen?: string
+  formula?: string
 }
 
 /** Mirrors FullstackRequestValidator.SQL_NAME: column names are spliced into native SQL. A quoted
@@ -370,6 +372,8 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       if (defErr) fErr.defaultValue = defErr
 
       if (field.help && field.help.trim().length > MAX_HELP) fErr.help = `At most ${MAX_HELP} characters`
+      const derived = derivationProblem(entity, field)
+      if (derived) fErr[derived.part] = derived.message
       // A currency is a MONEY field's, three letters (the backend upper-cases it; blank = ILS).
       if (field.currency?.trim()) {
         if (field.type !== 'MONEY') fErr.currency = 'Currency applies to MONEY only'
