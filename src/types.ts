@@ -520,9 +520,24 @@ export interface FullstackEntityDef {
   /** Unique keys over two or more fields and many-to-one links (FullstackRequestValidator.parseUniqueKeys);
    *  a single field's is its own `unique`. See `fullstack/uniqueKeys.ts`. */
   uniqueKeys?: FullstackUniqueKey[]
+  /** Checks over several fields in the model's expression language (FullstackRequestValidator.parseRules).
+   *  See `fullstack/rules.ts` and `fullstack/expr.ts`. */
+  rules?: FullstackRule[]
   /** A workflow over one enum field ("human tasks"): its values are states, and only the named
    *  transitions move a row between them (FullstackRequestValidator.parseWorkflow). */
   workflow?: FullstackWorkflow
+}
+
+/**
+ * A check over several of a row's fields: where `when` holds (none: always), `check` must not be
+ * false — an empty value it reads makes it hold. `message` is shown on `field` (none: the first
+ * field `check` reads).
+ */
+export interface FullstackRule {
+  when?: string
+  check: string
+  message: string
+  field?: string
 }
 
 /** No two rows share the values of `fields`: field names and MANY_TO_ONE relation field names. */

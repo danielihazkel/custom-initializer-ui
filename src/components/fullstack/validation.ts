@@ -3,6 +3,7 @@ import { formSectionsProblem } from './formSections'
 import { workflowProblem } from './workflow'
 import { accessProblem } from './access'
 import { MAX_HELP, uniqueKeysProblem } from './uniqueKeys'
+import { rulesProblem } from './rules'
 import { columnOf, joinColumnOf } from './naming'
 import { compositionProblem, linksBetween, resolveLink } from './childLists'
 import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
@@ -229,6 +230,8 @@ export interface EntityErrors {
   workflow?: string
   /** A unique key would be rejected (see `uniqueKeys.ts`). */
   uniqueKeys?: string
+  /** A rule would be rejected (see `rules.ts`). */
+  rules?: string
 }
 
 export interface FullstackErrors {
@@ -573,8 +576,13 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       eErr.uniqueKeys = keysErr
       result.count += 1
     }
+    const rulesErr = rulesProblem(entity, composed)
+    if (rulesErr) {
+      eErr.rules = rulesErr
+      result.count += 1
+    }
     const hasRelErrs = eErr.relations && Object.keys(eErr.relations).length > 0
-    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || eErr.access || eErr.workflow || eErr.uniqueKeys || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
+    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || eErr.access || eErr.workflow || eErr.uniqueKeys || eErr.rules || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
       result.entities[eIdx] = eErr
     }
   })

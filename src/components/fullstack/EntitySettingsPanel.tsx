@@ -1,5 +1,7 @@
-import type { FullstackEntityDef, FullstackFormSection, FullstackUniqueKey } from '../../types'
+import type { FullstackEntityDef, FullstackFormSection, FullstackRule, FullstackUniqueKey } from '../../types'
 import { MAX_UNIQUE_KEYS, keyableMembers } from './uniqueKeys'
+import { MAX_RULES, ruleProblems, type RuleProblem } from './rules'
+import { EXPR_FUNCTIONS } from './expr'
 import type { EntityErrors } from './validation'
 import { Labeled, inputClass } from './controls'
 import { askableFields } from './pageLayout'
@@ -28,6 +30,8 @@ export function settingsSummary(entity: FullstackEntityDef): string[] {
   if (sections) parts.push(`${sections} form section${sections === 1 ? '' : 's'}`)
   const keys = entity.uniqueKeys?.length ?? 0
   if (keys) parts.push(`${keys} unique key${keys === 1 ? '' : 's'}`)
+  const rules = entity.rules?.length ?? 0
+  if (rules) parts.push(`${rules} rule${rules === 1 ? '' : 's'}`)
   const access = accessSummary(entity)
   if (access) parts.push(access)
   return parts
@@ -87,6 +91,10 @@ export function EntitySettingsPanel({ entity, errors, onUpdate, onTickView }: Pr
 
       {!isView && (
         <UniqueKeysEditor entity={entity} error={errors?.uniqueKeys} onChange={uniqueKeys => onUpdate({ uniqueKeys })} />
+      )}
+
+      {!isView && !entity.readOnly && (
+        <RulesEditor entity={entity} error={errors?.rules} onChange={rules => onUpdate({ rules })} />
       )}
 
       <label
@@ -157,6 +165,99 @@ export function EntitySettingsPanel({ entity, errors, onUpdate, onTickView }: Pr
             spellCheck={false}
           />
         </details>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Rules over several fields: per rule an optional condition, the check every row must meet, the
+ * message and the field it is shown on. Each is checked as it is typed (`rules.ts`, `expr.ts`),
+ * the problem shown under the part it is in.
+ */
+function RulesEditor({ entity, error, onChange }: {
+  entity: FullstackEntityDef
+  error?: string
+  onChange: (rules: FullstackRule[] | undefined) => void
+}) {
+  const rules = entity.rules ?? []
+  const problems = ruleProblems(entity)
+  const set = (next: FullstackRule[]) => onChange(next.length ? next : undefined)
+  const patch = (i: number, p: Partial<FullstackRule>) => set(rules.map((r, j) => {
+    if (j !== i) return r
+    const next: FullstackRule = { ...r, ...p }
+    if (!next.when?.trim()) delete next.when
+    if (!next.field?.trim()) delete next.field
+    return next
+  }))
+  const problemOf = (i: number, part: RuleProblem['part']) => problems.find(p => p.index === i && p.part === part)?.message
+  const mono = (bad?: string) => `${inputClass(bad)} py-1 font-mono text-[11px]`
+  return (
+    <div className="space-y-2" data-rules>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
+          Rules <span className="font-normal normal-case tracking-normal">· checked by the form and the server before a save (a 400 on the field)</span>
+        </p>
+        <button
+          type="button"
+          disabled={rules.length >= MAX_RULES}
+          onClick={() => set([...rules, { check: '', message: '' }])}
+          className="inline-flex items-center gap-1 rounded-md border border-outline-variant px-2 py-0.5 text-[11px] font-semibold text-secondary hover:border-primary/50 hover:text-primary disabled:opacity-40"
+          title={rules.length >= MAX_RULES ? `At most ${MAX_RULES} rules` : 'Add a rule over several fields'}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">add</span>
+          Add rule
+        </button>
+      </div>
+      {rules.length === 0 && (
+        <p className="text-[11px] text-secondary">
+          None. A rule reads the row’s own fields: <code className="font-mono">endsOn &gt;= startsOn</code>,{' '}
+          <code className="font-mono">status == 'REJECTED'</code>, <code className="font-mono">not isEmpty(reason)</code>.
+          An empty value makes a rule hold.
+        </p>
+      )}
+      {rules.map((rule, i) => {
+        const checkErr = problemOf(i, 'check')
+        const whenErr = problemOf(i, 'when')
+        const messageErr = problemOf(i, 'message')
+        const fieldErr = problemOf(i, 'field')
+        const shown = checkErr ?? whenErr ?? messageErr ?? fieldErr
+        return (
+          <div key={i} className="space-y-1.5 rounded-md border border-outline-variant px-2 py-1.5" data-rule={i}>
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] gap-1.5 items-center">
+              <input type="text" aria-label={`Condition of rule ${i + 1} (optional)`} placeholder="when (optional): status == 'DONE'"
+                     className={mono(whenErr)} value={rule.when ?? ''} spellCheck={false}
+                     onChange={e => patch(i, { when: e.target.value })} />
+              <input type="text" aria-label={`Check of rule ${i + 1}`} placeholder="check: endsOn >= startsOn"
+                     className={mono(checkErr)} value={rule.check} spellCheck={false}
+                     onChange={e => patch(i, { check: e.target.value })} />
+              <button type="button" onClick={() => set(rules.filter((_, j) => j !== i))}
+                className="justify-self-end rounded p-0.5 text-secondary hover:text-error" aria-label={`Remove rule ${i + 1}`}>
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">close</span>
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-1.5">
+              <input type="text" aria-label={`Message of rule ${i + 1}`} placeholder="Message, e.g. Ends on or after the day it starts"
+                     className={`${inputClass(messageErr)} py-1 text-xs`} value={rule.message}
+                     onChange={e => patch(i, { message: e.target.value })} />
+              <select aria-label={`Field rule ${i + 1} is shown on`} className={`${inputClass(fieldErr)} py-1 text-xs`}
+                      value={rule.field ?? ''} onChange={e => patch(i, { field: e.target.value })}>
+                <option value="">Shown on: the first field it reads</option>
+                {entity.fields.filter(f => !(f.primaryKey && f.generated)).map(f => (
+                  <option key={f.uid ?? f.name} value={f.name}>Shown on: {f.label?.trim() || f.name}</option>
+                ))}
+              </select>
+            </div>
+            {shown && <p className="text-[11px] text-error" data-error>{shown}</p>}
+          </div>
+        )
+      })}
+      {error && !problems.some(p => p.index >= 0) && <p className="text-[11px] text-error" data-error>{error}</p>}
+      {rules.length > 0 && (
+        <p className="text-[10px] text-secondary">
+          Fields by name; <code className="font-mono">and or not</code>, <code className="font-mono">== != &lt; &lt;= &gt; &gt;=</code>,{' '}
+          <code className="font-mono">+ - * /</code> (days on a date), texts in quotes; {EXPR_FUNCTIONS.map(f => `${f}()`).join(', ')}.
+        </p>
       )}
     </div>
   )

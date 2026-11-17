@@ -19,6 +19,7 @@ import { EntitySettingsPanel, settingsSummary } from './EntitySettingsPanel'
 import { syncFormSections } from './formSections'
 import { syncWorkflow } from './workflow'
 import { MAX_HELP, syncUniqueKeys } from './uniqueKeys'
+import { syncRules } from './rules'
 import { WorkflowPanel, workflowSummary } from './WorkflowPanel'
 import { EntityUiPreview } from './EntityUiPreview'
 import { EntityCodePanel } from './EntityCodePanel'
@@ -158,7 +159,7 @@ export const EntitiesEditor = memo(function EntitiesEditor({
   // there, a removed one dropped.
   const onChange = (next: FullstackEntityDef[]) => onChangeRaw(next.map(e => {
     const before = e.uid ? entities.find(x => x.uid === e.uid) : undefined
-    return before && before !== e ? syncUniqueKeys(before, syncWorkflow(before, syncFormSections(before, e))) : e
+    return before && before !== e ? syncRules(before, syncUniqueKeys(before, syncWorkflow(before, syncFormSections(before, e)))) : e
   }))
   // The latest list for the Undo closures on removal toasts: they fire after later edits, and must
   // re-insert into the list as it is *then*, not as it was when the row went.
@@ -635,7 +636,7 @@ const EntityCard = memo(function EntityCard({
     const cardDrop = dnd.indicatorFor('entities', eIdx)
     const settingsChips = settingsSummary(entity)
     // A problem inside Settings (blank query, generated PK / relations on a view) forces it open.
-    const settingsForced = Boolean(eErr?.viewQuery || eErr?.formSections || eErr?.access || eErr?.uniqueKeys)
+    const settingsForced = Boolean(eErr?.viewQuery || eErr?.formSections || eErr?.access || eErr?.uniqueKeys || eErr?.rules)
     const settingsOpen = settingsForced || panelKind === 'settings'
     const overridesOpen = panelKind === 'overrides'
     // A workflow problem forces its panel open, like Settings.
