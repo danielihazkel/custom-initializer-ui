@@ -399,6 +399,8 @@ export interface FullstackFieldDef {
   email?: boolean
   /** A MONEY field's ISO 4217 currency (`USD`); omitted = ILS. MONEY only. */
   currency?: string
+  /** A hint shown under the field's input in the generated form (at most `LIMITS.maxHelp` characters). */
+  help?: string
   enumValues?: string[]
   /** Display labels per enum constant (`{ IN_PROGRESS: 'In progress' }` / Hebrew), shown by the
    *  generated dropdowns, filter chips, kanban lanes, table cells and detail rows. A constant
@@ -515,9 +517,17 @@ export interface FullstackEntityDef {
   /** The form in titled sections (the drawer form, the record's details, and a wizard without
    *  its own steps follow them); fields no section lists come after, untitled. */
   formSections?: FullstackFormSection[]
+  /** Unique keys over two or more fields and many-to-one links (FullstackRequestValidator.parseUniqueKeys);
+   *  a single field's is its own `unique`. See `fullstack/uniqueKeys.ts`. */
+  uniqueKeys?: FullstackUniqueKey[]
   /** A workflow over one enum field ("human tasks"): its values are states, and only the named
    *  transitions move a row between them (FullstackRequestValidator.parseWorkflow). */
   workflow?: FullstackWorkflow
+}
+
+/** No two rows share the values of `fields`: field names and MANY_TO_ONE relation field names. */
+export interface FullstackUniqueKey {
+  fields: string[]
 }
 
 /** A titled group of an entity's form: field and MANY_TO_ONE relation names, in order. */

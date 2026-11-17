@@ -2,6 +2,7 @@ import type { FullstackEntityDef } from '../../types'
 import { formSectionsProblem } from './formSections'
 import { workflowProblem } from './workflow'
 import { accessProblem } from './access'
+import { MAX_HELP, uniqueKeysProblem } from './uniqueKeys'
 import { columnOf, joinColumnOf } from './naming'
 import { compositionProblem, linksBetween, resolveLink } from './childLists'
 import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
@@ -111,6 +112,7 @@ export interface FieldErrors {
   defaultValue?: string
   column?: string
   currency?: string
+  help?: string
 }
 
 /** Mirrors FullstackRequestValidator.SQL_NAME: column names are spliced into native SQL. A quoted
@@ -225,6 +227,8 @@ export interface EntityErrors {
   access?: string
   /** The workflow would be rejected (a state, field or role it names). */
   workflow?: string
+  /** A unique key would be rejected (see `uniqueKeys.ts`). */
+  uniqueKeys?: string
 }
 
 export interface FullstackErrors {
@@ -362,6 +366,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       const defErr = defaultValueError(field)
       if (defErr) fErr.defaultValue = defErr
 
+      if (field.help && field.help.trim().length > MAX_HELP) fErr.help = `At most ${MAX_HELP} characters`
       // A currency is a MONEY field's, three letters (the backend upper-cases it; blank = ILS).
       if (field.currency?.trim()) {
         if (field.type !== 'MONEY') fErr.currency = 'Currency applies to MONEY only'
@@ -561,8 +566,15 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       eErr.workflow = workflowErr
       result.count += 1
     }
+    const composed = entities.some(other => (other.relations ?? []).some(r => r.type === 'ONE_TO_MANY' && r.composition
+      && r.targetEntity.trim().toLowerCase() === entity.name.trim().toLowerCase()))
+    const keysErr = uniqueKeysProblem(entity, composed)
+    if (keysErr) {
+      eErr.uniqueKeys = keysErr
+      result.count += 1
+    }
     const hasRelErrs = eErr.relations && Object.keys(eErr.relations).length > 0
-    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || eErr.access || eErr.workflow || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
+    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || eErr.access || eErr.workflow || eErr.uniqueKeys || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
       result.entities[eIdx] = eErr
     }
   })

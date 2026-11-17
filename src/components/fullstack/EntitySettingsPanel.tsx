@@ -1,4 +1,5 @@
-import type { FullstackEntityDef, FullstackFormSection } from '../../types'
+import type { FullstackEntityDef, FullstackFormSection, FullstackUniqueKey } from '../../types'
+import { MAX_UNIQUE_KEYS, keyableMembers } from './uniqueKeys'
 import type { EntityErrors } from './validation'
 import { Labeled, inputClass } from './controls'
 import { askableFields } from './pageLayout'
@@ -25,6 +26,8 @@ export function settingsSummary(entity: FullstackEntityDef): string[] {
   if (entity.viewQuery != null) parts.push(entity.viewQuery.trim() ? 'SELECT view' : 'SELECT view (query missing)')
   const sections = entity.formSections?.length ?? 0
   if (sections) parts.push(`${sections} form section${sections === 1 ? '' : 's'}`)
+  const keys = entity.uniqueKeys?.length ?? 0
+  if (keys) parts.push(`${keys} unique key${keys === 1 ? '' : 's'}`)
   const access = accessSummary(entity)
   if (access) parts.push(access)
   return parts
@@ -81,6 +84,10 @@ export function EntitySettingsPanel({ entity, errors, onUpdate, onTickView }: Pr
       </div>
 
       <FormSectionsEditor entity={entity} error={errors?.formSections} onChange={formSections => onUpdate({ formSections })} />
+
+      {!isView && (
+        <UniqueKeysEditor entity={entity} error={errors?.uniqueKeys} onChange={uniqueKeys => onUpdate({ uniqueKeys })} />
+      )}
 
       <label
         className="flex items-start gap-2 text-xs text-on-surface cursor-pointer"
@@ -151,6 +158,69 @@ export function EntitySettingsPanel({ entity, errors, onUpdate, onTickView }: Pr
           />
         </details>
       )}
+    </div>
+  )
+}
+
+/**
+ * Unique keys over several fields and links: a row of chips per key, a member on or off. A key
+ * needs two or more; one field is unique by its own Unique box.
+ */
+function UniqueKeysEditor({ entity, error, onChange }: {
+  entity: FullstackEntityDef
+  error?: string
+  onChange: (keys: FullstackUniqueKey[] | undefined) => void
+}) {
+  const keys = entity.uniqueKeys ?? []
+  const members = keyableMembers(entity)
+  const set = (next: FullstackUniqueKey[]) => onChange(next.length ? next : undefined)
+  return (
+    <div className="space-y-2" data-unique-keys>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
+          Unique together <span className="font-normal normal-case tracking-normal">· no two rows share these values (a 409 names them)</span>
+        </p>
+        <button
+          type="button"
+          disabled={keys.length >= MAX_UNIQUE_KEYS || members.length < 2}
+          onClick={() => set([...keys, { fields: [] }])}
+          className="inline-flex items-center gap-1 rounded-md border border-outline-variant px-2 py-0.5 text-[11px] font-semibold text-secondary hover:border-primary/50 hover:text-primary disabled:opacity-40"
+          title={keys.length >= MAX_UNIQUE_KEYS ? `At most ${MAX_UNIQUE_KEYS} keys` : 'Add a key over two or more fields'}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">add</span>
+          Add key
+        </button>
+      </div>
+      {keys.length === 0 && (
+        <p className="text-[11px] text-secondary">None. A single field’s uniqueness is its own Unique box.</p>
+      )}
+      {keys.map((key, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-1 rounded-md border border-outline-variant px-2 py-1.5" data-unique-key={i}>
+          {members.map(m => {
+            const on = key.fields.includes(m.name)
+            return (
+              <button
+                key={m.name}
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                aria-label={`${m.name} in unique key ${i + 1}`}
+                onClick={() => set(keys.map((k, j) => (j !== i ? k
+                  : { fields: on ? k.fields.filter(f => f !== m.name) : [...k.fields, m.name] })))}
+                className={`rounded-full px-2 py-0.5 text-[11px] ${on ? 'bg-primary/10 text-primary' : 'border border-dashed border-outline-variant text-secondary hover:text-primary'}`}
+              >
+                {m.name}
+              </button>
+            )
+          })}
+          <span className="flex-1" />
+          <button type="button" onClick={() => set(keys.filter((_, j) => j !== i))}
+            className="rounded p-0.5 text-secondary hover:text-error" aria-label={`Remove unique key ${i + 1}`}>
+            <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">close</span>
+          </button>
+        </div>
+      ))}
+      {error && <p className="text-[11px] text-error" data-error>{error}</p>}
     </div>
   )
 }
