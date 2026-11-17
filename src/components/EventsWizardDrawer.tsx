@@ -20,8 +20,10 @@ export interface DetectedChannel {
   sends: boolean
   receives: boolean
   messages: string[]
-  /** Why no code can be written for it (a parameterized address), or null. */
+  /** Why no code can be written for it (a parameterized address, Avro and JSON mixed), or null. */
   problem: string | null
+  /** `avro` when its messages are Avro records (single-object encoding, no registry); else `json`. */
+  format?: 'avro' | 'json'
 }
 
 type Choices = Record<string, { produce: boolean; consume: boolean }>
@@ -239,6 +241,14 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
             property, <code className="text-primary">app.events.topics.&lt;channel&gt;</code>, set to the channel's
             address. The <code className="text-primary">{depId}</code> dependency's own configuration is left as it is.
           </p>
+          {channels.some(c => c.format === 'avro') && (
+            <p className="text-[10px] text-on-surface-variant mt-1 leading-relaxed" data-events-avro-note>
+              Avro payloads become <code className="text-primary">.avsc</code> files under{' '}
+              <code className="text-primary">src/main/avro</code>, made into classes by the avro-maven-plugin at build
+              time. They travel as bytes in Avro's single-object encoding with no schema registry, so both sides must
+              hold the same schema.
+            </p>
+          )}
         </div>
 
         {parseError && (
@@ -275,7 +285,15 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
                 return (
                   <div key={c.name} className="flex items-start justify-between gap-3 text-xs" data-channel={c.name}>
                     <div className="min-w-0">
-                      <div className="font-mono font-semibold text-on-surface truncate">{c.address}</div>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-mono font-semibold text-on-surface truncate">{c.address}</span>
+                        {c.format === 'avro' && (
+                          <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider py-px px-1.5 rounded-full bg-tertiary/15 text-tertiary"
+                            title="Avro records in the single-object encoding, no schema registry" data-channel-avro>
+                            Avro
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[10px] text-on-surface-variant leading-relaxed">
                         {c.name !== c.address && <>{c.name} · </>}
                         {c.messages.length > 0 ? c.messages.join(', ') : 'no message declared'}

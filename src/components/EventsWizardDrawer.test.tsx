@@ -119,6 +119,26 @@ describe('EventsWizardDrawer', () => {
     expect(screen.getByText(/No channel is chosen/)).toBeTruthy()
   })
 
+  it('marks the Avro channels and says how their messages travel', async () => {
+    stubDetect({ ok: true, body: [
+      { ...CHANNELS[0], format: 'avro' },
+      { ...CHANNELS[1], format: 'json' },
+    ] })
+    const { container } = render(<EventsWizardDrawer isOpen onClose={() => {}} depId="kafka" depName="Kafka" initial={entry} onSave={vi.fn()} />)
+    await screen.findByText('orders.created')
+    expect(container.querySelectorAll('[data-channel-avro]')).toHaveLength(1)
+    expect(container.querySelector('[data-channel="orderCreated"] [data-channel-avro]')).not.toBeNull()
+    expect(container.querySelector('[data-events-avro-note]')?.textContent).toContain('no schema registry')
+  })
+
+  it('says nothing of Avro for a JSON-only document', async () => {
+    stubDetect({ ok: true, body: CHANNELS })
+    const { container } = render(<EventsWizardDrawer isOpen onClose={() => {}} depId="kafka" depName="Kafka" initial={entry} onSave={vi.fn()} />)
+    await screen.findByText('orders.created')
+    expect(container.querySelector('[data-channel-avro]')).toBeNull()
+    expect(container.querySelector('[data-events-avro-note]')).toBeNull()
+  })
+
   it('shows why a document is refused', async () => {
     stubDetect({ ok: false, body: { error: 'Invalid AsyncAPI document', messages: ['The AsyncAPI document declares no channels'] } })
     open(entry)
