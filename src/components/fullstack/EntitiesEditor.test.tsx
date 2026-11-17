@@ -197,7 +197,7 @@ describe('EntitiesEditor — overrides panel', () => {
     expect(note.textContent).toContain('OpenAPI annotations (on)')
     expect(note.textContent).toContain('Demo data (off)')
     // The overridable flags keep their select; the project-only ones have none.
-    expect(screen.getByRole('combobox', { name: 'Audit timestamps override' })).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: 'Audit (who and when) override' })).toBeTruthy()
     expect(screen.queryByRole('combobox', { name: /OpenAPI/ })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Go to Options' }))
     expect(onGoToOptions).toHaveBeenCalledTimes(1)

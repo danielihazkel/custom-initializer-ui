@@ -28,7 +28,7 @@ export interface ScaffoldOption {
 }
 
 export const SCAFFOLD_OPTIONS: ScaffoldOption[] = [
-  { value: 'audit', label: 'Audit timestamps', hint: 'createdAt / updatedAt via JPA auditing', entityHint: 'createdAt / updatedAt columns', perEntity: true },
+  { value: 'audit', label: 'Audit (who and when)', hint: 'createdAt / updatedAt and createdBy / updatedBy (the signed-in user) via JPA auditing; a "Changed by me" filter on the list', entityHint: 'created/updated at and by', perEntity: true },
   { value: 'softDelete', label: 'Soft delete', hint: 'deleted flag + Hibernate @SQLDelete/@SQLRestriction; delete toast gets a real Undo', entityHint: 'deleted flag + restore endpoint', perEntity: true },
   { value: 'inverseCollections', label: 'Inverse collections', hint: 'Read-only @OneToMany on the referenced side', perEntity: false },
   { value: 'tests', label: 'Tests', hint: 'An API test per entity (its real endpoints on an in-memory H2, whatever the database), and Vitest tests of its form checks and list page', entityHint: 'API test + form-check and list-page tests', perEntity: true },
@@ -36,6 +36,7 @@ export const SCAFFOLD_OPTIONS: ScaffoldOption[] = [
   { value: 'secured', label: 'Permission hints', hint: 'Retired: with ldap-auth or ldap-auth-rest selected every endpoint is checked, at each entity\'s access levels (entity Settings)', perEntity: false, retired: true },
   { value: 'csvExport', label: 'CSV export', hint: 'GET /export.csv (streamed, honors search/filters/sort) + Export button', entityHint: 'GET /export.csv + Export button', perEntity: true },
   { value: 'xlsxExport', label: 'Excel export', hint: 'GET /export.xlsx — the list as a workbook (column names as the UI shows them, numbers as numbers), streamed like the CSV + an Excel button', entityHint: 'GET /export.xlsx + Excel button', perEntity: true },
+  { value: 'history', label: 'Change history', hint: 'Every change to a row kept with who made it and the values before and after (table app_change_log); a History tab on the record, and Restore this version for admins', entityHint: 'GET /{id}/history + History tab + restore', perEntity: true },
   { value: 'savedViews', label: 'Saved views', hint: 'A Views menu on the list: its search, filters, sort and columns kept under a name on the server (/api/views), per user, shareable, one the default', entityHint: 'Views menu + /api/views for this list', perEntity: true },
   { value: 'csvImport', label: 'CSV import', hint: 'POST /import (every row checked, all saved or none) + Import button with column matching', entityHint: 'POST /import + Import button', perEntity: true },
   { value: 'bulkDelete', label: 'Bulk delete', hint: 'Select rows, DELETE /bulk across all', entityHint: 'row selection + DELETE /bulk', perEntity: true },

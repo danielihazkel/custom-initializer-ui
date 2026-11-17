@@ -40,6 +40,8 @@ export function keyOption(entity: FullstackEntityDef | undefined, key: string): 
   if (entity?.relations?.some(r => r.fieldName === key)) return relationOption(key)
   if (key === 'createdAt') return 'Created (createdAt)'
   if (key === 'updatedAt') return 'Updated (updatedAt)'
+  if (key === 'createdBy') return 'Created by (createdBy)'
+  if (key === 'updatedBy') return 'Updated by (updatedBy)'
   return key
 }
 

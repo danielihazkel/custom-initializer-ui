@@ -431,9 +431,9 @@ export interface FullstackFieldDef {
  *  optimisticLocking, inlineEdit, xlsxExport, savedViews. */
 export type FullstackEntityOpts = Partial<Record<FullstackEntityOptKey, boolean>>
 export type FullstackEntityOptKey = 'audit' | 'softDelete' | 'csvExport' | 'bulkDelete' | 'bulkUpdate' | 'tests' | 'csvImport'
-  | 'optimisticLocking' | 'inlineEdit' | 'xlsxExport' | 'savedViews'
+  | 'optimisticLocking' | 'inlineEdit' | 'xlsxExport' | 'savedViews' | 'history'
 export const FULLSTACK_ENTITY_OPT_KEYS: FullstackEntityOptKey[] = ['audit', 'softDelete', 'csvExport', 'bulkDelete', 'bulkUpdate', 'tests', 'csvImport',
-  'optimisticLocking', 'inlineEdit', 'xlsxExport', 'savedViews']
+  'optimisticLocking', 'inlineEdit', 'xlsxExport', 'savedViews', 'history']
 
 // v1 supports the FK-owning side only (MANY_TO_ONE); the inverse @OneToMany is auto-derived
 // server-side via the inverseCollections opt.

@@ -70,6 +70,15 @@ describe('entityOptApplicability mirrors the *Applicable flags in EntityScaffold
     expect(a.softDelete).toEqual({ applicable: false, reason: 'composite primary key' })
     expect(a.bulkDelete.reason).toBe('composite primary key')
     expect(a.bulkUpdate.reason).toBe('composite primary key')
+    // The change log addresses a row by one key.
+    expect(a.history).toEqual({ applicable: false, reason: 'composite primary key' })
+  })
+  it('the change history adds its two endpoints', () => {
+    const s = summarizeEntity({ name: 'Order', opts: { history: true }, fields: [pk, { name: 'total', type: 'BIG_DECIMAL' }] })
+    expect(s.endpoints.map(e => `${e.method} ${e.path}`)).toEqual(expect.arrayContaining([
+      'GET /api/orders/{id}/history', 'POST /api/orders/{id}/history/{changeId}/restore',
+    ]))
+    expect(s.opts).toContain('history')
   })
   it('read-only entities and views lose every write-side flag, naming the cause', () => {
     const ro = entityOptApplicability({ name: 'Log', readOnly: true, fields: [pk, { name: 'msg', type: 'STRING' }] })

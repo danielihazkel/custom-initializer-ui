@@ -95,7 +95,8 @@ export function listColumns(entity: FullstackEntityDef | undefined, scaffoldOpts
     if (r.type === 'MANY_TO_ONE' && r.fieldName.trim()) out.push({ key: r.fieldName, label: relationLabel(r), sortable: false, kind: 'relation' })
   }
   if (auditOn(entity, scaffoldOpts)) {
-    out.push({ key: 'createdAt', label: 'Created', sortable: true, kind: 'audit' }, { key: 'updatedAt', label: 'Updated', sortable: true, kind: 'audit' })
+    out.push({ key: 'createdAt', label: 'Created', sortable: true, kind: 'audit' }, { key: 'updatedAt', label: 'Updated', sortable: true, kind: 'audit' },
+      { key: 'createdBy', label: 'Created by', sortable: true, kind: 'audit' }, { key: 'updatedBy', label: 'Updated by', sortable: true, kind: 'audit' })
   }
   return out
 }
@@ -1114,7 +1115,7 @@ function aggIssues(agg: FullstackAgg | undefined, field: string | undefined, e: 
 
 /** How a list page opens: known columns (none twice), a sortable sort, an offered view, a pager size. */
 function checkListPresentation(page: FullstackPageDef, e: FullstackEntityDef, add: AddIssue, where: string, scaffoldOpts: string[]): void {
-  const isAudit = (key: string) => key === 'createdAt' || key === 'updatedAt'
+  const isAudit = (key: string) => key === 'createdAt' || key === 'updatedAt' || key === 'createdBy' || key === 'updatedBy'
   if (page.columns) {
     if (page.columns.length === 0) add('columns', 'needs at least one column', `${where} shows no columns`)
     const keys = listColumns(e, scaffoldOpts).map(c => c.key)
