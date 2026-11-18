@@ -28,7 +28,6 @@ export const FILES = [
     name: 'examples',
     source: resolve(backend, 'src/main/resources/catalog/fullstack-examples.json'),
     target: resolve(ui, 'src/components/fullstack/__fixtures__/fullstack-examples.json'),
-    // eslint-disable-next-line no-unused-vars
     transform: value => value.map(({ exampleId, sortOrder, enabled, ...rest }) => ({ id: exampleId, ...rest })),
   },
 ]

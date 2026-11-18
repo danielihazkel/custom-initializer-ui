@@ -316,7 +316,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
   const currentFrontendSet = availableSets.find(s => s.setKey === frontendSet)
   const currentDefaults = currentBackendSet?.defaultDeps ?? []
-  const palettes = feMetadata?.colorPalettes ?? []
+  const palettes = useMemo(() => feMetadata?.colorPalettes ?? [], [feMetadata])
   // What the generator will actually use: the explicit pick, else the set's default, else the
   // catalog default — mirrors FullstackStarterController's resolution so the swatch is truthful.
   const setDefaultPalette = currentFrontendSet?.defaultPaletteId

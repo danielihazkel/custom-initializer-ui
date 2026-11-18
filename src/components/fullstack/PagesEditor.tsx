@@ -267,11 +267,15 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       setSectionOpen(true)
       scrollToElement(sectionRef.current, 'center')
     }
+    // Once per request, against the problems of that moment — not again on every edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealRequest])
 
   // A server 400 about a page opens that page, like a local problem does.
   useEffect(() => {
     if (serverIssue) reveal({ page: serverIssue.page })
+    // Once per server answer; `reveal` is a new function every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverIssue])
 
   const [searchWanted, setSearchWanted] = useState(false)

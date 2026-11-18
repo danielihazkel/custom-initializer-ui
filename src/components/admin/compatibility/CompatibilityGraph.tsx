@@ -224,10 +224,12 @@ export function CompatibilityGraph({ rules, onEditRule }: Props) {
 
   // Selection sets — memoized so the ~300 tick-driven renders per layout don't each
   // rescan every edge three times. `edges` is in the deps because simEdgesRef is
-  // rebuilt from it.
+  // rebuilt from it — a dependency the lint cannot see.
+  /* eslint-disable react-hooks/exhaustive-deps */
   const connNodes = useMemo(() => connectedNodeIds(selectedNodeId), [connectedNodeIds, selectedNodeId, edges])
   const connEdges = useMemo(() => connectedEdgeIds(selectedNodeId), [connectedEdgeIds, selectedNodeId, edges])
   const edgeNodes = useMemo(() => edgeNodeIds(selectedEdgeId), [edgeNodeIds, selectedEdgeId, edges])
+  /* eslint-enable react-hooks/exhaustive-deps */
   const hasSelection = selectedNodeId !== null || selectedEdgeId !== null
 
   const selectedEdgeData = selectedEdgeId != null ? simEdgesRef.current.find(e => e.id === selectedEdgeId) : null

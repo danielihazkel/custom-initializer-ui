@@ -37,11 +37,15 @@ export function PagesSection(props: PagesSectionProps) {
     const first = validation.issues.find(i => i.page != null)
     if (first) setOpen({ page: first.page!, control: first.field })
     else scrollToElement(sectionRef.current, 'center')
+    // Once per request, against the problems of that moment — not again on every edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealRequest])
   // The command palette's Add page, Find page and layout preview all open the designer.
   useEffect(() => { if (addRequest) setOpen({ panel: 'add' }) }, [addRequest])
   useEffect(() => { if (findRequest) setOpen({ panel: 'find' }) }, [findRequest])
   useEffect(() => { if (previewRequest) setOpen({}) }, [previewRequest])
+  // Keyed on the request's counter: a request object rebuilt with the same `n` is not a new one.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (designerRequest) setOpen(designerRequest.target) }, [designerRequest?.n])
 
   const issues = validation.issues.length + (serverIssue ? 1 : 0)

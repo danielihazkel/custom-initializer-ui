@@ -78,6 +78,8 @@ export function FileDock({ open, onOpenChange, request, invalidReason, selected,
     if (!statuses) return live.current.preview.tree
     const removed = [...statuses].filter(([, s]) => s === 'removed').map(([path]) => path)
     return mergeRemovedIntoTree(live.current.preview.tree, removed)
+    // `live.current` is the hook's answer for this render (it re-renders when it changes).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live.current, statuses])
 
   const summary = live.current && live.previous && diff

@@ -9,7 +9,12 @@ npm install       # first time only
 npm run dev       # dev server at http://localhost:5173
 npm run build     # production build → dist/
 npm run preview   # serve dist/ locally
+npm run typecheck # tsc --noEmit
+npm run lint      # ESLint, fails on any finding (--max-warnings 0)
+npx vitest run    # the tests
 ```
+
+**Toolchain (2026-11).** React 18 with `@types/react`/`@types/react-dom` 18 (they were 19's, which type APIs React 18 does not have); Vite 7 with `@vitejs/plugin-react` 5 (Vitest 4 is built for Vite 6+). `eslint.config.js` is ESLint 9 flat config: `@eslint/js` and `typescript-eslint` recommended without type information (tsc does types), and from `eslint-plugin-react-hooks` 7 only the two classic rules — `rules-of-hooks` and `exhaustive-deps`. The rest of its recommended set is the React Compiler's (refs, purity, set-state-in-effect, …): this app does not use the compiler and reads refs during render on purpose. `_`-prefixed names are exempt from `no-unused-vars` (how this code drops a field: `const { id: _id, ...rest } = x`). An effect that deliberately runs once per request (`revealRequest`, `designerRequest?.n`, …) carries an `eslint-disable-next-line react-hooks/exhaustive-deps` with the reason above it — **say why, never disable bare**. No `eslint-plugin-react-refresh`: 44 files export a helper beside a component on purpose. The new dev packages come from the public npm registry; the company mirror must carry them (`eslint`, `@eslint/js`, `typescript-eslint`, `eslint-plugin-react-hooks`, `globals`, `vite` 7, `@vitejs/plugin-react` 5).
 
 ## Dev Proxy
 

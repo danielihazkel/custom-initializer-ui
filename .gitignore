@@ -3,3 +3,5 @@ dist/
 .env
 .env.local
 tsconfig.tsbuildinfo
+# Vite's compiled copy of the config while it loads (deleted after; left behind by a killed run)
+vite.config.ts.timestamp-*

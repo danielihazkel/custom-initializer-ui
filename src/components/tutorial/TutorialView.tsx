@@ -206,7 +206,7 @@ export function TutorialView(_props: TutorialViewProps) {
       // React / TS identifiers worth bolding
       safeCode = safeCode.replace(/\b(useState|useEffect|useMemo|useCallback|useRef|useContext|useReducer|useLayoutEffect|React|Component|FC|PropsWithChildren|ReactNode|ReactElement|HTMLAttributes|ButtonHTMLAttributes|InputHTMLAttributes|PayloadAction|RootState|Reducer|Item|Todo|User|CartItem|HTMLInputElement|HTMLDivElement|HTMLButtonElement|string|number|boolean|Array|Promise|Record|Partial|Pick|Omit|Set|Map)\b/g, '<span class="text-on-surface font-semibold">$1</span>');
       // JSX tags
-      safeCode = safeCode.replace(/(&lt;\/?[A-Za-z][A-Za-z0-9\-\.:]*)/g, '<span class="text-primary">$1</span>');
+      safeCode = safeCode.replace(/(&lt;\/?[A-Za-z][A-Za-z0-9\-.:]*)/g, '<span class="text-primary">$1</span>');
     } else if (language === 'css') {
       safeCode = safeCode.replace(/(@[a-z-]+)/g, '<span class="text-tertiary font-semibold">$1</span>');
       safeCode = safeCode.replace(/([a-z-]+)\s*:/g, '<span class="text-primary font-semibold">$1</span>:');
@@ -215,7 +215,7 @@ export function TutorialView(_props: TutorialViewProps) {
       safeCode = safeCode.replace(/\b(public|private|protected|class|interface|record|enum|return|if|else|void|new|final|static|package|import|throws|try|catch|extends|implements)\b/g, '<span class="text-primary font-semibold">$1</span>');
       safeCode = safeCode.replace(/\b(String|Long|Integer|Boolean|List|Optional|LocalDate|BigDecimal|ResponseEntity|ProblemDetail|HttpStatus|User|UserDTO|OrderDTO|OrderRequest|UserRepository|Component|Service|RestController|RestControllerAdvice|GetMapping|PostMapping|PutMapping|PatchMapping|DeleteMapping|PathVariable|RequestBody|Autowired|Bean|Scope|SecurityFilterChain|HttpSecurity|SessionCreationPolicy|DataSource|MailConfig|Document|Map|ConcurrentHashMap|Mono|Flux|StepVerifier|Container|PostgreSQLContainer|JoinPoint|ProceedingJoinPoint|Aspect|Before|Around|ApplicationEventPublisher|EventListener|Async|Scheduled|Cacheable|CacheEvict|Flyway|RestClient|WebClient|HealthIndicator|Health|RouteLocator|RouteLocatorBuilder|CircuitBreaker|RabbitListener|OrderEvent|KafkaListener|UserEvent|MessageMapping|SendTo|ChatMessage|Operation|ApiResponses|ApiResponse|QueryMapping|SchemaMapping|Argument|Book|MongoRepository|Id|Step|JobRepository|PlatformTransactionManager|StepBuilder)\b/g, '<span class="text-on-surface font-semibold">$1</span>');
       safeCode = safeCode.replace(/(@\w+)/g, '<span class="text-tertiary font-semibold">$1</span>');
-      safeCode = safeCode.replace(/(&lt;\/?[a-z][a-z0-9\-\.:]*)/g, '<span class="text-primary">$1</span>');
+      safeCode = safeCode.replace(/(&lt;\/?[a-z][a-z0-9\-.:]*)/g, '<span class="text-primary">$1</span>');
     }
 
     placeholders.forEach((content, index) => {

@@ -77,7 +77,7 @@ export function parseQuickAdd(text: string): QuickAddResult {
   const lines = text.split(/\r?\n/)
   lines.forEach((rawLine, i) => {
     const lineNo = i + 1
-    let line = rawLine.trim().replace(/[,;]$/, '').replace(/^[-*]\s+/, '')
+    const line = rawLine.trim().replace(/[,;]$/, '').replace(/^[-*]\s+/, '')
     if (!line || line.startsWith('#') || line.startsWith('//')) return
     const tokens = tokenize(line)
     if (tokens.length === 0) return

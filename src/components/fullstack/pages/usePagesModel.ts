@@ -158,6 +158,8 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     const index = pendingOpen.current
     pendingOpen.current = null
     if (keys[index]) onOpenKey?.(keys[index])
+    // Runs when the keys change; the host's callback is not a reason to run again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keys])
 
   /** Adds a page at the end, or at `at`; the host opens it once its key exists. */

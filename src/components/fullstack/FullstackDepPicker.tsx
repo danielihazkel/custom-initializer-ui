@@ -35,7 +35,8 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
   const selectedSet = useMemo(() => new Set(selected), [selected])
   const defaultsSet = useMemo(() => new Set(defaults), [defaults])
 
-  const groups: DependencyGroup[] = metadata?.dependencies?.values ?? []
+  // Memoized: a fresh `[]` each render would recompute every list below on every render.
+  const groups = useMemo<DependencyGroup[]>(() => metadata?.dependencies?.values ?? [], [metadata])
   const allDeps = useMemo(
     () => groups.flatMap(g => g.values.map(v => ({ id: v.id, name: v.name }))),
     [groups],

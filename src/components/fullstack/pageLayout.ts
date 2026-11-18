@@ -1000,13 +1000,13 @@ function collectWarnings(pages: FullstackPageDef[], entities: FullstackEntityDef
   // An entity the layout forgot: no page, widget, tab or number names it, and it is not linked to
   // one that is (a lookup shown through a relation is left alone).
   const used = new Set<string>(relatedShown.map(n => n.trim().toLowerCase()))
-  const use = (name: string | undefined) => { if (name?.trim()) used.add(name.trim().toLowerCase()) }
+  const mark = (name: string | undefined) => { if (name?.trim()) used.add(name.trim().toLowerCase()) }
   for (const p of pages) {
-    use(p.entity); use(p.parent); use(p.child)
-    p.entities?.forEach(use)
-    p.childTabs?.forEach(t => use(childTabEntity(t)))
-    p.headerStats?.forEach(st => use(st.child))
-    p.widgets?.forEach(w => { use(w.entity); w.entities?.forEach(use) })
+    mark(p.entity); mark(p.parent); mark(p.child)
+    p.entities?.forEach(mark)
+    p.childTabs?.forEach(t => mark(childTabEntity(t)))
+    p.headerStats?.forEach(st => mark(st.child))
+    p.widgets?.forEach(w => { mark(w.entity); w.entities?.forEach(mark) })
   }
   const linked = (e: FullstackEntityDef) => (e.relations ?? []).some(r => used.has(r.targetEntity.trim().toLowerCase()))
     || entities.some(o => used.has(o.name.trim().toLowerCase()) && relationsTo(o, e.name).length > 0)

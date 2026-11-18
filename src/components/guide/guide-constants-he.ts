@@ -1604,7 +1604,7 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
           },
           {
             type: 'info',
-            text: 'אשף SQL ואשף OpenAPI יכולים לפעול יחד באותה בקשת יצירה — כל אחד על תלות שונה. גוף ה-\`/starter-wizard.zip\` נושא גם את \`sqlByDep\` וגם את \`specByDep\`, וה-backend שולב את פלטי שניהם לתוך פרויקט אחד.'
+            text: 'אשף SQL ואשף OpenAPI יכולים לפעול יחד באותה בקשת יצירה — כל אחד על תלות שונה. גוף ה-`/starter-wizard.zip` נושא גם את `sqlByDep` וגם את `specByDep`, וה-backend שולב את פלטי שניהם לתוך פרויקט אחד.'
           }
         ]
       },

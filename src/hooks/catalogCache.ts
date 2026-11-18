@@ -61,6 +61,7 @@ export function useCatalog<T>(url: string, fallback: T, map: (raw: unknown) => T
       .catch((err: Error) => { if (!cancelled) setState(prev => ({ ...prev, url, loading: false, error: err.message })) })
     return () => { cancelled = true }
     // `fallback`/`map` are per-call literals; the URL (and a retry) decide when to fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, tick])
 
   const reload = useCallback(() => {
