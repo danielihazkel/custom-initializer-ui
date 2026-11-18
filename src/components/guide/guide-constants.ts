@@ -14,39 +14,47 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         title: 'What Is This Tool?',
         description: 'A high-level picture of what Menora Spring Initializr does.',
         content: `### Purpose
-This tool is an internal developer portal for generating Spring Boot project skeletons that follow Menora engineering standards. Engineers fill in the project metadata (Group ID, Artifact ID, Java version, dependencies), click **Generate**, and receive a ready-to-compile ZIP that already contains:
+This tool is Menora's internal project generator. Developers describe a project, click **Generate**, and get a ZIP that builds against Menora's Artifactory and follows the company's standards. Three tabs make three kinds of project:
 
-- A properly structured Maven project (parent POM or single-module)
-- Company-standard Artifactory repositories wired into the POM
-- Log4j2 configured and the default Logback excluded
-- A \`Dockerfile\`, \`Jenkinsfile\`, \`k8s/values.yaml\`, and \`entrypoint.sh\`
-- Per-dependency configuration files (e.g. \`application.yaml\` with Kafka bootstrap servers, Java config classes for JPA/Security/RQueue)
-- An \`.editorconfig\` and a \`VERSION\` file
+- **Backend** — a Spring Boot service (Maven, Java 17 or 21, Boot 3.2 or 3.5), single-module or multi-module. Four wizards can write code into it: entities from a SQL schema or a live database, controllers and clients from an OpenAPI document, SOAP endpoints and clients from a WSDL, and Kafka producers and listeners from an AsyncAPI document.
+- **Frontend** — a React + TypeScript + Vite application.
+- **Fullstack** — a working CRUD application, Spring backend and React frontend together, from an entity model: pages and dashboards, workflows, access rules, generated tests.
+
+### What Every Backend Contains
+- The Artifactory repositories and \`settings.xml\`
+- Log4j2 with Menora's JSON log formats (Logback excluded), and Lombok
+- A \`Dockerfile\` for the selected Java version, \`k8s/Jenkinsfile\`, \`k8s/values.yaml\` and \`entrypoint.sh\`
+- A local Vault connection: a \`vault-local\` profile that turns on when \`VAULT_TOKEN\` is set in the environment or in the git-ignored \`.env\`
+- Per-dependency configuration (\`application.yaml\` sections, config classes, sample code behind sub-options)
+- A \`compose.yaml\` and a \`compose\` profile when a dependency needs a service (a database, Kafka, Redis, MongoDB)
+- \`menora-model.json\` — the request the project was made from, so the generator can reopen it and produce an update later
+- \`.editorconfig\` and \`VERSION\`
 
 ### Why Not start.spring.io?
-The public Spring Initializr knows nothing about Menora's Artifactory mirror, internal libraries (RQueue, mail-sampler), company file templates, or required Maven exclusions. This backend adds all of that on top of the same Spring Initializr framework that powers start.spring.io.
+The public Spring Initializr knows nothing about Menora's Artifactory, internal libraries, file templates, required exclusions, Vault or deployment files, and it has no wizards, no fullstack generator and no way to update a project it made. This backend adds all of that on top of the same Spring Initializr framework that powers start.spring.io.
 
 ### Admin vs. Application
-The **application** (what developers use) is the main page — it renders the project form and generates ZIPs. The **admin** (Config tab) is the control plane — everything you configure there changes what gets injected into generated projects. This guide covers the admin.`,
+The **application** is what developers use: the three tabs, plus this Guide and Training. The **admin** (Config) is the control plane: what is configured there decides what goes into generated projects, and its History and Activity tabs show who changed the catalog and what was generated. This guide is written for admins, with the generator tabs explained where an admin needs them.`,
       },
       {
         id: 'overview-pipeline',
         title: 'Generation Pipeline',
         description: 'How a ZIP is assembled from admin configuration at request time.',
         content: `### Request Flow
-When a developer clicks Generate, the following happens:
+When a developer clicks Generate on the Backend tab, the following happens:
 
-1. **HTTP request** arrives at \`/starter.zip\` with query parameters: \`groupId\`, \`artifactId\`, \`dependencies\`, \`javaVersion\`, sub-option params like \`opts-kafka=consumer-example\`, etc.
-2. **Filter** (\`InitializrWebConfiguration\`) runs first — injects a default \`configurationFileFormat=properties\`, sanitizes the \`X-Forwarded-Port\` header, and reads sub-option selections into a per-thread context object.
-3. **Framework** spins up a child Spring context for the request and calls every registered \`ProjectGenerationConfiguration\`.
-4. **\`DynamicProjectGenerationConfiguration\`** (the only one registered) reads the database and contributes three things:
-   - **File contributor** — iterates every \`FileContributionEntity\` for the selected dependencies (plus \`__common__\`), filters by Java version and sub-option, then writes/merges/deletes files in the output directory.
-   - **Delete contributor** — runs last (lowest precedence) to delete framework-generated files that Menora doesn't want (e.g. \`application.properties\`).
-   - **Build customizer** — applies \`BuildCustomizationEntity\` records to the Maven build object (adds dependencies, exclusions, and repositories).
-5. **ZIP** is assembled and returned to the browser.
+1. **HTTP request** — \`GET /starter.zip\` with query parameters (\`groupId\`, \`artifactId\`, \`dependencies\`, \`bootVersion\`, \`javaVersion\`, sub-options as \`opts-kafka=consumer-example\`…). A request with wizard documents goes to \`POST /starter-wizard.zip\`, one with modules to \`GET /starter-multimodule.zip\`; the fullstack and frontend tabs have endpoints of their own. Every one of them builds the same kind of project request, with the defaults from the metadata, so an unknown Boot or Java version is a 400 everywhere.
+2. **Filters** — when the access gate is on, a request without the \`userinfo\` header is refused (403). \`InitializrWebConfiguration\` fills in the \`configurationFileFormat\` some clients leave out, reads the sub-options, and applies the **compatibility rules**: a dependency another one REQUIRES is added, and two that CONFLICT are a 400 naming both and the reason.
+3. **Framework** starts a child Spring context for the request and calls the three registered \`ProjectGenerationConfiguration\`s:
+   - **\`DynamicProjectGenerationConfiguration\`** reads the catalog from the database: the **file contributor** writes, merges and templates every file contribution of the selected dependencies (plus \`__common__\`), filtered by Java version and sub-option; the **delete contributor** runs last and removes files Menora does not want (\`application.properties\`, the Maven wrapper); the **build customizer** adds dependencies, exclusions, repositories and BOMs, each row filtered by its sub-option and Boot range. The four wizards write their code here too, and \`menora-model.json\` is written last.
+   - **\`FullstackProjectGenerationConfiguration\`** adds the entity code of a fullstack request (and does nothing otherwise).
+   - **\`LocalRunGenerationConfiguration\`** writes \`compose.yaml\` and the \`compose\` profile for the dependencies that need a service.
+4. **ZIP** is assembled and returned. The generation is recorded in the audit, off the request thread.
 
-### Key Insight: The DB is the Source of Truth
-Nothing about what goes into a generated project is hardcoded in Java — it is all in the database. Add a file, change a template, add a dependency: it all flows through admin configuration. A change saved in the admin reaches the next generation without a restart.`,
+### What the Database Decides, and What a Release Does
+Everything an admin edits is a database row: dependencies and their groups, file contributions, build customizations, sub-options, compatibility rules, starter and module templates, the fullstack template sets and examples, palettes, versions, departments, schema sources. A change saved in the admin reaches the next generation without a restart.
+
+Some output is shipped with the application instead and changes only with a release: the wizards' code templates, the compose services, the fullstack Flyway migrations, \`menora-model.json\` and the rules a fullstack request is checked against. Catalog rows that nobody has edited also follow a release — see **Catalog Sync** under Admin Operations.`,
         callouts: [
           {
             type: 'info',
@@ -538,10 +546,12 @@ If you try to delete a dependency that's referenced by a template set's defaults
 Dependency groups are purely organizational — they do not affect what gets generated. They exist to group related dependencies under a heading in the dependency picker (e.g. "Data", "Messaging", "Security").
 
 ### Out-of-the-Box Groups
-The system seeds the following groups on first startup: **Menora Standards**, **Web**, **Data**, **Messaging**, **Security**, **Observability**, **Logging**, and **Communication**.
+The system seeds the following groups on first startup: **Menora Standards**, **Web**, **Data**, **Messaging**, **Security**, **Observability**, **Communication** and **Utilities**.
+
+Groups and dependency entries are seeded once, into an empty database. Unlike file contributions and build customizations, they do not follow a release afterwards (see **Catalog Sync**): a dependency a new release ships is added by an admin, or by importing a configuration.
 
 ### Ordering
-Groups appear in the dependency picker in \`sortOrder\` ascending order. Use the **drag-to-reorder** feature in the Dependency Groups admin tab — drag a row to the desired position, then click **Save Order**.`,
+Groups appear in the dependency picker in \`sortOrder\` ascending order. Use the **drag-to-reorder** feature in the Dep Groups admin tab — drag a row to the desired position, then click **Save Order**.`,
         fields: [
           { name: 'name', type: 'string', required: true, description: 'Display name shown as a section heading in the dependency picker. Must be unique.', example: 'Data' },
           { name: 'sortOrder', type: 'integer', required: false, description: 'Ascending sort order. Lower values appear first. Managed via drag-to-reorder.', example: '2' }
@@ -597,11 +607,16 @@ A dependency entry represents a selectable library or feature in the project gen
 - **Sub-Options** — optional extras within this dependency
 - **Compatibility Rules** — relationships with other dependencies
 
-### Maven Coordinates Are Optional
-Not every dependency entry needs Maven coordinates. Sometimes a dependency is just a configuration trigger — it causes files and build customizations to be injected but doesn't itself add a Maven artifact. In that case leave \`mavenGroupId\` / \`mavenArtifactId\` blank.
+### Three Kinds of Entry
+- **A Spring Boot starter** — leave the Maven coordinates blank and the Spring Initializr framework adds \`org.springframework.boot:spring-boot-starter-<depId>\` (\`web\`, \`data-jpa\`, \`actuator\`…), its version managed by Spring Boot. Only name an entry this way when that starter exists.
+- **A library** — fill in \`mavenGroupId\`/\`mavenArtifactId\` (and a version when the Boot BOM does not manage it); the artifact goes into the pom.
+- **A file-only option** — tick **File-only option** (\`starter: false\`): nothing is added to the pom, and selecting the entry only brings its file contributions, build customizations and sub-options. \`ldap-auth\`, \`ldap-auth-rest\`, \`logging\` and \`file-handler-utils\` work this way. The form warns when a build customization still adds a pom dependency for the id.
 
 ### The Dependency Picker
-Entries appear in the dependency picker grouped by their parent group. The user's selection is the set of \`depId\` values sent in the generation request as the \`dependencies\` query parameter.`
+Entries appear in the dependency picker grouped by their parent group, hidden when the selected Boot version is outside their \`compatibilityRange\`. The user's selection is the set of \`depId\` values sent in the generation request as the \`dependencies\` parameter; the server then applies the compatibility rules to it (see **Compatibility Rules**).
+
+### Backend and Frontend Catalogs
+Each entry belongs to one catalog (\`projectKind\`: BACKEND or FRONTEND). The pill at the top of the admin switches every catalog tab between the two.`
       },
       {
         id: 'dep-entries-fields',
@@ -618,8 +633,10 @@ Entries appear in the dependency picker grouped by their parent group. The user'
           { name: 'version', type: 'string', required: false, description: 'Explicit Maven version. Leave blank to rely on Spring Boot BOM version management.', example: '3.1.0' },
           { name: 'scope', type: 'string', required: false, description: 'Maven scope. Leave blank for compile (default). Options: runtime, provided, test, import.', example: 'runtime' },
           { name: 'repository', type: 'string', required: false, description: 'Repository ID if the artifact is not in Maven Central. Must match a repository ID defined in application.yml or via a BuildCustomization ADD_REPOSITORY.', example: 'menora-release' },
-          { name: 'compatibilityRange', type: 'string', required: false, description: 'Spring Boot version range. If set, the dependency is hidden in the UI when the selected Boot version is outside this range. Blank means compatible with all versions.', example: '[3.2.0,4.0.0)' },
-          { name: 'sortOrder', type: 'integer', required: false, description: 'Display order within the group. Lower values appear first.', example: '0' }
+          { name: 'starter', type: 'boolean', required: false, description: 'The form\'s File-only option, inverted: false means nothing is added to the pom for this entry. Default true.', example: 'false' },
+          { name: 'compatibilityRange', type: 'string', required: false, description: 'Spring Boot version range (for a frontend entry, a React range). If set, the dependency is hidden in the UI when the selected version is outside this range. Blank means compatible with all versions.', example: '[3.2.0,4.0.0)' },
+          { name: 'sortOrder', type: 'integer', required: false, description: 'Display order within the group. Lower values appear first.', example: '0' },
+          { name: 'projectKind', type: 'BACKEND | FRONTEND', required: true, description: 'Which catalog the entry belongs to — set by the admin pill when the entry is created.', example: 'BACKEND' }
         ],
         codeExamples: [
           {
@@ -650,7 +667,7 @@ Entries appear in the dependency picker grouped by their parent group. The user'
         content: `### STATIC_COPY
 Writes the content verbatim to the target path. No modification, no substitution (even if substitutionType is set). Used for binary-compatible text files that should always be identical regardless of project settings.
 
-**Example use cases:** \`.editorconfig\`, \`entrypoint.sh\`, \`settings.xml\`, \`log4j2-spring.xml\`
+**Example use cases:** \`.editorconfig\`, \`entrypoint.sh\`, \`settings.xml\`
 
 ### YAML_MERGE
 Deep-merges the YAML content into the target file. If the target file doesn't exist yet, it is created. If it already has content (from a previous contribution or the framework), the new YAML is merged into it key-by-key, with nested maps recursively merged and scalar values overwritten.
@@ -662,12 +679,15 @@ This is the primary way multiple dependencies each contribute their section to \
 ### TEMPLATE
 Applies variable substitution to the content, then writes it to the target path. When \`substitutionType\` is MUSTACHE, the content is rendered through a real Mustache engine (\`com.samskivert:jmustache\`), giving you both variable substitution and conditional sections (see below).
 
-**Example use cases:** \`Dockerfile\` (needs artifactId), \`KafkaConfig.java\` (needs package name), \`k8s/values.yaml\` (needs groupId).
+**Example use cases:** \`Dockerfile\` (needs artifactId), \`KafkaConfig.java\` (needs package name), \`k8s/values.yaml\` and \`log4j2-spring.xml\` (need the department).
 
 ### DELETE
 Marks a file for deletion. The delete contributor runs at the lowest priority (after all writes), so it removes files that the framework or earlier contributors wrote. No \`content\` field is needed.
 
-**Example use case:** The Spring Initializr framework always writes \`application.properties\`. Menora projects use \`application.yaml\`, so a DELETE contribution removes the unwanted \`application.properties\`.`,
+**Example use case:** The Spring Initializr framework always writes \`application.properties\` and the Maven wrapper. Menora projects use \`application.yaml\` and build with \`mvn\` and \`settings.xml\`, so DELETE contributions remove \`application.properties\`, \`mvnw\`, \`mvnw.cmd\` and the wrapper's properties file.
+
+### Checked When Saved
+Saving a contribution checks its content by the target's extension (Java, YAML, XML, JSON, SQL, properties). A TEMPLATE, or a YAML_MERGE rendered with MUSTACHE, is first rendered with every section switched on, so a template that breaks only under one combination of dependencies is caught too. The target path is checked when a project is generated: a path that would leave the project folder (\`../\`) is refused.`,
         callouts: [
           {
             type: 'tip',
@@ -683,8 +703,8 @@ Marks a file for deletion. The delete contributor runs at the lowest priority (a
 
 \`TEMPLATE\` contributions are rendered through a real Mustache engine (\`com.samskivert:jmustache\`, with HTML escaping disabled). The \`substitutionType\` field has two values:
 
-- **NONE** — no substitution. Content is written verbatim. Use for binary-identical files (log4j2 XML, .editorconfig, entrypoint.sh).
-- **MUSTACHE** — content is rendered through jmustache with the unified context below. This is the default for any template with variables or conditional blocks.
+- **NONE** (the default) — no substitution. Content is written verbatim. Use for files that are the same in every project (.editorconfig, entrypoint.sh, settings.xml).
+- **MUSTACHE** — content is rendered through jmustache with the unified context below. Choose it for any template with variables or conditional blocks.
 
 ### The Unified Context
 Every MUSTACHE template receives the same context. **Variables** render as text; **sections** (\`{{#name}}…{{/name}}\`) render their body only when the named value is truthy; **inverted sections** (\`{{^name}}…{{/name}}\`) render only when it is falsy/absent.
@@ -697,6 +717,7 @@ Every MUSTACHE template receives the same context. **Variables** render as text;
 - \`{{packagePath}}\` — package name with dots replaced by slashes (e.g. \`com/menora/demo\`)
 - \`{{javaVersion}}\` — the JDK the user picked, e.g. \`17\` or \`21\`
 - \`{{packaging}}\` — \`jar\` or \`war\`
+- \`{{department}}\`, \`{{departmentUpper}}\`, \`{{departmentName}}\` — the department the developer picked (else the default row of **Config → Departments**), e.g. \`lts\` / \`LTS\`; the k8s values, log4j2 configuration and Vault namespace use them
 
 **Dependency booleans** — \`has\` + PascalCase(depId). Hyphens, underscores, and dots are word separators:
 - \`{{#hasKafka}}…{{/hasKafka}}\` — dep id \`kafka\`
@@ -809,21 +830,21 @@ management:
 When a file contribution's \`dependencyId\` is set to \`__common__\`, it is injected into **every** generated project, regardless of which dependencies the developer selected.
 
 This is how Menora ensures all projects always have:
-- \`Dockerfile\` (templated with artifactId, version-specific per JDK)
-- \`Jenkinsfile\` (templated with project metadata)
-- \`k8s/values.yaml\` (templated with groupId/artifactId)
-- \`entrypoint.sh\` (static copy)
-- \`.editorconfig\` (static copy)
-- \`VERSION\` (templated with version)
-- \`log4j2-spring.xml\` (static copy)
-- Deletion of \`application.properties\` (DELETE type)
+- \`src/main/resources/application.yaml\` — the base file (TEMPLATE, \`sortOrder\` -1, so every YAML_MERGE lands on it)
+- \`Dockerfile\` (TEMPLATE, one row per Java version)
+- \`k8s/Jenkinsfile\` and \`k8s/values.yaml\` (TEMPLATE)
+- \`entrypoint.sh\`, \`.editorconfig\`, \`settings.xml\` (STATIC_COPY)
+- \`VERSION\` (TEMPLATE)
+- \`log4j2-spring.xml\`, \`logFormat.json\`, \`detailedLogFormat.json\` (TEMPLATE)
+- The local Vault connection: \`.env\`, \`application-vault-local.yaml\`, \`config/VaultLocalEnvironmentPostProcessor.java\` and the \`META-INF/spring.factories\` that registers it (TEMPLATE)
+- Deletion of \`application.properties\`, \`mvnw\`, \`mvnw.cmd\` and \`.mvn/wrapper/maven-wrapper.properties\` (DELETE)
 
 ### When to Use __common__
 Use \`__common__\` when the file should exist in every project. Use a specific \`depId\` when the file is only relevant when that dependency is selected.`,
         callouts: [
           {
             type: 'info',
-            text: 'Build customizations (add dependency, add repository) also support __common__. This is how the Artifactory repositories and the log4j2 dependency replacement are added to all projects.'
+            text: 'Build customizations also support __common__. That is how every project gets the Artifactory repositories, Log4j2 in place of Logback (with its JSON layout), Lombok, the spring-cloud BOM (one row per Boot range) and the Vault starter.'
           }
         ]
       },
@@ -851,7 +872,8 @@ If a file contribution has a non-blank \`subOptionId\`, it will only be included
           { name: 'targetPath', type: 'string', required: true, description: 'Output path within the generated project. May contain {{packagePath}} for Java source files.', example: 'src/main/java/{{packagePath}}/config/KafkaConfig.java' },
           { name: 'content', type: 'text', required: false, description: 'File content. Not needed for DELETE type. For TEMPLATE type, use substitution variables.', example: 'package {{packageName}}.config;' },
           { name: 'substitutionType', type: 'SubstitutionType', required: false, description: 'Variable substitution mode: NONE (content written verbatim) or MUSTACHE (renders with jmustache — variables {{artifactId}}, {{groupId}}, {{version}}, {{packageName}}, {{packagePath}}, {{javaVersion}}, {{packaging}}, and boolean sections such as {{#hasKafka}}…{{/hasKafka}} or {{#optKafkaConsumerExample}}…{{/optKafkaConsumerExample}}).', example: 'MUSTACHE' },
-          { name: 'javaVersion', type: 'string', required: false, description: 'If set, this contribution only applies when the project Java version matches. Leave blank for all versions.', example: '21' },
+          { name: 'javaVersion', type: 'string', required: false, description: 'If set, this contribution only applies when the project Java version matches. Leave blank for all versions. (Backend rows.)', example: '21' },
+          { name: 'nodeVersion', type: 'string', required: false, description: 'The frontend counterpart of javaVersion: the row only applies when the selected Node version matches. The frontend Dockerfile has one row per Node version. Set in the catalog files or by import; the admin form shows Java Version only.', example: '20' },
           { name: 'subOptionId', type: 'string', required: false, description: 'If set, this contribution only applies when the user selects this sub-option under the parent dependency.', example: 'consumer-example' },
           { name: 'sortOrder', type: 'integer', required: false, description: 'Processing order. Matters when multiple contributions target the same file (e.g. multiple YAML_MERGE into the same application.yaml).', example: '0' }
         ]
@@ -939,7 +961,10 @@ The available variables depend entirely on which render path the file belongs to
 - **\`templates/fullstack/<frontend-set>/\` files** (e.g. \`react-tailwind-crud\`) → **Fullstack Entity Context merged with Frontend Context** — these templates see both entity variables and the frontend dep/palette/version variables.
 
 ### Universal flags
-One convention spans every context: for each selected dependency, a boolean \`has<Dep>\` is set; for each selected sub-option, \`opt<Dep><Option>\`. These are the "is X selected?" checks everywhere.`
+One convention spans every context: for each selected dependency, a boolean \`has<Dep>\` is set; for each selected sub-option, \`opt<Dep><Option>\`. These are the "is X selected?" checks everywhere. The department variables (\`department\`, \`departmentUpper\`, \`departmentName\`) are in every context too.
+
+### Not editable here
+The wizards' code (\`templates/wizard/**\` — SQL entities, OpenAPI controllers and clients, SOAP endpoints, Kafka producers and listeners, the multi-module parent POM) is Mustache too, but these are files shipped with the application, not catalog rows: they are written against a Java view-model an admin edit could not follow, so they change only with a release.`
       },
       {
         id: 'mustache-backend-context',
@@ -957,7 +982,9 @@ For every **selected** dependency a boolean \`has<Dep>\` is set to true; for eve
 - sub-option \`consumer-example\` of \`kafka\` → \`optKafkaConsumerExample\`
 
 ### The ds* family (scaffolded datasource)
-\`hasScaffoldedEntities\`, \`dsEntityPackage\`, and \`dsRepositoryPackage\` exist so a per-driver datasource config can scan **where generated entities actually live** instead of a hardcoded \`<packageName>.<driver>\` convention. They are populated only when the request scaffolds entities (fullstack **or** the SQL wizard); otherwise \`hasScaffoldedEntities\` is false and the two package keys are null. That is exactly why the H2 template pairs a \`{{#hasScaffoldedEntities}}\` branch with a \`{{^hasScaffoldedEntities}}\` fallback — see the H2Config walkthrough.`,
+\`hasScaffoldedEntities\`, \`dsEntityPackage\`, and \`dsRepositoryPackage\` exist so a per-driver datasource config can scan **where generated entities actually live** instead of a hardcoded \`<packageName>.<driver>\` convention. They are populated only when the request scaffolds entities (fullstack **or** the SQL wizard); otherwise \`hasScaffoldedEntities\` is false and the two package keys are null. That is exactly why the H2 template pairs a \`{{#hasScaffoldedEntities}}\` branch with a \`{{^hasScaffoldedEntities}}\` fallback — see the H2Config walkthrough.
+
+A fullstack project also puts entities outside those two packages (attachments, saved views, change history, the events outbox). \`dsExtraPackages\` lists them and \`dsHasExtraPackages\` says whether there are any; every \`*-config-primary\` template must scan them too, or the application does not start.`,
         fields: [
           { name: '{{artifactId}}', type: 'String', required: true, description: 'Project artifact id.', example: 'demo' },
           { name: '{{groupId}}', type: 'String', required: true, description: 'Project group id.', example: 'com.menora' },
@@ -966,11 +993,13 @@ For every **selected** dependency a boolean \`has<Dep>\` is set to true; for eve
           { name: '{{packagePath}}', type: 'String', required: true, description: 'packageName with dots replaced by slashes. The one placeholder also allowed in target paths.', example: 'com/menora/demo' },
           { name: '{{javaVersion}}', type: 'String', required: true, description: 'Selected JDK version.', example: '21' },
           { name: '{{packaging}}', type: 'String', required: false, description: 'Packaging id; null if unset.', example: 'jar' },
+          { name: '{{department}} / departmentUpper / departmentName', type: 'String', required: true, description: 'The department the request named, else the default row of Config → Departments.', example: 'lts / LTS / LTS' },
           { name: 'has<Dep>', type: 'boolean', required: false, description: 'True for each selected dependency (PascalCased id). Absent when not selected.', example: 'hasKafka' },
           { name: 'opt<Dep><Option>', type: 'boolean', required: false, description: 'True for each selected sub-option (PascalCased dep + option).', example: 'optKafkaConsumerExample' },
           { name: '{{hasScaffoldedEntities}}', type: 'boolean', required: true, description: 'True when the request scaffolds entities (fullstack or SQL wizard).', example: 'true' },
           { name: '{{dsEntityPackage}}', type: 'String', required: false, description: 'Package the generated entities land in; null unless hasScaffoldedEntities.', example: 'com.menora.demo.entity' },
-          { name: '{{dsRepositoryPackage}}', type: 'String', required: false, description: 'Package the generated repositories land in; null unless hasScaffoldedEntities.', example: 'com.menora.demo.repository' }
+          { name: '{{dsRepositoryPackage}}', type: 'String', required: false, description: 'Package the generated repositories land in; null unless hasScaffoldedEntities.', example: 'com.menora.demo.repository' },
+          { name: '{{dsExtraPackages}} / dsHasExtraPackages', type: 'List / boolean', required: true, description: 'Further packages holding a fullstack project\'s own entities and repositories (attachments, views, history, events); empty otherwise.', example: '{{#dsExtraPackages}}, "{{.}}"{{/dsExtraPackages}}' }
         ],
         codeExamples: [
           {
@@ -987,19 +1016,24 @@ For every **selected** dependency a boolean \`has<Dep>\` is set to true; for eve
         title: 'Fullstack Entity Context',
         description: 'Variables for entity template sets (EntityScaffoldContext): project, per-entity, fields, relations.',
         content: `### Source
-\`EntityScaffoldContext\`, built in two stages — \`buildProjectContext\` (project-wide) and \`buildEntityContext\` (project-wide plus one entity). A \`perEntity: true\` file renders once per user entity; \`perEntity: false\` renders once with the project context (and can loop all entities via \`{{#entities}}\`).
+\`EntityScaffoldContext\`, built in two stages — \`buildProjectContext\` (project-wide) and \`buildEntityContext\` (project-wide plus one entity). The view-model itself is split by area into classes beside it: \`EntityViewModel\`, \`FieldViewModel\`, \`RelationViews\`, \`FeatureContext\`, \`PageContext\`, \`DashboardContext\`, \`TemplateText\`, \`SchemaNames\`. A \`perEntity: true\` file renders once per user entity; a \`perPage: true\` file once per page of the layout; any other file once with the project context (and can loop all entities via \`{{#entities}}\`).
 
 ### Layer packages (project-wide)
 Each also has a \`…Path\` slash-form variant: \`entityPackage\` / \`entityPackagePath\`, \`repositoryPackage\`, \`dtoPackage\`, \`servicePackage\`, \`controllerPackage\`, all derived from \`domainPackage\` (defaults to \`packageName\`). The \`fields\` table below lists the per-entity keys.
 
 ### Per-field variables (inside {{#fields}}, {{#pkFields}}, …)
-\`name\`, \`Name\` (PascalCase), \`column\` (snake_case), \`javaType\`, \`tsType\`, \`enumTypeName\`; predicates \`isPrimaryKey\`, \`isGenerated\`, \`isRequired\`, \`isUnique\`, \`isString\`, \`isNumeric\`, \`isIntegral\`, \`isBigDecimal\`, \`isBoolean\`, \`isTemporal\`, \`isDate\`, \`isDateTime\`, \`isEnum\`; constraints \`hasLength\`/\`length\`, \`hasMin\`/\`min\`, \`hasMax\`/\`max\`, \`hasPattern\`/\`pattern\`/\`patternEscaped\`, \`isEmail\`; \`enumValues\`; and iteration flags \`first\`/\`last\` (plus \`lastNonPk\`, \`lastString\` in their lists).
+\`name\`, \`Name\` (PascalCase), \`column\`, \`javaType\`, \`tsType\`, \`enumTypeName\`; predicates \`isPrimaryKey\`, \`isGenerated\`, \`isRequired\`, \`isUnique\`, \`isString\`, \`isNumeric\`, \`isIntegral\`, \`isBigDecimal\`, \`isBoolean\`, \`isTemporal\`, \`isDate\`, \`isDateTime\`, \`isEnum\`, \`isReadOnly\`; constraints \`hasLength\`/\`length\`, \`hasMin\`/\`min\`, \`hasMax\`/\`max\`, \`hasPattern\`/\`pattern\`/\`patternEscaped\`, \`isEmail\`; \`enumValues\` (each with its \`label\`); defaults (\`hasDefault\`, \`defaultJava\`, \`defaultTs\`); and iteration flags \`first\`/\`last\`.
 
-### Per-relation variables (inside {{#relations}})
-\`fieldName\`, \`FieldName\`, \`fkFieldName\`, \`joinColumn\`, \`targetEntity\` (+ \`Camel\`/\`Kebab\`/\`KebabPlural\`), \`targetPkName\`/\`TargetPkName\`/\`targetPkJavaType\`/\`targetPkTsType\`, \`isTargetPkNumeric\`, \`targetLabelField\`/\`hasTargetLabel\`, \`required\`, \`isManyToOne\`, \`last\`. Inverse collections (inside \`{{#inverseRelations}}\`): \`childEntity\`, \`childEntityCamel\`, \`mappedBy\`, \`collectionField\`, \`CollectionField\`.
+### Relations — three lists
+- \`{{#relations}}\` — the **foreign keys** (MANY_TO_ONE): \`fieldName\`, \`FieldName\`, \`fkFieldName\`, \`joinColumn\`, \`targetEntity\` (+ \`Camel\`/\`Kebab\`/\`KebabPlural\`), \`targetPkName\`/\`targetPkJavaType\`/\`targetPkTsType\`, \`targetLabelField\`/\`hasTargetLabel\`, \`required\`, \`last\`.
+- \`{{#collections}}\` / \`hasCollections\` — MANY_TO_MANY links through a join table.
+- \`{{#childLists}}\` / \`hasChildLists\` — ONE_TO_MANY: the rows of another entity that point at this one (a \`composition\` one is edited in this entity's form).
 
-### Opt-in scaffold flags
-\`optScaffoldTests\`, \`optScaffoldAudit\`, \`optScaffoldSoftDelete\`, \`optScaffoldInverse\` come from the request \`opts.scaffold\` list. Plus \`hasValidation\` on the backend path. The per-entity \`softDeleteApplicable\` = \`optScaffoldSoftDelete && !hasCompositePk\`.`,
+### Scaffold options
+Every value of the request's \`opts.scaffold\` becomes an \`optScaffold<Option>\` flag on both render paths, from one list (\`ScaffoldOption\`): \`audit\`, \`softDelete\`, \`csvExport\`, \`bulkDelete\`, \`bulkUpdate\`, \`tests\`, \`csvImport\`, \`optimisticLocking\`, \`inlineEdit\`, \`xlsxExport\`, \`savedViews\`, \`history\`, \`events\` (all of these per entity too, through the entity's \`opts\` overrides), \`inverseCollections\`, \`openapi\`, \`seedData\`. \`secured\` is retired: access is now each entity's \`access\` levels, enforced whenever an ldap-auth dependency is on the build. Templates mostly read the derived per-entity flags rather than the raw option — \`auditApplicable\`, \`softDeleteApplicable\`, \`lockingApplicable\`, \`importApplicable\`… — which also account for read-only entities, views and composite keys. Plus \`hasValidation\` on the backend path.
+
+### Page layouts
+The frontend context also carries the layout (\`pages\`, \`navPages\`, \`routePages\`, the per-page view-model a \`perPage\` file renders with, widget lists…). It is large and changes with each round; \`backend/docs/MUSTACHE_GUIDE.md\` (§4f) lists it.`,
         fields: [
           { name: '{{EntityName}} / entityName / entity_name / entityNameKebab', type: 'String', required: true, description: 'Entity name in Pascal / camel / snake / kebab case. Plural variants exist for each.', example: 'OrderItem / orderItem / order_item / order-item' },
           { name: '{{tableName}}', type: 'String', required: true, description: 'Table name override or plural snake fallback.', example: 'order_items' },
@@ -1007,9 +1041,12 @@ Each also has a \`…Path\` slash-form variant: \`entityPackage\` / \`entityPack
           { name: '{{fields}} / nonPkFields / pkFields / stringFields', type: 'List', required: true, description: 'Field view-models to iterate; pkField is the single-PK shortcut (may be null).', example: '{{#fields}}…{{/fields}}' },
           { name: '{{hasCompositePk}} / keyClassName / pkType / pkPath', type: 'mixed', required: true, description: 'Composite-key flag, generated <Entity>Id class name, id type, and REST path segment.', example: '/{orderId}/{lineNo}' },
           { name: '{{relations}} / hasRelations', type: 'List / boolean', required: true, description: 'MANY_TO_ONE foreign-key relations.', example: '{{#relations}}…{{/relations}}' },
-          { name: '{{inverseRelations}} / hasInverseRelations', type: 'List / boolean', required: true, description: 'Derived @OneToMany back-references (opt-in via optScaffoldInverse).', example: '{{#inverseRelations}}…{{/inverseRelations}}' },
+          { name: '{{collections}} / hasCollections', type: 'List / boolean', required: true, description: 'MANY_TO_MANY links through a join table.', example: '{{#collections}}…{{/collections}}' },
+          { name: '{{childLists}} / hasChildLists', type: 'List / boolean', required: true, description: 'ONE_TO_MANY lists of the child rows that point at this entity (including the one inverseCollections derives).', example: '{{#childLists}}…{{/childLists}}' },
           { name: 'has*Fields aggregates', type: 'boolean', required: true, description: 'hasEnumFields, hasStringFields, hasNotNullFields, hasSizeFields, hasMinFields, hasMaxFields, hasDecimalMinFields, hasDecimalMaxFields, hasPatternFields, hasEmailFields — true iff some field needs that import.', example: 'hasEmailFields' },
-          { name: '{{optScaffoldTests}} / Audit / SoftDelete / Inverse', type: 'boolean', required: false, description: 'Opt-in scaffolding flags from opts.scaffold. Must be set on both render paths.', example: 'optScaffoldAudit' }
+          { name: 'optScaffold<Option>', type: 'boolean', required: false, description: 'One flag per opts.scaffold value (ScaffoldOption), resolved per entity against its overrides.', example: 'optScaffoldAudit' },
+          { name: '<feature>Applicable', type: 'boolean', required: false, description: 'Whether an option really applies to this entity (writable, table-backed, single key… as the option needs).', example: 'softDeleteApplicable' },
+          { name: '<key>Ts / <key>Attr / <key>Jsx / <key>Comment', type: 'String', required: false, description: 'User-typed text (labels, dashboard title and overview) escaped for a TS string, a JSX attribute, JSX children or a comment. Frontend templates use these, never the raw {{label}}.', example: '{{entityLabelTs}}' }
         ],
         codeExamples: [
           {
@@ -1038,11 +1075,11 @@ Each also has a \`…Path\` slash-form variant: \`entityPackage\` / \`entityPack
         callouts: [
           {
             type: 'warning',
-            text: 'An optScaffold* flag must be set on BOTH render paths (FullstackProjectGenerationConfiguration for backend, FullstackStarterController.renderFrontend for frontend). A frontend-only opt set on just the backend silently never fires.'
+            text: 'Labels are whatever the user typed, Hebrew quotes and apostrophes included. A frontend template that splices {{label}}, {{entityLabel}}, {{entityLabelPlural}}, {{dashboardTitle}} or {{dashboardOverview}} raw can produce a project that does not compile; use the escaped forms (…Ts, …Attr, …Jsx). A test in the backend fails on a raw splice in a shipped template; one edited in the admin is not checked.'
           },
           {
             type: 'info',
-            text: 'gatedBy accepts any truthy context flag — an opt-in like optScaffoldTests or a derived flag like hasCompositePk (used by the EntityId.java row).'
+            text: 'gatedBy accepts any truthy context flag — an opt-in like optScaffoldTests or a derived flag like hasCompositePk (used by the EntityId.java row) or apiTestApplicable.'
           }
         ]
       },
@@ -1055,6 +1092,9 @@ Each also has a \`…Path\` slash-form variant: \`entityPackage\` / \`entityPack
 
 ### Dependency / palette flags
 Same \`has<Dep>\` / \`opt<Dep><Option>\` PascalCase convention as the backend (e.g. \`hasRouterReactRouter\`, \`optAuthMsalInitConfig\`). The color palette is a nested \`palette\` map — \`palette.primary\`, \`palette.secondary\`, \`palette.accent\`, \`palette.error\`, plus \`*Hsl\` forms for CSS variables — gated by \`hasPaletteAccent\` / \`hasPaletteError\`.
+
+### Language and direction
+\`isRtl\` is true for a right-to-left frontend. In a fullstack frontend, \`locale\` (\`en\` or \`he\`) and \`isHebrew\` choose the generated app's own words. The department variables are here too.
 
 ### Node-version gating
 The mirror of backend \`javaVersion\` gating: a frontend file contribution with a \`nodeVersion\` is skipped unless it matches the selected Node version. A row with no \`nodeVersion\` applies to all versions. This lets one target path (e.g. \`Dockerfile\`) resolve to a different content row per Node version — and a version with no matching row generates no file at all.`,
@@ -1081,20 +1121,22 @@ The mirror of backend \`javaVersion\` gating: a frontend file contribution with 
 - \`{{#hasScaffoldedEntities}}…{{/hasScaffoldedEntities}}\` — the **section** renders only when entities were scaffolded (a fullstack request, or the SQL wizard). In that branch it emits \`{{dsRepositoryPackage}}\` / \`{{dsEntityPackage}}\` — the packages where the generated repositories/entities actually landed (\`<domainPackage>.repository\` / \`<domainPackage>.entity\`).
 - \`{{^hasScaffoldedEntities}}…{{/hasScaffoldedEntities}}\` — the **inverted section** is the "else": when nothing was scaffolded those two keys are null, so the template falls back to the legacy convention \`{{packageName}}.h2.repository\` / \`{{packageName}}.h2\`.
 
-So a plain (non-fullstack) project gets \`com.menora.demo.h2.repository\`; a fullstack project gets the real scaffolded package. The three keys (\`hasScaffoldedEntities\`, \`dsEntityPackage\`, \`dsRepositoryPackage\`) are set together in \`buildBaseContext\`.`,
+- \`{{#dsExtraPackages}}, "{{.}}"{{/dsExtraPackages}}\` — a **list section**: once per further package a fullstack project holds entities in, it appends that package. \`basePackages\` becomes an array (\`{ … }\`) only when there are any (\`dsHasExtraPackages\`), so a plain project keeps its single string.
+
+So a plain (non-fullstack) project gets \`com.menora.demo.h2.repository\`; a fullstack project gets the real scaffolded package plus its support packages. The keys are set together in \`buildBaseContext\`. The Oracle, PostgreSQL, SQL Server and DB2 configs follow the same pattern.`,
         codeExamples: [
           {
             title: 'h2-config-primary.mustache (excerpt)',
             language: 'java',
             code: `@Configuration
 @EnableJpaRepositories(
-        basePackages = "{{#hasScaffoldedEntities}}{{dsRepositoryPackage}}{{/hasScaffoldedEntities}}{{^hasScaffoldedEntities}}{{packageName}}.h2.repository{{/hasScaffoldedEntities}}",
+        basePackages = {{#dsHasExtraPackages}}{ {{/dsHasExtraPackages}}"{{#hasScaffoldedEntities}}{{dsRepositoryPackage}}{{/hasScaffoldedEntities}}{{^hasScaffoldedEntities}}{{packageName}}.h2.repository{{/hasScaffoldedEntities}}"{{#dsExtraPackages}}, "{{.}}"{{/dsExtraPackages}}{{#dsHasExtraPackages}} }{{/dsHasExtraPackages}},
         entityManagerFactoryRef = "h2EntityManagerFactory",
         transactionManagerRef = "h2TransactionManager"
 )
 public class H2Config {
     // ...
-    em.setPackagesToScan("{{#hasScaffoldedEntities}}{{dsEntityPackage}}{{/hasScaffoldedEntities}}{{^hasScaffoldedEntities}}{{packageName}}.h2{{/hasScaffoldedEntities}}");
+    em.setPackagesToScan("{{#hasScaffoldedEntities}}{{dsEntityPackage}}{{/hasScaffoldedEntities}}{{^hasScaffoldedEntities}}{{packageName}}.h2{{/hasScaffoldedEntities}}"{{#dsExtraPackages}}, "{{.}}"{{/dsExtraPackages}});
 }`
           }
         ]
@@ -1111,12 +1153,13 @@ public class H2Config {
 ### Version-gated files
 One \`targetPath\`, different content per runtime: the framework picks the row whose \`javaVersion\` (backend) or \`nodeVersion\` (frontend) matches; a null column means "all versions". E.g. two rows both targeting \`Dockerfile\`, one \`javaVersion: "17"\` and one \`"21"\`.
 
-### For a running instance
-The DB is the source of truth. Editing the catalog manifest seeds a fresh DB; for an already-seeded instance use the admin API — \`POST /admin/file-contributions\` then \`POST /admin/refresh\` to invalidate the metadata cache.`,
+### Two ways in
+- **In the admin** — **Config → File Contribs → New Contribution**: the row is live for the next generation. It is your row: a later release does not overwrite it.
+- **In the release** — add the template file and a row in \`catalog/file-contributions.json\`. A fresh database is seeded with it, and an existing one gets it from the **catalog sync** when the release starts (a new shipped row is added; a shipped row nobody edited follows the new content).`,
         workflowSteps: [
           { title: 'Author the content', description: 'Create src/main/resources/templates/my-feature-config.mustache using Backend Dependency Context variables ({{packageName}}, {{artifactId}}, {{javaVersion}}, has<Dep> sections).' },
           { title: 'Register the row', description: 'Add an entry to catalog/file-contributions.json: depId, fileType TEMPLATE, contentResource, targetPath with {{packagePath}}, substitutionType MUSTACHE.' },
-          { title: 'Runtime path (optional)', description: 'For a live instance, POST /admin/file-contributions with the same fields, then POST /admin/refresh.' },
+          { title: 'Or add it live', description: 'For a running instance without a release: Config → File Contribs → New Contribution with the same fields (or POST /admin/file-contributions). No refresh is needed.' },
           { title: 'Verify', description: 'curl the starter.zip with the relevant dependency and unzip the target file to confirm the rendered output.' }
         ],
         codeExamples: [
@@ -1147,21 +1190,25 @@ The DB is the source of truth. Editing the catalog manifest seeds a fresh DB; fo
 - **{{{ }}} equals {{ }}** — HTML escaping is off; you never need triple braces.
 - **A missing/typo'd key renders empty, silently** — no error. A blank in the output usually means a misspelled variable name.
 - **Path substitution is not content substitution** — backend target paths only honor {{packagePath}}, frontend only {{projectName}}; fullstack entity paths honor the full entity context.
-- **__-prefixed keys are internal** (__entitySummaries, __inverseRelations) — not for templates.
-- **New entity variables go in EntityScaffoldContext only** — buildProjectContext, buildEntityContext, or the per-field/-relation view-model builders. There is nowhere else to wire them.
-- **optScaffold* must be set on both render paths** — backend and frontend contexts are separate.
+- **__-prefixed keys are internal** (__entitySummaries, __inverseRelations…) — not for templates.
+- **New entity variables go in the view-model** — \`EntityScaffoldContext\` or the class for the variable's area (\`EntityViewModel\`, \`FieldViewModel\`, \`RelationViews\`, \`FeatureContext\`, \`PageContext\`, \`DashboardContext\`). There is nowhere else to wire them.
+- **A new scaffold option is one \`ScaffoldOption\` constant** — it sets the flag on both render paths and appears in the editor's schema.
+- **Never splice user text raw in a frontend template** — use the \`…Ts\` / \`…Attr\` / \`…Jsx\` forms.
+- **A new package holding a JPA entity** must be added to the scaffold's support packages, or the datasource configs do not scan it.
 - **pkField can be null** — guard with {{#pkField}}…{{/pkField}} for entities with no primary key.
+- **An edited template set row is yours** — the template sync keeps it (\`seedHash = custom\`) and it stops following the shipped file; a reset of the set takes the shipped files back.
 
 ### Source map (backend)
-- Backend dep context — \`extension/dynamic/DynamicProjectGenerationConfiguration.java\` (buildBaseContext, toPascalCase, resolveTargetPath)
-- Fullstack entity context — \`fullstack/EntityScaffoldContext.java\`
+- Backend dep context — \`extension/dynamic/DynamicProjectGenerationConfiguration.java\` (buildBaseContext, toPascalCase, resolveTargetPath), \`config/DepartmentResolver.java\`
+- Fullstack entity context — \`fullstack/EntityScaffoldContext.java\` and the area classes beside it; \`fullstack/ScaffoldOption.java\`
 - Frontend context — \`extension/frontend/FrontendMustacheContext.java\`, \`FrontendProjectGenerator.java\`
+- Wizard templates — \`templates/wizard/**\`, \`config/WizardTemplates.java\`
 - Row model — \`db/entity/FileContributionEntity.java\`, \`db/entity/EntityTemplateFileEntity.java\`
 - Full written reference — \`backend/docs/MUSTACHE_GUIDE.md\``,
         callouts: [
           {
             type: 'info',
-            text: 'This in-app guide mirrors backend/docs/MUSTACHE_GUIDE.md. If you change a variable in the backend, update both so the app and the docs do not drift.'
+            text: 'backend/docs/MUSTACHE_GUIDE.md is the full reference (every key, with where it is derived). This guide keeps what an admin editing a template needs; when a variable changes in the backend, update both.'
           }
         ]
       }
@@ -1179,9 +1226,11 @@ The DB is the source of truth. Editing the catalog manifest seeds a fresh DB; fo
       {
         id: 'build-custom-types',
         title: 'Customization Types',
-        description: 'The four types of Maven pom.xml modifications.',
+        description: 'The four backend (pom.xml) types and the three frontend (package.json, Vite) types.',
         content: `### ADD_DEPENDENCY
-Adds a Maven \`<dependency>\` entry to the generated \`pom.xml\`. Requires \`mavenGroupId\` and \`mavenArtifactId\`. Version and scope are optional (BOM-managed dependencies don't need a version).
+Adds a Maven \`<dependency>\` entry to the generated \`pom.xml\`. Requires \`mavenGroupId\` and \`mavenArtifactId\`. The version is optional (BOM-managed dependencies don't need one).
+
+When the build already holds a dependency with the same coordinates — the catalog entry itself — the row **replaces** it instead of adding a second one. That is how one dependency gets another version on another Spring Boot line: \`openapi\` (springdoc) has a row ranged \`[3.4.0,4.0.0)\` that swaps in 2.8.x on Boot 3.4 and later.
 
 **Example use cases:**
 - Adding \`spring-boot-starter-log4j2\` as a replacement for Logback
@@ -1189,11 +1238,13 @@ Adds a Maven \`<dependency>\` entry to the generated \`pom.xml\`. Requires \`mav
 - Adding \`spring-boot-starter-mail\` when the mail-sampler dependency is selected
 
 ### EXCLUDE_DEPENDENCY
-Adds a Maven \`<exclusion>\` to an existing dependency. Used to remove transitive dependencies that conflict with your additions.
+Adds a Maven \`<exclusion>\` to a dependency. Used to remove transitive dependencies that conflict with your additions.
 
 Requires:
 - \`excludeFromGroupId\` + \`excludeFromArtifactId\` — the artifact to add the exclusion to
 - \`mavenGroupId\` + \`mavenArtifactId\` — the transitive dependency to exclude
+
+The row writes the "exclude from" artifact itself, so it **adds that artifact when the build does not have it yet**. That is how every project gets \`spring-cloud-starter-vault-config\` (without \`httpclient5\`).
 
 **Example use case:** Excluding \`spring-boot-starter-logging\` (Logback) from \`spring-boot-starter\` so it doesn't conflict with Log4j2.
 
@@ -1205,10 +1256,26 @@ Adds a Maven \`<repository>\` entry to the generated \`pom.xml\`. The \`repoId\`
 ### ADD_BOM
 Imports a BOM into \`<dependencyManagement>\` (\`<type>pom</type><scope>import</scope>\`). Requires \`mavenGroupId\`, \`mavenArtifactId\` and \`version\`. The version is written to a pom property named after the artifact — \`spring-cloud-dependencies\` → \`<spring-cloud.version>\` — and the BOM refers to it.
 
-**Example use case:** Importing \`spring-cloud-dependencies\` so \`spring-cloud-starter-vault-config\` (the local Vault connection every backend ships) needs no version of its own.`,
+**Example use case:** Importing \`spring-cloud-dependencies\` so \`spring-cloud-starter-vault-config\` (the local Vault connection every backend ships) needs no version of its own. There are three such rows, one per Boot range (2023.0.3 for 3.2–3.3, 2024.0.3 for 3.4, 2025.0.3 for 3.5).
+
+### Which Rows Apply
+A row applies when its dependency is selected (or it is \`__common__\`), and:
+- it has no \`subOptionId\`, or that sub-option is selected (the frontend catalog uses this to add a package only with an option);
+- it has no \`compatibilityRange\`, or the project's Spring Boot version is inside it.
+
+### Frontend Types
+With the admin pill on **Frontend**, the tab manages the frontend catalog's rows, which reuse the same columns:
+- **ADD_NPM_DEPENDENCY** — a \`package.json\` dependency: \`mavenArtifactId\` = package name, \`version\` = semver range, \`scope\` = \`dev\` for \`devDependencies\`.
+- **ADD_VITE_PLUGIN** — a plugin in \`vite.config.ts\`: \`mavenGroupId\` = import path, \`mavenArtifactId\` = binding, \`version\` = the call expression.
+- **ADD_NPM_SCRIPT** — a \`package.json\` script: \`mavenArtifactId\` = name, \`version\` = command.
+
+Build customizations are read on every generation; a saved row reaches the next project.`,
         fields: [
           { name: 'dependencyId', type: 'string', required: true, description: 'The depId of the parent dependency, or `__common__` to apply to all projects.', example: '__common__' },
-          { name: 'customizationType', type: 'CustomizationType', required: true, description: 'ADD_DEPENDENCY, EXCLUDE_DEPENDENCY, ADD_REPOSITORY, or ADD_BOM.', example: 'ADD_DEPENDENCY' },
+          { name: 'customizationType', type: 'CustomizationType', required: true, description: 'Backend: ADD_DEPENDENCY, EXCLUDE_DEPENDENCY, ADD_REPOSITORY, ADD_BOM. Frontend: ADD_NPM_DEPENDENCY, ADD_VITE_PLUGIN, ADD_NPM_SCRIPT.', example: 'ADD_DEPENDENCY' },
+          { name: 'compatibilityRange', type: 'string', required: false, description: 'Spring Boot range the row applies to; blank = every version. The form offers it for ADD_DEPENDENCY and ADD_BOM.', example: '[3.4.0,4.0.0)' },
+          { name: 'subOptionId', type: 'string', required: false, description: 'The row applies only when this sub-option of its dependency is selected. The admin form shows it for frontend rows; backend rows honour it too.', example: 'comp-dialog' },
+          { name: 'scope', type: 'string', required: false, description: 'Frontend npm rows: dev puts the package in devDependencies.', example: 'dev' },
           { name: 'mavenGroupId', type: 'string', required: false, description: 'For ADD_DEPENDENCY: the artifact group. For EXCLUDE_DEPENDENCY: the group of the transitive dependency to exclude.', example: 'org.springframework.boot' },
           { name: 'mavenArtifactId', type: 'string', required: false, description: 'For ADD_DEPENDENCY: the artifact ID. For EXCLUDE_DEPENDENCY: the artifact ID of the dependency to exclude.', example: 'spring-boot-starter-log4j2' },
           { name: 'version', type: 'string', required: false, description: 'Maven version for ADD_DEPENDENCY (leave blank if managed by a BOM), or the BOM version for ADD_BOM.', example: '' },
@@ -1256,7 +1323,10 @@ Record 2 — ADD_DEPENDENCY
         content: `### Concept
 Sub-options let users select optional extras when they pick a dependency. For example, selecting Kafka reveals checkboxes for "Consumer Example" and "Producer Example" — these generate sample consumer/producer classes in the project.
 
-Sub-options are purely additive: they gate additional file contributions. They do not add Maven artifacts on their own (though you could attach build customizations to the same \`depId\` if needed, using the file contribution's \`subOptionId\` to conditionally trigger them — though typically the gate is only on the file side).
+Sub-options are purely additive: they gate file contributions and build customizations that carry their \`optionId\` as \`subOptionId\`, and they set \`opt<Dep><Option>\` flags that templates read. Three kinds are seeded:
+- **Sample code** — Kafka's consumer/producer/streams examples, \`web\`'s REST controller and exception handler, \`security\`'s JWT scaffold, and so on.
+- **Datasource roles** — every database (\`postgresql\`, \`mssql\`, \`oracle\`, \`db2\`, \`h2\`, \`mongodb\`) has \`<db>-primary\` and \`<db>-secondary\`, which choose its datasource config class. The starter templates select a primary one.
+- **Frontend options** — in the frontend catalog, e.g. the shadcn components (\`comp-dialog\`, \`comp-toast\`…), each adding its npm package.
 
 ### URL Convention
 Sub-options are passed to the generation endpoint as query parameters:
@@ -1267,8 +1337,10 @@ For example: \`opts-kafka=consumer-example,producer-example\`
 
 The frontend automatically constructs these parameters when the user checks sub-option boxes.
 
-### How Sub-Options Gate Files
-In a file contribution, set \`subOptionId\` to the \`optionId\` of the sub-option. That file will only be written if the corresponding \`opts-{depId}\` parameter includes that optionId.`,
+### How Sub-Options Gate Files and Build Rows
+In a file contribution or a build customization, set \`subOptionId\` to the \`optionId\` of the sub-option. The row then only applies if the corresponding \`opts-{depId}\` parameter includes that optionId.
+
+Sub-options are seeded once, like dependency entries: a new option a release ships is added by an admin or an import.`,
         fields: [
           { name: 'dependencyId', type: 'string', required: true, description: 'The depId of the parent dependency this sub-option belongs to.', example: 'kafka' },
           { name: 'optionId', type: 'string', required: true, description: 'Unique identifier for this sub-option within the dependency. Used in URL params and as the foreign key in file contributions.', example: 'consumer-example' },
@@ -1293,19 +1365,22 @@ In a file contribution, set \`subOptionId\` to the \`optionId\` of the sub-optio
         title: 'Rule Types',
         description: 'REQUIRES, CONFLICTS, and RECOMMENDS explained.',
         content: `### REQUIRES
-Source dependency **requires** the target dependency. When the user selects the source, the target is automatically added. The user cannot deselect the target while the source is selected.
+Source dependency **requires** the target dependency. The Backend tab shows a banner offering to add the target. The server adds it to any request that has the source and not the target (when the target is offered for the request's Boot version). Requirements chain: \`ldap-auth-rest\` brings \`web\`, and anything \`web\` required would follow.
 
-**Example:** \`rqueue REQUIRES data-jpa\` — RQueue needs JPA to manage its message queues in the database.
+**Examples:** \`rqueue REQUIRES data-jpa\`, \`security REQUIRES web\`, \`tracing REQUIRES actuator\`, \`ldap-auth-rest REQUIRES web\`.
 
 ### CONFLICTS
-Source and target dependencies are **mutually exclusive**. The UI prevents the user from selecting both simultaneously.
+Source and target dependencies are **mutually exclusive**. The Backend tab warns while both are selected; the server refuses such a request with a 400 that names both and the rule's description. It never drops one silently: that would generate a project other than the one asked for. A conflict a requirement brings in counts too — \`webflux\` + \`security\` fails, because \`security\` requires \`web\`.
 
-**Example:** \`web CONFLICTS webflux\` — You can't use traditional Servlet-based Spring MVC alongside reactive WebFlux in the same project.
+**Examples:** \`web CONFLICTS webflux\`, \`ldap-auth-rest CONFLICTS ldap-auth\`.
 
 ### RECOMMENDS
-Source dependency **recommends** the target. The UI shows a suggestion to the user, but they are free to ignore it.
+Source dependency **recommends** the target. The UI shows a suggestion, and nothing changes the request.
 
-**Example:** \`data-jpa RECOMMENDS postgresql\` — JPA needs a database driver; PostgreSQL is the company standard.`,
+**Example:** \`data-jpa RECOMMENDS postgresql\` — JPA needs a database driver; PostgreSQL is the company standard.
+
+### Where the Rules Hold
+On every backend endpoint — \`/starter.zip\`, the wizard, multi-module (once, over what was asked for, not per module) and fullstack — whether the request came from the UI, curl, IntelliJ or a hand-edited share link. The frontend catalog's rules are applied by the frontend generator, which fixes a selection silently instead. Rules are seeded once; a release's new rules are added by an admin or an import.`,
         fields: [
           { name: 'sourceDepId', type: 'string', required: true, description: 'The depId of the dependency that defines the rule (the "source").', example: 'rqueue' },
           { name: 'targetDepId', type: 'string', required: true, description: 'The depId of the dependency the rule applies to (the "target").', example: 'data-jpa' },
@@ -1333,12 +1408,18 @@ Source dependency **recommends** the target. The UI shows a suggestion to the us
 Starter templates are one-click project presets that appear in the **Quick Start** section of the generator. Clicking a template pre-fills the project form with a curated set of dependencies (and sub-options). The user can still adjust the selection before generating.
 
 ### Out-of-the-Box Templates
-- **REST API Service** — Spring Web, JPA, PostgreSQL, Actuator
-- **Event-Driven Service** — Kafka (with consumer + producer examples), JPA
-- **Microservice (Full Stack)** — Web, Kafka, JPA, Security, Actuator, Prometheus
+Backend:
+- **REST API Service** — Spring Web, JPA, DB2 (primary datasource), Actuator, Kafka Log Shipping
+- **Event-Driven Service** — Kafka (with consumer + producer examples), JPA, PostgreSQL (primary), Actuator, Kafka Log Shipping
+- **Microservice (Full Stack)** — Web, Kafka, JPA, PostgreSQL (primary), Security, Actuator, Prometheus, Kafka Log Shipping
+
+The Frontend tab has its own (\`fe-dashboard\`, \`fe-marketing\`, \`fe-saas-app\`); the admin pill switches the Templates tab between the two.
 
 ### Template vs. Direct Generation
-A template only pre-selects dependencies. If the user changes the dependency selection after clicking a template, the generated output reflects their final selection, not the template definition.`,
+A template only pre-selects dependencies. If the user changes the dependency selection after clicking a template, the generated output reflects their final selection, not the template definition.
+
+### Templates vs. Team Presets
+Starter templates are curated by admins here. Developers can also save a whole Backend-tab setup — form, dependencies, options, modules and wizard documents — as a **team preset** that everyone sees on the Presets strip's Team tab. Team presets are not catalog rows: they are not in the admin, the History or the configuration export.`,
         fields: [
           { name: 'templateId', type: 'string', required: true, description: 'Unique machine-readable identifier. Shown in the URL when sharing a template link.', example: 'rest-api' },
           { name: 'name', type: 'string', required: true, description: 'Display name shown on the template card.', example: 'REST API Service' },
@@ -1359,7 +1440,7 @@ A template only pre-selects dependencies. If the user changes the dependency sel
 Each dependency in a template is a separate record linking the template to a \`depId\`. You can also specify sub-options to pre-select.
 
 ### Managing Template Dependencies
-In the **Starter Templates** admin tab, click the pencil icon on a template. In the edit drawer, scroll to the **Template Dependencies** section. Use the **+ Add Dependency** button to attach a dependency entry. Optionally enter comma-separated \`subOptions\` (matching optionId values from the Sub-Options table).
+In the **Templates** admin tab, the dependencies of every template are a separate **Template Dependencies** table below the templates. **New Dep Mapping** attaches a dependency entry to a template. Optionally enter comma-separated \`subOptions\` (matching optionId values from the Sub-Options table).
 
 ### Example
 Template: "Event-Driven Service"
@@ -1392,12 +1473,18 @@ When a developer clicks this template, Kafka is pre-selected with both example s
 By enabling the **Multi-Module** toggle in the generator UI, the developer can produce a Maven multi-module project — a parent POM plus two or more sub-modules (e.g. \`myapp-api\`, \`myapp-core\`, \`myapp-persistence\`).
 
 ### How It Works
-1. The developer enables the toggle and selects which modules to include.
-2. The backend generates each module independently using the standard single-module pipeline.
-3. For each module, the system resolves which dependencies to include from the **Module-Dependency Mappings** table (plus any globally selected dependencies).
+1. The developer enables the toggle and selects which modules to include (\`GET /starter-multimodule.zip?modules=api,core,persistence&…\`).
+2. The compatibility rules are applied once, to the dependencies the developer selected.
+3. The backend generates each module independently using the standard single-module pipeline, with the module's own dependencies from the **Module Dependency Mappings** table plus every selected dependency.
 4. Only the module with \`hasMainClass = true\` gets \`@SpringBootApplication\` and the test class. Other modules have those files removed.
 5. A parent \`pom.xml\` is generated with \`<packaging>pom</packaging>\` and a \`<modules>\` section listing all sub-module artifact IDs.
-6. Everything is zipped together under the top-level project directory.
+6. The project root gets \`menora-model.json\` (one for the whole project), \`.gitattributes\` and — when a dependency needs a service — \`compose.yaml\`, with the \`compose\` profile in the entry module.
+7. Everything is zipped together under the top-level project directory.
+
+A request naming no known module is a 400.
+
+### Modules and the Wizards
+A request with a wizard document (SQL, OpenAPI, WSDL or AsyncAPI) goes to the wizard endpoint, which always writes **one** module: the wizard's code has no module to go into. The Backend tab warns above the module list while modules are ticked and a selected dependency has a wizard set up; the modules are then not generated.
 
 ### Module Artifact IDs
 Each module's artifact ID = \`{project artifactId}{module suffix}\`
@@ -1406,7 +1493,7 @@ For a project with \`artifactId = "myapp"\` and a module with \`suffix = "-api"\
         callouts: [
           {
             type: 'warning',
-            text: 'Exactly one module should have hasMainClass = true. If none do, the generated project will not have a main Spring Boot entry point. If multiple do, each sub-module will have a redundant main class.'
+            text: 'Exactly one module should have hasMainClass = true. If none do, the generated project will not have a main Spring Boot entry point (and gets no compose profile). If several do, each keeps a main class and the first is treated as the entry point.'
           }
         ]
       },
@@ -1438,7 +1525,7 @@ For example:
 - **core** module → \`logging\` (shared utilities)
 
 ### How to Configure
-In the **Module Templates** admin tab, each template row shows a **Dependency Mappings** section. Use **+ Add Mapping** to create a new module-dependency association.
+In the **Modules** admin tab, the mappings are the **Module Dependency Mappings** table below the module templates. **New Mapping** creates a module-dependency association.
 
 ### Global vs. Module-Specific Dependencies
 Dependencies the developer selects in the generator UI are applied to all modules. Module-dependency mappings are additional dependencies that are automatically included only in the specified module. The final dependency list for a module = (user-selected deps) ∪ (module-specific mappings).`,
@@ -1447,6 +1534,51 @@ Dependencies the developer selects in the generator UI are applied to all module
           { name: 'moduleId', type: 'string', required: true, description: 'The moduleId of the module to assign this dependency to.', example: 'persistence' },
           { name: 'sortOrder', type: 'integer', required: false, description: 'Processing order. Typically 0 for all mappings.', example: '0' }
         ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // VERSIONS, DEPARTMENTS & PALETTES
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'versions-departments',
+    title: 'Versions, Departments & Palettes',
+    icon: 'numbers',
+    topics: [
+      {
+        id: 'versions-what',
+        title: 'The Version Lists',
+        description: 'Which Java, Spring Boot, React, Node and package-manager versions the generator offers.',
+        content: `### What They Are
+**Config → Versions** holds every version list the three tabs offer, one row per version: \`JAVA\` (21, 17), \`BOOT\` (3.2.1, 3.5.16), \`REACT\` (18, 19), \`NODE\` (20, 22, 18) and \`PACKAGE_MANAGER\` (pnpm, npm). One row per kind is the **default**: what a form opens with, and what an API request that names no version gets (\`/starter.zip\`, the wizard, multi-module and fullstack endpoints alike). A version a request names that is not in the list is a 400.
+
+### Moving a Version On
+To follow a newer patch release that Artifactory mirrors, edit the row (e.g. \`3.5.16\` → \`3.5.17\`). A Boot version decides which ranged rows apply — the dependency entries' and build customizations' \`compatibilityRange\` — so check those ranges when adding a new line. A React row carries the npm ranges written into \`package.json\` (\`npmSemver\`, \`typesSemver\`).
+
+New versions a release ships are added on start; a row an admin has edited is kept.`,
+        fields: [
+          { name: 'kind', type: 'JAVA | BOOT | REACT | NODE | PACKAGE_MANAGER', required: true, description: 'Which list the row belongs to.', example: 'BOOT' },
+          { name: 'versionId', type: 'string', required: true, description: 'The value sent in requests and written into projects.', example: '3.5.16' },
+          { name: 'displayName', type: 'string', required: true, description: 'What the selector shows.', example: 'Node 20 (LTS)' },
+          { name: 'isDefault', type: 'boolean', required: false, description: 'The default of its kind (one per kind).', example: 'true' },
+          { name: 'enabled', type: 'boolean', required: false, description: 'A disabled row is not offered.', example: 'true' },
+          { name: 'npmSemver / typesSemver', type: 'string', required: false, description: 'React rows: the ranges for react/react-dom and their @types packages.', example: '^18.3.1' }
+        ]
+      },
+      {
+        id: 'departments-what',
+        title: 'Departments',
+        description: 'The department list behind the department variables of every template.',
+        content: `### What They Are
+**Config → Departments** is the list developers pick their department from on every tab. The department is written into generated projects through \`{{department}}\`, \`{{departmentUpper}}\` and \`{{departmentName}}\`: the k8s values, the log configuration and the Vault namespace (\`<department>/int-lan-01\`) use it. A request that names no department, or one not in the list, gets the **default** row (\`lts\` is seeded). The department is also recorded in the generation audit, where the Activity tab breaks generations down by it.`
+      },
+      {
+        id: 'palettes-what',
+        title: 'Color Palettes',
+        description: 'The color schemes generated frontends can be built with.',
+        content: `### What They Are
+**Config → Palettes** (shown with the admin pill on **Frontend**) lists the color schemes the Frontend and Fullstack tabs offer: primary, secondary, and optional accent and error colors. The chosen palette reaches frontend templates as \`{{palette.*}}\` (with HSL forms for CSS variables). One palette is the default. The Menora Digital design system ignores the palette's brand colors (they are its fixed tokens) but still takes its accent and error.`
       }
     ]
   },
