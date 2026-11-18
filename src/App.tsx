@@ -145,7 +145,8 @@ export default function App() {
     handleTemplateSelect,
     applySnapshot,
     resetAll,
-    setSelectedModules
+    setSelectedModules,
+    shareStatus: backendShareStatus,
   } = useProjectState(metadata, view === 'initializr')
 
   const {
@@ -916,6 +917,7 @@ export default function App() {
             onPresetSave={savePreset}
             onPresetDelete={deletePreset}
             onRecentDelete={deleteRecent}
+            shareTooLarge={backendShareStatus === 'too-large'}
           />
           </>
         )}

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { useProjectState } from './useProjectState'
+import { decodeBackendShare, encodeBackendShare } from '../utils/backendShare'
 import type { InitializrMetadata } from '../types'
 
 const metadata: InitializrMetadata = {
@@ -91,6 +92,62 @@ describe('useProjectState — share links', () => {
     expect(result.current.sqlByDep).toEqual({})
     expect(result.current.multiModuleEnabled).toBe(false)
     expect(result.current.selectedModules).toEqual([])
+  })
+
+  const sharedSnapshot = (extra: Record<string, unknown> = {}) => ({
+    form: { groupId: 'com.shared', artifactId: 'x' },
+    selected: ['data-jpa', 'web'],
+    selectedOptions: {},
+    sqlByDep: { 'data-jpa': { sql: 'CREATE TABLE t (id INT);', subPackage: 'domain', tables: [] } },
+    openApiByDep: {},
+    soapByDep: {},
+    multiModuleEnabled: true,
+    selectedModules: ['api', 'core'],
+    ...extra,
+  })
+
+  it('reads the modules and wizard documents a link carries in `bs`', () => {
+    window.history.replaceState(null, '', `/?groupId=com.shared&artifactId=x&dependencies=data-jpa,web&bs=${encodeBackendShare(sharedSnapshot() as never)}`)
+
+    const { result } = renderHook(() => useProjectState(null))
+
+    expect(result.current.multiModuleEnabled).toBe(true)
+    expect(result.current.selectedModules).toEqual(['api', 'core'])
+    expect(result.current.sqlByDep['data-jpa'].sql).toBe('CREATE TABLE t (id INT);')
+  })
+
+  it('lets the plain parameters of a hand-edited link win, and drops documents of dependencies it no longer selects', () => {
+    window.history.replaceState(null, '', `/?groupId=com.edited&artifactId=y&dependencies=web&bs=${encodeBackendShare(sharedSnapshot() as never)}`)
+
+    const { result } = renderHook(() => useProjectState(null))
+
+    expect(result.current.form.groupId).toBe('com.edited')
+    expect(result.current.selected).toEqual(['web'])
+    expect(result.current.sqlByDep).toEqual({})
+    expect(result.current.selectedModules).toEqual(['api', 'core'])
+  })
+
+  it('writes `bs` only for a setup the plain parameters cannot carry, and says when it is too long', () => {
+    const { result } = renderHook(() => useProjectState(metadata))
+    act(() => { vi.advanceTimersByTime(400) })
+    expect(new URLSearchParams(window.location.search).has('bs')).toBe(false)
+
+    act(() => {
+      result.current.handleDepsChange(['data-jpa'])
+      result.current.setSelectedModules(['api'])
+    })
+    act(() => { result.current.handleSqlByDepChange('data-jpa', { sql: 'CREATE TABLE t (id INT);', subPackage: 'domain', tables: [] } as never) })
+    act(() => { vi.advanceTimersByTime(400) })
+    const carried = decodeBackendShare(new URLSearchParams(window.location.search).get('bs') ?? '')
+    expect(carried?.sqlByDep['data-jpa'].sql).toBe('CREATE TABLE t (id INT);')
+    expect(result.current.shareStatus).toBe('written')
+
+    act(() => { result.current.handleSqlByDepChange('data-jpa', { sql: 'x'.repeat(70_000), subPackage: 'domain', tables: [] } as never) })
+    act(() => { vi.advanceTimersByTime(400) })
+    const params = new URLSearchParams(window.location.search)
+    expect(params.has('bs')).toBe(false)
+    expect(params.get('dependencies')).toBe('data-jpa')
+    expect(result.current.shareStatus).toBe('too-large')
   })
 })
 

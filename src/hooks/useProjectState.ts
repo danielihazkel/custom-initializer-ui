@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { parseUrlParams, defaultForm } from '../utils/projectUtils'
+import { parseUrlParams, defaultForm, captureSnapshot } from '../utils/projectUtils'
+import { BACKEND_SHARE_PARAM, MAX_BACKEND_SHARE_LENGTH, carriesMoreThanParams, encodeBackendShare, readBackendShare } from '../utils/backendShare'
 import { readJson, readString, writeJson, writeString } from '../utils/storage'
 import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, StarterTemplate, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, EventsByDep, EventsWizardEntry } from '../types'
 
@@ -85,12 +86,26 @@ function asOptionsMap(raw: unknown): Record<string, string[]> {
 function readInitial() {
   const url = parseUrlParams()
   const hadStoredForm = readString('formValues') !== null
-  return { url, hadStoredForm }
+  // What the plain parameters cannot carry (modules, wizard documents), when the link has it.
+  // The plain parameters still give the form, dependencies and options, so a link edited by hand
+  // means what it says; a wizard entry is kept only for a dependency the link selects.
+  const shared = url ? readBackendShare() : null
+  const keep = <V,>(map: Record<string, V>): Record<string, V> =>
+    Object.fromEntries(Object.entries(map).filter(([depId]) => url?.selected.includes(depId)))
+  const extras = shared && url ? {
+    multiModuleEnabled: shared.multiModuleEnabled,
+    selectedModules: shared.selectedModules,
+    sqlByDep: keep(shared.sqlByDep),
+    openApiByDep: keep(shared.openApiByDep),
+    soapByDep: keep(shared.soapByDep),
+    eventsByDep: keep(shared.eventsByDep ?? {}),
+  } : null
+  return { url, hadStoredForm, extras }
 }
 
 export function useProjectState(metadata: InitializrMetadata | null, active: boolean = true) {
   const [init] = useState(readInitial)
-  const { url } = init
+  const { url, extras } = init
 
   const [form, setForm] = useState<ProjectFormValues>(() => {
     if (url) return { ...defaultForm(null), ...url.form }
@@ -109,24 +124,28 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
 
   // A shared link describes the whole project: never mix in this browser's
   // leftover wizard payloads / multi-module selection, which would silently
-  // change what gets generated.
+  // change what gets generated. What it has of them comes from its `bs`.
   const [multiModuleEnabled, setMultiModuleEnabled] = useState<boolean>(() =>
-    url ? false : readString('multiModuleEnabled') === 'true')
+    url ? (extras?.multiModuleEnabled ?? false) : readString('multiModuleEnabled') === 'true')
 
   const [selectedModules, setSelectedModules] = useState<string[]>(() =>
-    url ? [] : asStringArray(readJson<unknown>('selectedModules', [])))
+    url ? (extras?.selectedModules ?? []) : asStringArray(readJson<unknown>('selectedModules', [])))
 
   const [sqlByDep, setSqlByDep] = useState<SqlByDep>(() =>
-    url ? {} : readJson<SqlByDep>('sqlByDep', {}))
+    url ? (extras?.sqlByDep ?? {}) : readJson<SqlByDep>('sqlByDep', {}))
 
   const [openApiByDep, setOpenApiByDep] = useState<OpenApiByDep>(() =>
-    url ? {} : normalizeOpenApiByDep(readJson<unknown>('openApiByDep', {})))
+    normalizeOpenApiByDep(url ? (extras?.openApiByDep ?? {}) : readJson<unknown>('openApiByDep', {})))
 
   const [soapByDep, setSoapByDep] = useState<SoapByDep>(() =>
-    url ? {} : normalizeSoapByDep(readJson<unknown>('soapByDep', {})))
+    normalizeSoapByDep(url ? (extras?.soapByDep ?? {}) : readJson<unknown>('soapByDep', {})))
 
   const [eventsByDep, setEventsByDep] = useState<EventsByDep>(() =>
-    url ? {} : normalizeEventsByDep(readJson<unknown>('eventsByDep', {})))
+    normalizeEventsByDep(url ? (extras?.eventsByDep ?? {}) : readJson<unknown>('eventsByDep', {})))
+
+  // Whether the link still carries everything: a setup whose wizard documents make it too long
+  // keeps only the plain parameters, and the tab says so.
+  const [shareStatus, setShareStatus] = useState<'written' | 'too-large'>('written')
 
   // Persist to localStorage — debounced so a keystroke doesn't trigger eight
   // synchronous JSON.stringify + setItem calls; flushed on unmount / page hide.
@@ -179,10 +198,22 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
           p.set(`opts-${depId}`, optIds.join(','))
         }
       }
+      const snapshot = captureSnapshot({
+        form, selected, selectedOptions, sqlByDep, openApiByDep, soapByDep, eventsByDep,
+        multiModuleEnabled, selectedModules,
+      })
+      let status: 'written' | 'too-large' = 'written'
+      if (carriesMoreThanParams(snapshot)) {
+        const encoded = encodeBackendShare(snapshot)
+        if (encoded.length > MAX_BACKEND_SHARE_LENGTH) status = 'too-large'
+        else p.set(BACKEND_SHARE_PARAM, encoded)
+      }
+      setShareStatus(status)
       window.history.replaceState(null, '', '?' + p.toString())
     }, PERSIST_DEBOUNCE_MS)
     return () => clearTimeout(handle)
-  }, [form, selected, selectedOptions, initialized, active])
+  }, [form, selected, selectedOptions, sqlByDep, openApiByDep, soapByDep, eventsByDep, multiModuleEnabled,
+    selectedModules, initialized, active])
 
   // Apply server defaults on first metadata load (only if no saved form and no URL params)
   useEffect(() => {
@@ -362,5 +393,6 @@ export function useProjectState(metadata: InitializrMetadata | null, active: boo
     applySnapshot,
     resetAll,
     setActiveTemplate,
+    shareStatus,
   }
 }

@@ -52,6 +52,8 @@ interface InitializrViewProps {
   onPresetSave: (name: string, snapshot: ProjectSnapshot) => void
   onPresetDelete: (id: string) => void
   onRecentDelete: (id: string) => void
+  /** The share link has the form and dependencies but not the modules / wizard documents (too long). */
+  shareTooLarge?: boolean
 }
 
 export function InitializrView({
@@ -94,6 +96,7 @@ export function InitializrView({
   onPresetSave,
   onPresetDelete,
   onRecentDelete,
+  shareTooLarge = false,
 }: InitializrViewProps) {
   // The dependencies of the projects generated or explored lately, newest first — the picker's
   // Quick picks offer them again.
@@ -119,6 +122,13 @@ export function InitializrView({
           onDeletePreset={onPresetDelete}
           onDeleteRecent={onRecentDelete}
         />
+        {shareTooLarge && (
+          <p className="-mt-3 mb-6 flex items-start gap-1.5 text-[11px] text-secondary" role="status">
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>link_off</span>
+            Too long for a link: a shared link carries the project and its dependencies, not the modules or
+            wizard documents. Save a team preset to share it all.
+          </p>
+        )}
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-8 grid grid-cols-1 lg:grid-cols-12 gap-10 relative z-10 animate-fade-in-up">
         {/* Left Column */}

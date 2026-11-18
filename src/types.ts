@@ -217,6 +217,20 @@ export interface ProjectPreset {
   snapshot: ProjectSnapshot
 }
 
+/** A Backend-tab setup kept on the server for the team (`/metadata/backend/presets`), as listed. */
+export interface TeamPresetSummary {
+  id: number
+  name: string
+  description: string | null
+  /** `groupId:artifactId` of the saved form. */
+  coordinates: string | null
+  dependencyCount: number
+  moduleCount: number
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 // ── Admin entity types ────────────────────────────────────────────────────────
 
 /** Discriminates entries between the Spring Boot backend catalog and the React/Vite frontend catalog. */

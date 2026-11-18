@@ -1,4 +1,5 @@
 import { isSnapshot, type FullstackSnapshot } from './snapshot'
+import { decodeJson, encodeJson } from '../../utils/base64url'
 
 /** Query parameter the whole editor state rides in, so the header's Share button (which copies
  *  `location.href`) produces a link that actually reproduces the model on another machine. */
@@ -11,36 +12,15 @@ export const MAX_ENCODED_LENGTH = 60_000
  *  should say so (a silently shortened link is worse than no link). */
 export type ShareWriteStatus = 'written' | 'too-large' | 'unavailable'
 
-function toBase64Url(bytes: Uint8Array): string {
-  let bin = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  }
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-function fromBase64Url(value: string): Uint8Array {
-  const b64 = value.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
-  const bin = atob(padded)
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  return bytes
-}
-
 /** Compact, URL-safe encoding of a snapshot (UTF-8 JSON → base64url). */
 export function encodeShare(snapshot: FullstackSnapshot): string {
-  return toBase64Url(new TextEncoder().encode(JSON.stringify(snapshot)))
+  return encodeJson(snapshot)
 }
 
 /** Inverse of {@link encodeShare}; null for anything malformed rather than throwing. */
 export function decodeShare(value: string): FullstackSnapshot | null {
-  try {
-    const parsed: unknown = JSON.parse(new TextDecoder().decode(fromBase64Url(value)))
-    return isSnapshot(parsed) ? parsed : null
-  } catch {
-    return null
-  }
+  const parsed = decodeJson(value)
+  return isSnapshot(parsed) ? parsed : null
 }
 
 export function readShareFromLocation(): FullstackSnapshot | null {
