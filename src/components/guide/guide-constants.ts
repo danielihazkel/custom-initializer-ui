@@ -46,7 +46,7 @@ When a developer clicks Generate, the following happens:
 5. **ZIP** is assembled and returned to the browser.
 
 ### Key Insight: The DB is the Source of Truth
-Nothing about what goes into a generated project is hardcoded in Java — it is all in the database. Add a file, change a template, add a dependency: it all flows through admin configuration. After any change, call **Refresh** (top-right button in the admin) to reload the in-memory metadata cache without restarting the server.`,
+Nothing about what goes into a generated project is hardcoded in Java — it is all in the database. Add a file, change a template, add a dependency: it all flows through admin configuration. A change saved in the admin reaches the next generation without a restart.`,
         callouts: [
           {
             type: 'info',
@@ -57,24 +57,22 @@ Nothing about what goes into a generated project is hardcoded in Java — it is 
       {
         id: 'overview-refresh',
         title: 'The Refresh Button',
-        description: 'When and why to call /admin/refresh.',
-        content: `### Why Refresh Exists
-The backend caches the full dependency metadata (groups, entries, compatibility ranges) in memory so it doesn't hit the database on every generation request. After you make any change through the admin UI, that cache is stale.
+        description: 'What Refresh Data is for now that admin saves refresh the catalog themselves.',
+        content: `### The Catalog Cache
+The backend keeps the dependency metadata (groups, entries, sub-options, compatibility ranges, versions) in memory, so the generator's form does not read the database on every request.
 
-### When to Click Refresh
-Click **Refresh** (the circular arrow icon in the top-right of the admin) after:
-- Creating, editing, or deleting a **Dependency Group** or **Dependency Entry**
-- Changing a **compatibility range** on a dependency
-- Any change that should be reflected in the main project-generator UI (the dependency picker)
+### Saves Refresh It for You
+Every change made through the admin screens — a group, an entry, a sub-option, a compatibility rule, a palette, a version, an import, an undo or restore from History — reloads that cache as part of the save. The dependency picker shows the change on its next load; nothing needs clicking.
 
-You do **not** need to restart the server. Refresh is instant and safe to run at any time.
+### When to Click Refresh Data
+**Refresh Data** (top right of the admin, \`POST /admin/refresh\`) is for changes the admin screens did not make — rows edited directly in the database. It reloads the catalog and reports any dependency it had to skip (a bad compatibility range, an unknown scope…): such a row would otherwise just vanish from the picker. No restart is needed.
 
-### What Refresh Does NOT Affect
-File contributions and build customizations are read fresh from the database on every generation request — they are not cached. So changes to those take effect immediately with no Refresh needed.`,
+### What Is Never Cached
+File contributions and build customizations are read from the database on every generation, so a change to one reaches the next project generated.`,
         callouts: [
           {
-            type: 'warning',
-            text: 'If you add a new dependency entry but forget to click Refresh, the dependency will not appear in the UI dependency picker until the cache is invalidated.'
+            type: 'tip',
+            text: 'If a dependency you added does not show in the picker, click Refresh Data and read its answer: a dependency that fails to load is listed there with the reason.'
           }
         ]
       }
@@ -195,7 +193,7 @@ The **Build Customizations** drawer now reads the Backend ⇄ Frontend pill. In 
         callouts: [
           {
             type: 'tip',
-            text: 'Adding a new npm package via the admin is one row: switch the pill to **Frontend**, open **Build Customizations → New Customization**, pick `ADD_NPM_DEPENDENCY`, fill **Package Name** and **Version**, tick **devDependency?** if it belongs in `devDependencies`. Hit Save, then `POST /admin/refresh`.'
+            text: 'Adding a new npm package via the admin is one row: switch the pill to **Frontend**, open **Build Customizations → New Customization**, pick `ADD_NPM_DEPENDENCY`, fill **Package Name** and **Version**, tick **devDependency?** if it belongs in `devDependencies`, and save. Build customizations are read on every generation, so the next project has it.'
           }
         ]
       },
@@ -554,14 +552,13 @@ Groups appear in the dependency picker in \`sortOrder\` ascending order. Use the
         title: 'Creating & Deleting Groups',
         description: 'How to add, edit, reorder, and safely delete groups.',
         content: `### Creating a Group
-1. Go to **Config → Dependency Groups** tab.
-2. Click **+ Add Group**.
+1. Go to **Config → Dep Groups**.
+2. Click **New Group**.
 3. Enter the **name** and an optional initial sort order.
-4. Click **Save**.
-5. Click **Refresh** so the new group appears in the metadata.
+4. Click **Save**. The group is in the generator's catalog at once.
 
 ### Editing a Group
-Click the pencil icon on any row to open the edit drawer. Change the name, save, then click **Refresh**.
+Click the pencil icon on any row to open the edit drawer, change the name and save.
 
 ### Reordering Groups
 Click and drag the grip handle (⠿) on the left of any row to reorder. A **Save Order** button appears — click it to persist the new sequence.
@@ -573,7 +570,7 @@ Click the trash icon. If the group contains dependencies, you will see a **confl
         callouts: [
           {
             type: 'warning',
-            text: 'Force-deleting a group permanently removes all its child dependencies and every file contribution, build customization, and sub-option attached to them. This cannot be undone.'
+            text: 'Force-deleting a group removes all its child dependencies and every file contribution, build customization, sub-option and rule attached to them. Every row removed is recorded in the History tab, where the whole delete can be undone as one request.'
           }
         ]
       }
@@ -1769,30 +1766,6 @@ public class PetsController {
           { name: 'openApiOptions', type: 'object', required: false, description: 'Map of depId → { apiSubPackage, dtoSubPackage }. Controllers go to apiSubPackage (default "api"); records go to dtoSubPackage (default "dto").', example: '{ "web": { "apiSubPackage": "api", "dtoSubPackage": "dto" } }' },
           { name: 'dependencies', type: 'array', required: true, description: 'The usual dep-id array. Only deps listed in /metadata/openapi-capable-deps will have their entries in specByDep processed.', example: '[ "web" ]' }
         ]
-      },
-      {
-        id: 'openapi-wizard-limits',
-        title: 'Notes & Limitations (v1)',
-        description: 'What this generation does, what it does not, and why.',
-        content: `### What v1 Produces
-- One \`{Tag}Controller\` class per tag (operations without a tag go to \`DefaultController\`).
-- One Java \`record\` per entry in \`components.schemas.*\`.
-- Method bodies always throw \`UnsupportedOperationException\` — the project compiles; the logic is yours to fill in.
-
-### What v1 Does Not Produce
-- **No client stubs** — Feign, WebClient, and RestTemplate-based clients are out of scope.
-- **No polymorphism** — \`allOf\`, \`oneOf\`, \`anyOf\` fall back to \`Object\` with a \`// TODO\` comment.
-- **No inline schemas** — only named schemas under \`components.schemas.*\` become records. Inline response/request schemas also fall back to \`Object\`.
-- **No OpenAPI annotation emission** — Springdoc / springfox annotations are not added. Add \`springdoc-openapi-starter-webmvc-ui\` as a dependency if you want a live Swagger UI.
-
-### Why These Choices
-The goal of v1 is to kill boilerplate without opinionating the implementation. Polymorphism, null semantics, and client generation are all design decisions that different teams handle differently — forcing a choice here creates more work for teams that wanted the other answer. Keep v1 tight, iterate on real feedback.`,
-        callouts: [
-          {
-            type: 'tip',
-            text: 'If you want interactive API docs, add springdoc-openapi-starter-webmvc-ui as a regular dependency (not via the wizard). It scans your controllers at runtime and reconstructs a Swagger UI — no annotation work needed for simple cases.'
-          }
-        ]
       }
     ]
   },
@@ -2204,10 +2177,6 @@ Existing rows are unaffected; only new events skip the field.`,
             description: 'Go to Config → Compatibility. Add REQUIRES, CONFLICTS, or RECOMMENDS rules. For example, if your library requires JPA, add a REQUIRES rule: sourceDepId = your depId, targetDepId = data-jpa.'
           },
           {
-            title: 'Click Refresh',
-            description: 'In the admin top-right, click the Refresh button. This reloads the metadata cache so your new dependency appears in the main generator UI.'
-          },
-          {
             title: 'Test It',
             description: 'Go to the main generator (click the Spring Initializr logo), find your new dependency in the picker, select it, click Generate, and unzip to verify all expected files are present and correctly populated.'
           }
@@ -2291,378 +2260,44 @@ Existing rows are unaffected; only new events skip the field.`,
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // 13. AGENT CONTRACT (AI SCAFFOLDING)
+  // AGENT SKILL (AI)
   // ─────────────────────────────────────────────────────────────────
   {
     id: 'agent',
-    title: 'Agent Contract (AI)',
+    title: 'Agent Skill (AI)',
     icon: 'smart_toy',
     topics: [
       {
-        id: 'agent-what',
-        title: 'What the Agent Contract Is',
-        description: 'A small HTTP surface designed for AI agents and headless clients.',
-        content: `### Purpose
-The agent contract is a parallel surface to the browser UI, designed for AI agents (Claude, GPT, in-house) and any HTTP client that prefers JSON file trees over binary ZIPs. The flow is: an agent calls the contract to scaffold a Spring Boot project, then keeps editing the generated tree with its own business logic.
+        id: 'agent-skill',
+        title: 'Driving the Generator From an AI Agent',
+        description: 'The menora-initializr skill: one script over the public REST API, for Claude Code and other agents.',
+        content: `### What It Is
+An AI agent drives the generator through the same REST API the browser uses. There is no separate agent endpoint. The **menora-initializr** skill packages that for an agent: a \`SKILL.md\` the agent reads, one dependency-free Node script (\`scripts/mi.mjs\`, Node 18 or later) and reference pages on the fullstack request, the API and the generated projects. It lives in its own repository and is installed under \`.claude/skills/menora-initializr/\`.
 
-### Three Pieces
-1. **\`GET /agent/manifest\`** — single-shot discovery of every dep, sub-option, starter/module template, and wizard capability. Replaces seven separate \`/metadata/*\` round-trips.
-2. **\`POST /agent/scaffold\`** — same generation pipeline as \`/starter-wizard.zip\`, but returns a JSON file tree (utf-8 + base64) plus a manifest. No binary handling required.
-3. **\`.menora-init.json\`** — manifest dropped at the project root, listing inputs and per-file SHA-256 checksums. Lets agents distinguish scaffold-owned files from agent-edited ones in subsequent passes.
+### What an Agent Can Do With It
+- **Discover** what this server offers: Boot and Java versions, every dependency id with its sub-options, the wizards, modules, template sets and fullstack examples (\`mi meta\`, \`mi meta deps <text>\`).
+- **Preview and generate** every kind of project: plain, multi-module, the four wizards (SQL, OpenAPI, SOAP, AsyncAPI), frontend and fullstack, from an example, pasted DDL or a live database. The project is unpacked into a folder, and the agent gets the next steps for it.
+- **Open team presets and models** as ready requests.
+- **Update a project** it generated before, from its \`menora-model.json\`: fetch the update, review it, then apply it with \`git apply --3way\`, with conflicts and untracked files reported and never deleted.
 
-### Why Not the Existing Endpoints?
-\`/starter.zip\` and \`/starter-wizard.zip\` work fine for browsers but force agents to handle binary ZIPs and stitch together discovery from multiple endpoints. The agent contract collapses both into JSON, making it usable from any LLM tool-call layer with two HTTP requests.
+### Settings
+| Variable | Meaning |
+|---|---|
+| \`MENORA_INITIALIZR_URL\` | The generator's address (default \`http://localhost:8080\`) |
+| \`MENORA_USERINFO\` | The user's login, sent as the \`userinfo\` header — needed when the service requires it (\`USERINFO_REQUIRED\`), and it names the user in the generation audit |
+| \`MENORA_DB_PASSWORD\` | The password for a typed live-database connection; never written to a file |
 
-### Authentication
-Currently unauthenticated, matching the existing public endpoints. A bearer-token layer can be added later if the surface is exposed publicly.`,
-        callouts: [
-          {
-            type: 'info',
-            text: 'The agent contract is additive — the browser UI continues to use /starter.zip and /starter-wizard.zip exactly as before. Nothing about the existing surface changes.'
-          },
-          {
-            type: 'tip',
-            text: 'Discovery is cacheable. If your agent makes many scaffolding calls in a row, fetch /agent/manifest once and reuse it.'
-          }
-        ]
-      },
-      {
-        id: 'agent-discovery',
-        title: 'GET /agent/manifest — Discovery',
-        description: 'Single endpoint exposing the full catalog the agent needs before scaffolding.',
-        content: `### Returned Shape
-A \`AgentManifestResponse\` JSON containing every catalog the agent needs to construct a valid scaffold request: dependencies (with sub-options inlined and Boot compatibility ranges), starter templates, module templates, compatibility rules, the four \`SingleSelectCapability\` lists (boot/java/language/packaging), and a \`wizards\` block with the capable deps for SQL, OpenAPI, and SOAP.
-
-### Why It's One Call
-The browser UI calls \`/metadata/client\`, \`/metadata/extensions\`, \`/metadata/compatibility\`, \`/metadata/starter-templates\`, \`/metadata/module-templates\`, \`/metadata/openapi-capable-deps\`, \`/metadata/soap-capable-deps\`, and \`/metadata/sql-dialects\` separately. An agent has no UI to optimize for; one request keeps the prompt simple.
-
-### Validation Hint For Agents
-Before calling \`/agent/scaffold\`, an agent should:
-- Pick a \`bootVersion\` from \`bootVersions\` (default available as \`defaultBootVersion\`).
-- Filter \`dependencies[]\` by \`compatibilityRange\` against the chosen Boot version (an agent that picks an incompatible dep will get a 4xx).
-- Look up valid sub-option ids per dep in \`dependencies[].subOptions\`.`,
+### What It Means for an Admin
+Nothing to set up on the server: the skill uses the public endpoints, so everything in this guide (the catalog, the access gate, the audit) applies to it. Its generations appear in the Activity tab like any other. A new endpoint or request field reaches agents only when the skill's references and script are updated too.`,
         codeExamples: [
           {
-            title: 'Discovery — curl',
+            title: 'A service, then an update',
             language: 'bash',
-            code: `curl http://localhost:8080/agent/manifest | jq '{
-  bootVersions, javaVersions,
-  depCount: (.dependencies | length),
-  sqlDeps: .wizards.sql.capableDeps
-}'`
-          },
-          {
-            title: 'Discovery — TypeScript SDK',
-            language: 'typescript',
-            code: `import { InitializrClient } from "@menora/initializr-client";
-
-const client = new InitializrClient({ baseUrl: "http://localhost:8080" });
-const cap = await client.manifest();
-console.log(cap.dependencies.length, "deps available");
-console.log("Boot defaults to", cap.defaultBootVersion);`
-          }
-        ]
-      },
-      {
-        id: 'agent-scaffold',
-        title: 'POST /agent/scaffold — Generation',
-        description: 'JSON-in, JSON-out generation that returns the project tree as files (utf-8 or base64).',
-        content: `### Request Shape
-The body is a superset of the existing \`/starter-wizard.zip\` shape, plus a \`mode\` flag and a \`modules\` array. All wizard fields (\`sqlByDep\`, \`specByDep\`, \`wsdlByDep\`, etc.) are accepted exactly as in the wizard endpoint.
-
-### Mode Selector
-| Mode | Behavior |
-|---|---|
-| \`wizard\` (default) | Single project; SQL/OpenAPI/SOAP wizard fields are honored. |
-| \`starter\` | Single project; equivalent to \`wizard\` with empty wizard fields. |
-| \`multimodule\` | Returns HTTP 501 — use \`GET /starter-multimodule.zip\` for now. JSON-mode multi-module is on the roadmap. |
-
-### Response Shape
-\`\`\`json
-{
-  "manifest": { /* parsed .menora-init.json — see next topic */ },
-  "files": [
-    { "path": "pom.xml",                  "encoding": "utf-8",  "content": "<project>...", "sha256": "abc..." },
-    { "path": "src/main/java/.../App.java","encoding": "utf-8", "content": "package ...;",  "sha256": "def..." },
-    { "path": ".mvn/wrapper/mvn-wrapper.jar","encoding": "base64","content": "UEsD...",     "sha256": "789..." }
-  ]
-}
-\`\`\`
-
-### Encoding Rules
-Files with text-typical extensions (\`.java\`, \`.xml\`, \`.yaml\`, \`.properties\`, \`.json\`, \`.md\`, \`.sh\`, \`.gitignore\`, \`Dockerfile\`, \`mvnw\`, etc.) are inlined as UTF-8. Anything else, plus binary detection (NUL byte in the first 4 KB), falls back to base64. The \`sha256\` field always reflects the raw file bytes — useful for cross-checking against the manifest's per-file checksums.
-
-### Error Handling
-Wizard parse errors (bad WSDL/OpenAPI/SQL) surface as structured 400 responses, identical to \`/starter-wizard.zip\`:
-\`\`\`json
-{ "error": "Invalid OpenAPI spec", "messages": ["..."] }
-{ "error": "Invalid WSDL",         "messages": ["..."] }
-{ "error": "Invalid SQL",          "dep": "postgresql", "detail": "..." }
-\`\`\``,
-        codeExamples: [
-          {
-            title: 'Minimal scaffold',
-            language: 'bash',
-            code: `curl -s -X POST http://localhost:8080/agent/scaffold \\
-  -H 'Content-Type: application/json' \\
-  -d '{
-    "groupId": "com.acme",
-    "artifactId": "svc",
-    "bootVersion": "3.2.1",
-    "javaVersion": "21",
-    "packaging": "jar",
-    "language": "java",
-    "dependencies": ["web", "actuator"]
-  }' | jq '.files | map(.path)'`
-          },
-          {
-            title: 'With SQL wizard',
-            language: 'bash',
-            code: `curl -s -X POST http://localhost:8080/agent/scaffold \\
-  -H 'Content-Type: application/json' \\
-  -d '{
-    "bootVersion": "3.2.1",
-    "dependencies": ["postgresql","data-jpa"],
-    "opts": { "postgresql": ["pg-primary"] },
-    "sqlByDep": {
-      "postgresql": "CREATE TABLE users (id BIGSERIAL PRIMARY KEY, email VARCHAR(200) NOT NULL);"
-    },
-    "sqlOptions": {
-      "postgresql": {
-        "subPackage": "entity",
-        "tables": [{ "name": "users", "generateRepository": true }]
-      }
-    }
-  }' | jq '.files[].path' | grep entity`
-          },
-          {
-            title: 'Through the SDK',
-            language: 'typescript',
-            code: `import { InitializrClient } from "@menora/initializr-client";
-
-const client = new InitializrClient();
-const project = await client.scaffold({
-  bootVersion: "3.2.1",
-  dependencies: ["web", "data-jpa", "postgresql"],
-  opts: { postgresql: ["pg-primary"] },
-});
-
-for (const file of project.files) {
-  const bytes = file.encoding === "base64"
-    ? Buffer.from(file.content, "base64")
-    : Buffer.from(file.content, "utf-8");
-  // write \`bytes\` under your target path
-}`
-          }
-        ]
-      },
-      {
-        id: 'agent-manifest',
-        title: '.menora-init.json — Provenance',
-        description: 'Manifest at the project root that tracks scaffold-owned files.',
-        content: `### What's In It
-\`\`\`json
-{
-  "schemaVersion": 1,
-  "generator": {
-    "name": "menora-initializr",
-    "version": "1.0.0-SNAPSHOT",
-    "generatedAt": "2026-04-27T12:34:56.789Z"
-  },
-  "inputs": {
-    "mode": "wizard",
-    "groupId": "com.acme", "artifactId": "svc",
-    "bootVersion": "3.2.1", "javaVersion": "21",
-    "packaging": "jar", "language": "java",
-    "dependencies": ["web","data-jpa","postgresql"],
-    "modules": [],
-    "opts": { "postgresql": ["pg-primary"] },
-    "wizards": null
-  },
-  "files": [
-    { "path": "pom.xml",                  "sha256": "abc..." },
-    { "path": "src/main/java/.../App.java","sha256": "def..." }
-  ]
-}
-\`\`\`
-
-### Why Per-File Checksums
-After scaffolding, the agent edits files. Some of those edits will be on scaffold-owned files (e.g. adding routes to \`pom.xml\`); some will be brand-new files (e.g. business logic). When the agent (or a future re-scaffold pass) wants to know which is which, it diffs the working tree against the manifest:
-
-| Working-tree state | Meaning |
-|---|---|
-| Path in manifest, sha matches | Untouched scaffold |
-| Path in manifest, sha differs | Agent edited a scaffold file |
-| Path not in manifest | Agent added a new file |
-| Path in manifest, file missing | Agent deleted a scaffold file |
-
-This makes safe re-scaffolding tractable: future iterations can compute a 3-way diff (old scaffold → new scaffold → agent edits) instead of clobbering the agent's work.
-
-### Computing the SHA Yourself
-\`\`\`bash
-# Text file
-echo -n "$(cat pom.xml)" | sha256sum
-# Or in any language:
-node -e 'console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync("pom.xml")).digest("hex"))'
-\`\`\``,
-        callouts: [
-          {
-            type: 'info',
-            text: 'The manifest itself is excluded from its own files[] list — its sha would change every time the manifest is written, which would defeat the purpose.'
-          }
-        ]
-      },
-      {
-        id: 'agent-openapi',
-        title: 'OpenAPI Spec & Swagger UI',
-        description: 'Auto-generated documentation for the /agent/* endpoints.',
-        content: `### Endpoints
-- **\`GET /v3/api-docs\`** — full OpenAPI 3 JSON spec, scoped to \`com.menora.initializr.agent\` only.
-- **\`GET /swagger-ui.html\`** — interactive Swagger UI for the same spec.
-
-### Why The Scope Filter
-The browser-facing wizard controllers transitively reference legacy \`javax.xml.bind\` types via \`swagger-parser\` and \`wsdl4j\`. Letting springdoc introspect those would blow up the spec at runtime. We scope the scan to \`com.menora.initializr.agent\` so the spec stays focused, healthy, and aligned with the contract agents actually use.
-
-### Generating an SDK
-Point any OpenAPI-aware codegen at \`/v3/api-docs\` and you get a typed client for free:
-\`\`\`bash
-npx openapi-typescript http://localhost:8080/v3/api-docs -o agent-types.ts
-\`\`\`
-The bundled TypeScript SDK in \`clients/typescript/\` is hand-written for ergonomic Anthropic SDK integration, but you can replace or augment it with codegen if you prefer.`,
-      },
-      {
-        id: 'agent-sdk',
-        title: 'TypeScript SDK',
-        description: '@menora/initializr-client — typed wrappers + Anthropic tool definitions.',
-        content: `### Where It Lives
-\`clients/typescript/\` in the monorepo. Built with vanilla \`tsc\`; no bundler. Uses \`globalThis.fetch\` so it runs unmodified in Node 18+, browsers, Bun, Deno, and Cloudflare Workers.
-
-### Two Surfaces
-1. **\`InitializrClient\`** — typed wrappers for the agent endpoints. Methods: \`manifest()\`, \`scaffold(req)\`, \`detectOpenApiPaths(spec)\`, \`detectWsdlServices(wsdl)\`. Errors throw \`InitializrApiError\` with status + parsed body.
-2. **\`anthropicTools()\` + \`executeAgentTool()\`** — ready-to-use Anthropic tool definitions matching the \`Anthropic.Messages.Tool\` shape, plus a dispatch helper that routes \`tool_use\` blocks back to the right backend call. Drop into any \`messages.create({ tools })\` flow.
-
-### Configuration
-- \`new InitializrClient({ baseUrl })\` — defaults to the \`MENORA_INITIALIZR_URL\` environment variable, falling back to \`http://localhost:8080\`.
-- \`{ fetch }\` and \`{ timeoutMs }\` overrides for non-default runtimes.`,
-        codeExamples: [
-          {
-            title: 'Anthropic SDK integration',
-            language: 'typescript',
-            code: `import Anthropic from "@anthropic-ai/sdk";
-import {
-  InitializrClient, anthropicTools, executeAgentTool,
-} from "@menora/initializr-client";
-
-const claude = new Anthropic();
-const menora = new InitializrClient();
-
-const response = await claude.messages.create({
-  model: "claude-opus-4-7",
-  max_tokens: 4096,
-  tools: anthropicTools(),                  // 4 tools, full schemas
-  messages: [{
-    role: "user",
-    content: "Scaffold a Spring Boot 3.2.1 project with Spring Web and JPA.",
-  }],
-});
-
-for (const block of response.content) {
-  if (block.type === "tool_use") {
-    const result = await executeAgentTool(block.name, block.input, menora);
-    // ...feed result back into the next messages.create() call
-  }
-}`
-          },
-          {
-            title: 'Plain client usage',
-            language: 'typescript',
-            code: `import { InitializrClient } from "@menora/initializr-client";
-
-const client = new InitializrClient();
-
-const cap = await client.manifest();
-const project = await client.scaffold({
-  bootVersion: cap.defaultBootVersion!,
-  dependencies: ["web", "data-jpa", "postgresql"],
-  opts: { postgresql: ["pg-primary"] },
-});
-
-console.log(\`generated \${project.files.length} files\`);
-console.log("manifest:", project.manifest.inputs);`
-          }
-        ]
-      },
-      {
-        id: 'agent-mcp',
-        title: 'MCP Server (Claude Code)',
-        description: 'Model Context Protocol server fronting the agent contract.',
-        content: `### Where It Lives
-\`mcp-server/\` in the monorepo. Thin Node project that wraps the TypeScript SDK as MCP tools so Claude Code (and any MCP client) can drive scaffolding natively.
-
-### Setup
-\`\`\`bash
-cd mcp-server
-npm install
-npm run build
-claude mcp add menora-initializr -- node /abs/path/to/mcp-server/dist/index.js
-\`\`\`
-
-Set \`MENORA_INITIALIZR_URL\` if the backend isn't on \`http://localhost:8080\`.
-
-### Tools Exposed
-
-| Tool | Backing endpoint |
-|---|---|
-| \`list_capabilities\` | \`GET /agent/manifest\` |
-| \`scaffold_project\` | \`POST /agent/scaffold\` |
-| \`detect_openapi_paths\` | \`POST /starter-wizard.detect-paths\` |
-| \`detect_wsdl_services\` | \`POST /starter-wizard.detect-services\` |
-
-### Using From Claude Code
-Once registered, prompts like the following work without any extra context:
-
-> "Use menora-initializr to scaffold a Spring Boot 3.2.1 service with web, data-jpa, and postgresql."
-
-Claude Code will call \`list_capabilities\` to validate inputs, then \`scaffold_project\`, then write the files to disk and continue the task.
-
-### Transport
-Stdio only in v1. SSE/HTTP for remote agents is on the roadmap; for now, run the MCP server alongside the agent (or in the same container).`,
-        callouts: [
-          {
-            type: 'tip',
-            text: 'The MCP server uses the local TypeScript SDK via "@menora/initializr-client": "file:../clients/typescript". Edits to the SDK are picked up after rebuilding both packages.'
-          }
-        ]
-      },
-      {
-        id: 'agent-workflow',
-        title: 'End-to-End: AI Agent Builds a Project',
-        description: 'Walkthrough of an agent scaffolding then continuing with business logic.',
-        content: `Use this workflow as a reference for how an agent should drive the contract end-to-end.`,
-        workflowSteps: [
-          {
-            title: 'Discovery',
-            description: 'Agent calls list_capabilities (or GET /agent/manifest). Caches the response. Picks a Boot version from bootVersions, filters dependencies[] by compatibilityRange, and resolves any sub-option ids it needs.'
-          },
-          {
-            title: 'Optional Wizard Validation',
-            description: 'If the agent has an OpenAPI spec or WSDL to feed in, it calls detect_openapi_paths / detect_wsdl_services first. A 400 here means the spec is broken — the agent fixes it before scaffolding rather than getting a partial project.'
-          },
-          {
-            title: 'Scaffold',
-            description: 'Agent calls scaffold_project with the resolved inputs. The response includes a manifest plus a JSON file tree.'
-          },
-          {
-            title: 'Write Files to Disk',
-            description: 'Agent walks files[] and writes each one under its target directory, decoding base64 entries first. The .menora-init.json sits at the project root.'
-          },
-          {
-            title: 'Continue With Business Logic',
-            description: 'Agent edits/adds files freely. The manifest at the root tells it which files came from the scaffold (and at what sha) versus which it added itself.'
-          },
-          {
-            title: 'Compile & Test',
-            description: 'Standard mvn verify or equivalent. The scaffold ships a working pom.xml, so the agent should not need to touch the build before its first compile.'
+            code: `mi health
+mi generate --artifact billing --deps web,data-jpa,postgresql,flyway --into billing
+cd billing && git init && git add -A && git commit -m "Generated"
+mi update . --add-deps kafka --out ../billing-update   # review UPDATE.md there
+mi update . --use ../billing-update --apply`
           }
         ]
       }
