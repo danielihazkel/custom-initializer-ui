@@ -1594,112 +1594,209 @@ New versions a release ships are added on start; a row an admin has edited is ke
       {
         id: 'sql-wizard-what',
         title: 'What the Wizard Does',
-        description: 'Paste CREATE TABLE scripts and get JPA entities in the generated project.',
+        description: 'Paste a schema, or read one from a database, and get JPA entities — and optionally a REST API — in the generated project.',
         content: `### Purpose
-When the developer selects a relational DB driver dependency (PostgreSQL, MSSQL, Oracle, DB2, H2, MySQL), a **"Generate entities from SQL…"** button appears on that driver's card in the selected-dependencies panel. Clicking it opens a drawer where the developer pastes one or more \`CREATE TABLE\` scripts. When they hit Generate, the backend parses the DDL and writes ready-to-use JPA \`@Entity\` classes — plus optional \`JpaRepository\` interfaces — directly into the output ZIP.
-
-This removes the tedious step of hand-writing entity classes after project generation.
+When the developer selects a relational database driver (PostgreSQL, SQL Server, Oracle, DB2, H2, MySQL), a **Generate entities from SQL…** button appears on that driver's card in the Selected panel. It opens a drawer where the developer pastes (or uploads, or reads from a live database) a schema script. On Generate, the backend parses it and writes JPA \`@Entity\` classes, \`JpaRepository\` interfaces and — when asked — a service, DTOs and a REST controller per table, straight into the project.
 
 ### Which Drivers Are Eligible
-The UI calls \`GET /metadata/sql-dialects\` at page load to learn which dep IDs the backend can handle. The button only appears on dep cards present in that response. Adding a new JDBC driver to the dependency catalog that matches a known dialect automatically surfaces the wizard for it — no admin-side configuration is needed for the wizard itself.
-
-MongoDB is excluded because it has no DDL contract.
+The UI calls \`GET /metadata/sql-dialects\` at page load to learn which dependency ids the backend can parse for. The button only appears on those cards. A new JDBC driver added to the catalog under a known dialect gets the wizard with no further setup. MongoDB has no DDL and is not offered.
 
 ### Flow At a Glance
-1. Developer selects a DB driver dep (e.g. \`postgresql\`) plus \`data-jpa\`.
-2. Clicks **Generate entities from SQL…** on the dep's card.
-3. Pastes \`CREATE TABLE users (...); CREATE TABLE orders (...);\`.
-4. Detected tables appear as a list with a **Generate repository** checkbox per row (default on).
-5. Optional: change the sub-package (default \`entity\`).
-6. Save → the drawer closes and the dep card shows a small badge (✓ N tables).
-7. Click **Generate** or **Explore** — the UI switches to POST \`/starter-wizard.zip\` / \`/starter-wizard.preview\` with a JSON body, and entities/repositories appear in the downloaded project and file tree.`,
+1. The developer selects a driver (e.g. \`postgresql\`) plus \`data-jpa\`.
+2. Clicks **Generate entities from SQL…** on the driver's card.
+3. Pastes \`CREATE TABLE …\` statements (\`ALTER TABLE … ADD CONSTRAINT\` too), drops a \`.sql\` file, or clicks **Read from a database…** (see **Reading From a Live Database**).
+4. The detected tables are listed, each with **Generate repository** (on by default).
+5. Optional: the sub-package (default \`entity\`) and the **API mode** (entities only, or a REST API over them).
+6. Under **With the project's other dependencies**: *Use this script as the Flyway baseline* (on by default, used when \`flyway\` is selected), *Generate controller tests* (needs a REST API mode), and a line on what selecting \`validation\` adds.
+7. Save → the card shows a badge (✓ N tables).
+8. **Generate** or **Explore** send \`POST /starter-wizard.zip\` / \`/starter-wizard.preview\` with a JSON body.`,
         callouts: [
           {
             type: 'info',
-            text: 'Developers who do not use the wizard are unaffected — when sqlByDep is empty, the UI keeps using the regular GET /starter.zip flow. Lombok is only added to generated projects when SQL is attached.'
+            text: 'Projects without a wizard document still use the plain GET /starter.zip, byte for byte. With one, the script and the wizard\'s options are written into the project\'s menora-model.json, so the project can be updated later from a changed script.'
+          },
+          {
+            type: 'warning',
+            text: 'The documents pasted into the wizards of one request (SQL, OpenAPI, WSDL, AsyncAPI) may total 5 MB (menora.wizard.max-documents-size); past that the request is a 400.'
           }
         ]
       },
       {
         id: 'sql-wizard-mapping',
-        title: 'Dialect-Aware Type Mapping',
-        description: 'How SQL column types become Java field types.',
-        content: `### Mapping Rules
-Each column in a parsed \`CREATE TABLE\` becomes a field on the entity. The Java type is chosen based on the raw SQL type, precision/scale where applicable, and the selected dialect. Highlights:
+        title: 'What Is Read, and What It Becomes',
+        description: 'Type mapping, keys, constraints, foreign keys and enums.',
+        content: `### Type Mapping
+Each column becomes a field. The Java type is chosen from the SQL type, its precision and scale, and the dialect:
 
 | SQL Type | Java Type | Notes |
 |---|---|---|
-| \`VARCHAR\`, \`CHAR\`, \`TEXT\`, \`CLOB\`, \`NVARCHAR\`, \`VARCHAR2\` | \`String\` | \`length\` → \`@Column(length=...)\` |
+| \`VARCHAR\`, \`CHAR\`, \`TEXT\`, \`CLOB\`, \`NVARCHAR\`, \`VARCHAR2\` | \`String\` | \`length\` → \`@Column(length=…)\` |
 | \`INT\`, \`INTEGER\` | \`Integer\` | |
-| \`BIGINT\`, \`BIGSERIAL\`, \`SERIAL\` | \`Long\` | SERIAL/BIGSERIAL also gets \`@GeneratedValue(IDENTITY)\` |
-| \`BOOLEAN\`, \`BIT\` (MSSQL), \`TINYINT(1)\` (MySQL) | \`Boolean\` | |
+| \`BIGINT\`, \`BIGSERIAL\`, \`SERIAL\` | \`Long\` | SERIAL/BIGSERIAL also get \`@GeneratedValue(IDENTITY)\` |
+| \`BOOLEAN\`, \`BIT\` (SQL Server), \`TINYINT(1)\` (MySQL) | \`Boolean\` | |
 | \`DATE\` / \`TIMESTAMP\` / \`TIME\` | \`LocalDate\` / \`LocalDateTime\` / \`LocalTime\` | |
 | \`NUMERIC(p,s)\`, \`DECIMAL(p,s)\` | \`BigDecimal\` | precision/scale copied to \`@Column\` |
 | \`NUMBER(p,0)\` (Oracle) | \`Integer\` / \`Long\` | ≤9 → Integer, else Long |
-| \`UUID\` (PG), \`UNIQUEIDENTIFIER\` (MSSQL) | \`UUID\` | |
-| \`JSON\`, \`JSONB\` (PG) | \`String\` | |
+| \`UUID\` (PostgreSQL), \`UNIQUEIDENTIFIER\` (SQL Server) | \`UUID\` | |
+| \`JSON\`, \`JSONB\` (PostgreSQL) | \`String\` | |
 | \`BYTEA\`, \`BLOB\` | \`byte[]\` | |
 
-### Naming Conventions
-- Table \`user_orders\` → class \`UserOrders\`
-- Column \`created_at\` → field \`createdAt\` + \`@Column(name = "created_at")\`
-- Primary key → \`@Id\`; composite PK → \`@IdClass\` with a generated companion record
-- \`BIGSERIAL\` / \`SERIAL\` / \`AUTO_INCREMENT\` / \`IDENTITY\` → \`@GeneratedValue(strategy = IDENTITY)\`
+### Names
+- Table \`user_orders\` → class \`UserOrders\`; column \`created_at\` → field \`createdAt\` with \`@Column(name = "created_at")\`.
+- Mixed-case and quoted names keep their spelling: Spring Boot's naming strategy would rewrite them, so the wizard writes them in a form it leaves alone, and adds a naming-strategy class to the project when a quoted name needs one.
+- A schema-qualified table (\`hr.employees\`) gets \`@Table(schema = "hr")\`.
+
+### Keys
+- Primary key → \`@Id\`; \`BIGSERIAL\` / \`SERIAL\` / \`AUTO_INCREMENT\` / \`IDENTITY\` → \`@GeneratedValue(strategy = IDENTITY)\`.
+- Composite key → \`@IdClass\` with a key class beside the entity (Lombok \`@Data\`, \`Serializable\`).
+- Keys declared by \`ALTER TABLE … ADD [CONSTRAINT x] PRIMARY KEY | FOREIGN KEY | UNIQUE\` are read like inline ones — that is how pg_dump, SSMS and most exports write them.
+- A table without a primary key is written without \`@Entity\` (JPA needs an id), with a TODO, and gets no repository.
 
 ### Foreign Keys
-The FK column is kept as a scalar field with a \`// TODO: map as @ManyToOne\` comment. v1 never auto-generates associations — cardinality and fetch strategy are deferred to the developer.
+- A foreign key to a table **in the same script** — declared on the table, on the column (\`team_id BIGINT REFERENCES teams(id)\`) or by \`ALTER TABLE\` — becomes a \`@ManyToOne(fetch = LAZY)\` association with its \`@JoinColumn\`.
+- A key column that is also a foreign key stays a scalar \`@Id\`, with a read-only association beside it on the same column.
+- A foreign key to a table not in the script stays a scalar field with a \`// TODO: map as @ManyToOne\`.
+
+### Constraints and Enums
+- \`NOT NULL\` → \`@Column(nullable = false)\`; one-column \`UNIQUE\` → \`@Column(unique = true)\`, several columns → \`@UniqueConstraint\` on the table.
+- \`CHECK (col IN ('A','B'))\` → a Java enum (\`<Table><Column>\`) stored with \`@Enumerated(EnumType.STRING)\` — only when every value is already a valid Java name, since the database holds the values as they are; otherwise the column stays a \`String\`.
+- With the \`validation\` starter: \`@NotNull\` (never on a generated key), \`@Size(max)\` from a text column's length, required foreign keys — on the DTO, or on the entity when it is exposed directly.
 
 ### Lombok
-Generated entities use \`@Data\`, \`@NoArgsConstructor\`, and \`@AllArgsConstructor\`. The build customizer adds \`org.projectlombok:lombok\` (scope \`annotationProcessor\`) to the Maven build **only** when SQL is attached.`,
+Entities use \`@Data\`, \`@NoArgsConstructor\` and \`@AllArgsConstructor\`. Lombok is a \`__common__\` build row, so every project has it.`,
+        codeExamples: [
+          {
+            title: 'Generated from: orders(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id), status VARCHAR(20) CHECK (status IN (\'OPEN\',\'PAID\')))',
+            language: 'java',
+            code: `@Entity
+@Table(name = "orders")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Orders {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(nullable = false)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private Users user;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private OrdersStatus status;
+
+}`
+          }
+        ],
         callouts: [
           {
             type: 'warning',
-            text: '@Data generates equals/hashCode across every field, which can surprise managed JPA entities with lazy associations. Since v1 does not generate associations, this is a safe default — revisit if you extend the wizard to emit @ManyToOne.'
+            text: '@Data puts every field — a @ManyToOne association included — into equals, hashCode and toString. Calling them reads the lazy association, outside a transaction too. If entities go into sets or log lines, mark the association @EqualsAndHashCode.Exclude and @ToString.Exclude.'
           }
         ]
       },
       {
+        id: 'sql-wizard-api-modes',
+        title: 'API Modes, Flyway and Tests',
+        description: 'How much code is written over the entities, and what the project\'s other dependencies add.',
+        content: `### API Mode (\`sqlOptions.<dep>.apiMode\`)
+| Mode | What is written per table |
+|---|---|
+| \`NONE\` (default) | The entity and, when ticked, its repository |
+| \`ENTITY_DIRECT\` | + a service and a REST controller that expose the entity itself |
+| \`INLINE_DTO\` | + a record DTO with hand-written \`from(entity)\` / \`toEntity()\`, used by the service and controller |
+| \`MAPSTRUCT_DTO\` | + a record DTO and a MapStruct \`@Mapper\` (the \`mapstruct\` dependency is added) |
+
+An unknown mode is a 400.
+
+### Flyway Baseline (\`flywayBaseline\`, default true)
+With the \`flyway\` dependency selected, the pasted script becomes \`src/main/resources/db/migration/V1__init.sql\` in place of the dependency's placeholder: every statement as written except SELECTs. It is in the dialect it was pasted in, so it runs on that database. With several SQL payloads only the first is the baseline. \`false\` keeps the placeholder.
+
+### Controller Tests (\`generateTests\`)
+With a REST API mode, a \`@WebMvcTest\` per controller.
+
+### The Starters It Needs
+\`data-jpa\` and the driver come from the developer's selection; a REST API mode needs \`web\`.`
+      },
+      {
+        id: 'sql-wizard-live',
+        title: 'Reading From a Live Database',
+        description: 'Read tables and views from PostgreSQL, SQL Server, Oracle or DB2 instead of pasting DDL — and the Schema sources admins set up for it.',
+        content: `### For the Developer
+**Read from a database…** beside the SQL box (and **From a database** in the Fullstack tab's DDL import) connects to a database, lists its schemas and then its tables and views (views marked), and reads the ticked ones. What was read becomes the script a person would have pasted — a \`CREATE TABLE\` per table with its key, NOT NULL, UNIQUE and CHECK-list constraints, the foreign keys between the tables read as \`ALTER TABLE … ADD FOREIGN KEY\`, and a \`SELECT\` per view — and replaces the SQL box, with **Undo**. The developer can read and edit it before generating; the wizard then generates exactly what that script pasted would.
+
+The database is either a **source** an admin set up, picked by name, or — while the server allows it — one typed in by hand (host, port, database / service name / DB2 library, user, password). A typed password is sent with each call and kept nowhere, not on the server and not in the browser.
+
+### For the Admin: Config → Schema sources
+A source holds where a database is (type, host, port, database or service name, DB2 library) and the user. **The password is never stored**: *Password from* names where the server reads it — an environment variable \`SCHEMA_SOURCE_…\` or a property \`menora.live-schema.secrets.…\`; any other name is refused. The list shows whether that password is actually set on this server. **Test connection** tries the form, saved or not, and reports the schema count or the driver's error. Sources are recorded in History and are **not** part of the configuration export (they name this environment's databases).
+
+### Server Settings
+| Property | Default | Meaning |
+|---|---|---|
+| \`menora.live-schema.typed-connections\` | \`true\` | Whether anyone may type in a database. Off: the admins' sources only. |
+| \`menora.live-schema.allowed-hosts\` | empty (any) | Comma-separated host patterns a typed connection may name (\`*.menora.co.il\`, \`10.20.*\`). Worth setting per environment: with typed connections on, the server connects wherever it is told. Sources are not limited by it. |
+| \`menora.live-schema.max-tables\` | \`300\` | Tables and views one read may take. |
+| \`menora.live-schema.max-concurrent-reads\` | \`4\` | Reads at once; the rest wait 5 s, then get a 429. |
+
+A connection is read-only, opened for one call, with a 10 s login and 30 s statement timeout. Each read is logged with the source or host, the schema, the count and the user — never the password.
+
+### Drivers
+PostgreSQL, SQL Server and Oracle drivers ship with the application. DB2 for IBM i (jt400) is not in the offline repository: build the application with \`mvn package -Pdb2-driver\` to include it; without it DB2 is shown as "no driver on this server".
+
+### Limits
+Indexes, defaults, comments, sequences and triggers are not read. In the SQL wizard a view's fields are \`String\` (the fullstack import types them). A PostgreSQL enum column becomes a CHECK-limited text column. DB2 for IBM i has not been read from a real server.`
+      },
+      {
         id: 'sql-wizard-api',
         title: 'REST API',
-        description: 'POST endpoints and companion metadata.',
+        description: 'The generation endpoints and the live-schema endpoints.',
         content: `### Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
 | \`GET\` | \`/metadata/sql-dialects\` | Dep-id → dialect name map (only catalog-present deps) |
-| \`POST\` | \`/starter-wizard.zip\` | Generate ZIP with entities/repositories (shared with the OpenAPI wizard; both payloads can coexist) |
+| \`POST\` | \`/starter-wizard.zip\` | Generate the ZIP (shared by all four wizards; their payloads can be combined) |
 | \`POST\` | \`/starter-wizard.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
+| \`GET\` | \`/metadata/live-schema/options\` | Enabled sources (not where they are), whether typed connections are allowed, installed drivers, default ports |
+| \`POST\` | \`/metadata/live-schema/schemas\` | \`{connection}\` → \`{schemas, defaultSchema}\` |
+| \`POST\` | \`/metadata/live-schema/tables\` | \`{connection, schema}\` → \`{tables: [{name, kind}], truncated}\` |
+| \`POST\` | \`/metadata/live-schema/ddl\` | \`{connection, schema, tables, qualify?}\` → \`{dialect, sql, tables, views, warnings}\` |
 
-### Why a New POST Endpoint
-\`/starter.zip\` is a GET whose query string carries all generation inputs. A few \`CREATE TABLE\` statements easily exceed typical URL length limits (~2–8 KB). A sibling POST endpoint that accepts the same fields plus \`sqlByDep\` / \`sqlOptions\` (and \`specByDep\` / \`openApiOptions\` for the OpenAPI wizard) is the cleanest answer — no server-side session state, and the GET flow stays untouched for users who don't need the wizard.`,
+\`connection\` is \`{source}\` or \`{dialect, host, port?, database?, library?, user, password, trustServerCertificate?}\`. Live-schema errors are \`{error, detail}\`: 400 for a bad part, an unknown table, a failed connection or a missing driver; 403 when typed connections are off or the host is not allowed; 404 for an unknown source; 429 when busy.
+
+### Why a POST Endpoint
+\`/starter.zip\` is a GET whose query string carries every input. A few \`CREATE TABLE\` statements exceed typical URL limits (~2–8 KB), so the wizards take the same fields plus their documents as a JSON body.`,
         codeExamples: [
           {
-            title: 'Generate a project with a users entity and its repository',
+            title: 'Generate a project with two entities, their repositories and a REST API',
             language: 'bash',
             code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
   -H "Content-Type: application/json" \\
   -d '{
-    "groupId":"com.menora","artifactId":"demo","name":"demo",
-    "packageName":"com.menora.demo","type":"maven-project","language":"java",
-    "bootVersion":"3.2.1","packaging":"jar","javaVersion":"21",
-    "dependencies":["postgresql","data-jpa","web"],
-    "sqlByDep":{"postgresql":"CREATE TABLE users (id BIGSERIAL PRIMARY KEY, email VARCHAR(200) NOT NULL);"},
-    "sqlOptions":{"postgresql":{"subPackage":"entity","tables":[{"name":"users","generateRepository":true}]}}
+    "groupId":"com.menora","artifactId":"demo","packageName":"com.menora.demo",
+    "javaVersion":"21",
+    "dependencies":["postgresql","data-jpa","web","flyway"],
+    "opts":{"postgresql":["pg-primary"]},
+    "sqlByDep":{"postgresql":"CREATE TABLE users (id BIGSERIAL PRIMARY KEY, email VARCHAR(200) NOT NULL UNIQUE); CREATE TABLE orders (id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id));"},
+    "sqlOptions":{"postgresql":{"subPackage":"entity","apiMode":"INLINE_DTO","generateTests":true}}
   }'
-unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
+unzip -l demo.zip | grep -E "entity|repository|V1__init"`
           }
         ],
         fields: [
-          { name: 'sqlByDep', type: 'object', required: false, description: 'Map of depId → raw SQL script containing one or more CREATE TABLE statements.', example: '{ "postgresql": "CREATE TABLE users (...);" }' },
-          { name: 'sqlOptions', type: 'object', required: false, description: 'Map of depId → { subPackage, tables[] }. tables[].generateRepository toggles repository emission per table; subPackage defaults to "entity".', example: '{ "postgresql": { "subPackage": "entity", "tables": [ { "name": "users", "generateRepository": true } ] } }' },
-          { name: 'opts', type: 'object', required: false, description: 'Same sub-option map as used with /starter.zip\'s opts-{depId} query params — e.g. primary/secondary DB selection.', example: '{ "postgresql": ["pg-primary"] }' }
+          { name: 'sqlByDep', type: 'object', required: false, description: 'Map of depId → the SQL script (CREATE TABLE, ALTER TABLE … ADD constraints).', example: '{ "postgresql": "CREATE TABLE users (...);" }' },
+          { name: 'sqlOptions', type: 'object', required: false, description: 'Map of depId → { subPackage (default "entity"), tables[] ({name, generateRepository}), apiMode (NONE | ENTITY_DIRECT | INLINE_DTO | MAPSTRUCT_DTO), flywayBaseline (default true), generateTests }.', example: '{ "postgresql": { "apiMode": "INLINE_DTO", "generateTests": true } }' },
+          { name: 'opts', type: 'object', required: false, description: 'Same sub-option map as /starter.zip\'s opts-{depId} query params — e.g. the primary/secondary datasource role.', example: '{ "postgresql": ["pg-primary"] }' }
         ]
       }
     ]
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // 10b. OPENAPI → CONTROLLER/DTO WIZARD
+  // 10b. OPENAPI → CONTROLLER/CLIENT WIZARD
   // ─────────────────────────────────────────────────────────────────
   {
     id: 'openapi-wizard',
@@ -1709,92 +1806,134 @@ unzip -p demo.zip demo/src/main/java/com/menora/demo/entity/Users.java`
       {
         id: 'openapi-wizard-what',
         title: 'What the Wizard Does',
-        description: 'Paste an OpenAPI 3.x spec and get @RestController classes + DTO records.',
+        description: 'Paste an OpenAPI 3.x document and get controllers, a client, or both, with typed records.',
         content: `### Purpose
-When the developer selects a web stack dependency (\`web\` or \`webflux\`), an **"OpenAPI…"** button appears on that card in the selected-dependencies panel. Clicking it opens a drawer where the developer pastes an OpenAPI 3.x spec (YAML or JSON). When they hit Generate, the backend parses the spec and writes \`@RestController\` classes plus DTO \`record\`s — already wired up with Spring MVC annotations, parameter binding, and validation.
-
-This is the symmetrical twin of the SQL wizard for API-first teams. It removes the boilerplate of hand-writing controller signatures and request/response DTOs after generation.
+When the developer selects a web stack dependency (\`web\` or \`webflux\`), a **Generate from OpenAPI spec…** button appears on that card in the Selected panel. It opens a drawer where the developer pastes or uploads an OpenAPI 3.x document (YAML or JSON). On Generate, the backend writes the server side, a client, or both — with a Java record per schema, Spring MVC mappings, parameter binding and, with the \`validation\` starter, Bean Validation.
 
 ### Which Dependencies Are Eligible
-The UI calls \`GET /metadata/openapi-capable-deps\` at page load — the button only appears on dep cards present in the response (currently \`web\` and \`webflux\`, intersected with deps actually in the catalog).
+\`GET /metadata/openapi-capable-deps\` (today \`web\` and \`webflux\`, intersected with the catalog).
 
-### Flow At a Glance
-1. Developer selects a web stack dep (e.g. \`web\`).
-2. Clicks **OpenAPI…** on the dep's card.
-3. Pastes or uploads an OpenAPI 3.x spec (\`.yaml\`, \`.yml\`, or \`.json\`).
-4. A live **Detected Operations** list appears (debounced 400ms) showing entries like \`GET /pets\`, \`POST /pets/{id}\`.
-5. Optional: change the sub-packages (default \`api\` for controllers, \`dto\` for records).
-6. Save → the dep card shows an attachment badge.
-7. Click **Generate** or **Explore** — the UI sends POST \`/starter-wizard.zip\` / \`/starter-wizard.preview\` with a JSON body, and the generated controllers/records appear in the ZIP and the file tree. The endpoint is shared with the SQL wizard — a single request can carry both \`specByDep\` and \`sqlByDep\`.`,
+### The Drawer
+1. Paste or upload the document. A live **Detected operations** list appears (\`GET /pets\`, \`POST /pets/{id}\`…); a document that does not parse shows the parser's messages.
+2. **Generate**: Controllers, Client, or Both (\`mode\`).
+3. With a server side, **Server code as**: **Interfaces** (the default for a new setup) or **Classes** — see the next topic.
+4. With a client, what it calls through: **RestTemplate** (default) or **RestClient**, and the property holding the base URL (default \`openapi.client.base-url\`).
+5. Sub-packages (controllers \`api\`, records \`dto\`, client \`client\`) and **Keep the spec in the project** (\`src/main/resources/openapi/<dep>.yaml\`).
+6. Save → the card shows a badge. Generate and Explore post to \`/starter-wizard.zip\` / \`.preview\`; the payload can be combined with the other wizards'.
+
+### The Starters It Needs
+The server adds what the generated code needs and the developer left out: \`web\` when neither \`web\` nor \`webflux\` is selected, and \`openapi\` (springdoc, a Swagger UI at \`/swagger-ui.html\`) beside generated controllers.`,
         callouts: [
           {
-            type: 'info',
-            text: 'Method bodies always throw UnsupportedOperationException. The goal of v1 is a compiling skeleton — developers fill in the business logic after generation.'
+            type: 'warning',
+            text: 'The document must be self-contained. A $ref to another file or a URL, or a $id, is refused with a 400 naming it — the server never fetches or reads anything a pasted document points at. Bundle a multi-file spec into one file first.'
+          }
+        ]
+      },
+      {
+        id: 'openapi-wizard-styles',
+        title: 'Interfaces or Classes',
+        description: 'Why a new setup generates an Api interface per tag plus a controller that is the team\'s.',
+        content: `### Interfaces (\`apiStyle: "interfaces"\`)
+Per tag, two files:
+- **\`<Tag>Api\`** — an interface with every mapping. Each method is a \`default\` that answers **501 Not Implemented**. Generated whole, every time.
+- **\`<Tag>Controller implements <Tag>Api\`** — the team's class. It starts empty; the team overrides an operation to implement it, with the signature alone (the mapping, bindings and constraints stay on the interface).
+
+When the document changes and the project is updated (**Download update**), the interface is rewritten and the controller is never touched: a new operation answers 501 until someone overrides it. That is why a new setup starts here.
+
+### Classes (\`apiStyle: "classes"\`, or absent)
+One \`<Tag>Controller\` per tag whose methods throw \`UnsupportedOperationException\` until filled in. Simpler to read, but the team's code then lives in a generated file, so an update of a changed document patches code the team has written. Setups saved before the choice existed keep this style.
+
+Operations without a tag go to \`Default\`.`,
+        codeExamples: [
+          {
+            title: 'Interfaces — generated PetsApi.java (abridged)',
+            language: 'java',
+            code: `public interface PetsApi {
+
+    @GetMapping("/pets")
+    default List<Pet> listPets() {
+        throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, "listPets is not implemented");
+    }
+
+    @PostMapping("/pets")
+    @ResponseStatus(HttpStatus.CREATED)
+    default void createPet(@RequestBody Pet body) {
+        throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, "createPet is not implemented");
+    }
+
+    @GetMapping("/pets/{id}")
+    default Pet getPetById(@PathVariable("id") Long id) {
+        throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, "getPetById is not implemented");
+    }
+
+}`
           },
           {
-            type: 'info',
-            text: 'The SQL and OpenAPI wizards are composable — both share POST /starter-wizard.zip, so a single request can carry sqlByDep (attached to a JPA dep) and specByDep (attached to a web dep) together. Empty maps are a no-op.'
+            title: 'Interfaces — generated PetsController.java (the team\'s)',
+            language: 'java',
+            code: `@RestController
+@Validated
+public class PetsController implements PetsApi {
+}`
           }
         ]
       },
       {
         id: 'openapi-wizard-mapping',
         title: 'Schema → Java Type Mapping',
-        description: 'How OpenAPI schemas become Java records and types.',
-        content: `### Type Mapping
-The wizard maps OpenAPI types (and their \`format\` hints) to Java types directly on the generated record fields and controller signatures.
-
+        description: 'How OpenAPI schemas, parameters and bodies become Java.',
+        content: `### Types
 | OpenAPI Schema | Java Type | Notes |
 |---|---|---|
 | \`string\` | \`String\` | |
 | \`string\`, \`format: date\` | \`LocalDate\` | |
-| \`string\`, \`format: date-time\` | \`LocalDateTime\` | |
+| \`string\`, \`format: date-time\` | \`OffsetDateTime\` | |
 | \`string\`, \`format: uuid\` | \`UUID\` | |
-| \`string\`, \`format: binary\` | \`byte[]\` | |
-| \`integer\` | \`Integer\` | |
-| \`integer\`, \`format: int64\` | \`Long\` | |
-| \`number\` / \`number\`, \`format: float\` | \`Double\` / \`Float\` | |
-| \`number\`, \`format: double\` | \`Double\` | |
+| \`string\`, \`format: binary\` | \`byte[]\` | (\`MultipartFile\` in a multipart body) |
+| \`string\` with \`enum\` | a Java enum | keeps each wire value (\`@JsonValue\`); in a property it is named after its place (\`Pet.status\` → \`PetStatus\`). A **parameter** of an enum type stays \`String\`. |
+| \`integer\` / \`format: int64\` | \`Integer\` / \`Long\` | |
+| \`number\` / \`format: float\` / \`format: double\` | \`Double\` / \`Float\` / \`Double\` | |
 | \`boolean\` | \`Boolean\` | |
-| \`array\` | \`List<T>\` | recurses on \`items\` |
-| \`object\` with \`$ref\` | referenced record name | |
-| \`allOf\` / \`oneOf\` / \`anyOf\` | \`Object\` | with \`// TODO\` comment |
+| \`array\` | \`List<T>\` | |
+| \`object\` with \`additionalProperties\` | \`Map<String, V>\` | |
+| \`$ref\` to an object schema | the record | |
+| \`allOf\` | one merged record | |
+| \`oneOf\` / \`anyOf\` over objects | a sealed interface | \`@JsonTypeInfo\` by the discriminator (its \`mapping\` honoured), or deduction without one. A choice between non-objects stays \`Object\`. |
 
-### Controllers
-Operations are grouped by their **first tag** (untagged operations go to \`DefaultController\`). One method is emitted per operation:
-
-- Class name: \`{Tag}Controller\` (e.g. \`PetsController\`)
-- Class-level annotation: \`@RestController\`, \`@Validated\`
-- Method annotation: \`@GetMapping\`, \`@PostMapping\`, \`@PutMapping\`, \`@DeleteMapping\`, \`@PatchMapping\`
-- Parameters: \`@PathVariable\`, \`@RequestParam\`, \`@RequestHeader\`, \`@RequestBody\` (with \`@Valid\`)
-- Body: \`throw new UnsupportedOperationException("TODO: implement ...")\`
-- Duplicate \`operationId\`s within a tag are disambiguated by appending \`_2\`, \`_3\`, …
+A named schema that is not an object (a string with a format, an array, a map) is not a type of its own: a reference to it is the type it stands for. An object written in place becomes a record named after its place (\`<Operation>Request\`, \`<Operation>Response\`). OpenAPI 3.1's \`type: [string, 'null']\` is read.
 
 ### Records
-Every entry under \`components.schemas.*\` becomes a Java \`record\` with one component per property. Required fields keep their raw Java type; optional fields do too (nullability is deferred to the developer — v1 does not wrap optionals in \`Optional<T>\`).
+Every object schema becomes a Java \`record\`. A property whose Java name differs from its wire name gets \`@JsonProperty\` (\`first_name\` → \`firstName\`); a Java keyword gets a suffix (\`class_\`). A schema named like a type the generated code uses (\`List\`, \`Valid\`…) becomes \`<Name>Dto\`.
 
-### Packages
-- Controllers → \`{packageName}.{apiSubPackage}\` (default \`api\`)
-- Records → \`{packageName}.{dtoSubPackage}\` (default \`dto\`)`,
+### Operations
+- \`@GetMapping\` … \`@PatchMapping\`, plus HEAD and OPTIONS operations.
+- Parameters are bound by their names on the wire: \`@PathVariable("id")\`, \`@RequestParam\`, \`@RequestHeader("X-Request-Id")\`, \`@CookieValue\`; dates with \`@DateTimeFormat(iso = …)\`; path-level parameters too.
+- A JSON body is \`@RequestBody\` — optional only when the document says \`required: false\`. A multipart or form-urlencoded body binds its properties as parameters (files as \`MultipartFile\`).
+- The declared success status — the lowest 2xx, then \`2XX\`, then \`default\` — becomes \`@ResponseStatus\` where it is not 200, and decides the return type.
+- With the \`validation\` starter: \`@NotNull\`, \`@Size\`, \`@Pattern\`, \`@Email\`, \`@Min\`/\`@Max\`, \`@DecimalMin\`/\`@DecimalMax\` and \`@Valid\` on record components and parameters.
+
+### Security Schemes
+The document's security schemes are declared for springdoc (\`@SecuritySchemes\`, \`@SecurityRequirement\`), and a generated client sends the credentials from properties (API keys, bearer/OAuth2 tokens, basic). They are documented, not enforced: the server code checks nothing.
+
+### Clients
+\`<Tag>Client\` with a method per operation, the same parameter names, the path expanded in the path's own order. RestTemplate or RestClient, configured by a generated config class reading the base-URL property.`
       },
       {
         id: 'openapi-wizard-api',
         title: 'REST API',
-        description: 'POST endpoints and companion metadata.',
+        description: 'Endpoints, the request fields and a worked example.',
         content: `### Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| \`GET\` | \`/metadata/openapi-capable-deps\` | Dep IDs eligible for the wizard (intersected with deps in the catalog) |
-| \`POST\` | \`/starter-wizard.zip\` | Generate ZIP with controllers and DTO records (shared with the SQL wizard) |
-| \`POST\` | \`/starter-wizard.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
-| \`POST\` | \`/starter-wizard.detect-paths\` | Server-side parse: \`{ spec }\` → \`["GET /pets", "POST /pets/{id}", ...]\` for the drawer's live preview |
-
-### Why a New POST Endpoint
-OpenAPI specs regularly exceed typical URL length limits (~2–8 KB) — even the Petstore example is ~2 KB of YAML. Using a sibling POST endpoint that accepts the same generation fields plus \`specByDep\` and \`openApiOptions\` keeps the wizard decoupled from the GET flow and side-steps URL size ceilings entirely.
+| \`GET\` | \`/metadata/openapi-capable-deps\` | Dep ids eligible for the wizard |
+| \`POST\` | \`/starter-wizard.zip\` | Generate the ZIP (shared by all four wizards) |
+| \`POST\` | \`/starter-wizard.preview\` | File tree + contents |
+| \`POST\` | \`/starter-wizard.detect-paths\` | \`{ spec }\` → \`["GET /pets", "POST /pets/{id}", …]\` for the drawer |
 
 ### Parse Errors
-If the spec is malformed, the backend returns HTTP 400 with a body like \`{ "error": "...", "messages": ["attribute info.version is missing", ...] }\`. The drawer surfaces those messages in a yellow banner and disables the Save button until the spec parses cleanly.`,
+A document that does not parse — or refers outside itself — is a 400 \`{ "error": "...", "messages": ["attribute info.version is missing", ...] }\`, from detect-paths and from generation alike. The drawer shows the messages.`,
         codeExamples: [
           {
             title: 'Generate a project from a tiny Petstore spec',
@@ -1802,14 +1941,13 @@ If the spec is malformed, the backend returns HTTP 400 with a body like \`{ "err
             code: `curl -o demo.zip -X POST http://localhost:8080/starter-wizard.zip \\
   -H "Content-Type: application/json" \\
   -d '{
-    "groupId":"com.menora","artifactId":"demo","name":"demo",
-    "packageName":"com.menora.demo","type":"maven-project","language":"java",
-    "bootVersion":"3.2.1","packaging":"jar","javaVersion":"21",
+    "groupId":"com.menora","artifactId":"demo","packageName":"com.menora.demo",
+    "javaVersion":"21",
     "dependencies":["web"],
     "specByDep":{"web":"openapi: 3.0.3\\ninfo: { title: Petstore, version: 1.0.0 }\\npaths:\\n  /pets/{id}:\\n    get:\\n      tags: [pets]\\n      operationId: getPetById\\n      parameters: [{ name: id, in: path, required: true, schema: { type: integer, format: int64 } }]\\n      responses: { 200: { content: { application/json: { schema: { $ref: \\"#/components/schemas/Pet\\" } } } } }\\ncomponents:\\n  schemas:\\n    Pet: { type: object, properties: { id: { type: integer, format: int64 }, name: { type: string } }, required: [id, name] }"},
-    "openApiOptions":{"web":{"apiSubPackage":"api","dtoSubPackage":"dto"}}
+    "openApiOptions":{"web":{"mode":"CONTROLLERS","apiStyle":"interfaces"}}
   }'
-unzip -p demo.zip demo/src/main/java/com/menora/demo/api/PetsController.java`
+unzip -p demo.zip demo/src/main/java/com/menora/demo/api/PetsApi.java`
           },
           {
             title: 'Example Petstore OpenAPI spec (YAML)',
@@ -1862,18 +2000,11 @@ components:
         tag:  { type: string }`
           },
           {
-            title: 'Generated PetsController.java',
+            title: 'Classes — generated PetsController.java (imports left out)',
             language: 'java',
-            code: `package com.menora.demo.api;
-
-import com.menora.demo.dto.Pet;
-import jakarta.validation.Valid;
-import java.util.List;
-import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
-
-@RestController
+            code: `@RestController
 @Validated
+@RequestMapping
 public class PetsController {
 
     @GetMapping("/pets")
@@ -1882,21 +2013,114 @@ public class PetsController {
     }
 
     @PostMapping("/pets")
-    public void createPet(@Valid @RequestBody Pet body) {
+    @ResponseStatus(HttpStatus.CREATED)
+    public void createPet(@RequestBody Pet body) {
         throw new UnsupportedOperationException("TODO: implement createPet");
     }
 
     @GetMapping("/pets/{id}")
-    public Pet getPetById(@PathVariable Long id) {
+    public Pet getPetById(@PathVariable("id") Long id) {
         throw new UnsupportedOperationException("TODO: implement getPetById");
     }
+
 }`
           }
         ],
         fields: [
-          { name: 'specByDep', type: 'object', required: false, description: 'Map of depId → raw OpenAPI 3.x spec text (YAML or JSON). swagger-parser detects the format automatically.', example: '{ "web": "openapi: 3.0.3\\n..." }' },
-          { name: 'openApiOptions', type: 'object', required: false, description: 'Map of depId → { apiSubPackage, dtoSubPackage }. Controllers go to apiSubPackage (default "api"); records go to dtoSubPackage (default "dto").', example: '{ "web": { "apiSubPackage": "api", "dtoSubPackage": "dto" } }' },
-          { name: 'dependencies', type: 'array', required: true, description: 'The usual dep-id array. Only deps listed in /metadata/openapi-capable-deps will have their entries in specByDep processed.', example: '[ "web" ]' }
+          { name: 'specByDep', type: 'object', required: false, description: 'Map of depId → the OpenAPI 3.x document (YAML or JSON), self-contained.', example: '{ "web": "openapi: 3.0.3\\n..." }' },
+          { name: 'openApiOptions.<dep>.mode', type: 'string', required: false, description: 'CONTROLLERS (default), CLIENT or BOTH.', example: 'BOTH' },
+          { name: 'openApiOptions.<dep>.apiStyle', type: 'string', required: false, description: 'interfaces, or classes (also when absent). Only matters with a server side.', example: 'interfaces' },
+          { name: 'openApiOptions.<dep>.clientKind', type: 'string', required: false, description: 'restTemplate (default) or restClient.', example: 'restClient' },
+          { name: 'openApiOptions.<dep>.baseUrlProperty', type: 'string', required: false, description: 'The property the client reads its base URL from.', example: 'openapi.client.base-url' },
+          { name: 'openApiOptions.<dep>.apiSubPackage / dtoSubPackage / clientSubPackage', type: 'string', required: false, description: 'Where controllers, records and the client go (defaults api, dto, client).', example: 'api' },
+          { name: 'openApiOptions.<dep>.copySpec', type: 'boolean', required: false, description: 'Keep the document at src/main/resources/openapi/<dep>.yaml|json.', example: 'true' },
+          { name: 'dependencies', type: 'array', required: true, description: 'The usual dep-id array. Only deps listed in /metadata/openapi-capable-deps have their specByDep entry processed.', example: '[ "web" ]' }
+        ]
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 10c. EVENTS WIZARD (AsyncAPI → Kafka)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 'events-wizard',
+    title: 'Events Wizard (AsyncAPI)',
+    icon: 'sync_alt',
+    topics: [
+      {
+        id: 'events-wizard-what',
+        title: 'What the Wizard Does',
+        description: 'Paste an AsyncAPI document and get Kafka producers and listeners with typed payloads.',
+        content: `### Purpose
+When the developer selects \`kafka\`, a **Generate from AsyncAPI…** button appears on its card. It opens a drawer where the developer pastes or uploads an AsyncAPI document (2.x or 3.x, YAML or JSON). On Generate, the backend writes a Kafka producer for each channel the application sends on, a listener for each it receives on, and a record per payload schema.
+
+### Which Dependencies Are Eligible
+\`GET /metadata/events-capable-deps\` — today \`kafka\`. A request with an AsyncAPI document and no \`kafka\` gets it added.
+
+### Who Sends What
+The two AsyncAPI versions describe direction in opposite words (2.x's \`publish\`/\`subscribe\` are a client's view; 3.x's \`send\`/\`receive\` the application's own). The wizard reads both as **what the described application does**.
+
+### The Drawer
+- The detected channels, each with **Produce** and **Consume** boxes. Untouched, they show what the application the document describes does, and **no channel list is saved**, so the project keeps following the document. **The other party** flips every channel — the way to generate a consumer of someone else's events. Any change by hand saves the list.
+- A channel that cannot be a Kafka topic (a parameterized address such as \`users.{id}.inbox\`) is disabled with the reason.
+- Sub-packages (default \`events\` and \`events.model\`), the consumer group, and **Generate tests**.
+
+### What Is Written
+- **\`<Channel>Producer\`** — \`send(key, payload)\` over the project's \`KafkaTemplate\`; several kinds of message on one channel give a method each.
+- **\`<Channel>Listener\`** — a \`@KafkaListener\` that reads the payload and calls \`handle(key, payload)\`, a stub for the team. The group is the drawer's, else \`spring.kafka.consumer.group-id\`.
+- **Payload records**, written by the OpenAPI wizard's type mapping (enums, \`allOf\`, sealed unions, constraints with \`validation\`).
+- Each topic name as a property, \`app.events.topics.<channel>\`, set to the channel's address in \`application.yaml\`.
+- JSON messages travel as text, converted with the application's \`ObjectMapper\` (\`spring-boot-starter-json\` is added when nothing else brings Jackson).
+- With **Generate tests**: per producer, a payload sent through a mocked template and read back; per listener, a record in. No broker is needed.`,
+        callouts: [
+          {
+            type: 'info',
+            text: 'Kafka only: the document\'s own bindings and servers are not read. Message headers, key schemas, correlation ids and traits are not read either. Like OpenAPI documents, an AsyncAPI document must be self-contained.'
+          }
+        ]
+      },
+      {
+        id: 'events-wizard-avro',
+        title: 'Avro Payloads',
+        description: 'Channels whose messages are Avro: schemas, the build plugin, and messages without a schema registry.',
+        content: `### When It Applies
+A message whose \`schemaFormat\` is \`application/vnd.apache.avro…\` (\`+json\`, \`+yaml\`) is Avro; its schema may be written in place, referenced, or given as JSON text. A channel is all Avro or all JSON — a mix is the channel's problem. The drawer marks Avro channels with an **Avro** badge.
+
+### What Is Written
+- Each Avro schema as \`src/main/avro/<full name>.avsc\`.
+- The build gets \`org.apache.avro:avro\` 1.11.4 and the \`avro-maven-plugin\`, which makes the Java classes from the \`.avsc\` files at build time.
+- \`AvroKafkaConfig\`: a \`KafkaTemplate<String, byte[]>\` and a listener factory built from the project's own Kafka settings (servers, SASL). The String beans stay for JSON channels.
+- Producers send the record as bytes in Avro's single-object encoding; listeners decode it. Several kinds of message on one channel are told apart by the schema fingerprint.
+
+### No Schema Registry
+The topic carries the schema's fingerprint, not a registry id, so producer and consumer must hold the same schema. A consumer that must read an older schema adds it to its decoder by hand (the generated \`AvroKafkaConfig\` says how).`,
+        callouts: [
+          {
+            type: 'warning',
+            text: 'The avro-maven-plugin is not in the offline Maven repository: Artifactory must carry it before an Avro project builds. Payloads must be records; .avpr / .avdl files and schemas outside the document are not read.'
+          }
+        ]
+      },
+      {
+        id: 'events-wizard-api',
+        title: 'REST API',
+        description: 'Endpoints and request fields.',
+        content: `### Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| \`GET\` | \`/metadata/events-capable-deps\` | Dep ids eligible for the wizard (\`["kafka"]\`) |
+| \`POST\` | \`/starter-wizard.detect-channels\` | \`{ spec }\` → \`[{name, address, sends, receives, messages, format, problem}]\` for the drawer |
+| \`POST\` | \`/starter-wizard.zip\` / \`.preview\` | Generate, with \`asyncApiByDep\` and \`eventOptions\` |
+
+A document that cannot be used is a 400 \`{ "error": "Invalid AsyncAPI document", "messages": [...] }\`, with the reason: no \`asyncapi\` field, a version other than 2.x/3.x, no channels, an unsupported \`schemaFormat\`, a \`$ref\` out of the document. Asking for a channel that does not exist, or twice, or ending up with nothing to generate, is a 400 too.`,
+        fields: [
+          { name: 'asyncApiByDep', type: 'object', required: false, description: 'Map of depId → the AsyncAPI document.', example: '{ "kafka": "asyncapi: 3.0.0\\n..." }' },
+          { name: 'eventOptions.<dep>.channels', type: 'array', required: false, description: '[{name, produce, consume}] — exactly these channels in these directions. Absent: what the document describes.', example: '[{ "name": "orderPlaced", "produce": false, "consume": true }]' },
+          { name: 'eventOptions.<dep>.subPackage / payloadSubPackage', type: 'string', required: false, description: 'Where producers/listeners and payload types go (defaults events, events.model).', example: 'events' },
+          { name: 'eventOptions.<dep>.groupId', type: 'string', required: false, description: 'The listeners\' consumer group.', example: 'billing' },
+          { name: 'eventOptions.<dep>.generateTests', type: 'boolean', required: false, description: 'A test per producer and listener, without a broker.', example: 'true' }
         ]
       }
     ]
@@ -1915,7 +2139,7 @@ public class PetsController {
         title: 'What the Wizard Does',
         description: 'Paste a WSDL and get @Endpoint stubs, a WebServiceTemplate client, or both.',
         content: `### Purpose
-When the developer selects the \`web-services\` dependency (Spring Web Services starter), a **"SOAP…"** button appears on that card. Clicking it opens a drawer where the developer pastes a WSDL 1.1 document. On Generate, the backend drops the WSDL into \`src/main/resources/wsdl/\`, configures the JAX-WS Maven plugin to generate JAXB payload classes at build time, and emits one of three things — server \`@Endpoint\` stubs, a \`WebServiceGatewaySupport\` client, or both — depending on the chosen mode.
+When the developer selects the \`web-services\` dependency (Spring Web Services starter), a **Generate from WSDL…** button appears on that card. Clicking it opens a drawer where the developer pastes a WSDL 1.1 document. On Generate, the backend drops the WSDL into \`src/main/resources/wsdl/\`, configures the JAX-WS Maven plugin to generate JAXB payload classes at build time, and emits one of three things — server \`@Endpoint\` stubs, a \`WebServiceGatewaySupport\` client, or both — depending on the chosen mode.
 
 This is the symmetrical twin of the OpenAPI wizard for SOAP teams. It removes the boilerplate for both contract-first SOAP servers and SOAP consumers.
 
@@ -1924,12 +2148,14 @@ The UI calls \`GET /metadata/soap-capable-deps\` at page load — the button onl
 
 ### Flow At a Glance
 1. Developer selects \`web-services\` from the catalog.
-2. Clicks **SOAP…** on the dep's card.
+2. Clicks **Generate from WSDL…** on the dep's card.
 3. Pastes or uploads a WSDL (\`.wsdl\` or \`.xml\`).
 4. A live **Detected Services** list appears (debounced 400ms) showing entries like \`CountryService.CountryPort: getCountry, listCountries\`.
 5. Picks a mode — **Endpoints**, **Client**, or **Both** — and (optionally) overrides sub-packages, the servlet context path (endpoint mode), and the base URL property (client mode).
 6. Save → the dep card shows a "WSDL attached" badge.
-7. Click **Generate** or **Explore** — the UI sends POST \`/starter-wizard.zip\` / \`/starter-wizard.preview\` with a JSON body. The endpoint is shared with the SQL and OpenAPI wizards — a single request can carry \`wsdlByDep\`, \`specByDep\`, and \`sqlByDep\` together.`,
+7. Click **Generate** or **Explore** — the UI sends POST \`/starter-wizard.zip\` / \`/starter-wizard.preview\` with a JSON body. The endpoint is shared with the other wizards — a single request can carry \`wsdlByDep\`, \`specByDep\`, \`sqlByDep\` and \`asyncApiByDep\` together.
+
+If the developer forgot \`web-services\`, a request with a WSDL gets it added.`,
         callouts: [
           {
             type: 'info',
@@ -1937,7 +2163,7 @@ The UI calls \`GET /metadata/soap-capable-deps\` at page load — the button onl
           },
           {
             type: 'info',
-            text: 'The SQL, OpenAPI, and SOAP wizards are all composable — POST /starter-wizard.zip accepts sqlByDep, specByDep, and wsdlByDep simultaneously. Empty maps are a no-op.'
+            text: 'The four wizards are composable — POST /starter-wizard.zip accepts sqlByDep, specByDep, wsdlByDep and asyncApiByDep simultaneously. Empty maps are a no-op.'
           }
         ]
       },
@@ -1985,7 +2211,7 @@ For each WSDL operation:
 | Method | Path | Purpose |
 |---|---|---|
 | \`GET\` | \`/metadata/soap-capable-deps\` | Dep IDs eligible for the wizard (intersected with deps in the catalog) |
-| \`POST\` | \`/starter-wizard.zip\` | Generate ZIP with endpoints/clients (shared with the SQL and OpenAPI wizards) |
+| \`POST\` | \`/starter-wizard.zip\` | Generate ZIP with endpoints/clients (shared by all four wizards) |
 | \`POST\` | \`/starter-wizard.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
 | \`POST\` | \`/starter-wizard.detect-services\` | Server-side parse: \`{ wsdl }\` → \`["CountryService.CountryPort: getCountry, listCountries"]\` for the drawer's live preview |
 
@@ -1993,7 +2219,9 @@ For each WSDL operation:
 WSDL documents routinely run into tens of kilobytes once the embedded XSD is non-trivial — well past typical URL length limits. Reusing the same wizard POST endpoint that already exists for SQL and OpenAPI keeps the wire shape consistent and side-steps URL size ceilings.
 
 ### Parse Errors
-If the WSDL is malformed, the backend returns HTTP 400 with a body like \`{ "error": "Invalid WSDL", "messages": ["WSDLException: faultCode=PARSER_ERROR: ..."] }\`. The drawer surfaces those messages in a yellow banner.`,
+If the WSDL is malformed, the backend returns HTTP 400 with a body like \`{ "error": "Invalid WSDL", "messages": ["WSDLException: faultCode=PARSER_ERROR: ..."] }\` — from detect-services as well (also for a WSDL with no \`<service>\`), so the drawer shows the messages instead of an empty list.
+
+A WSDL that refers to another file — \`wsdl:import\`, or \`xsd:import\` / \`include\` / \`redefine\` with a \`schemaLocation\` — is a 400 naming each reference. The server never opens a file or URL a pasted document points at; the schemas must be inside the WSDL.`,
         codeExamples: [
           {
             title: 'Generate a project from a tiny CountryService WSDL (BOTH mode)',
@@ -2111,19 +2339,19 @@ public class CountryServiceClient extends WebServiceGatewaySupport {
       },
       {
         id: 'soap-wizard-limits',
-        title: 'Notes & Limitations (v1)',
+        title: 'Notes & Limitations',
         description: 'What this generation does, what it does not, and why.',
-        content: `### What v1 Produces
+        content: `### What It Produces
 - The WSDL itself, dropped verbatim into \`src/main/resources/wsdl/{kebab-service-name}.wsdl\`.
 - The JAX-WS Maven plugin (\`com.sun.xml.ws:jaxws-maven-plugin:4.0.2\`) wired to \`generate-sources\` in \`pom.xml\` — generates JAXB payload classes from the embedded XSD on every \`mvn compile\`.
 - One \`{Service}Endpoint.java\` and/or \`{Service}Client.java\` per \`<wsdl:service>\`, one method per operation.
 - A \`WebServiceConfig.java\` (endpoint mode) and/or \`SoapClientConfig.java\` (client mode).
 - An \`application.yaml\` fragment with the base URL property (client mode only) — deep-merged into the existing \`application.yaml\`.
 
-### What v1 Does Not Produce
+### What It Does Not Produce
 - **No JAXB classes in the ZIP.** They live in \`target/generated-sources/jaxws/\` after \`mvn compile\` runs the plugin. IDEs pick this up automatically.
 - **No WSDL 2.0 support** — wsdl4j parses WSDL 1.1 only.
-- **No standalone XSD input** — the wizard expects a WSDL with embedded or referenced schemas.
+- **No standalone XSD input, no multi-file WSDLs** — the wizard expects one WSDL with its schemas embedded; a reference to another file is refused.
 - **No SOAP 1.2 binding override** — both 1.1 and 1.2 address bindings are detected for the live preview, but the generated code uses the default \`MessageFactory\` (SOAP 1.1). Switch to SOAP 1.2 in \`SoapClientConfig\` after generation if needed.
 - **No mTLS / WS-Security wiring** — the generated client is plain HTTP. Wire interceptors (\`Wss4jSecurityInterceptor\`, custom \`HttpComponents5MessageSender\`) yourself.
 
@@ -2137,6 +2365,10 @@ JAXB code generation is a complex, well-solved problem; reimplementing it inside
           {
             type: 'tip',
             text: 'For WS-Security or mTLS, add interceptors / a custom WebServiceMessageSender in SoapClientConfig after generation. The wizard intentionally stays out of security policy — that varies too much per service.'
+          },
+          {
+            type: 'warning',
+            text: 'The JAX-WS plugin and its dependencies are not known to be in the offline Maven repository, so SOAP output has not been built for real here — check that Artifactory carries com.sun.xml.ws:jaxws-maven-plugin before relying on it.'
           }
         ]
       }
