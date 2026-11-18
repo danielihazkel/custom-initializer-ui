@@ -1303,7 +1303,7 @@ public class Orders {
 חיבור הוא לקריאה בלבד, נפתח לקריאה אחת, עם timeout של 10 s ל-login ו-30 s למשפט. כל קריאה נרשמת בלוג עם המקור או ה-host, הסכמה, המספר והמשתמש — לעולם לא הסיסמה.
 
 ### דרייברים
-הדרייברים של PostgreSQL, SQL Server ו-Oracle מגיעים עם האפליקציה. DB2 for IBM i (jt400) אינו במאגר האופליין: בנו את האפליקציה עם \`mvn package -Pdb2-driver\` כדי לכלול אותו; בלעדיו DB2 מוצג כ-"no driver on this server".
+הדרייברים של PostgreSQL, SQL Server, Oracle ו-DB2 for IBM i (jt400) מגיעים עם האפליקציה. סוג מסד נתונים שהדרייבר שלו לא נכלל בבנייה מוצג כ-"no driver on this server".
 
 ### מגבלות
 אינדקסים, ערכי ברירת מחדל, הערות, sequences ו-triggers אינם נקראים. באשף ה-SQL השדות של view הם \`String\` (הייבוא של fullstack נותן להם טיפוסים). עמודת enum של PostgreSQL הופכת לעמודת טקסט שמוגבלת ב-CHECK. DB2 for IBM i לא נקרא עדיין משרת אמיתי.`

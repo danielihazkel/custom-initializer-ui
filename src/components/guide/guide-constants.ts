@@ -1303,7 +1303,7 @@ A source holds where a database is (type, host, port, database or service name, 
 A connection is read-only, opened for one call, with a 10 s login and 30 s statement timeout. Each read is logged with the source or host, the schema, the count and the user — never the password.
 
 ### Drivers
-PostgreSQL, SQL Server and Oracle drivers ship with the application. DB2 for IBM i (jt400) is not in the offline repository: build the application with \`mvn package -Pdb2-driver\` to include it; without it DB2 is shown as "no driver on this server".
+The PostgreSQL, SQL Server, Oracle and DB2 for IBM i (jt400) drivers ship with the application. A database type whose driver a build leaves out is shown as "no driver on this server".
 
 ### Limits
 Indexes, defaults, comments, sequences and triggers are not read. In the SQL wizard a view's fields are \`String\` (the fullstack import types them). A PostgreSQL enum column becomes a CHECK-limited text column. DB2 for IBM i has not been read from a real server.`
