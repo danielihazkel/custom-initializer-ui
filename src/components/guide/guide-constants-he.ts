@@ -167,7 +167,7 @@ export const GUIDE_SECTIONS_HE: GuideSection[] = [
 ### שלושה סוגי רשומות
 - **Spring Boot starter** — השאירו את קואורדינטות ה-Maven ריקות, ומסגרת Spring Initializr מוסיפה את \`org.springframework.boot:spring-boot-starter-<depId>\` (\`web\`, \`data-jpa\`, \`actuator\`…), כשהגרסה שלו מנוהלת על ידי Spring Boot. תנו לרשומה שם כזה רק כאשר ה-starter הזה קיים.
 - **ספרייה** — מלאו \`mavenGroupId\`/\`mavenArtifactId\` (וגרסה כאשר ה-BOM של Boot אינו מנהל אותה); ה-artifact נכנס ל-pom.
-- **אפשרות של קבצים בלבד** — סמנו **File-only option** (\`starter: false\`): דבר אינו מתווסף ל-pom, ובחירת הרשומה מביאה רק את תרומות הקבצים, תצורות ה-build והאפשרויות המשניות שלה. \`ldap-auth\`, \`ldap-auth-rest\`, \`logging\` ו-\`file-handler-utils\` עובדות כך. הטופס מזהיר כאשר תצורת build עדיין מוסיפה תלות pom עבור ה-id.
+- **אפשרות של קבצים בלבד** — סמנו **File-only option** (\`starter: false\`): דבר אינו מתווסף ל-pom, ובחירת הרשומה מביאה רק את תרומות הקבצים, תצורות ה-build והאפשרויות המשניות שלה. \`ldap-auth\`, \`ldap-auth-rest\`, \`logging\`, \`file-handler-utils\` ו-\`mail-sampler\` עובדות כך (תצורת ה-build של \`mail-sampler\` מוסיפה את \`spring-boot-starter-mail\`). הטופס מזהיר כאשר תצורת build מוסיפה תלות pom עבור ה-id, וזה בדיוק מה ש-\`mail-sampler\` צריכה.
 
 ### בוחר התלויות
 רשומות מופיעות בבוחר התלויות מקובצות לפי הקבוצה האב שלהן, ומוסתרות כאשר גרסת ה-Boot הנבחרת מחוץ ל-\`compatibilityRange\` שלהן. בחירת המשתמש היא הסט של ערכי \`depId\` הנשלחים בבקשת היצירה כפרמטר \`dependencies\`; השרת מיישם עליה לאחר מכן את כללי התאימות (ראו **כללי תאימות**).
@@ -1220,7 +1220,7 @@ public class H2Config {
 - עם ה-starter של \`validation\`: \`@NotNull\` (אף פעם לא על מפתח שנוצר אוטומטית), \`@Size(max)\` מהאורך של עמודת טקסט, ומפתחות זרים שהם חובה — על ה-DTO, או על הישות כשהיא נחשפת ישירות.
 
 ### Lombok
-ישויות משתמשות ב-\`@Data\`, \`@NoArgsConstructor\` ו-\`@AllArgsConstructor\`. Lombok היא שורת build מסוג \`__common__\`, כך שהיא קיימת בכל פרויקט.`,
+ישויות משתמשות ב-\`@Data\`, \`@NoArgsConstructor\` ו-\`@AllArgsConstructor\`. Lombok היא שורת build מסוג \`__common__\`, כך שהיא קיימת בכל פרויקט. אסוציאציות מסומנות ב-\`@EqualsAndHashCode.Exclude\` וב-\`@ToString.Exclude\`, כך ש-\`equals\`, \`hashCode\` ו-\`toString\` לעולם לא טוענים את השורה שהן מצביעות עליה.`,
         codeExamples: [
           {
             title: 'נוצר מתוך: orders(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id), status VARCHAR(20) CHECK (status IN (\'OPEN\',\'PAID\')))',
@@ -1237,6 +1237,8 @@ public class Orders {
     @Column(nullable = false)
     private Long id;
 
+    @EqualsAndHashCode.Exclude
+    @ToString.Exclude
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private Users user;
@@ -1250,8 +1252,8 @@ public class Orders {
         ],
         callouts: [
           {
-            type: 'warning',
-            text: '@Data מכניס כל שדה — כולל אסוציאציית @ManyToOne — ל-equals, ל-hashCode ול-toString. קריאה להם קוראת את האסוציאציה העצלה, גם מחוץ לטרנזקציה. אם ישויות נכנסות ל-sets או לשורות לוג, סמנו את האסוציאציה ב-@EqualsAndHashCode.Exclude וב-@ToString.Exclude.'
+            type: 'info',
+            text: 'בפרויקטים שנוצרו לפני נובמבר 2026 האסוציאציה נכללת ב-equals, ב-hashCode וב-toString של @Data, שטוענים את השורה העצלה (ונכשלים מחוץ לטרנזקציה). הוסיפו שם ידנית @EqualsAndHashCode.Exclude ו-@ToString.Exclude לכל אסוציאציה: עדכון של הפרויקט מביא שינויי מודל, לא שינויי תבניות.'
           }
         ]
       },

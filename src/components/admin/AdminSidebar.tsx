@@ -10,7 +10,7 @@ const TABS: { id: AdminTab; label: string; icon: string; desc: string }[] = [
   { id: 'groups',     label: 'Dep Groups',    icon: 'folder',         desc: 'Categories for UI' },
   { id: 'entries',    label: 'Dependencies',  icon: 'widgets',        desc: 'Main catalog' },
   { id: 'files',      label: 'File Contribs', icon: 'description',    desc: 'Custom project files' },
-  { id: 'builds',     label: 'Build Custom.', icon: 'build',          desc: 'POM & Gradle edits' },
+  { id: 'builds',     label: 'Build Custom.', icon: 'build',          desc: 'pom.xml & package.json edits' },
   { id: 'suboptions', label: 'Sub-Options',   icon: 'tune',           desc: 'Configurable options' },
   { id: 'compatibility', label: 'Compatibility', icon: 'compare_arrows', desc: 'Version rules' },
   { id: 'templates',     label: 'Templates',     icon: 'view_cozy',      desc: 'Starter bundles' },

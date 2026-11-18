@@ -167,7 +167,7 @@ A dependency entry represents a selectable library or feature in the project gen
 ### Three Kinds of Entry
 - **A Spring Boot starter** — leave the Maven coordinates blank and the Spring Initializr framework adds \`org.springframework.boot:spring-boot-starter-<depId>\` (\`web\`, \`data-jpa\`, \`actuator\`…), its version managed by Spring Boot. Only name an entry this way when that starter exists.
 - **A library** — fill in \`mavenGroupId\`/\`mavenArtifactId\` (and a version when the Boot BOM does not manage it); the artifact goes into the pom.
-- **A file-only option** — tick **File-only option** (\`starter: false\`): nothing is added to the pom, and selecting the entry only brings its file contributions, build customizations and sub-options. \`ldap-auth\`, \`ldap-auth-rest\`, \`logging\` and \`file-handler-utils\` work this way. The form warns when a build customization still adds a pom dependency for the id.
+- **A file-only option** — tick **File-only option** (\`starter: false\`): nothing is added to the pom, and selecting the entry only brings its file contributions, build customizations and sub-options. \`ldap-auth\`, \`ldap-auth-rest\`, \`logging\`, \`file-handler-utils\` and \`mail-sampler\` work this way (\`mail-sampler\`'s build customization adds \`spring-boot-starter-mail\`). The form warns when a build customization adds a pom dependency for the id, which is what \`mail-sampler\` wants.
 
 ### The Dependency Picker
 Entries appear in the dependency picker grouped by their parent group, hidden when the selected Boot version is outside their \`compatibilityRange\`. The user's selection is the set of \`depId\` values sent in the generation request as the \`dependencies\` parameter; the server then applies the compatibility rules to it (see **Compatibility Rules**).
@@ -1220,7 +1220,7 @@ Each column becomes a field. The Java type is chosen from the SQL type, its prec
 - With the \`validation\` starter: \`@NotNull\` (never on a generated key), \`@Size(max)\` from a text column's length, required foreign keys — on the DTO, or on the entity when it is exposed directly.
 
 ### Lombok
-Entities use \`@Data\`, \`@NoArgsConstructor\` and \`@AllArgsConstructor\`. Lombok is a \`__common__\` build row, so every project has it.`,
+Entities use \`@Data\`, \`@NoArgsConstructor\` and \`@AllArgsConstructor\`. Lombok is a \`__common__\` build row, so every project has it. Associations are marked \`@EqualsAndHashCode.Exclude\` and \`@ToString.Exclude\`, so \`equals\`, \`hashCode\` and \`toString\` never load the row they point at.`,
         codeExamples: [
           {
             title: 'Generated from: orders(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id), status VARCHAR(20) CHECK (status IN (\'OPEN\',\'PAID\')))',
@@ -1237,6 +1237,8 @@ public class Orders {
     @Column(nullable = false)
     private Long id;
 
+    @EqualsAndHashCode.Exclude
+    @ToString.Exclude
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private Users user;
@@ -1250,8 +1252,8 @@ public class Orders {
         ],
         callouts: [
           {
-            type: 'warning',
-            text: '@Data puts every field — a @ManyToOne association included — into equals, hashCode and toString. Calling them reads the lazy association, outside a transaction too. If entities go into sets or log lines, mark the association @EqualsAndHashCode.Exclude and @ToString.Exclude.'
+            type: 'info',
+            text: 'Projects generated before November 2026 have the association inside @Data\'s equals, hashCode and toString, which load the lazy row (and fail outside a transaction). Add @EqualsAndHashCode.Exclude and @ToString.Exclude to each association there by hand: an update of the project carries model changes, not template changes.'
           }
         ]
       },
