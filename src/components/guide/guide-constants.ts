@@ -100,21 +100,21 @@ File contributions and build customizations are read from the database on every 
         title: 'What Is the Frontend Generator?',
         description: 'A second generator that scaffolds React + TypeScript + Vite projects using Feature-Slice Design.',
         content: `### Purpose
-The same DB-driven catalog that produces Spring Boot backends also produces **React + TypeScript + Vite** frontends laid out with [Feature-Slice Design](https://feature-sliced.design/). Developers pick a project name, an npm scope, dependencies, sub-options, and click Generate — the response is a zipped frontend project ready to \`pnpm install && pnpm dev\`.
+The same DB-driven catalog that produces Spring Boot backends also produces **React + TypeScript + Vite** frontends laid out with [Feature-Slice Design](https://feature-sliced.design/). Developers pick a project name, an npm scope, dependencies and sub-options, and click Generate — the response is a zipped frontend project ready to install and run.
 
-A new top-level **Frontend** tab in the main UI sits beside **Backend / Training / Guide / Config**. The same admin panel manages both catalogs side by side.
+The **Frontend** tab sits beside **Backend** and **Fullstack** in the main UI. The same admin panel manages both catalogs; its Backend ⇄ Frontend pill switches between them.
 
 ### Why a Second Path Instead of Reusing the Spring One?
-The Spring Initializr framework is Maven/Gradle-hardcoded — it can't emit \`package.json\` or \`vite.config.ts\`. So the FE path skips the framework entirely. \`FrontendStarterController\` is a plain Spring REST controller that calls a new \`FrontendProjectGenerator\` service, which builds a temp directory exactly like the backend does, then zips it.
+The Spring Initializr framework writes Maven projects — it can't emit \`package.json\` or \`vite.config.ts\`. So the frontend path skips the framework: \`FrontendStarterController\` calls \`FrontendProjectGenerator\`, which builds a temp directory the way the backend does and zips it.
 
-Crucially, the FE path **reuses** everything that's not build-tool-specific: \`DependencyConfigService\`, the \`FileContributionEntity\` table (with all four types — STATIC_COPY, TEMPLATE, YAML_MERGE, DELETE), \`ProjectOptionsContext\` for sub-options, the \`InitializrWebConfiguration\` servlet filter, and the same Mustache engine with the same context conventions (\`has<Dep>\`, \`opt<Dep><Option>\`).
+It **reuses** everything that is not build-tool-specific: \`DependencyConfigService\`, the file contributions (all four types), sub-options, the \`InitializrWebConfiguration\` filter, and the same Mustache engine and conventions (\`has<Dep>\`, \`opt<Dep><Option>\`, the department variables).
 
 ### The ProjectKind Discriminator
-Every row in the six catalog tables now has a \`project_kind\` column (\`BACKEND\` or \`FRONTEND\`). Backend and frontend catalogs live in the same H2 database but never see each other — \`DependencyConfigService\` filters by kind at query time. Existing rows default to \`BACKEND\` so this is fully backwards-compatible.`,
+Dependency groups, entries, file contributions, build customizations, sub-options, compatibility rules, starter templates and palettes carry a \`projectKind\` (\`BACKEND\` or \`FRONTEND\`). Both catalogs live in the same database and never see each other.`,
         callouts: [
           {
             type: 'info',
-            text: 'The FE path **does not** go through the Spring Initializr framework. Endpoints live under `/frontend/*`, separate from `/starter.zip`. The Frontend tab in the UI talks to `/frontend/metadata` and `/frontend/starter.zip`.'
+            text: 'The frontend path does not go through the Spring Initializr framework. Its endpoints live under `/frontend/*` (`/frontend/metadata`, `/frontend/starter.zip`, `/frontend/starter.preview`), separate from `/starter.zip`.'
           }
         ]
       },
@@ -122,106 +122,91 @@ Every row in the six catalog tables now has a \`project_kind\` column (\`BACKEND
         id: 'fe-using',
         title: 'Using the Frontend Tab',
         description: 'What a developer sees and fills in when generating a React project.',
-        content: `### Left Column — Project + Stack
-- **Project Name** — folder name and \`package.json "name"\`. Auto-derives the App Title in title case.
+        content: `### Project
 - **Scope** (optional) — npm scope without the \`@\`. \`menora\` + \`my-app\` becomes \`@menora/my-app\` in \`package.json\`.
-- **App Title** — appears in \`<title>\` and the sample \`HomePage\`.
+- **Project Name** — folder name and \`package.json "name"\`. Auto-derives the App Title.
+- **App Title** — the browser tab's \`<title>\` and the sample \`HomePage\`.
 - **Description** — \`package.json "description"\`.
-- **React** — version dropdown (18 / 19), default from \`application.yml\`.
-- **Node** — version dropdown (18 / 20 / 22).
-- **Package Manager** — pill toggle: \`npm\` or \`pnpm\`. Shapes the README run instructions via the \`isNpm\` / \`isPnpm\` Mustache flags.
-- **Base Path** — Vite's \`base\` config for sub-path deploys (defaults to \`/\`).
+- **Department** — from **Config → Departments**; written into the deployment files.
 
-### Right Column — Dependencies
-Same chip + grouped-list pattern as the backend tab. Each dependency can expose sub-options that surface as nested checkboxes after the parent is selected. Filter box at the top searches across id, name, and description.
+### Options
+- **React**, **Node** and **Package Manager** — the lists of **Config → Versions** (React 18 / 19, Node 20 / 22 / 18, pnpm / npm), opening on their defaults.
+- **Design System** — none, shadcn, MUI, Chakra, Mantine or Menora Digital; the palette picker appears for the themed ones (MUI, Chakra, Mantine).
+- **Base Path** — Vite's \`base\` for sub-path deploys (default \`/\`).
+- **RTL layout** — \`dir="rtl"\` on the page.
+- **Paired Backend** (optional) — the backend's URL and artifact id, for the dev proxy and the API client.
+
+### Dependencies
+Same chip + grouped-list pattern as the Backend tab: Routing, State Management, Data Fetching, Styling, Design System, Forms & Validation, Animation, Testing, Quality (on by default), Extras, API Integration. A dependency can expose sub-options after it is selected.
 
 ### Generate
-The Generate button on the FrontendView is wired to \`/frontend/starter.zip\` with all the form values + the selected dependencies and per-dep \`opts-{depId}\` lists. The file streams to the browser as \`{projectName}.zip\`.
-
-### State Persistence
-Every change to the form, selections, or sub-options is written to \`localStorage\` under \`frontendInitializrState\` — refresh the page and the state restores. The "Reset to defaults" link clears it.`,
-        callouts: [
-          {
-            type: 'tip',
-            text: 'The Frontend tab does **not** share state, presets, or recents with the Backend tab. They are independent. Backend continues to use `useProjectState`; frontend uses the parallel `useFrontendState` hook.'
-          }
-        ]
+Generate calls \`/frontend/starter.zip\` with the form, the dependencies and per-dependency \`opts-{depId}\` lists; Explore shows the files first. The tab has its own presets and its own stored state — nothing is shared with the Backend tab.`
       },
       {
         id: 'fe-admin-pill',
         title: 'Admin: The Backend ⇄ Frontend Pill',
-        description: 'How the admin header toggle scopes every tab to one catalog.',
+        description: 'How the admin header toggle scopes the catalog tabs to one catalog.',
         content: `### Where to Find It
-Open Config (Admin). The header now has a small pill toggle: **Backend** | **Frontend**. The current kind is persisted to \`localStorage\` so it survives a page reload.
+Open Config (Admin). The header has a pill toggle: **Backend** | **Frontend**. The current kind is remembered in the browser.
 
 ### What It Affects
-Six tabs filter their rows by the current pill value and stamp \`projectKind\` on every new entry:
-- **Dep Groups** — categories shown in the picker
-- **Dependencies** — the catalog entries
-- **File Contribs** — STATIC_COPY / TEMPLATE / YAML_MERGE / DELETE rows
-- **Build Customizations** — including the two new FE-only types below
-- **Sub-Options** — gated per-dep selections
-- **Compatibility** — REQUIRES / CONFLICTS / RECOMMENDS rules
+These tabs show the rows of the current kind and stamp \`projectKind\` on every new row: **Dep Groups**, **Dependencies**, **File Contribs**, **Build Custom.**, **Sub-Options**, **Compatibility** and **Templates** (starter templates).
 
-### What It Doesn't Affect
-- **Overview** and **Activity** show data across both kinds.
-- **Templates** (starter bundles) and **Modules** (multi-module) are backend-only in v1.
-
-### Legacy Rows
-Existing rows without a \`projectKind\` are treated as \`BACKEND\` by the client filter (the DB default takes care of the same on the server side). No backfill needed.`,
+### Tabs Shown for One Kind Only
+- Backend only: **Modules**, **Entity CRUD**, **Fullstack Examples**, **Schema sources**.
+- Frontend only: **Palettes**.
+- Both, across both kinds: **Overview**, **Activity**, **History**, **Versions**, **Departments**.`,
         callouts: [
           {
             type: 'warning',
-            text: 'If you create a row under the wrong pill — say you add `state-zustand` while the pill is on Backend — it will appear in `/metadata/client` (Spring catalog) and break the backend pipeline at generation time. Always confirm the pill before clicking **New Entry**.'
+            text: 'If you create a row under the wrong pill — say you add `state-zustand` while the pill is on Backend — it appears in the Spring catalog and breaks backend generation for anyone who picks it. Check the pill before clicking New.'
           }
         ]
       },
       {
         id: 'fe-build-types',
-        title: 'Three New Build Customization Types',
+        title: 'Frontend Build Customization Types',
         description: 'ADD_NPM_DEPENDENCY, ADD_NPM_SCRIPT, and ADD_VITE_PLUGIN — reusing existing fields with new meanings.',
         content: `### Schema Reuse
-Rather than adding a new entity, the existing \`BuildCustomizationEntity\` gained three enum values. Its columns are **reinterpreted** based on the \`projectKind\` + \`customizationType\` combination. Field meaning per row:
+Rather than adding a new entity, \`BuildCustomizationEntity\` has three frontend types whose columns are **reinterpreted**:
 
 | Type | Field reinterpretation |
 |---|---|
-| \`ADD_NPM_DEPENDENCY\` | \`mavenArtifactId\` = npm package name (e.g. \`react-router-dom\`); \`version\` = semver range (e.g. \`^6.26.0\`); \`scope\` = \`"dev"\` → goes to \`devDependencies\`, anything else → \`dependencies\` |
-| \`ADD_NPM_SCRIPT\` | \`mavenArtifactId\` = script name (e.g. \`lint:fix\`); \`version\` = command (e.g. \`eslint . --fix\`). Later rows with the same name override earlier ones, so admins can replace baseline scripts without editing the template |
+| \`ADD_NPM_DEPENDENCY\` | \`mavenArtifactId\` = npm package name (e.g. \`react-router-dom\`); \`version\` = semver range (e.g. \`^6.26.0\`); \`scope\` = \`"dev"\` → \`devDependencies\`, anything else → \`dependencies\`; optional \`subOptionId\` gate |
+| \`ADD_NPM_SCRIPT\` | \`mavenArtifactId\` = script name (e.g. \`lint:fix\`); \`version\` = command (e.g. \`eslint . --fix\`). Later rows with the same name override earlier ones |
 | \`ADD_VITE_PLUGIN\` | \`mavenGroupId\` = import path (e.g. \`@vitejs/plugin-react\`); \`mavenArtifactId\` = import binding (e.g. \`react\`); \`version\` = call expression (e.g. \`react()\`) |
 
 ### How They're Applied
-- **\`PackageJsonBuilder\`** loads the baseline \`templates/frontend/fe-package-base.mustache\`, renders it through Mustache, parses to Jackson tree, then walks all \`ADD_NPM_DEPENDENCY\` rows (into \`dependencies\` / \`devDependencies\`) and \`ADD_NPM_SCRIPT\` rows (into \`scripts\`). Keys are alphabetised within each block for stable diffs.
-- **\`ViteConfigBuilder\`** loads \`templates/frontend/fe-vite-config.mustache\`, collects unique imports and the plugin-call list from \`ADD_VITE_PLUGIN\` rows, exposes them as \`{{vitePluginImports}}\` and \`{{vitePluginCalls}}\` in the Mustache context, and renders.
+- **\`PackageJsonBuilder\`** renders \`templates/frontend/fe-package-base.mustache\` (which already holds \`react\` and \`react-dom\` at the selected React version), then adds every \`ADD_NPM_DEPENDENCY\` and \`ADD_NPM_SCRIPT\` row. Keys are alphabetised for stable diffs.
+- **\`ViteConfigBuilder\`** renders \`templates/frontend/fe-vite-config.mustache\` with the imports and plugin calls of the \`ADD_VITE_PLUGIN\` rows (\`{{vitePluginImports}}\`, \`{{vitePluginCalls}}\`).
 
 ### Always-On Packages & Scripts
-The \`__common__\` dependency carries the baseline npm deps every project gets — \`react\`, \`react-dom\`, \`typescript\`, \`vite\`, \`@vitejs/plugin-react\`, plus the always-on quality stack (\`eslint\`, \`prettier\`, \`husky\`, \`lint-staged\`, and friends). It also seeds the universally-useful scripts \`lint:fix\`, \`format:check\`, and \`typecheck\` via \`ADD_NPM_SCRIPT\` rows. The \`@vitejs/plugin-react\` row is the single \`__common__\` \`ADD_VITE_PLUGIN\` row.
+The \`__common__\` rows give every project \`typescript\`, \`vite\`, \`@vitejs/plugin-react\`, \`@fontsource/inter\` and the quality stack (\`eslint\`, \`@eslint/js\`, \`typescript-eslint\`, \`eslint-plugin-react-hooks\`, \`eslint-plugin-react-refresh\`, \`globals\`, \`prettier\`, \`husky\`, \`lint-staged\`), plus the scripts \`lint:fix\`, \`format:check\` and \`typecheck\`. The \`@vitejs/plugin-react\` row is the single \`__common__\` \`ADD_VITE_PLUGIN\` row.
 
 ### Kind-Aware Admin Form
-The **Build Customizations** drawer now reads the Backend ⇄ Frontend pill. In Frontend mode the type dropdown only offers the three FE types and the field labels match the domain — *Package Name*, *Script Name*, *Command*, *Import Path*, *Import Binding*, *Plugin Call* — instead of the underlying \`mavenArtifactId\` / \`mavenGroupId\` columns. The DB row is unchanged; only the form translates.`,
+With the pill on Frontend, the **Build Custom.** form offers only the three frontend types, with labels that match — *Package Name*, *Script Name*, *Command*, *Import Path*, *Import Binding*, *Plugin Call* — instead of the underlying Maven columns.`,
         callouts: [
           {
             type: 'tip',
-            text: 'Adding a new npm package via the admin is one row: switch the pill to **Frontend**, open **Build Customizations → New Customization**, pick `ADD_NPM_DEPENDENCY`, fill **Package Name** and **Version**, tick **devDependency?** if it belongs in `devDependencies`, and save. Build customizations are read on every generation, so the next project has it.'
+            text: 'Adding a new npm package via the admin is one row: switch the pill to **Frontend**, open **Build Custom. → New Customization**, pick `ADD_NPM_DEPENDENCY`, fill **Package Name** and **Version**, tick **devDependency?** if it belongs in `devDependencies`, and save. Build customizations are read on every generation, so the next project has it.'
           }
         ]
       },
       {
         id: 'fe-structure',
         title: 'What Gets Generated',
-        description: 'Every project ships with these files — regardless of dependency selection.',
+        description: 'What every project ships with, and what the dependencies add.',
         content: `### Baseline Layout
 Every generated frontend project includes:
 
-- **Build & config** — \`package.json\`, \`vite.config.ts\`, \`tsconfig.json\`, \`tsconfig.node.json\` with \`@app/@pages/@widgets/@features/@entities/@shared\` path aliases mapped in both Vite and TypeScript.
-- **Entry** — \`index.html\` (\`{{appTitle}}\` substituted), \`src/main.tsx\` mounting \`<App/>\` from \`@app/App\`, and a working \`HomePage\` under \`src/pages/home/ui/\` so \`pnpm dev\` shows something the moment install finishes.
-- **Quality** — \`eslint.config.js\` (flat config, TS + React + react-hooks + react-refresh), \`.prettierrc.json\`, \`.husky/pre-commit\` running \`lint-staged\`. Always on.
-- **CI / deploy** — multi-stage \`Dockerfile\` (node → nginx), \`nginx.conf\` with SPA fallback, \`Jenkinsfile\`, \`.dockerignore\`.
-- **All 6 FSD layers** — \`src/app\`, \`src/pages\`, \`src/widgets\`, \`src/features\`, \`src/entities\`, \`src/shared\` — each with a barrel \`index.ts\` and a short \`README.md\` explaining the layer's place in the FSD import hierarchy.
+- **Build & config** — \`package.json\`, \`vite.config.ts\`, \`tsconfig.json\`, \`tsconfig.node.json\` with \`@app/@pages/@widgets/@features/@entities/@shared\` path aliases in both Vite and TypeScript; \`src/vite-env.d.ts\`; \`.env.development\` and \`.env.example\`.
+- **Entry** — \`index.html\` (\`{{appTitle}}\`, and \`dir="rtl"\` when asked), \`src/main.tsx\` mounting \`<App/>\`, and a working \`HomePage\` under \`src/pages/home/ui/\`.
+- **Quality** — \`eslint.config.js\` (flat config), \`.prettierrc.json\`, \`.husky/pre-commit\` running \`lint-staged\`. Always on.
+- **CI / deploy** — a multi-stage \`Dockerfile\` per Node version (node → nginx), \`nginx/nginx.conf\` with SPA fallback listening on \`\${PORT}\` (3000, what the k8s values expect), \`entrypoint.sh\` that substitutes it and the API upstream, \`k8s/Jenkinsfile\`, \`k8s/values.yaml\`, \`settings.xml\`, \`VERSION\`, \`.editorconfig\`, \`.dockerignore\`.
+- **All 6 FSD layers** — \`src/app\`, \`src/pages\`, \`src/widgets\`, \`src/features\`, \`src/entities\`, \`src/shared\` — each with a barrel \`index.ts\` and a short \`README.md\`.
 
 ### Dependency-Driven Files
-- **\`style-tailwind\`** → \`tailwind.config.js\`, \`postcss.config.js\`, \`src/index.css\` with the three \`@tailwind\` directives. \`src/main.tsx\` conditionally imports the CSS via \`{{#hasStyleTailwind}}…{{/hasStyleTailwind}}\`.
-- **\`test-vitest-rtl\`** → \`vitest.config.ts\`, \`src/test-setup.ts\`. \`package.json\` gains \`test\`, \`test:ui\`, \`coverage\` scripts gated on \`{{#hasTestVitestRtl}}\`.
-- Everything else is currently npm-deps-only — the user wires the library into \`App.tsx\` themselves. Adding generated wiring is a per-dep file-contribution row away.`,
+Most dependencies add files, not only packages: the routers (routes and a layout), Zustand and Redux Toolkit (a store), TanStack Query (a client and provider), shadcn (its components, per sub-option), MUI, Chakra and Mantine (a themed provider), Menora Digital (the design system's tokens, components and logo), MSAL (the auth configuration), Storybook, react-hook-form, the OpenAPI client, Playwright, Tailwind (\`tailwind.config.js\`, \`postcss.config.js\`, \`src/index.css\`), and Vitest + Testing Library (\`vitest.config.ts\`, \`src/test-setup.ts\`, a \`HomePage\` test and a CI workflow).`,
         callouts: [
           {
             type: 'info',
@@ -238,12 +223,12 @@ Every generated frontend project includes:
 curl http://localhost:8080/frontend/metadata | python -m json.tool | head -60
 \`\`\`
 
-Returns the form defaults, the React/Node/package-manager dropdowns, the pinned TS/Vite versions, and the FRONTEND-kind catalog (groups → entries → sub-options).
+Returns the form defaults, the React/Node/package-manager lists, the pinned TypeScript/Vite versions, the palettes and the FRONTEND catalog (groups → entries → sub-options).
 
 ### Generate
 \`\`\`bash
 curl -o demo.zip "http://localhost:8080/frontend/starter.zip?\\
-projectName=demo&appTitle=Demo&scope=menora&\\
+projectName=demo&appTitle=Demo&scope=menora&department=lts&\\
 reactVersion=18&nodeVersion=20&packageManager=pnpm&\\
 dependencies=router-react-router,state-zustand,style-tailwind,test-vitest-rtl&\\
 opts-state-zustand=sample-store&\\
@@ -252,7 +237,7 @@ opts-router-react-router=lazy-routes,sample-routes"
 unzip -l demo.zip
 \`\`\`
 
-Sub-options follow the same \`opts-{depId}=opt1,opt2\` convention as the backend path; the existing \`InitializrWebConfiguration\` servlet filter populates \`ProjectOptionsContext\` for every request that hits the app, so frontend endpoints get sub-options for free.`,
+Other parameters: \`description\`, \`basePath\`, \`colorPalette\`, \`rtl\`, \`apiBaseUrl\`, \`backendArtifactId\`. \`/frontend/starter.preview\` takes the same and answers the file tree. Sub-options follow the backend's \`opts-{depId}=opt1,opt2\` convention.`,
       },
     ]
   },
@@ -268,107 +253,151 @@ Sub-options follow the same \`opts-{depId}=opt1,opt2\` convention as the backend
       {
         id: 'fs-what',
         title: 'What Is the Fullstack Generator?',
-        description: 'Define entities, get a working Spring Boot backend + React frontend wired together in one ZIP.',
+        description: 'Describe the entities, get a working Spring Boot backend and React frontend wired together in one ZIP.',
         content: `### Purpose
-The **Fullstack** tab takes a list of user-defined entities (name + primitive fields) and emits a single ZIP containing a working Spring Boot backend (\`backend/\`) and a working React frontend (\`frontend/\`) — already wired together. Each entity becomes a \`@Entity\` + \`Repository\` + \`Dto\` + \`Service\` + \`@RestController\` set on the backend (with server-side pagination, sort, and search) and a Table + Form CRUD page on the frontend.
+The **Fullstack** tab takes an entity model — entities with fields and relations, plus pages, workflows, access rules and options — and generates one ZIP holding a working Spring Boot backend (\`backend/\`) and React frontend (\`frontend/\`), already wired together. Each entity gets an entity, repository, DTO, service and REST controller (paging, sorting, search, filters, a \`/stats\` endpoint for charts) and its list, form and detail screens.
 
-Most internal Menora systems being rewritten are "frontend with table(s) + CRUD operations". This generator turns each new one from a days-of-glue task into a few minutes of clicking.
+Most internal Menora systems being rewritten are "tables with CRUD and a few screens around them". This turns each new one from days of glue into minutes.
 
-### Why a Third Generator?
-The Backend generator emits Spring Boot only. The Frontend generator emits React only. Neither can loop over a user-supplied list of entities to produce N copies of \`<Entity>Controller.java\` + \`<Entity>Page.tsx\` keyed to the same domain model. Fullstack closes that loop:
+### How It Is Built
+- **Backend** runs through the standard Spring Initializr pipeline, so the dependency catalog applies as usual; \`FullstackProjectGenerationConfiguration\` adds the per-entity code from the backend **template set**.
+- **Frontend** is the Frontend generator's project laid down first, with the frontend template set rendered over it (the CRUD screens, the shell, the shared UI and its styling).
+- The root gets \`README.md\`, \`.gitignore\`, \`.gitattributes\`, \`compose.yaml\` and \`menora-model.json\`.
 
-- **Backend** goes through the standard Spring Initializr pipeline. A new \`EntityScaffoldContributor\` (registered in \`META-INF/spring.factories\`) picks up the entity list from a \`EntityDefinitionContext\` ThreadLocal and renders per-entity files.
-- **Frontend** is rendered inline outside the pipeline. The Initializr framework is Java-project-shaped and doesn't know about Vite, so \`FullstackRenderer\` writes Mustache templates directly under \`frontend/\`.
-- Both outputs land under a temp dir, get \`README.md\` + \`.gitignore\` written at the root, then it's zipped and streamed.
-
-### What's Supported (v1)
-- **Primitive field types only**: String, Long, Integer, Boolean, LocalDate, LocalDateTime, BigDecimal, Enum (rendered as nested class on the entity).
-- **No relationships** — keep it simple. \`referencesEntity\` is on the v3 roadmap.
-- **Open CRUD endpoints** — \`@CrossOrigin\` on each controller so the Vite dev server on :5173 can hit :8080 without a proxy. Add the \`security\` dependency in the picker if you need auth.`,
+### What the Model Can Say
+- **Field types**: text, long text, Markdown, whole numbers, decimals, money with a currency, yes/no, date, time, date-time, instant, UUID, enum (with labels), file and image attachments.
+- **Relations**: many-to-one (a foreign key), many-to-many (a join table), one-to-many (the rows that point here — optionally edited inside the parent's form, a **composition**).
+- **Access**: who may read and who may write each entity, enforced by the backend.
+- **Workflows**: a status moved only by named transitions, with roles, an assignee, a due date, an inbox, a log of moves and e-mails.
+- **Rules**: checks over several fields, fields shown only when a condition holds, computed fields, unique keys, help text.
+- **Pages**: dashboards, lists, records, reports, wizards, boards, calendars and more — see **Frontend Pages**.`,
         callouts: [
           {
             type: 'info',
-            text: 'The Fullstack tab is independent of the Backend and Frontend tabs. It hits POST `/starter-fullstack.zip` with a JSON body and downloads the response as `{artifactId}.zip`.'
+            text: 'The Fullstack tab is independent of the Backend and Frontend tabs. It posts a JSON body to `/starter-fullstack.zip` (Explore to `/starter-fullstack.preview`), and the server checks the whole request — a 400 says where in the model the problem is, and the editor opens that place.'
           }
         ]
       },
       {
         id: 'fs-using',
         title: 'Using the Fullstack Tab',
-        description: 'Step-by-step: from blank wizard to a working downloaded ZIP.',
-        content: `### Step 1 — Project Metadata
-\`groupId\`, \`artifactId\`, \`packageName\`, Java version. Standard Spring Initializr fields — pre-filled with sane defaults.
+        description: 'From an example or a schema to a working, downloaded project.',
+        content: `### Start From Something
+- **Examples** — Blog, Orders, Tickets, Inventory, Course enrolments, Sales reporting, Project planning and Approvals, each showing a different part of the model (admins manage them under **Config → Fullstack Examples**).
+- **Presets and recents** (this browser), **Team** models (shared on the server), **Import JSON** (an export, or a generated project's \`menora-model.json\`).
+- **Import from DDL** — pasted SQL, a \`.sql\` file, a live database or a SELECT view (see **Import From DDL**).
 
-### Step 2 — Template Sets
-Pick the backend and frontend template set. Two ship out of the box: **spring-jpa-crud** and **react-tailwind-crud**. Admins can clone or add more under Config → Entity CRUD.
+### The Editor's Sections
+**Project metadata**, **Backend** (the backend template set), **Frontend** (a summary; its look is edited in the layout designer's Appearance view), **Options** (the scaffold options), **Dependencies** (pre-checked from the backend set's defaults), **Entities** and **Pages**. A section with problems shows a red dot in the section bar; Explore and Generate say how many problems there are and jump to the first.
 
-### Step 3 — Dependencies
-Pre-checked from the chosen backend set's admin-configured defaults (data-jpa, web, h2, validation, actuator for the seeded \`spring-jpa-crud\`). You can check or uncheck anything — the generator respects your final selection exactly. Nothing is forced.
+### An Entity Card
+- The fields table: name, label, type, and flags for key, generated, required, unique. Each row's **More** panel holds the constraints (length, min/max, pattern, e-mail), the default value, **help text**, **show when** and **computed as**.
+- **Relations** — kind, target, label; a one-to-many names the link it reads and may be edited in the form.
+- **Settings** — labels, table and schema, a SELECT view, **who may read / write**, **unique together**, **rules**.
+- **Workflow** — the status field, transitions (with roles, required fields and e-mails), assignee and due date.
+- **Overrides** — the scaffold options for this entity alone; **Preview UI** — a mock of its list and form.
+- Suggestions (amber) offer one-click fixes; everything is undoable (Ctrl+Z), and the model can be shared as a link.
 
-### Step 4 — Entities
-The entities editor lists each entity as a card with a name field and a per-field table. Each field has:
-- **Name** — Java identifier, becomes a column + a TS field.
-- **Type** — String, Long, Integer, Boolean, LocalDate, LocalDateTime, BigDecimal, Enum.
-- **PK** / **Gen** / **Req** / **Uniq** — flag toggles for primary-key, generated, required, unique.
-- **Length** — only for String (becomes \`@Column(length=…)\` + a TS UI hint).
-- **Enum values** — only for Enum (becomes a nested enum class on the entity).
+### Generate, Then Run
+Generate posts the model to \`/starter-fullstack.zip\`; a card then shows the next steps. Unzip, then either:
+- \`docker compose up --build\` and open http://localhost:3000; or
+- \`cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=local\` (the \`local\` profile gives the developer \`dev-user\` and its roles without LDAP), and \`cd frontend && npm install && npm run dev\` → http://localhost:5173.
 
-Two convenience buttons sit above the entity list:
-- **Import from DDL** — paste CREATE TABLE statements, pick a dialect, get the editor pre-filled.
-- **Add entity** — append a fresh card.
-
-### Step 5 — Generate
-The Generate button POSTs to \`/starter-fullstack.zip\` and streams the result. Unzip → \`cd backend && ./mvnw spring-boot:run\` → open the Vite dev server on :5173.`,
+### Later Changes
+Keep the project in git. After changing the model, **Download update** gives a patch to apply to the project rather than a new ZIP to copy over — see **Updating a Project**.`,
         callouts: [
           {
             type: 'tip',
-            text: 'The wizard reseeds the dep picker every time you change the backend template set — switching sets gives you that set\'s defaults, freshly checked. To re-apply defaults after manual edits, click "Reset to defaults" in the dep picker.'
+            text: 'Switching the backend template set keeps the dependencies the developer added. Reset (in the sticky action bar) restores the whole editor to the stock model, and can be undone.'
           }
         ]
       },
       {
+        id: 'fs-model',
+        title: 'Access, Workflows and Rules',
+        description: 'What the model enforces in the generated backend, and what it does not.',
+        content: `### Access
+With an ldap-auth dependency on the build — \`ldap-auth-rest\` is in both backend sets' defaults — every endpoint is checked against the caller's roles. Each entity says who may **read** and who may **write** it: anyone signed in, users, or admins (default: users read, admins write; an admin is a user too). Groups come from the LDAP REST service; on a developer's machine the \`local\` profile gives \`dev-user\` its roles. The generated frontend follows: it offers New, Edit, Delete, Import and bulk changes only to a caller who may write, and shows only the pages the caller may open. Page \`roles\` restrict a page as well.
+
+Access is per role, not per row: "only the rows I created" is code the team adds.
+
+### Workflows
+An entity may carry a workflow: its status changes only through named **transitions** (\`POST /api/x/{id}/transitions/{name}\`), each limited to roles and possibly asking for fields; an **assignee** to claim, release and (admins) reassign; a **due date**; an **inbox** page with "mine / unassigned / open" queues. **Keep a log of moves** adds a History section to the record. A transition's **e-mails** notify the assignee, the creator (needs the audit option), admins or users — sent only once the generated app is configured (\`app.events.mail.enabled: true\` and \`spring.mail.host\`).
+
+### Rules, Show-When, Computed Fields
+- **Rules** — checks over several fields in a small expression language (\`endsOn >= startsOn\`, \`when status == 'DONE': not isEmpty(estimate)\`), checked by the form and by the backend before every save. An empty value makes a rule hold.
+- **Show when** — a field shown only while a condition holds, cleared by the backend while it does not.
+- **Computed as** — a stored column the backend sets from a formula on every save, read-only in the form.
+- **Unique together** — a constraint over several fields and links, answered with a 409 that names them.
+
+The editor checks every expression as it is typed, with the same rules as the server.`
+      },
+      {
+        id: 'fs-options',
+        title: 'Scaffold Options',
+        description: 'The project-wide options, each of which an entity can override.',
+        content: `### The Options
+| Option | What the generated app gets |
+|---|---|
+| \`tests\` (on for a new model) | An API test per entity over the real controller, service and an in-memory H2, plus Vitest tests of each form and list page |
+| \`audit\` | Created/updated when **and by whom**; a "Changed by me" filter |
+| \`history\` | Every change to a row kept, with before/after values; an admin can restore an earlier version |
+| \`events\` | Each change written to an outbox and sent to a Kafka topic per entity (with \`kafka\`), to signed webhooks, and to open browsers, which refresh at once |
+| \`softDelete\` | Deleted rows kept and restorable (Undo on delete) |
+| \`optimisticLocking\` | A version column; a stale save is a 409 the form offers to reload or overwrite |
+| \`csvExport\` / \`xlsxExport\` | Export of the filtered list as CSV / an Excel workbook |
+| \`csvImport\` | Upload a CSV, checked row by row, all or nothing |
+| \`bulkDelete\` / \`bulkUpdate\` | Select rows and delete them or set a field on all |
+| \`inlineEdit\` | Table cells edited in place |
+| \`savedViews\` | Named views of a list (search, filters, sort, columns) kept on the server per user |
+| \`inverseCollections\` | A parent shows a count of its children |
+| \`openapi\` | springdoc annotations and a Swagger UI |
+| \`seedData\` | Eight demo rows per entity on first start |
+
+\`secured\` is retired (access is per entity now); a model that names it still validates. An entity's **Overrides** panel turns an option off (or on) for it alone; the editor says when an option cannot apply to an entity (a view, a composite key, a read-only entity).`
+      },
+      {
         id: 'fs-pages',
         title: 'Frontend Pages',
-        description: 'Shape the generated frontend as pages — dashboards, lists, tabs, master–detail, records, reports, wizards, calendars, boards, content, import and search — instead of the fixed classic shell.',
+        description: 'Shape the generated frontend as pages — dashboards, lists, tabs, master–detail, records, reports, wizards, forms, inboxes, calendars, boards, trees, content, import and search — instead of the fixed classic shell.',
         content: `### Classic shell or a layout
 Without a layout the generated app has a dashboard plus one list page per entity. The **Frontend pages** section (below Entities) replaces that with pages of your own. **Start from my entities** seeds a dashboard and a list per entity, the Examples ship layouts to learn from, and **Use classic layout** drops the layout again (undoable).
 
 ### The layout designer
 The section is a card: the layout as a small sitemap, its problems, and **Open designer**. The designer fills the screen:
-- **Library** (left) — page types, suggestions for your entities, your saved page templates, widgets and whole-layout templates. Drag a card where it should go, or click it to add it at the end.
-- **Canvas** (middle) — the page strip (the navigation's sections, then the pages off it) over a live preview of the selected page. Click a widget to edit it; drag it to move it, drag its edge to resize it. **Mobile** shows the page at phone width.
-- **Inspector** (right) — the selected widget's settings, or the page's **Basics** (type, title, route, group, icon), **Layout** (what the type is made of) and **Access** (roles).
-- **Appearance** sets the app's look beside its preview: the frontend template set, colour palette, language, right-to-left, and (without pages) the classic dashboard's heading. Setup's Frontend row opens it.
-- **Sitemap** renames and reorders the navigation's sections, moves pages between them and sets the menu style. The **issues** button lists problems and tips with their fixes.
-- Keys: \`/\` searches the library, Delete removes the selected widget, Alt+←/→ moves it, Alt+Shift+←/→ makes it narrower or wider, Esc deselects and then closes.
+- **Library** (left) — page types, suggestions for your entities, your saved page templates, **team templates**, widgets (with suggestions for the entity you are working on) and whole-layout templates. Drag a card where it should go, or click it to add it at the end. On a tabs, report, record or wizard page the library offers that page's **parts** instead.
+- **Canvas** (middle) — the page strip over a live preview of the selected page, with sample data. Click a widget to edit it, drag it to move or resize it, double-click a title to rename it. Zoom, Mobile and Tablet widths, and a Data · Empty · Loading · Error switch.
+- **Play mode** (\`P\`) walks the layout as the generated app would: rows open their record page, New opens the form, a chart drills into its list.
+- **Inspector** (right) — the selected widget's settings, or the page's **Basics**, **Layout** and **Access**, and a **Code** tab with the files the page generates.
+- **Appearance** sets the app's look: the frontend template set, colour palette, language, right-to-left, and the classic dashboard's heading.
+- **Sitemap** renames and reorders the navigation's sections and sets the menu style and the header tools; **Page flow** draws how pages lead to each other and marks the ones nothing leads to.
+- Widgets copy, cut and paste (Ctrl+C / X / V), move to another dashboard, and can be saved or shared with the team. **Export spec** writes the whole layout as one offline HTML file.
 
 ### The page types
-- **Dashboard** — widgets on a four-column grid: number tiles, breakdown, donut and stacked charts, a trend line, recent rows, top lists, progress to a target and text notes. A period picker limits every widget that has a date.
-- **List** — one entity's table (or cards, board, calendar). It can open filtered, with chosen columns, a sort, a view and a page size.
-- **Tabs** — two to six other pages side by side. The embedded pages are usually hidden from the navigation so they appear only as tabs; the Tabs card asks which pages to embed.
-- **Master–detail** — a parent list on the left, the selected parent's child rows on the right, linked through the child's many-to-one relation.
-- **Record** — one row opened from a list, with its related lists as tabs and number tiles above them. Never in the navigation: it needs a row.
-- **Report** — an entity's filter bar, one to four charts and grouped totals, with a CSV export when that option is on.
+- **Dashboard** — widgets on a four-column grid: number tiles (optionally with a trend line or a comparison with the previous period), breakdown, donut and stacked charts, trends, recent rows, top lists, progress to a target, gauges, funnels, time in state, pivots, an activity feed, an embedded list, links to other pages and text notes. A period picker and up to four **filters** apply to every widget they fit; a widget can **drill to** a list or report.
+- **List** — one entity's table, cards, board, calendar or **gallery** (with an image field). It can open filtered, with chosen columns, sort, view and page size, open rows in a drawer, a side pane or the record page, and **hide actions** (New, Edit, Delete, Export, Import, bulk).
+- **Tabs** — two to six other pages side by side.
+- **Master–detail** — a parent list beside the selected parent's child rows, optionally with the parent's card.
+- **Record** — one row, with related lists as tabs, number tiles above them and, when asked, a Print button.
+- **Report** — an entity's filter bar, one to four charts (bar, donut, stacked, line, area or a totals table) and grouped totals.
 - **Wizard** — a create (and edit) form split into steps, with a review before saving.
-- **Calendar** — one entity's rows by a date field, as a month, a week, an agenda or a timeline of bars (the timeline needs an end date). Only the period on screen is loaded; clicking a day adds a row on it.
-- **Board** — cards in lanes of an enum or yes/no field. Each lane loads its own cards and shows its real count; a lane limit refuses cards past it. Cards move by dragging or by their *Move to* menu.
-- **Content** — a page of text: headings, lists, notes, **bold**, *emphasis* and links to other pages (\`[text](#/page-id)\`) or the web. Written as plain text, it can never inject markup.
-- **Import** — upload a CSV file, match its columns to the entity's fields and check every row before anything is saved; then all rows are created, or none. It also switches on CSV import for that entity, whose list gets an Import button.
-- **Search** — one search box over several entities, results grouped by entity; with **Header search box** on, the app's header opens it.
+- **Form** — an entity's whole form on a page of its own; it takes over New and Edit.
+- **Inbox** — a workflow's tasks in queues (mine, unassigned, all open), with their moves.
+- **Calendar** — rows by a date, as a month, week, agenda or timeline.
+- **Board** — cards in lanes of an enum or yes/no field, moved by drag or menu; through the workflow when the lanes are its states.
+- **Tree** — an entity that points at itself, as an outline.
+- **Content** — a page of text with links to other pages.
+- **Import** — CSV upload into one entity, checked before anything is saved.
+- **Search** — one search box over several entities.
 
 ### How the navigation is built
-- The first page in the navigation is the **start page** — the app opens there, for everyone. The home button in the inspector makes another page the start page.
-- Pages sharing a **group** are listed together as one section; the designer's **Sitemap** renames and reorders groups. An **icon** is one of the shipped set.
-- A **hidden** page is out of the navigation: a list hidden this way shows up only as a tab; a hidden wizard is still a route.
-- **Roles** (ADMIN, USER) restrict a page to users holding one. They need the \`ldap-auth-rest\` (or \`ldap-auth\`) dependency and cannot sit on the start page or on a tab — restrict the tabs page instead.
+- The first page in the navigation is the **start page**.
+- Pages sharing a **group** are listed together as one section. The menu is a sidebar or a top bar, and the header can carry a **user menu**, a **notification bell** (from the workflows' queues) and a **command palette** (Ctrl+K).
+- A **hidden** page is out of the navigation (a list hidden this way shows up only as a tab; a hidden wizard or form is still a route).
+- **Roles** (ADMIN, USER) restrict a page; they need an ldap-auth dependency.
 
 ### Problems and warnings
-Red problems block Generate: a stale entity or field, a missing tab target, an id used twice. Amber **warnings** do not block — they name dead ends the app would silently swallow: a hidden page nothing embeds, a chart whose entity has no list page to drill into, recent rows with no record page to open, defaults that were capped. Most carry a **Fix** button, and every change is undoable.
-
-### Working faster
-- Change a page's **type** in place — what the new type cannot use is dropped and named.
-- The preview draws every page with sample data; click a part to jump to its control.
-- Fields and values are shown by their labels, with the raw name after them when the two differ.`,
+Red problems block Generate: a stale entity or field, a missing tab target, an id used twice. Amber **warnings** do not block — they name dead ends: a hidden page nothing embeds, a chart with no list to drill into, an entity no page lets anyone create. Most carry a **Fix**; **Fix all** applies every fix as one undo step.`,
         callouts: [
           {
             type: 'tip',
@@ -379,60 +408,48 @@ Red problems block Generate: a stale entity or field, a missing tab target, an i
       {
         id: 'fs-import-ddl',
         title: 'Import From DDL',
-        description: 'Pre-fill the entity editor by pasting CREATE TABLE statements — reuses the SQL wizard\'s parser.',
+        description: 'Pre-fill the entity editor from SQL, a live database or a SELECT view.',
         content: `### When to Use
-You already have a schema (existing DB, migration scripts, an Excel sheet you can convert) and don't want to click each field. Open the drawer, paste DDL, click Save — the editor fills in with entities, fields, types, primary keys, lengths, and required flags.
+You already have a schema and don't want to type each field. The drawer reads it and lists the entities it found; tick the ones to import (a relation to an unticked entity is shown struck through), then **Import N of M**. If the editor already has entities, choose Replace or Append.
 
-### How It Works
-The drawer POSTs to \`/metadata/fullstack/import-ddl\` with the SQL + dialect. The backend reuses the existing SQL wizard's \`SqlEntityGenerator.parseTablesForImport\` and runs it through a small adapter (\`SqlToEntityDefinitionConverter\`) that maps each \`TableModel\` → \`EntityDefinition\`.
+### Three Sources
+- **Paste SQL** (or drop a \`.sql\` file) — \`CREATE TABLE\` statements, with a dialect. \`POST /metadata/fullstack/import-ddl\`.
+- **From a database** — the live-schema panel (see the SQL wizard's **Reading From a Live Database**): a source or a typed connection, a schema, the tables and views. \`POST /metadata/fullstack/import-live\`. Views come back read-only, with their columns typed.
+- **A SELECT** — one query becomes a read-only view entity (\`@Subselect\`). \`POST /metadata/fullstack/import-select\`.
 
-Dialect-specific types just work: \`BIGSERIAL\` → Long + generated, \`NUMERIC(p,s)\` → BigDecimal, \`NVARCHAR\` → String, etc.
-
-### Replace vs Append
-If the editor already has entities, the drawer shows a **Mode** toggle (defaults to Append). Replace clears everything and uses the parsed list; Append adds to what's there.
+### What Is Kept
+- Types: \`BIGSERIAL\` → LONG + generated, \`NUMERIC(p,s)\` → BIG_DECIMAL, \`UUID\` → UUID, \`TIME\` → LOCAL_TIME, a zoned timestamp → INSTANT, \`TEXT\` → TEXT.
+- Primary keys (composite too), lengths, NOT NULL, column-level UNIQUE.
+- A foreign key to a table in the same import → a **many-to-one relation** (the column leaves the fields).
+- \`CHECK (col IN ('A','B'))\` → an **enum**.
+- The column and table names exactly as the database spells them, so the entity maps onto the existing schema.
 
 ### Lossy By Design
-The mapping is a starting point — review the result before generating. Known degradations:
-
 | Source | Becomes | Why |
 |---|---|---|
-| \`UUID\` (PG), \`UNIQUEIDENTIFIER\` (MSSQL) | \`String\` | No UUID FieldType in v1 |
-| \`Short\` | \`Integer\` | No SHORT FieldType |
-| \`Float\` / \`Double\` | \`BigDecimal\` | Closest numeric in v1 |
-| \`byte[]\` (BYTEA / BLOB) | \`String\` | Binary isn't in v1 |
-| \`UNIQUE\` constraint | (not set) | Column-level UNIQUE isn't in ColumnModel — toggle manually |
-| \`CHECK (col IN (...))\` | (not parsed) | Switch the type to Enum manually after import |
+| \`SMALLINT\` | INTEGER | No short type |
+| \`FLOAT\` / \`DOUBLE\` | BIG_DECIMAL | Closest numeric type |
+| \`BYTEA\` / \`BLOB\` | STRING | Use a FILE or IMAGE field for uploads |
+| a composite foreign key, or one to a table not imported | a plain field | A relation needs a single-key target in the model |
 
 ### Parse Errors
-Invalid DDL returns HTTP 400 with \`{error, detail, statementIndex, snippet}\`. The drawer renders these inline so you can fix the statement without losing what you've typed.`,
+Invalid DDL returns a 400 naming the statement; the drawer shows it inline and keeps what you typed.`,
         codeExamples: [
           {
-            title: 'Example — small e-commerce schema (H2 dialect)',
+            title: 'Example — PostgreSQL, with a relation and an enum',
             language: 'sql',
-            code: `CREATE TABLE products (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    sku VARCHAR(64) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    price NUMERIC(10,2) NOT NULL,
-    in_stock BOOLEAN,
-    created_at TIMESTAMP
+            code: `CREATE TABLE customers (
+    id BIGSERIAL PRIMARY KEY,
+    email VARCHAR(200) NOT NULL UNIQUE,
+    full_name VARCHAR(120)
 );
 
-CREATE TABLE categories (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(120) NOT NULL,
-    description VARCHAR(500)
-);`
-          },
-          {
-            title: 'Example — PostgreSQL flavor (BIGSERIAL, UUID, TIMESTAMPTZ)',
-            language: 'sql',
-            code: `CREATE TABLE accounts (
+CREATE TABLE orders (
     id BIGSERIAL PRIMARY KEY,
-    external_ref UUID NOT NULL,
-    email VARCHAR(200) NOT NULL,
-    full_name VARCHAR(120),
-    last_login TIMESTAMPTZ
+    customer_id BIGINT NOT NULL REFERENCES customers(id),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('OPEN', 'PAID', 'CANCELLED')),
+    placed_at TIMESTAMPTZ,
+    total NUMERIC(10,2)
 );`
           }
         ]
@@ -440,92 +457,122 @@ CREATE TABLE categories (
       {
         id: 'fs-deps-and-defaults',
         title: 'Dependencies & Per-Set Defaults',
-        description: 'How the dep picker is seeded, and how admins configure what gets pre-checked.',
+        description: 'How the dependency list is seeded, and what the generator adds by itself.',
         content: `### Wire Semantics
-The controller's behavior depends on whether \`dependencies\` is present in the request body:
-
 | Request | Behavior |
 |---|---|
-| **\`dependencies\` omitted** | Falls back to the backend set's admin-configured default deps |
-| **\`dependencies: []\`** | Respected exactly — generated project has no extras |
-| **\`dependencies: [...]\`** | Respected exactly — no merging with defaults, no auto-additions |
+| **\`dependencies\` omitted** | The backend set's default dependencies |
+| **\`dependencies: []\`** | No extras |
+| **\`dependencies: [...]\`** | That list — the set's defaults are not merged in |
 
-The UI always sends the user's final picker selection, so unchecking a default actually loses it. Previous "always-add data-jpa/web/h2" forcing has been removed — admins decide what each set ships pre-checked, and users have the final say.
+Whatever the list, the compatibility rules then apply (a REQUIRES adds its target, a CONFLICTS is a 400), and some options bring what they need: \`openapi\` adds springdoc, a workflow e-mail adds the mail starter, \`tests\` runs on an in-memory H2 in test scope.
 
 ### Where Defaults Come From
-Each \`EntityTemplateSetEntity\` (kind=\`BACKEND_JAVA\`) carries a \`defaultDeps\` list, stored in the \`entity_template_set_default_dep\` table. The seeded \`spring-jpa-crud\` set has \`["data-jpa","web","h2","validation","actuator"]\` — the same out-of-box behavior as before, just opt-out-able now.
+Each backend set carries default dependencies (\`entity_template_set_default_dep\`). Both shipped sets have \`data-jpa, web, h2, validation, actuator, ldap-auth-rest\` — \`ldap-auth-rest\` because access rules, page roles and workflow roles need it. To change them: **Config → Entity CRUD → edit the set → Default Dependencies**.
 
-To change what a set ships pre-checked: **Config → Entity CRUD → edit the set → Default Dependencies checkbox list → save**. The change takes effect immediately for new wizard sessions (no \`/admin/refresh\` needed; these don't affect \`/metadata/client\`).
-
-### Building a Specialized Set
-Common pattern: clone \`spring-jpa-crud\` as \`spring-jpa-crud-secured\`, swap \`h2\` for \`postgresql\`, add \`security\` to the defaults. Users picking this set in the wizard see the right deps pre-checked without thinking about it.`,
+### A Real Database
+Replace \`h2\` with the database (\`postgresql\`, \`mssql\`, \`oracle\`, \`db2\`) rather than adding it beside — with both, H2 stays the application's datasource. Add \`flyway\` too: the model is then the first migration (\`V1__init.sql\`, written for that database) and Hibernate only validates the schema. Without Flyway, an application on a real database starts with no tables.`,
         callouts: [
           {
             type: 'warning',
-            text: 'Nothing in the dep list is mandatory for the generator — but the seeded templates reference `@Entity` (data-jpa), `@RestController` (web), and assume an embedded DB if no datasource is configured. If a user unchecks those, the generated project compiles only if they bring their own equivalents.'
+            text: 'Without an ldap-auth dependency nothing is checked: every endpoint is open, and access rules and page roles have no effect (roles are a 400 then). Keep ldap-auth-rest unless the app is deliberately open.'
           }
         ]
       },
       {
+        id: 'fs-generated',
+        title: 'The Generated Project',
+        description: 'What a fullstack ZIP holds, and how a team builds, runs, tests and configures it.',
+        content: `### Layout
+\`backend/\` (a Maven project, with everything a Backend-tab project has: Dockerfile, k8s files, Vault profile…), \`frontend/\` (Vite + React), and at the root \`README.md\`, \`compose.yaml\`, \`menora-model.json\`, \`.gitignore\`, \`.gitattributes\`.
+
+### Run
+- **Everything in Docker**: \`docker compose up --build\`, then http://localhost:3000 (the API is on :8080). The database, if any, comes up with it.
+- **For development**: the database alone with \`docker compose up -d <db>\`, the backend with the \`local\` profile (plus \`compose\` to point at that database), the frontend with \`npm run dev\` on :5173, which proxies \`/api\` to the backend.
+
+### Test
+- \`mvn package\` runs the generated API tests on an in-memory H2 (the \`test\` profile), whatever the application's database — no database needs to be running.
+- \`mvn test -Pdb-tests\` runs the same tests on the real database, on the schema Flyway makes (Docker needed).
+- \`npm test\` runs the frontend's Vitest tests.
+
+### Migrations
+With \`flyway\`, \`backend/src/main/resources/db/migration/V1__init.sql\` is the model, for the chosen database. An update of the model adds \`V<timestamp>__model_update.sql\`: what the model adds runs as it is; what it removes or tightens is written commented out, for a person to review.
+
+### Settings the Team Owns
+- **Uploaded files** (with FILE/IMAGE fields): \`app.attachments.storage\` = \`database\` (default), \`filesystem\` or \`s3\`; uploads no record keeps are deleted after \`app.attachments.keep-unattached\` (24h). A file is read with its record's read level.
+- **Events** (\`events\` option): \`app.events.*\` — the Kafka topic prefix, webhooks with their HMAC secret and the event types each wants.
+- **E-mails** (workflow \`notify\`): off until \`app.events.mail.enabled: true\` and \`spring.mail.host\` are set; addresses from \`app.events.mail.users\`, the LDAP REST service or a mail domain.
+- **CORS** is off: the frontend calls \`/api\` on its own origin (Vite proxy in development, nginx in its container).
+
+The project's README covers each of these.`
+      },
+      {
         id: 'fs-template-sets',
         title: 'Template Sets',
-        description: 'How the per-entity files are organized, and what variables Mustache exposes to them.',
+        description: 'How the generated files are organised, and where their variables are documented.',
         content: `### Anatomy
-A template set is a DB-backed bundle of Mustache files keyed by \`set_key\` and tagged with a \`kind\`:
+A template set is a DB-backed bundle of Mustache files keyed by \`set_key\` and tagged with a \`kind\`. Four ship:
 
-| Kind | Rendered by | Purpose |
+| Set | Kind | Notes |
 |---|---|---|
-| \`BACKEND_JAVA\` | \`EntityScaffoldContributor\` inside the Initializr pipeline | Per-entity \`.java\` files; gets pom assembly + dep resolution for free |
-| \`FRONTEND_REACT\` | \`FullstackRenderer\` inline | \`package.json\`, \`vite.config.ts\`, per-entity \`.tsx\` pages, shared \`Table.tsx\` / \`FormDrawer.tsx\` |
+| \`spring-jpa-crud\` | BACKEND_JAVA | The default backend |
+| \`spring-jpa-crud-lombok\` | BACKEND_JAVA | Lombok entities; borrows every other file from \`spring-jpa-crud\` |
+| \`react-tailwind-crud\` | FRONTEND_REACT | The default frontend (Tailwind 4) |
+| \`react-menora-digital-crud\` | FRONTEND_REACT | The same app in the Menora Digital design system; borrows most files from \`react-tailwind-crud\` |
 
-Each file row has:
-- **pathTemplate** — Mustache-rendered, so \`src/main/java/{{packagePath}}/{{EntityName}}Controller.java\` becomes one file per entity.
-- **content** — the file body, either Mustache (\`substitutionType=MUSTACHE\`) or verbatim (\`NONE\`).
-- **perEntity** — \`true\` renders once per user entity; \`false\` renders once total (e.g. \`App.tsx\`, \`Table.tsx\`).
+Backend files are rendered inside the Initializr pipeline by \`FullstackProjectGenerationConfiguration\`; frontend files by \`FullstackRenderer\` over the Frontend generator's project.
 
-### Mustache Context
-Templates see a unified context with project-wide keys plus per-entity naming and field metadata:
+### File Rows
+- **pathTemplate** — Mustache-rendered with the full context, so \`src/main/java/{{entityPackagePath}}/{{EntityName}}.java\` becomes one file per entity.
+- **content** — Mustache (\`MUSTACHE\`) or verbatim (\`NONE\`).
+- **perEntity** — once per entity; **perPage** — once per page of the layout; neither — once per project.
+- **gatedBy** — a context flag that must be true for the file to be written (\`apiTestApplicable\`, \`hasCompositePk\`, \`hasWidgets\`…).
+- **sourceSet** (manifest only) — borrow the file's content from another set.
+- **seedHash** — the template sync's record of the shipped content (see **Admin: Managing Template Sets**).
 
-| Key | Meaning |
-|---|---|
-| \`artifactId\`, \`groupId\`, \`packageName\`, \`packagePath\`, \`javaVersion\` | Project-wide |
-| \`entities\` | List of all entities — for \`{{#entities}}…{{/entities}}\` in non-perEntity files like \`AppRoutes.tsx\` |
-| \`EntityName\`, \`entityName\`, \`entity_name\`, \`entityNameKebab\`, \`EntityNamePlural\` | Per-entity naming variants |
-| \`tableName\` | \`entity.tableName\` or pluralized snake_case of \`EntityName\` |
-| \`fields\` | List with \`name\`, \`Name\`, \`column\`, \`javaType\`, \`tsType\`, \`isString\`, \`isPrimaryKey\`, \`isRequired\`, \`hasLength\`, \`length\`, \`enumValues\` |
-| \`stringFields\`, \`hasStringFields\` | Filtered view used for the search Specification chain |
-| \`pkField\`, \`nonPkFields\` | Convenience splits |
-| \`imports\` | De-duplicated FQN list for the import block |
+### Variables
+The context is large — project, entity, field, relation, page and widget variables. The **Mustache Templating → Fullstack Entity Context** topic has the essentials; \`backend/docs/MUSTACHE_GUIDE.md\` lists them all.
 
-### Pagination / Sort / Search
-The seeded \`spring-jpa-crud\` Service template uses \`{{#hasStringFields}}\` to render a JPA \`Specification\` LIKE chain across STRING columns whenever the \`?q=\` parameter is non-blank. Entities without any STRING field fall through to \`repository.findAll(pageable)\`. The Controller binds \`?page=\`/\`?size=\`/\`?sort=\` via Spring's \`Pageable\` and defaults to \`Sort.by("{pkField.name}").ascending()\`. The matching React Table component picks up sort/search/pagination props from the seeded \`react-tailwind-crud\` files.`,
+### Generated API Conventions
+Lists take \`?page\`, \`?size\`, \`?sort\` (whitelisted per controller; default all key columns), \`?q\` (a case-insensitive search over text fields) and each filter; errors are RFC-7807 problem details (404, 409, 400 with the field errors).`,
         callouts: [
           {
             type: 'info',
-            text: 'Mustache and JSX both use `{{` as an opener. The seeded EntityPage template avoids `pagination={{ … }}` (which Mustache would try to parse as a tag) by lifting the pagination object to `const pagination = { … }` and passing `pagination={pagination}`.'
+            text: 'Mustache and JSX both use `{{` as an opener. The shipped templates avoid `pagination={{ … }}` (which Mustache would try to parse as a tag) by lifting the object to a `const` and passing `pagination={pagination}`.'
           }
         ]
       },
       {
         id: 'fs-admin',
         title: 'Admin: Managing Template Sets',
-        description: 'The Entity CRUD tab in Config — CRUD on sets, per-set files, and default deps.',
+        description: 'The Entity CRUD tab — sets, their files and default dependencies — and how sets follow a release.',
         content: `### Where to Find It
 **Config → Entity CRUD**. Two panes:
-1. **Sets** (top) — master list, columns: \`setKey\`, \`name\`, \`kind\` (BACKEND_JAVA / FRONTEND_REACT), enabled, sort order.
-2. **Files in Selected Set** (bottom) — appears after you click a row in Sets. Columns: \`pathTemplate\`, \`perEntity\`, file type, substitution type, sort order.
+1. **Sets** (top) — \`setKey\`, \`name\`, \`kind\`, enabled, sort order.
+2. **Files in Selected Set** (bottom) — after you click a set. \`pathTemplate\`, \`perEntity\`, file type, substitution type, sort order.
 
 ### Editing a Set
-The drawer exposes the standard metadata fields plus a **Default Dependencies** multi-select (only shown for BACKEND_JAVA). Search the list, tick boxes, save. Behind the scenes the UI POSTs/PUTs the set, then PUTs the dep IDs to \`/admin/entity-template-sets/{id}/default-deps\` (full replace).
+The drawer has the set's fields plus **Default Dependencies** (backend sets only). Saving PUTs the dependency ids to \`/admin/entity-template-sets/{id}/default-deps\` (full replace).
 
 ### Editing a File
-The drawer uses the same CodeMirror-based editor as File Contributions. The \`pathTemplate\` field is Mustache-rendered, so \`{{packagePath}}\` and \`{{EntityName}}\` work as separators. Toggle \`perEntity\` to choose whether the file is emitted once per user entity or once per project.
+The drawer uses the same code editor as File Contributions. The \`pathTemplate\` is Mustache-rendered with the entity context; \`perEntity\` chooses once per entity or once per project.
+
+### Template Sync: Sets Follow the Release
+On every start, each shipped file row is compared with what the database holds:
+- a row nobody edited (its content still matches its \`seedHash\`) is brought up to the release's file;
+- a row an admin edited is **kept** and logged (\`seedHash = "custom"\`), and no longer follows the release;
+- a file the release adds is added; a shipped file an admin deleted is put back.
+
+\`POST /admin/entity-template-sets/reset\` takes every set back to the shipped files, discarding edits (there is no button for it). \`initializr.fullstack.template-sync=off\` turns the sync off. The **Fullstack Examples** follow the same rule (an edited example is kept), except that a deleted example is not added back.
+
+### Fullstack Examples
+**Config → Fullstack Examples** manages the Start-from examples: entities, an optional page layout and editor settings. Every save is checked like a generation request, so a stored example always generates; a Team model's entities can be copied in.
 
 ### Export / Import
-\`/admin/export\` round-trips \`entityTemplateSets\`, \`entityTemplateFiles\`, and \`entityTemplateSetDefaultDeps\`. The export file is portable between environments — drop a JSON onto \`/admin/import\` to migrate a curated set of templates.
+The configuration export carries the sets, their files and default dependencies, and the fullstack examples. It does not carry team models, team templates or team presets.
 
-### Orphan Detection
-If you try to delete a dependency that's referenced by a template set's defaults, the existing orphan detection flags it. \`/admin/cascade-delete\` removes the dep ID from every set's defaults too.`
+### Deleting a Dependency
+A dependency a set's defaults name is flagged by the orphan check; a forced delete (\`DELETE /admin/dependency-entries/{id}?force=true\`) removes it from every set's defaults too.`
       }
     ]
   },
