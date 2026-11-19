@@ -6,7 +6,7 @@ import { MAX_FILES, MAX_HELP, uniqueKeysProblem } from './uniqueKeys'
 import { derivationProblem, rulesProblem } from './rules'
 import { columnOf, joinColumnOf } from './naming'
 import { DATABASE_LABELS, databaseOf, isSystemColumnOn, needsQuotes, tableOf } from './sqlNames'
-import { compositionProblem, linksBetween, resolveLink } from './childLists'
+import { compositionProblem, linksBetween, resolveLink, secondSideProblem } from './childLists'
 import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
 import { isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
 import { t } from '../../i18n'
@@ -417,7 +417,9 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
     })
 
     // Optimistic locking adds a `version` property and column (FullstackRequestValidator.checkVersionName).
-    const locking = (entity.opts?.optimisticLocking ?? projectOpts.includes('optimisticLocking'))
+    // An entity whose rows are saved with it (a composition) carries it unless it says not.
+    const composes = (entity.relations ?? []).some(r => r.type === 'ONE_TO_MANY' && r.composition)
+    const locking = (entity.opts?.optimisticLocking ?? (composes || projectOpts.includes('optimisticLocking')))
       && !entity.readOnly && entity.viewQuery == null
     if (locking) {
       entity.fields.forEach((field, fIdx) => {
@@ -533,6 +535,9 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
         }
         if (pkCount > 1) rErr.joinTable = t('A composite-key entity cannot own a many-to-many')
         else if (rel.joinTable?.trim() && !COLUMN_RE.test(rel.joinTable.trim())) rErr.joinTable = columnRule()
+        // The second side of a set the target declares: it must be one, and only one side names the table.
+        const second = !rErr.targetEntity && !rErr.joinTable ? secondSideProblem(entity, rel, entities) : undefined
+        if (second) rErr[second.on] = second.message
       }
       if (Object.keys(rErr).length > 0) {
         eErr.relations = eErr.relations ?? {}

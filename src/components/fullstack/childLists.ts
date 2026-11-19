@@ -13,6 +13,51 @@ const lower = (s: string | undefined) => (s ?? '').trim().toLowerCase()
 /** The key of a (child, parent) pair in a link index. Entity names are identifiers, so `>` is free. */
 export const linkKey = (child: string, parent: string) => `${lower(child)}>${lower(parent)}`
 
+/** The key of an (owner, other) pair's many-to-many sets in the same index: `~` keeps them apart from the foreign keys. */
+export const setKey = (owner: string, other: string) => `~${linkKey(owner, other)}`
+
+/**
+ * The MANY_TO_MANYs of `owner` to `other` that hold their own join table — the sets `other` can
+ * declare the second side of (`Tag.posts` over `Post.tags`), in the model's order.
+ */
+export function setsBetween(owner: FullstackEntityDef | undefined, other: string): string[] {
+  if (!owner || !other.trim()) return []
+  return (owner.relations ?? [])
+    .filter(r => r.type === 'MANY_TO_MANY' && !r.mappedBy?.trim() && r.fieldName.trim() && lower(r.targetEntity) === lower(other))
+    .map(r => r.fieldName.trim())
+}
+
+/**
+ * Why `rel` — a MANY_TO_MANY of `entity` that names `mappedBy` — cannot be the second side of a
+ * set, and under which control; undefined when it can. The rules of
+ * `FullstackRequestValidator.parseRelations` and `resolveInverseSets`, in the same order.
+ */
+export function secondSideProblem(
+  entity: FullstackEntityDef, rel: FullstackRelationDef, entities: readonly FullstackEntityDef[],
+): { on: 'mappedBy' | 'joinTable'; message: string } | undefined {
+  const named = rel.mappedBy?.trim()
+  if (!named) return undefined
+  const owner = entities.find(e => lower(e.name) === lower(rel.targetEntity))
+  if (!owner) return undefined
+  if (rel.joinTable?.trim() || rel.inverseJoinColumn?.trim() || rel.joinColumn?.trim()) {
+    return { on: 'joinTable', message: t('The join table is the one {set} names — leave it to that side', { set: `${owner.name.trim()}.${named}` }) }
+  }
+  const sets = setsBetween(owner, entity.name)
+  const found = sets.find(s => lower(s) === lower(named))
+  if (!found) {
+    return { on: 'mappedBy', message: sets.length
+      ? t("{target} has no many-to-many '{set}' to {owner} that holds its join table (it has: {sets})", { target: owner.name.trim(), set: named, owner: entity.name.trim() || t('this entity'), sets: sets.join(', ') })
+      : t("{target} has no many-to-many '{set}' to {owner} that holds its join table", { target: owner.name.trim(), set: named, owner: entity.name.trim() || t('this entity') }) }
+  }
+  const earlier = (entity.relations ?? []).slice(0, (entity.relations ?? []).indexOf(rel))
+    .some(r => r.type === 'MANY_TO_MANY' && lower(r.targetEntity) === lower(owner.name) && lower(r.mappedBy) === lower(found))
+  if (earlier) return { on: 'mappedBy', message: t('Another relation of this entity is already the other side of {set}', { set: `${owner.name.trim()}.${found}` }) }
+  if ((owner.access?.owners ?? []).length > 0) {
+    return { on: 'mappedBy', message: t("{target}'s rows belong to users, so their links are changed from {target} only", { target: owner.name.trim() }) }
+  }
+  return undefined
+}
+
 /** The MANY_TO_ONEs of `child` that point at `parent`, in the model's order. */
 export function linksBetween(child: FullstackEntityDef | undefined, parent: string): string[] {
   if (!child || !parent.trim()) return []
@@ -30,8 +75,10 @@ export function linkIndexKey(entities: readonly FullstackEntityDef[]): string {
   for (const child of entities) {
     if (!child.name.trim()) continue
     for (const r of child.relations ?? []) {
-      if (r.type !== 'MANY_TO_ONE' || !r.fieldName.trim() || !r.targetEntity.trim()) continue
-      lines.push(`${linkKey(child.name, r.targetEntity)}>${r.fieldName.trim()}`)
+      if (!r.fieldName.trim() || !r.targetEntity.trim()) continue
+      if (r.type === 'MANY_TO_ONE') lines.push(`${linkKey(child.name, r.targetEntity)}>${r.fieldName.trim()}`)
+      // …and the sets another entity can be the second side of.
+      else if (r.type === 'MANY_TO_MANY' && !r.mappedBy?.trim()) lines.push(`${setKey(child.name, r.targetEntity)}>${r.fieldName.trim()}`)
     }
   }
   return lines.join('\n')
@@ -107,8 +154,9 @@ export function compositionProblem(
 }
 
 /**
- * A MANY_TO_ONE was renamed: the ONE_TO_MANYs that name it in `mappedBy` follow. Returns the same
- * array when none did.
+ * A relation was renamed: the ONE_TO_MANYs that name it in `mappedBy` (it is their MANY_TO_ONE)
+ * and the MANY_TO_MANYs that do (it is the set they are the other side of) follow. Returns the
+ * same array when none did.
  */
 export function renameLinkInChildLists(
   entities: FullstackEntityDef[], child: string, from: string, to: string,
@@ -116,7 +164,7 @@ export function renameLinkInChildLists(
   if (!from.trim() || !to.trim() || from === to) return entities
   let changed = false
   const next = entities.map(entity => {
-    const follows = (r: FullstackRelationDef) => r.type === 'ONE_TO_MANY'
+    const follows = (r: FullstackRelationDef) => (r.type === 'ONE_TO_MANY' || r.type === 'MANY_TO_MANY')
       && lower(r.targetEntity) === lower(child) && lower(r.mappedBy) === lower(from)
     if (!entity.relations?.some(follows)) return entity
     changed = true

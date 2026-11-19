@@ -872,3 +872,14 @@ Pinned by `sqlNames.test.ts`.
 - **Follow-ups.** `EntitiesEditor` runs `syncAccess` with the other per-edit syncs. `lint.ts` adds the info `own-rows-unassigned` (users kept to their own rows see the workflow's unassigned queue through the same limit); `access-needs-ldap` covers owners through `cleanAccess`.
 - **Guide.** The *Access* section (English and Hebrew) says how rows belong to users; it used to say that was code for the team to add.
 - Tests: `access.test.tsx` (the second `describe`). The fixture copy of the examples carries Approvals' new `access`.
+
+### Phase 4: relations and rows depth in the editor
+
+- **The second side of a many-to-many.** A many-to-many row in `RelationsEditor` has *Other side of* (`data-relation-second-side`, shown when the target has a many-to-many to this entity, or one is already named): picking a set writes `mappedBy` and clears the join-table names, and the Join table input goes. `childLists.ts` holds `setsBetween(owner, other)` (the target's sets that hold their own join table), `setKey` (those sets ride in the same link index as the foreign keys, under a `~` prefix — `linkIndexKey` / `parseLinkIndex`) and `secondSideProblem` — the server's `parseRelations` + `resolveInverseSets`, rule for rule (join-table names beside `mappedBy`; no such set; a second second-side; an owner whose rows belong to users). `validation.ts` reports it under `mappedBy` or `joinTable`. `renameLinkInChildLists` follows a renamed set as it follows a renamed many-to-one.
+- **A wizard asks for a set.** `pageLayout.ts` `stepFields(entity)` is what a wizard's steps are dealt from — `askableFields` (which form sections still use: a section takes no set) plus the many-to-manys; `wizardFields`, the default steps, `retargetWizardSteps`, `WizardForm` and the designer's step-field parts read it.
+- **Rows a record reads.** `expr.ts` mirrors the five functions (`EXPR_FUNCTIONS`; `rowListsOf(entity, entities)` — the compositions; `listsOfExpr`) with the server's messages. `rules.ts`: a rule's *Shown on* may be a composed list (the settings panel offers them), a check that reads only rows needs no field named, `renameLinkInRules` follows a renamed list (inside `sum(lines.x)`, as `count(lines)` and as the field a message shows on) and `renameLinkedFieldInRules` a renamed field of the rows.
+- **The version check.** `validation.ts` treats an entity with a composition as locked unless its own override says off, so a field named `version` there is flagged as under the option.
+- The examples fixture has Blog's `Tag.posts` (and its options) and Orders' computed total and "needs a line" rule.
+- Not drawn: the canvas and the form mock show neither the second side's picker nor a parent's live total. The Overrides panel still words a composition parent's *Optimistic locking* as following the project's option, although the generator turns it on.
+
+Pinned by `relationsDepth.test.tsx`.

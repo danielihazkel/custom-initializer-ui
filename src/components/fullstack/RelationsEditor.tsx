@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FullstackRelationDef, FullstackRelationType } from '../../types'
-import { linkKey, type LinkIndex } from './childLists'
+import { linkKey, setKey, type LinkIndex } from './childLists'
 import type { RelationErrors } from './validation'
 import { newUid } from './uid'
 import { focusRowWhenRendered } from './focus'
@@ -66,6 +66,8 @@ export function RelationsEditor({ relations, entityNames, linkIndex, fieldNames 
   const joinChoices = entityNames.filter(n => n !== ownerName?.trim())
 
   const linksOf = (rel: FullstackRelationDef) => linkIndex?.get(linkKey(rel.targetEntity, ownerName ?? '')) ?? []
+  /** The target's own sets to this entity: the ones a many-to-many here can be the other side of. */
+  const setsOf = (rel: FullstackRelationDef) => linkIndex?.get(setKey(rel.targetEntity, ownerName ?? '')) ?? []
 
   function update(idx: number, updates: Partial<FullstackRelationDef>) {
     onChange(relations.map((r, i) => (i === idx ? { ...r, ...updates } : r)))
@@ -240,7 +242,26 @@ export function RelationsEditor({ relations, entityNames, linkIndex, fieldNames 
                       </>
                     ) : many(rel) ? (
                       <>
-                        <input
+                        {(setsOf(rel).length > 0 || rel.mappedBy) && (
+                          <select
+                            aria-label={t('Other side of')}
+                            aria-invalid={Boolean(rErr?.mappedBy)}
+                            data-relation-second-side
+                            className={`mt-1 w-full bg-background border rounded px-2 py-0.5 text-[11px] font-mono focus:ring-1 outline-none ${rErr?.mappedBy ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
+                            value={rel.mappedBy ?? ''}
+                            onChange={e => update(rIdx, e.target.value
+                              ? { mappedBy: e.target.value, joinTable: undefined, inverseJoinColumn: undefined, joinColumn: undefined }
+                              : { mappedBy: undefined })}
+                            title={t('The same links from the other end: the target already has a many-to-many to this entity. Pick it and both sides show, filter and edit one set; leave it and this is a second, separate set with a join table of its own.')}
+                          >
+                            <option value="">{t('a set of its own')}</option>
+                            {setsOf(rel).map(s => <option key={s} value={s}>{t('other side of {set}', { set: `${rel.targetEntity}.${s}` })}</option>)}
+                            {/* Keep a stale name visible so it isn't silently dropped. */}
+                            {rel.mappedBy && !setsOf(rel).includes(rel.mappedBy) && <option value={rel.mappedBy}>{t('other side of {set}', { set: `${rel.targetEntity}.${rel.mappedBy}` })}</option>}
+                          </select>
+                        )}
+                        {rErr?.mappedBy && <p className="mt-0.5 text-[11px] text-error" data-error>{rErr.mappedBy}</p>}
+                        {!rel.mappedBy && <input
                           type="text"
                           dir="ltr"
                           aria-label={t('Join table')}
@@ -250,7 +271,7 @@ export function RelationsEditor({ relations, entityNames, linkIndex, fieldNames 
                           onChange={e => update(rIdx, { joinTable: e.target.value || undefined })}
                           placeholder={ownerName?.trim() && rel.fieldName.trim() ? `${toSnakeCase(ownerName.trim())}_${toSnakeCase(rel.fieldName.trim())}` : t('join table')}
                           title={t('The table that holds the links, exactly as the schema spells it. Leave blank for <entity>_<field>.')}
-                        />
+                        />}
                         {rErr?.joinTable && <p className="mt-0.5 text-[11px] text-error">{rErr.joinTable}</p>}
                       </>
                     ) : (

@@ -300,6 +300,10 @@ function RulesEditor({ entity, error, onChange }: {
                 {entity.fields.filter(f => !(f.primaryKey && f.generated)).map(f => (
                   <option key={f.uid ?? f.name} value={f.name}>{t('Shown on: {field}', { field: f.label?.trim() || f.name })}</option>
                 ))}
+                {/* The rows saved with it: a rule over them alone (count(lines) > 0) shows under their editor. */}
+                {(entity.relations ?? []).filter(r => r.type === 'ONE_TO_MANY' && r.composition && r.fieldName.trim()).map(r => (
+                  <option key={r.uid ?? r.fieldName} value={r.fieldName}>{t('Shown on: {field}', { field: r.label?.trim() || r.fieldName })}</option>
+                ))}
               </select>
             </div>
             {shown && <p className="text-[11px] text-error" data-error>{shown}</p>}

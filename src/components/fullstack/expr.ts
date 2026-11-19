@@ -12,7 +12,8 @@ import { t } from '../../i18n'
 
 export type ExprType = 'NUMBER' | 'TEXT' | 'BOOL' | 'DATE' | 'DATETIME' | 'INSTANT' | 'TIME' | 'ENUM' | 'ANY'
 
-export const EXPR_FUNCTIONS = ['isEmpty', 'today', 'now', 'daysBetween', 'length', 'abs', 'round', 'date'] as const
+export const EXPR_FUNCTIONS = ['isEmpty', 'today', 'now', 'daysBetween', 'length', 'abs', 'round', 'date',
+  'sum', 'count', 'min', 'max', 'avg'] as const
 export const MAX_EXPRESSION = LIMITS.maxExpression
 
 type Node =
@@ -212,21 +213,56 @@ function linksOf(entity: FullstackEntityDef, entities: readonly FullstackEntityD
   return out
 }
 
+/** The rows saved with an entity (its ONE_TO_MANYs edited in its form), by the list's name, among `entities`. */
+export function rowListsOf(entity: FullstackEntityDef, entities: readonly FullstackEntityDef[]): Map<string, FullstackEntityDef> {
+  const out = new Map<string, FullstackEntityDef>()
+  for (const r of entity.relations ?? []) {
+    if (r.type !== 'ONE_TO_MANY' || !r.composition || !r.fieldName.trim()) continue
+    const target = entities.find(e => e.name.trim().toLowerCase() === r.targetEntity.trim().toLowerCase())
+    if (target) out.set(r.fieldName, target)
+  }
+  return out
+}
+
 /**
  * The row's own fields an expression reads, in order; throws {@link ExprError} when it does not fit
  * the entity or is not `expected`. A linked row's field (`costCenter.budget`) is looked up in
- * `entities` — the whole model (FullstackRequestValidator's links).
+ * `entities` — the whole model (FullstackRequestValidator's links) — and so are the rows saved
+ * with the entity, which `sum(lines.total)`, `count(lines)`, `min`, `max` and `avg` read.
  */
 export function checkExpr(text: string, entity: FullstackEntityDef, expected: ExprType | null = 'BOOL',
                           entities: readonly FullstackEntityDef[] = []): string[] {
+  return readsOf(text, entity, expected, entities).refs
+}
+
+/** The lists of its own rows an expression reads, in order; none when it does not fit the entity. */
+export function listsOfExpr(text: string, entity: FullstackEntityDef, entities: readonly FullstackEntityDef[] = []): string[] {
+  try {
+    return readsOf(text, entity, null, entities).lists
+  } catch (e) {
+    if (e instanceof ExprError) return []
+    throw e
+  }
+}
+
+function readsOf(text: string, entity: FullstackEntityDef, expected: ExprType | null,
+                 entities: readonly FullstackEntityDef[]): { refs: string[]; lists: string[] } {
   const root = parse(text)
   const fields = new Map(entity.fields.map(f => [f.name, f]))
   const links = linksOf(entity, entities)
+  const rows = rowListsOf(entity, entities)
   const linked = new Map<string, FullstackFieldDef>()
   const refs: string[] = []
+  const lists: string[] = []
   const fieldOf = (name: string) => (name.includes('.') ? linked.get(name) : fields.get(name))!
+  const noLists = () => (rows.size
+    ? t('here: {lists}', { lists: [...rows.keys()].join(', ') })
+    : t('this entity has none (a one-to-many edited in its form)'))
   const path = (n: { name: string; at: number }): ExprType => {
     const [relation, name] = n.name.split('.')
+    if (rows.has(relation)) {
+      throw new ExprError(t("'{name}' is one value in each of the rows: read them with sum, min, max or avg (sum({name}))", { name: n.name }), n.at)
+    }
     const target = links.get(relation)
     if (!target) {
       const loose = [...links.keys()].find(k => k.toLowerCase() === relation.toLowerCase())
@@ -267,6 +303,9 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
       case 'ref': {
         if (n.name.includes('.')) return path(n)
         const f = fields.get(n.name)
+        if (!f && rows.has(n.name)) {
+          throw new ExprError(t("'{name}' is the rows saved with this entity: count({name}), or sum, min, max or avg over one of their fields", { name: n.name }), n.at)
+        }
         if (!f) {
           const loose = entity.fields.find(x => x.name.toLowerCase() === n.name.toLowerCase())
           throw new ExprError(loose
@@ -356,6 +395,38 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
             }
             return 'NUMBER'
           }
+          case 'count': {
+            arity(1)
+            const arg = n.args[0]
+            if (arg.k !== 'ref' || arg.name.includes('.') || !rows.has(arg.name)) {
+              throw new ExprError(t('count takes the rows saved with this entity — {lists}', { lists: noLists() }), n.at)
+            }
+            if (!lists.includes(arg.name)) lists.push(arg.name)
+            return 'NUMBER'
+          }
+          case 'sum': case 'min': case 'max': case 'avg': {
+            arity(1)
+            const arg = n.args[0]
+            const list = arg.k === 'ref' && arg.name.includes('.') ? arg.name.slice(0, arg.name.indexOf('.')) : ''
+            const child = rows.get(list)
+            if (arg.k !== 'ref' || !child) {
+              throw new ExprError(t('{fn} takes a field of the rows saved with this entity, like {fn}(lines.total) — {lists}', { fn, lists: noLists() }), n.at)
+            }
+            const name = arg.name.slice(list.length + 1)
+            const f = child.fields.find(x => x.name === name)
+            if (!f) {
+              const loose = child.fields.find(x => x.name.toLowerCase() === name.toLowerCase())
+              throw new ExprError(loose
+                ? t("'{name}' is not a field of {entity} (did you mean '{suggestion}'?)", { name, entity: child.name, suggestion: loose.name })
+                : t("'{name}' is not a field of {entity}", { name, entity: child.name }), arg.at)
+            }
+            const ty = typeOfField(f)
+            if (ty !== 'NUMBER') {
+              throw new ExprError(t("{fn} takes a number field of the rows; '{name}' is {actual}", { fn, name: arg.name, actual: DESCRIBE[ty ?? 'ANY']() }), arg.at)
+            }
+            if (!lists.includes(list)) lists.push(list)
+            return 'NUMBER'
+          }
           default: {
             arity(1)
             const arg = n.args[0]
@@ -373,7 +444,7 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
   }
   const ty = type(root)
   if (expected && ty !== expected) throw new ExprError(t('This must be {wanted}, but it is {actual}', { wanted: DESCRIBE[expected](), actual: DESCRIBE[ty]() }), root.at)
-  return refs
+  return { refs, lists }
 }
 
 /** Why an expression does not fit, or undefined. */

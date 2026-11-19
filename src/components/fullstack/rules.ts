@@ -1,6 +1,6 @@
 import type { FullstackEntityDef, FullstackFieldDef, FullstackRule } from '../../types'
 import { LIMITS } from './schema'
-import { checkExpr, ExprError, renameInExpr, renameNamesInExpr, type ExprType } from './expr'
+import { checkExpr, ExprError, listsOfExpr, renameInExpr, renameNamesInExpr, rowListsOf, type ExprType } from './expr'
 import { t } from '../../i18n'
 
 /** Mirrors FullstackRequestValidator.MAX_RULES / MAX_RULE_MESSAGE. */
@@ -51,10 +51,12 @@ function ruleProblem(entity: FullstackEntityDef, rule: FullstackRule, entities: 
   if (!rule.message.trim()) return { part: 'message', message: t('Write the message a user sees') }
   if (rule.message.trim().length > MAX_RULE_MESSAGE) return { part: 'message', message: t('At most {max} characters', { max: MAX_RULE_MESSAGE }) }
   if (rule.field?.trim()) {
-    if (!entity.fields.some(f => f.name.toLowerCase() === rule.field!.trim().toLowerCase())) {
+    // A field — or the rows saved with the record: the message then shows under their editor.
+    const shownOn = [...entity.fields.map(f => f.name), ...rowListsOf(entity, entities).keys()]
+    if (!shownOn.some(name => name.toLowerCase() === rule.field!.trim().toLowerCase())) {
       return { part: 'field', message: t('“{field}” is not one of its fields', { field: rule.field }) }
     }
-  } else if (refs.length === 0) {
+  } else if (refs.length === 0 && listsOfExpr(rule.check, entity, entities).length === 0) {
     return { part: 'field', message: t('The check reads no field: say which field the message is shown on') }
   }
   return undefined
@@ -200,7 +202,11 @@ export function renameLinkInRules(entities: FullstackEntityDef[], entity: string
   let changed = false
   const next = entities.map(e => {
     if (e.name.trim().toLowerCase() !== entity.trim().toLowerCase()) return e
-    const out = renameInEntity(e, name => (name.startsWith(`${from}.`) ? `${to}.${name.slice(from.length + 1)}` : name))
+    // `from.field` through a link, or over the rows of a list — and the list itself (count(lines), a message shown on it).
+    let out = renameInEntity(e, name => (name.startsWith(`${from}.`) ? `${to}.${name.slice(from.length + 1)}` : name === from ? to : name))
+    if (out.rules?.some(rule => rule.field === from)) {
+      out = { ...out, rules: out.rules.map(rule => (rule.field === from ? { ...rule, field: to } : rule)) }
+    }
     changed ||= out !== e
     return out
   })
@@ -211,7 +217,7 @@ export function renameLinkInRules(entities: FullstackEntityDef[], entity: string
 export function renameLinkedFieldInRules(entities: FullstackEntityDef[], target: string, from: string, to: string): FullstackEntityDef[] {
   let changed = false
   const next = entities.map(e => {
-    const links = (e.relations ?? []).filter(r => r.type === 'MANY_TO_ONE'
+    const links = (e.relations ?? []).filter(r => (r.type === 'MANY_TO_ONE' || (r.type === 'ONE_TO_MANY' && r.composition))
       && r.targetEntity.trim().toLowerCase() === target.trim().toLowerCase()).map(r => r.fieldName)
     if (links.length === 0) return e
     const out = renameInEntity(e, name => (links.some(l => name === `${l}.${from}`) ? `${name.slice(0, name.indexOf('.'))}.${to}` : name))

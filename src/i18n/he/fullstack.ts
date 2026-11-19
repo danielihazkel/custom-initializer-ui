@@ -1261,6 +1261,31 @@ const dict: Dict = {
   'Final: {states}': 'סופיים: {states}',
   'never reached: {states}': 'לא ניתן להגיע: {states}',
   "This team model can't be loaded: {error}": 'לא ניתן לטעון את מודל הצוות הזה: {error}',
+
+  // Round 14, phase 4: the second side of a many-to-many, and the rows a record's rules read.
+  'Other side of': 'הצד השני של',
+  'a set of its own': 'קבוצה משלה',
+  'other side of {set}': 'הצד השני של {set}',
+  'The same links from the other end: the target already has a many-to-many to this entity. Pick it and both sides show, filter and edit one set; leave it and this is a second, separate set with a join table of its own.':
+    'אותם קישורים מהקצה השני: לישות היעד כבר יש many-to-many לישות הזו. בחרו בו ושני הצדדים מציגים, מסננים ועורכים קבוצה אחת; השאירו ריק וזו קבוצה שנייה ונפרדת, עם טבלת קישור משלה.',
+  'The join table is the one {set} names — leave it to that side': 'טבלת הקישור היא זו ש-{set} מגדיר — השאירו אותה לצד ההוא',
+  "{target} has no many-to-many '{set}' to {owner} that holds its join table (it has: {sets})":
+    "ל-{target} אין many-to-many בשם '{set}' אל {owner} שמחזיק את טבלת הקישור שלו (יש לו: {sets})",
+  "{target} has no many-to-many '{set}' to {owner} that holds its join table":
+    "ל-{target} אין many-to-many בשם '{set}' אל {owner} שמחזיק את טבלת הקישור שלו",
+  'Another relation of this entity is already the other side of {set}': 'קשר אחר של הישות הזו הוא כבר הצד השני של {set}',
+  "{target}'s rows belong to users, so their links are changed from {target} only":
+    'השורות של {target} שייכות למשתמשים, ולכן הקישורים שלהן משתנים רק מ-{target}',
+  'here: {lists}': 'כאן: {lists}',
+  'this entity has none (a one-to-many edited in its form)': 'לישות הזו אין כאלה (one-to-many שנערך בטופס שלה)',
+  "'{name}' is one value in each of the rows: read them with sum, min, max or avg (sum({name}))":
+    "'{name}' הוא ערך אחד בכל אחת מהשורות: קראו אותן עם sum,‏ min,‏ max או avg ‏(sum({name}))",
+  "'{name}' is the rows saved with this entity: count({name}), or sum, min, max or avg over one of their fields":
+    "'{name}' הוא השורות שנשמרות עם הישות הזו: count({name}), או sum,‏ min,‏ max או avg על אחד מהשדות שלהן",
+  'count takes the rows saved with this entity — {lists}': 'count מקבלת את השורות שנשמרות עם הישות הזו — {lists}',
+  '{fn} takes a field of the rows saved with this entity, like {fn}(lines.total) — {lists}':
+    '{fn} מקבלת שדה של השורות שנשמרות עם הישות הזו, כמו {fn}(lines.total) — {lists}',
+  "{fn} takes a number field of the rows; '{name}' is {actual}": "{fn} מקבלת שדה מספרי של השורות; '{name}' הוא {actual}",
 }
 
 export default dict

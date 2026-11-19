@@ -3,7 +3,7 @@ import { inputClass } from '../controls'
 import { keyOption } from '../fieldOptions'
 import { moveItem } from '../reorder'
 import { dropIndicatorClass, useDragReorder } from '../useDragReorder'
-import { MAX_STEPS, askableFields, MAX_TITLE, defaultWizardSteps, pageLabel, retargetWizardSteps } from '../pageLayout'
+import { MAX_STEPS, stepFields, MAX_TITLE, defaultWizardSteps, pageLabel, retargetWizardSteps } from '../pageLayout'
 import type { FormProps } from './formTypes'
 import { ICON_BUTTON, SMALL_BUTTON } from './constants'
 import { DragGrip, EntitySelect, Field, MoveButtons } from './fields'
@@ -12,7 +12,7 @@ import { t, tn } from '../../../i18n'
 /** A wizard: its entity, and the form's fields dealt into steps (each field in exactly one). */
 export function WizardForm({ page, index, entities, errors, update, lossy, removed, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
   const entity = entities.find(e => e.name === page.entity)
-  const askable = askableFields(entity)
+  const askable = stepFields(entity)
   const steps = page.steps ?? defaultWizardSteps(entity)
   const setSteps = (next: { title?: string; fields: string[] }[]) => update(index, { steps: next })
   const stepOf = (name: string) => steps.findIndex(s => s.fields.includes(name))

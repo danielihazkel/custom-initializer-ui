@@ -2,7 +2,7 @@ import type { FullstackChartDef, FullstackChildTabDef, FullstackEntityDef, Fulls
 import { fieldLabel } from './uiPreview'
 import {
   MAX_CHARTS, MAX_CHILD_TABS, MAX_HEADER_STATS, MAX_STEPS, MAX_TABS, MAX_TITLE, PAGE_TYPE_META,
-  askableFields, childTabEntity, dateFields, defaultWizardSteps, pageLabel, relationKeys,
+  stepFields, childTabEntity, dateFields, defaultWizardSteps, pageLabel, relationKeys,
   relationsTo, reportCharts, reportGroupKeys,
 } from './pageLayout'
 import { t } from '../../i18n'
@@ -163,7 +163,7 @@ export function pageParts(pages: FullstackPageDef[], index: number, entities: Fu
         slot: 'step-field',
         label: entity ? t('Fields of {entity}', { entity: entityLabel(entity) }) : t('Fields'),
         hint: t('Drop on a step to ask for it there'),
-        cards: askableFields(entity).map(a => {
+        cards: stepFields(entity).map(a => {
           const step = steps.findIndex(s => s.fields.includes(a.name))
           return {
             key: `step-field:${a.name}`,
@@ -230,7 +230,7 @@ export function placePart(pages: FullstackPageDef[], index: number, entities: Fu
       return { patch: { headerStats: insert(stats, { child: part.entity }, at) }, label: t('Added a count of {entity} to {where}', { entity: entityLabel(child), where }) }
     }
     case 'step-field': {
-      if (!askableFields(entity).some(a => a.name === part.field)) return { reason: t('The wizard does not ask for {field}', { field: part.field }) }
+      if (!stepFields(entity).some(a => a.name === part.field)) return { reason: t('The wizard does not ask for {field}', { field: part.field }) }
       const steps = wizardStepsOf(page, entities)
       const to = at == null ? steps.length - 1 : at
       if (to < 0 || to > steps.length) return { reason: t('No such step') }

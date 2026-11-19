@@ -2119,7 +2119,7 @@ Most internal Menora systems being rewritten are "tables with CRUD and a few scr
 
 ### What the Model Can Say
 - **Field types**: text, long text, Markdown, whole numbers, decimals, money with a currency, yes/no, date, time, date-time, instant, UUID, enum (with labels), file and image attachments.
-- **Relations**: many-to-one (a foreign key), many-to-many (a join table), one-to-many (the rows that point here — optionally edited inside the parent's form, a **composition**).
+- **Relations**: many-to-one (a foreign key), many-to-many (a join table — and the other entity can declare its **other side**, so both show, filter and edit the same links), one-to-many (the rows that point here — optionally edited inside the parent's form, a **composition**). A many-to-many is also a bulk change, a cell edited in place, a wizard step, and filled in the demo rows.
 - **Access**: who may read and who may write each entity, enforced by the backend.
 - **Workflows**: a status moved only by named transitions, with roles, an assignee, a due date, an inbox, a log of moves and e-mails.
 - **Rules**: checks over several fields, fields shown only when a condition holds, computed fields, unique keys, help text.
@@ -2183,6 +2183,7 @@ An entity may carry a workflow: its status changes only through named **transiti
 - **Several files** — a FILE or IMAGE field can hold a list of files (up to 50): the form takes several at once, the list shows the first picture or the names, the details every file.
 - **Linked rows** — a rule, show-when or formula can read a field of the row a link points at (\`amount <= costCenter.budget\`); the form fetches that row when the link is picked, and the server checks it on every save.
 - **Rows inside a form** — rows edited in their parent's form (a composition) keep their own rules, show-when conditions and computed fields; saving the parent checks every row.
+- **A record that reads its rows** — a parent's rule or computed field can read the rows saved with it: \`sum(lines.lineTotal)\`, \`count(lines) > 0\`, \`min\`, \`max\`, \`avg\`. The form follows the rows as they are edited, and a row changed on its own page runs the parent's rules again. A record with such rows always checks that nobody else saved it in between (turn *Optimistic locking* off on the entity to opt out).
 - **Computed as** — a stored column the backend sets from a formula on every save, read-only in the form.
 - **Unique together** — a constraint over several fields and links, answered with a 409 that names them.
 

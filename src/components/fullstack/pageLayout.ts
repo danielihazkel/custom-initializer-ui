@@ -134,7 +134,17 @@ export function viewDisabledReason(entity: FullstackEntityDef | undefined, view:
 export function wizardFields(entity: FullstackEntityDef | undefined): { name: string; required: boolean; relation: boolean }[] {
   const status = entity?.workflow?.statusField
   const assignee = entity?.workflow?.assigneeField
-  return askableFields(entity).filter(a => a.relation || (a.name !== status && a.name !== assignee))
+  return stepFields(entity).filter(a => a.relation || (a.name !== status && a.name !== assignee))
+}
+
+/** What a wizard's steps are dealt from: the form's fields and links, then its sets of linked rows
+ *  (the many-to-manys — a step may ask for one, and it may always be empty). */
+export function stepFields(entity: FullstackEntityDef | undefined): { name: string; required: boolean; relation: boolean }[] {
+  return [
+    ...askableFields(entity),
+    ...(entity?.relations ?? []).filter(r => r.type === 'MANY_TO_MANY' && r.fieldName.trim())
+      .map(r => ({ name: r.fieldName, required: false, relation: true })),
+  ]
 }
 
 export function askableFields(entity: FullstackEntityDef | undefined): { name: string; required: boolean; relation: boolean }[] {
@@ -3357,7 +3367,7 @@ export function retargetReport(page: FullstackPageDef, entity: FullstackEntityDe
  *  `dropped` names what did not carry over — the step layout, or just some fields — like the
  *  other retarget helpers, so the editor can say so with an undo. */
 export function retargetWizardSteps(steps: { title?: string; fields: string[] }[] | undefined, entity: FullstackEntityDef | undefined): { steps: { title?: string; fields: string[] }[]; dropped: string[] } {
-  const askable = askableFields(entity).map(a => a.name)
+  const askable = stepFields(entity).map(a => a.name)
   const asked = (steps ?? []).flatMap(s => s.fields)
   const kept = (steps ?? []).map(s => ({ ...s, fields: s.fields.filter(f => askable.includes(f)) })).filter(s => s.fields.length > 0)
   const keptCount = kept.flatMap(s => s.fields).length
