@@ -1,5 +1,6 @@
 import type { FullstackEntityDef, FullstackFieldDef, FullstackUniqueKey } from '../../types'
 import { LIMITS } from './schema'
+import { t } from '../../i18n'
 
 /** Mirrors FullstackRequestValidator.MAX_UNIQUE_KEYS / MAX_UNIQUE_KEY_FIELDS / MAX_HELP. */
 export const MAX_UNIQUE_KEYS = LIMITS.maxUniqueKeys
@@ -63,34 +64,34 @@ function varies(field: FullstackFieldDef | undefined): boolean {
 export function uniqueKeysProblem(entity: FullstackEntityDef, composedChild = false): string | undefined {
   const keys = entity.uniqueKeys ?? []
   if (keys.length === 0) return undefined
-  if (entity.viewQuery?.trim()) return 'A SELECT-backed view cannot have unique keys'
-  if (composedChild) return 'Rows edited inside their parent’s form cannot have a unique key: a save that replaces a row would clash with it'
-  if (keys.length > MAX_UNIQUE_KEYS) return `At most ${MAX_UNIQUE_KEYS} unique keys`
+  if (entity.viewQuery?.trim()) return t('A SELECT-backed view cannot have unique keys')
+  if (composedChild) return t('Rows edited inside their parent’s form cannot have a unique key: a save that replaces a row would clash with it')
+  if (keys.length > MAX_UNIQUE_KEYS) return t('At most {max} unique keys', { max: MAX_UNIQUE_KEYS })
   const fields = new Map(entity.fields.map(f => [f.name.toLowerCase(), f]))
   const links = new Set((entity.relations ?? []).filter(r => r.type === 'MANY_TO_ONE').map(r => r.fieldName.toLowerCase()))
   const seen = new Set<string>()
   for (let i = 0; i < keys.length; i++) {
-    const where = `Unique key ${i + 1}`
+    const n = i + 1
     const names = keys[i].fields
-    if (names.length < 2) return `${where} needs two or more fields (one field is unique on its own — tick its Unique)`
-    if (names.length > MAX_UNIQUE_KEY_FIELDS) return `${where} names more than ${MAX_UNIQUE_KEY_FIELDS} fields`
-    const lower = names.map(n => n.trim().toLowerCase())
+    if (names.length < 2) return t('Unique key {n} needs two or more fields (one field is unique on its own — tick its Unique)', { n })
+    if (names.length > MAX_UNIQUE_KEY_FIELDS) return t('Unique key {n} names more than {max} fields', { n, max: MAX_UNIQUE_KEY_FIELDS })
+    const lower = names.map(x => x.trim().toLowerCase())
     for (const [j, key] of lower.entries()) {
       const field = fields.get(key)
       if (field) {
-        if (field.primaryKey) return `${where} includes the primary key “${field.name}”, which is unique already`
-        if (field.type === 'TEXT' || field.type === 'MARKDOWN') return `${where} includes “${field.name}”, a long text, which a database cannot index`
-        if (field.maxFiles != null) return `${where} includes “${field.name}”, which holds several files in a table of its own`
+        if (field.primaryKey) return t('Unique key {n} includes the primary key “{field}”, which is unique already', { n, field: field.name })
+        if (field.type === 'TEXT' || field.type === 'MARKDOWN') return t('Unique key {n} includes “{field}”, a long text, which a database cannot index', { n, field: field.name })
+        if (field.maxFiles != null) return t('Unique key {n} includes “{field}”, which holds several files in a table of its own', { n, field: field.name })
       } else if (!links.has(key)) {
-        return `${where} names “${names[j]}”, which is not one of its fields or many-to-one links`
+        return t('Unique key {n} names “{field}”, which is not one of its fields or many-to-one links', { n, field: names[j] })
       }
-      if (lower.indexOf(key) !== j) return `${where} names “${names[j]}” twice`
+      if (lower.indexOf(key) !== j) return t('Unique key {n} names “{field}” twice', { n, field: names[j] })
     }
     if (!lower.some(key => varies(fields.get(key)))) {
-      return `${where} is over enums, yes/no fields and patterned texts only, which allow few distinct rows: add a field or link that tells rows apart`
+      return t('Unique key {n} is over enums, yes/no fields and patterned texts only, which allow few distinct rows: add a field or link that tells rows apart', { n })
     }
     const set = [...lower].sort().join('\u0000')
-    if (seen.has(set)) return `${where} is over the same fields as another key`
+    if (seen.has(set)) return t('Unique key {n} is over the same fields as another key', { n })
     seen.add(set)
   }
   return undefined

@@ -4,6 +4,7 @@ import { useMetadata } from '../../hooks/useMetadata'
 import { useDependencyCompatibility } from '../../hooks/useDependencyCompatibility'
 import { SuggestionStrip } from '../SuggestionStrip'
 import { useStarterTemplates } from '../../hooks/useStarterTemplates'
+import { t } from '../../i18n'
 
 interface Props {
   selected: string[]
@@ -79,7 +80,7 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
   }
 
   if (loading) {
-    return <div className="text-sm text-secondary">Loading dependency catalog…</div>
+    return <div className="text-sm text-secondary">{t('Loading dependency catalog…')}</div>
   }
   /** Adds every dep in a bundle that is not already selected. */
   function addBundle(depIds: string[]) {
@@ -90,7 +91,7 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
   if (error) {
     return (
       <div className="text-sm text-error border border-error/30 bg-error/10 rounded px-3 py-2">
-        Failed to load metadata: {error}
+        {t('Failed to load metadata: {error}', { error })}
       </div>
     )
   }
@@ -99,7 +100,7 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
     <div className="space-y-3 lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
       {bundles.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap" data-dep-bundles>
-          <span className="text-[11px] text-secondary shrink-0">Add a bundle:</span>
+          <span className="text-[11px] text-secondary shrink-0">{t('Add a bundle:')}</span>
           {bundles.map(bundle => {
             const depIds = bundle.dependencies.map(d => d.depId)
             const already = depIds.length > 0 && depIds.every(id => selectedSet.has(id))
@@ -110,8 +111,8 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
                 onClick={() => addBundle(depIds)}
                 disabled={already}
                 title={already
-                  ? `Already selected: ${depIds.join(', ')}`
-                  : `${bundle.description || bundle.name} \u2014 adds ${depIds.join(', ')}`}
+                  ? t('Already selected: {deps}', { deps: depIds.join(', ') })
+                  : t('{bundle} \u2014 adds {deps}', { bundle: bundle.description || bundle.name, deps: depIds.join(', ') })}
                 className="inline-flex items-center gap-1 h-6 px-2.5 rounded-full border border-outline-variant text-[11px] text-secondary hover:border-primary hover:text-primary transition-colors disabled:opacity-40 disabled:hover:border-outline-variant disabled:hover:text-secondary"
               >
                 {bundle.icon && <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>{bundle.icon}</span>}
@@ -128,7 +129,7 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
       <div className="flex items-center justify-between gap-3">
         <input
           type="text"
-          placeholder="Filter dependencies…"
+          placeholder={t('Filter dependencies…')}
           value={query}
           onChange={e => setQuery(e.target.value)}
           className="flex-1 max-w-sm bg-background border border-outline-variant rounded px-3 py-2 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
@@ -137,9 +138,9 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
           type="button"
           onClick={resetToDefaults}
           className="text-xs px-3 py-1.5 rounded-lg border border-outline-variant text-secondary hover:text-primary hover:border-primary hover:bg-primary/5 transition-colors"
-          title="Reset only the dependency selection to this set's defaults"
+          title={t("Reset only the dependency selection to this set's defaults")}
         >
-          Reset dependencies
+          {t('Reset dependencies')}
         </button>
       </div>
 
@@ -149,12 +150,12 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
             <div key={`conflict-${i}`} role="alert" className="flex items-start gap-2 text-xs rounded-lg border border-error/30 bg-error/10 text-on-surface p-2.5">
               <span className="material-symbols-outlined text-error mt-0.5" style={{ fontSize: '16px' }}>error</span>
               <span className="flex-1">
-                <span className="font-semibold">{nameById.get(w.source) ?? w.source}</span> conflicts with{' '}
+                <span className="font-semibold">{nameById.get(w.source) ?? w.source}</span> {t('conflicts with')}{' '}
                 <span className="font-semibold">{nameById.get(w.target) ?? w.target}</span>
                 <span className="block text-on-surface-variant mt-0.5">{w.desc}</span>
               </span>
               <button type="button" onClick={() => toggle(w.target, false)} className="text-error font-semibold hover:underline shrink-0">
-                Remove {nameById.get(w.target) ?? w.target}
+                {t('Remove {dep}', { dep: nameById.get(w.target) ?? w.target })}
               </button>
             </div>
           ))}
@@ -162,12 +163,12 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
             <div key={`require-${i}`} role="alert" className="flex items-start gap-2 text-xs rounded-lg border border-warning/30 bg-warning/10 text-on-surface p-2.5">
               <span className="material-symbols-outlined text-warning mt-0.5" style={{ fontSize: '16px' }}>info</span>
               <span className="flex-1">
-                <span className="font-semibold">{nameById.get(w.source) ?? w.source}</span> requires{' '}
+                <span className="font-semibold">{nameById.get(w.source) ?? w.source}</span> {t('requires')}{' '}
                 <span className="font-semibold">{nameById.get(w.target) ?? w.target}</span>
                 <span className="block text-on-surface-variant mt-0.5">{w.desc}</span>
               </span>
               <button type="button" onClick={() => toggle(w.target, true)} className="text-warning font-semibold hover:underline shrink-0">
-                Add {nameById.get(w.target) ?? w.target}
+                {t('Add {dep}', { dep: nameById.get(w.target) ?? w.target })}
               </button>
             </div>
           ))}
@@ -179,23 +180,23 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
           user can see (and remove) what's selected without scrolling. */}
       <div className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
         <div className="text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
-          Selected ({selected.length})
+          {t('Selected ({n})', { n: selected.length })}
         </div>
         {selected.length === 0 ? (
-          <p className="text-[11px] text-on-surface-variant">No dependencies selected yet.</p>
+          <p className="text-[11px] text-on-surface-variant">{t('No dependencies selected yet.')}</p>
         ) : (
-          <div className="flex flex-wrap gap-1.5 max-h-[88px] overflow-y-auto pr-1" aria-live="polite">
+          <div className="flex flex-wrap gap-1.5 max-h-[88px] overflow-y-auto pe-1" aria-live="polite">
             {selected.map(id => {
               const name = nameById.get(id) ?? id
               return (
                 <span
                   key={id}
-                  className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20"
+                  className="inline-flex items-center gap-1 ps-2.5 pe-1 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20"
                 >
                   <span className="truncate max-w-[12rem]" title={name}>{name}</span>
                   <button
                     type="button"
-                    aria-label={`Remove ${name}`}
+                    aria-label={t('Remove {dep}', { dep: name })}
                     onClick={() => toggle(id, false)}
                     className="flex items-center justify-center rounded-full hover:bg-primary/20 transition-colors"
                   >
@@ -208,7 +209,7 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
         )}
       </div>
 
-      <div className="space-y-4 max-h-[420px] overflow-y-auto pr-2 lg:max-h-none lg:flex-1 lg:min-h-0">
+      <div className="space-y-4 max-h-[420px] overflow-y-auto pe-2 lg:max-h-none lg:flex-1 lg:min-h-0">
         {filteredGroups.map(group => (
           <div key={group.name} className="border border-outline-variant rounded-lg bg-surface-container-low">
             <div className="px-4 py-2 border-b border-outline-variant text-[11px] font-bold uppercase tracking-widest text-secondary">
@@ -231,20 +232,20 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-medium text-on-surface">{dep.name}</span>
+                        <span dir="auto" className="text-sm font-medium text-on-surface">{dep.name}</span>
                         {isDefault && (
                           <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold">
-                            default
+                            {t('default')}
                           </span>
                         )}
                         {dep.versionRange && (
-                          <span className="text-[9px] font-bold text-secondary bg-surface-container px-1.5 py-0.5 rounded-full border border-outline-variant/50">
+                          <span dir="ltr" className="text-[9px] font-bold text-secondary bg-surface-container px-1.5 py-0.5 rounded-full border border-outline-variant/50">
                             Boot {dep.versionRange}
                           </span>
                         )}
                       </div>
                       {dep.description && (
-                        <div className="text-[11px] text-secondary truncate">{dep.description}</div>
+                        <div dir="auto" className="text-[11px] text-secondary truncate">{dep.description}</div>
                       )}
                     </div>
                   </label>
@@ -254,7 +255,7 @@ export function FullstackDepPicker({ selected, defaults, onChange, compatibility
           </div>
         ))}
         {filteredGroups.length === 0 && (
-          <div className="text-sm text-secondary text-center py-6">No dependencies match "{query}"</div>
+          <div className="text-sm text-secondary text-center py-6">{t('No dependencies match "{query}"', { query })}</div>
         )}
       </div>
     </div>

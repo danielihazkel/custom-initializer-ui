@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ProjectSnapshot, TeamPresetSummary } from '../types'
 import { parseProjectSnapshot } from '../utils/backendShare'
+import { t } from '../i18n'
 
 export const TEAM_PRESETS_URL = '/metadata/backend/presets'
 
@@ -70,7 +71,7 @@ export function useTeamPresets(reloadKey: number = 0) {
     if (!res.ok) throw await failure(res)
     const body = await res.json() as { snapshot?: unknown }
     const snapshot = parseProjectSnapshot(body.snapshot)
-    if (!snapshot) throw new TeamPresetError("This team preset can't be loaded: it is not a Backend-tab setup", 422)
+    if (!snapshot) throw new TeamPresetError(t("This team preset can't be loaded: it is not a Backend-tab setup"), 422)
     return snapshot
   }, [])
 

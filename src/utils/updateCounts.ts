@@ -5,6 +5,8 @@
  * importing them from `fullstack/updateBaseline` used to pull the whole layout engine
  * (`pageLayout.ts` and friends, ~125 KB) into the entry chunk.
  */
+import { t } from '../i18n'
+
 export interface UpdateCounts {
   added: number
   changed: number
@@ -19,11 +21,11 @@ export function countsOf(headers: Headers): UpdateCounts {
 
 export function describeCounts(c: UpdateCounts): string {
   const parts = [
-    c.added ? `${c.added} added` : '',
-    c.changed ? `${c.changed} changed` : '',
-    c.deleted ? `${c.deleted} removed` : '',
+    c.added ? t('{n} added', { n: c.added }) : '',
+    c.changed ? t('{n} changed', { n: c.changed }) : '',
+    c.deleted ? t('{n} removed', { n: c.deleted }) : '',
   ].filter(Boolean)
-  return parts.length ? parts.join(', ') : 'nothing changed'
+  return parts.length ? parts.join(', ') : t('nothing changed')
 }
 
 /**
@@ -33,7 +35,7 @@ export function describeCounts(c: UpdateCounts): string {
  */
 export function describeUpdateBase(headers: Headers): string {
   return headers.get('X-Update-Base') === 'snapshot'
-    ? ' — from the files the project was generated with, the generator’s fixes since included'
+    ? ' — ' + t('from the files the project was generated with, the generator’s fixes since included')
     : ''
 }
 

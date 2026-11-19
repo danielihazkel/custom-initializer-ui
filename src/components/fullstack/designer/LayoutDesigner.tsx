@@ -32,6 +32,7 @@ import { DesignerMenu, type MenuItem } from './DesignerMenu'
 import { DesignerTour, tourSeen } from './DesignerTour'
 import { downloadLayoutSpec } from './specSnapshot'
 import type { FrontendAppearance } from './FrontendSettings'
+import { isRtl, t, tn, useLang } from '../../../i18n'
 
 /** Where the designer opens: a page (and control), and which panel is showing. */
 export interface DesignerTarget {
@@ -78,14 +79,14 @@ function readPrefs(): DesignerPrefs {
 export function historyMenuItems(undoEntries: string[], redoEntries: string[], onJump: (steps: number) => void): MenuItem[] {
   const redo = redoEntries.map((label, i): MenuItem => ({
     key: `redo:${i}`,
-    label: `Redo to: ${label}`,
+    label: t('Redo to: {label}', { label }),
     icon: 'redo',
     tone: 'muted',
     onSelect: () => onJump(redoEntries.length - i),
   }))
   const undo = [...undoEntries].reverse().map((label, i): MenuItem => ({
     key: `undo:${i}`,
-    label: i === 0 ? `Undo: ${label}` : `Undo ${i + 1} back to before: ${label}`,
+    label: i === 0 ? t('Undo: {label}', { label }) : t('Undo {n} back to before: {label}', { n: i + 1, label }),
     icon: 'undo',
     onSelect: () => onJump(-(i + 1)),
   }))
@@ -99,6 +100,7 @@ export function historyMenuItems(undoEntries: string[], redoEntries: string[], o
  * validation and the request are the inline editor's.
  */
 export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo, previewSettings, history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, appearance, dismissedWarnings, onDismissedWarningsChange, codeRequest, target, onClose }: DesignerProps) {
+  const lang = useLang()
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [selectedWidget, setSelectedWidget] = useState<number | null>(null)
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('basics')
@@ -170,7 +172,9 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   }
 
   // Only the play canvas follows links; design mode never reads them.
-  const playLinks = useMemo(() => (mode === 'play' ? buildPlayLinks(pages, entities) : null), [mode, pages, entities])
+  // The links' notes are in the site's language.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `lang` is not read here, but buildPlayLinks' notes are in it
+  const playLinks = useMemo(() => (mode === 'play' ? buildPlayLinks(pages, entities) : null), [mode, pages, entities, lang])
   // The walked pages that still exist, as indexes; the last is the one on the canvas.
   const trailIndexes = trail.map(k => keys.indexOf(k)).filter(i => i >= 0)
   function startPlay() {
@@ -373,10 +377,12 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   async function shareWithTeam(item: TeamShare) {
     try {
       const { template, replaced } = await team.share(item)
-      const where = item.kind === 'page' ? 'Pages › Team templates' : 'Widgets › Team widgets'
-      model.setNotice(`${replaced ? 'Updated' : 'Shared'} “${template.name}” for the team — everyone finds it in the library's ${where}.`)
+      const where = item.kind === 'page' ? t('Pages › Team templates') : t('Widgets › Team widgets')
+      model.setNotice(replaced
+        ? t('Updated “{name}” for the team — everyone finds it in the library\'s {where}.', { name: template.name, where })
+        : t('Shared “{name}” for the team — everyone finds it in the library\'s {where}.', { name: template.name, where }))
     } catch (err) {
-      model.setNotice(`Could not share “${item.name}”: ${err instanceof Error ? err.message : String(err)}`)
+      model.setNotice(t('Could not share “{name}”: {error}', { name: item.name, error: err instanceof Error ? err.message : String(err) }))
     }
   }
   function sharePage(index: number) {
@@ -387,12 +393,12 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     void shareWithTeam({ kind: 'page', name: pageLabel(p), content })
   }
   async function removeTeamTemplate(id: number) {
-    const t = team.templates.find(x => x.id === id)
+    const found = team.templates.find(x => x.id === id)
     try {
       await team.remove(id)
-      if (t) model.setNotice(`Deleted the team's “${t.name}” — for everyone.`)
+      if (found) model.setNotice(t('Deleted the team\'s “{name}” — for everyone.', { name: found.name }))
     } catch (err) {
-      model.setNotice(`Could not delete it: ${err instanceof Error ? err.message : String(err)}`)
+      model.setNotice(t('Could not delete it: {error}', { error: err instanceof Error ? err.message : String(err) }))
     }
   }
   function addWidget(kind: FullstackWidgetDef['kind'], entity: string, at?: number, def?: FullstackWidgetDef) {
@@ -434,13 +440,16 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     const next = { widgets: copied, from: pageLabel(page) }
     setClip(next)
     const kept = writeClipboard(next)
-    const what = copied.length === 1 ? `“${widgetName(copied[0])}”` : `${copied.length} widgets`
+    const what = copied.length === 1 ? `“${widgetName(copied[0])}”` : tn(copied.length, '{n} widget', '{n} widgets')
     if (cut && widget != null) {
       model.removeWidget(selectedIndex, widget)
       setSelectedWidget(null)
-      model.setNotice(`Cut ${what} — Ctrl+V pastes it on any dashboard`)
+      model.setNotice(t('Cut {what} — Ctrl+V pastes it on any dashboard', { what }))
     } else {
-      model.setNotice(`Copied ${what} — Ctrl+V pastes ${copied.length === 1 ? 'it' : 'them'} on any dashboard${kept ? '' : ' (until the designer closes: this browser refused to keep it)'}`)
+      const copiedNote = copied.length === 1
+        ? t('Copied {what} — Ctrl+V pastes it on any dashboard', { what })
+        : t('Copied {what} — Ctrl+V pastes them on any dashboard', { what })
+      model.setNotice(kept ? copiedNote : `${copiedNote} ${t('(until the designer closes: this browser refused to keep it)')}`)
     }
     return true
   }
@@ -468,9 +477,9 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
         project, pages, entities, preview, skin: settings.skin, palette: settings.palette,
         locale: previewSettings?.locale ?? 'en', navStyle: nav?.style,
       })
-      model.setNotice(`Downloaded ${name} — open it in a browser to read it, or print it to PDF`)
+      model.setNotice(t('Downloaded {name} — open it in a browser to read it, or print it to PDF', { name }))
     } catch {
-      model.setNotice('The spec sheet could not be built in this browser')
+      model.setNotice(t('The spec sheet could not be built in this browser'))
     }
   }
   /** A copy of a widget right after it, selected. */
@@ -492,7 +501,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
         : widgetKindDisabledReason(k.kind, entity ?? (w.entity ? undefined : named[0]), { entities: named, scaffoldOpts: previewSettings?.projectOpts ?? [] })
       return {
         key: k.kind,
-        label: on ? `${k.label} (now)` : k.label,
+        label: on ? t('{kind} (now)', { kind: k.label }) : k.label,
         icon: k.icon,
         disabled: on || reason,
         onSelect: () => {
@@ -524,7 +533,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Layout designer"
+        aria-label={t('Layout designer')}
         tabIndex={-1}
         onKeyDown={onDialogKey}
         // Above the app header (z-50) and every view, below confirms and toasts (z-60/70). Inline, so
@@ -534,17 +543,17 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
         data-layout-designer
       >
         <header className="flex flex-wrap items-center gap-2 surface-toolbar px-4 py-2">
-          <button type="button" onClick={onClose} className={ICON_BUTTON} aria-label="Close the layout designer" title="Close (Esc)">
+          <button type="button" onClick={onClose} className={ICON_BUTTON} aria-label={t('Close the layout designer')} title={t('Close (Esc)')}>
             <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>close</span>
           </button>
           <div className="me-auto min-w-0">
-            <h1 className="text-sm font-semibold">Layout designer</h1>
+            <h1 className="text-sm font-semibold">{t('Layout designer')}</h1>
             <p className="text-[11px] text-secondary">
-              {pages.length} page{pages.length === 1 ? '' : 's'} · {model.named.length} entit{model.named.length === 1 ? 'y' : 'ies'}
+              {tn(pages.length, '{n} page', '{n} pages')} · {tn(model.named.length, '{n} entity', '{n} entities')}
             </p>
           </div>
-          <div role="radiogroup" aria-label="View" className="flex gap-0.5 rounded-lg border border-outline-variant bg-surface-container p-0.5">
-            {([['design', 'Design'], ['sitemap', 'Sitemap'], ...(appearance ? [['appearance', 'Appearance'] as const] : [])] as const).map(([value, label]) => (
+          <div role="radiogroup" aria-label={t('View')} className="flex gap-0.5 rounded-lg border border-outline-variant bg-surface-container p-0.5">
+            {([['design', t('Design')], ['sitemap', t('Sitemap')], ...(appearance ? [['appearance', t('Appearance')] as const] : [])] as const).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
@@ -559,10 +568,10 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
           </div>
           {history && (
             <span className="inline-flex items-center">
-              <button type="button" onClick={history.onUndo} disabled={!history.undoLabel} className={ICON_BUTTON} title={history.undoLabel ? `${history.undoLabel} (Ctrl+Z)` : 'Nothing to undo'} aria-label={history.undoLabel ?? 'Undo (nothing to undo)'} data-designer-undo>
+              <button type="button" onClick={history.onUndo} disabled={!history.undoLabel} className={ICON_BUTTON} title={history.undoLabel ? `${history.undoLabel} (Ctrl+Z)` : t('Nothing to undo')} aria-label={history.undoLabel ?? t('Undo (nothing to undo)')} data-designer-undo>
                 <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>undo</span>
               </button>
-              <button type="button" onClick={history.onRedo} disabled={!history.redoLabel} className={ICON_BUTTON} title={history.redoLabel ? `${history.redoLabel} (Ctrl+Shift+Z)` : 'Nothing to redo'} aria-label={history.redoLabel ?? 'Redo (nothing to redo)'} data-designer-redo>
+              <button type="button" onClick={history.onRedo} disabled={!history.redoLabel} className={ICON_BUTTON} title={history.redoLabel ? `${history.redoLabel} (Ctrl+Shift+Z)` : t('Nothing to redo')} aria-label={history.redoLabel ?? t('Redo (nothing to redo)')} data-designer-redo>
                 <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>redo</span>
               </button>
               {history.onJump && (
@@ -575,16 +584,16 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     aria-expanded={historyOpen}
                     aria-haspopup="menu"
                     className={ICON_BUTTON}
-                    title="History — jump back several changes"
-                    aria-label="History"
+                    title={t('History — jump back several changes')}
+                    aria-label={t('History')}
                     data-designer-history
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>history</span>
                   </button>
                   {historyOpen && (
                     <DesignerMenu
-                      label="History"
-                      heading="History"
+                      label={t('History')}
+                      heading={t('History')}
                       items={historyMenuItems(history.undoEntries ?? [], history.redoEntries ?? [], history.onJump)}
                       returnFocus={historyButtonRef.current}
                       onClose={() => setHistoryOpen(false)}
@@ -604,16 +613,16 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             data-designer-issues-toggle
           >
             <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">{issueCount > 0 ? 'error' : tipCount > 0 ? 'lightbulb' : 'check_circle'}</span>
-            {issueCount > 0 ? `${issueCount} problem${issueCount === 1 ? '' : 's'}` : 'Ready'}
-            {tipCount > 0 && ` · ${tipCount} tip${tipCount === 1 ? '' : 's'}`}
+            {issueCount > 0 ? tn(issueCount, '{n} problem', '{n} problems') : t('Ready')}
+            {tipCount > 0 && ` · ${tn(tipCount, '{n} tip', '{n} tips')}`}
           </button>
           <button
             type="button"
             onClick={exportSpec}
             disabled={pages.length === 0}
             className={ICON_BUTTON}
-            aria-label="Export the layout as a spec sheet"
-            title="Export a spec sheet (an HTML page that prints to PDF)"
+            aria-label={t('Export the layout as a spec sheet')}
+            title={t('Export a spec sheet (an HTML page that prints to PDF)')}
             data-designer-export-spec
           >
             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>description</span>
@@ -626,18 +635,18 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
               aria-haspopup="menu"
               aria-expanded={helpOpen}
               className={ICON_BUTTON}
-              aria-label="Help"
-              title="Tour and guide"
+              aria-label={t('Help')}
+              title={t('Tour and guide')}
               data-designer-help
             >
               <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>help</span>
             </button>
             {helpOpen && (
               <DesignerMenu
-                label="Help"
+                label={t('Help')}
                 items={[
-                  { key: 'tour', label: 'Take the tour', icon: 'tour', onSelect: () => { setView('design'); setTouring(true) } },
-                  ...(onOpenGuide ? [{ key: 'guide', label: 'How page layouts work (guide)', icon: 'menu_book', onSelect: () => { onClose(); onOpenGuide('fs-pages') } }] : []),
+                  { key: 'tour', label: t('Take the tour'), icon: 'tour', onSelect: () => { setView('design'); setTouring(true) } },
+                  ...(onOpenGuide ? [{ key: 'guide', label: t('How page layouts work (guide)'), icon: 'menu_book', onSelect: () => { onClose(); onOpenGuide('fs-pages') } }] : []),
                 ]}
                 returnFocus={helpButtonRef.current}
                 onClose={() => setHelpOpen(false)}
@@ -645,7 +654,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
               />
             )}
           </span>
-          <button type="button" onClick={onClose} className="rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-on-primary">Done</button>
+          <button type="button" onClick={onClose} className="rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-on-primary">{t('Done')}</button>
         </header>
 
         {model.notice && (
@@ -653,9 +662,9 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             <span className="material-symbols-outlined text-amber-600" style={{ fontSize: '14px' }} aria-hidden="true">info</span>
             <span className="flex-1">{model.notice}</span>
             {history?.undoLabel && (
-              <button type="button" onClick={() => { model.setNotice(null); history.onUndo() }} className="font-semibold text-primary hover:underline">Undo</button>
+              <button type="button" onClick={() => { model.setNotice(null); history.onUndo() }} className="font-semibold text-primary hover:underline">{t('Undo')}</button>
             )}
-            <button type="button" onClick={() => model.setNotice(null)} className={ICON_BUTTON} aria-label="Dismiss">
+            <button type="button" onClick={() => model.setNotice(null)} className={ICON_BUTTON} aria-label={t('Dismiss')}>
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
             </button>
           </div>
@@ -719,7 +728,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
           />
           )}
 
-          <main className="flex min-h-[28rem] min-w-0 flex-1 flex-col" aria-label="Canvas">
+          <main className="flex min-h-[28rem] min-w-0 flex-1 flex-col" aria-label={t('Canvas')}>
             <PageStrip
               pages={pages}
               model={model}
@@ -759,9 +768,11 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             {entityForm && (
               <div className="flex flex-wrap items-center gap-2 border-b border-primary/30 bg-primary/5 px-4 py-2" data-entity-form>
                 <p className="text-xs font-semibold text-on-surface">
-                  New {PAGE_TYPE_META[entityForm.type].label.toLowerCase()} page — {entityForm.type === 'master-detail' ? 'which parent and child?' : 'which entity?'}
+                  {entityForm.type === 'master-detail'
+                    ? t('New {type} page — which parent and child?', { type: PAGE_TYPE_META[entityForm.type].label.toLowerCase() })
+                    : t('New {type} page — which entity?', { type: PAGE_TYPE_META[entityForm.type].label.toLowerCase() })}
                 </p>
-                <ul role="radiogroup" aria-label="Entity for the new page" className="flex flex-wrap gap-1.5">
+                <ul role="radiogroup" aria-label={t('Entity for the new page')} className="flex flex-wrap gap-1.5">
                   {(newPageChoices(entityForm.type, model.named, pages) ?? []).map(c => {
                     const on = entityForm.pick === c.value
                     return (
@@ -783,9 +794,9 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                   })}
                 </ul>
                 <button type="button" onClick={() => model.addPage(entityForm.type, entityForm.pick, entityForm.at)} className="rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-on-primary">
-                  Add {PAGE_TYPE_META[entityForm.type].label.toLowerCase()} page
+                  {t('Add {type} page', { type: PAGE_TYPE_META[entityForm.type].label.toLowerCase() })}
                 </button>
-                <button type="button" onClick={() => setEntityForm(null)} className={SMALL_BUTTON}>Cancel</button>
+                <button type="button" onClick={() => setEntityForm(null)} className={SMALL_BUTTON}>{t('Cancel')}</button>
               </div>
             )}
             <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container-lowest px-4 py-1.5 text-[11px] text-secondary">
@@ -794,25 +805,25 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                 onClick={() => setPrefs(p => ({ ...p, library: !p.library }))}
                 aria-pressed={prefs.library}
                 className={`${ICON_BUTTON} hidden lg:inline-flex`}
-                title={prefs.library ? 'Hide the library' : 'Show the library'}
-                aria-label={prefs.library ? 'Hide the library' : 'Show the library'}
+                title={prefs.library ? t('Hide the library') : t('Show the library')}
+                aria-label={prefs.library ? t('Hide the library') : t('Show the library')}
                 data-toggle-library
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '17px' }}>{prefs.library ? 'left_panel_close' : 'left_panel_open'}</span>
+                <span className="material-symbols-outlined flip-rtl" style={{ fontSize: '17px' }}>{prefs.library ? 'left_panel_close' : 'left_panel_open'}</span>
               </button>
               {page && (
-                <span role="radiogroup" aria-label="Canvas mode" className="inline-flex overflow-hidden rounded-md border border-outline-variant" data-canvas-mode>
-                  {([['design', 'Design', 'edit'], ['play', 'Play', 'play_arrow']] as const).map(([value, label, icon]) => (
+                <span role="radiogroup" aria-label={t('Canvas mode')} className="inline-flex overflow-hidden rounded-md border border-outline-variant" data-canvas-mode>
+                  {([['design', t('Design'), 'edit'], ['play', t('Play'), 'play_arrow']] as const).map(([value, label, icon]) => (
                     <button
                       key={value}
                       type="button"
                       role="radio"
                       aria-checked={mode === value}
                       onClick={() => (value === 'play' ? (mode === 'play' ? undefined : startPlay()) : stopPlay())}
-                      title={value === 'play' ? 'Click through the app as its users will (P)' : 'Click a part to edit it (P)'}
+                      title={value === 'play' ? t('Click through the app as its users will (P)') : t('Click a part to edit it (P)')}
                       className={`inline-flex items-center gap-0.5 px-2 py-0.5 font-semibold ${mode === value ? 'bg-primary/15 text-on-surface' : 'text-secondary hover:text-on-surface'}`}
                     >
-                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">{icon}</span>
+                      <span className={`material-symbols-outlined ${value === 'play' ? 'flip-rtl' : ''}`} style={{ fontSize: '14px' }} aria-hidden="true">{icon}</span>
                       {label}
                     </button>
                   ))}
@@ -825,18 +836,18 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     onClick={() => playBackTo()}
                     disabled={trailIndexes.length < 2}
                     className={ICON_BUTTON}
-                    aria-label="Back to the page before"
-                    title="Back"
+                    aria-label={t('Back to the page before')}
+                    title={t('Back')}
                     data-play-back
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: '17px' }}>arrow_back</span>
+                    <span className="material-symbols-outlined flip-rtl" style={{ fontSize: '17px' }}>arrow_back</span>
                   </button>
-                  <nav aria-label="Pages walked through" className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5" data-play-trail>
+                  <nav aria-label={t('Pages walked through')} className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5" data-play-trail>
                     {trailIndexes.map((index, i) => {
                       const last = i === trailIndexes.length - 1
                       return (
                         <span key={`${i}:${keys[index]}`} className="inline-flex items-center gap-0.5">
-                          {i > 0 && <span className="material-symbols-outlined text-secondary/70" style={{ fontSize: '13px' }} aria-hidden="true">chevron_right</span>}
+                          {i > 0 && <span className="material-symbols-outlined flip-rtl text-secondary/70" style={{ fontSize: '13px' }} aria-hidden="true">chevron_right</span>}
                           {last
                             ? <span className="font-semibold text-on-surface" aria-current="page">{pageLabel(pages[index])}</span>
                             : <button type="button" onClick={() => playBackTo(i)} className="text-primary hover:underline">{pageLabel(pages[index])}</button>}
@@ -853,7 +864,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                   <span className="font-semibold text-on-surface">{pageLabel(page)}</span>
                   <span>{PAGE_TYPE_META[page.type]?.label}</span>
                   <span className="font-mono">#/{page.id || '…'}</span>
-                  <span className="ms-auto">{page.type === 'dashboard' ? 'Click a widget to edit it · double-click a title to rename · drag to move · drag its edge to resize' : takesParts ? 'Click a part to edit it · double-click a title to rename · drag parts in from the library' : 'Click a part to edit it · double-click a title to rename'}</span>
+                  <span className="ms-auto">{page.type === 'dashboard' ? t('Click a widget to edit it · double-click a title to rename · drag to move · drag its edge to resize') : takesParts ? t('Click a part to edit it · double-click a title to rename · drag parts in from the library') : t('Click a part to edit it · double-click a title to rename')}</span>
                   <ZoomControl zoom={prefs.zoom} onChange={zoom => setPrefs(p => ({ ...p, zoom }))} />
                   <DeviceSwitch device={device} onChange={setDevice} />
                   <DataStateSwitch state={prefs.dataState} onChange={dataState => setPrefs(p => ({ ...p, dataState }))} />
@@ -863,26 +874,26 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
                     aria-pressed={widget == null}
                     className={`rounded-md border px-2 py-1 font-semibold ${widget == null ? 'border-primary/50 bg-primary/10 text-on-surface' : 'border-outline-variant text-secondary hover:text-on-surface'}`}
                   >
-                    Page settings
+                    {t('Page settings')}
                   </button>
                 </>
-              ) : <span className="me-auto">No pages yet</span>}
+              ) : <span className="me-auto">{t('No pages yet')}</span>}
               <button
                 type="button"
                 onClick={() => setPrefs(p => ({ ...p, inspector: !p.inspector }))}
                 aria-pressed={prefs.inspector}
                 className={`${ICON_BUTTON} hidden lg:inline-flex`}
-                title={prefs.inspector ? 'Hide the settings pane' : 'Show the settings pane'}
-                aria-label={prefs.inspector ? 'Hide the settings pane' : 'Show the settings pane'}
+                title={prefs.inspector ? t('Hide the settings pane') : t('Show the settings pane')}
+                aria-label={prefs.inspector ? t('Hide the settings pane') : t('Show the settings pane')}
                 data-toggle-inspector
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '17px' }}>{prefs.inspector ? 'right_panel_close' : 'right_panel_open'}</span>
+                <span className="material-symbols-outlined flip-rtl" style={{ fontSize: '17px' }}>{prefs.inspector ? 'right_panel_close' : 'right_panel_open'}</span>
               </button>
             </div>
             {mode === 'play' && page && (
               <p className="flex items-center gap-1.5 border-b border-outline-variant bg-primary/5 px-4 py-1 text-[11px] text-secondary" role="status" data-play-status>
                 <span className="material-symbols-outlined text-primary" style={{ fontSize: '14px' }} aria-hidden="true">{playNote ? 'info' : 'touch_app'}</span>
-                {playNote ?? 'Playing: rows, tiles, charts, Back and Save go where the generated app goes. Esc or P to edit again.'}
+                {playNote ?? t('Playing: rows, tiles, charts, Back and Save go where the generated app goes. Esc or P to edit again.')}
               </p>
             )}
             {page ? (
@@ -943,13 +954,13 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
               ) : (
               <div className="min-h-0 flex-1 overflow-auto bg-background p-6" data-designer-canvas>
                 <div className="mx-auto flex max-w-xl flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-outline px-8 py-14 text-center" data-designer-empty>
-                  <h2 className="text-lg font-semibold">Start your layout</h2>
-                  <p className="text-xs text-secondary">Pick a whole layout from Templates, start from your entities, or add pages one at a time from the library.</p>
+                  <h2 className="text-lg font-semibold">{t('Start your layout')}</h2>
+                  <p className="text-xs text-secondary">{t('Pick a whole layout from Templates, start from your entities, or add pages one at a time from the library.')}</p>
                   <div className="flex flex-wrap justify-center gap-2">
                     <button type="button" onClick={() => model.startFromEntities()} disabled={model.named.length === 0} className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary disabled:opacity-40" data-seed-layout>
-                      Start from my entities
+                      {t('Start from my entities')}
                     </button>
-                    <button type="button" onClick={() => { setLibraryTab('templates'); openLibrary() }} className={SMALL_BUTTON}>Browse templates</button>
+                    <button type="button" onClick={() => { setLibraryTab('templates'); openLibrary() }} className={SMALL_BUTTON}>{t('Browse templates')}</button>
                   </div>
                 </div>
               </div>
@@ -997,12 +1008,14 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
         {touring && <DesignerTour root={dialogRef.current} onClose={() => setTouring(false)} />}
         {kindMenu && (() => {
           // Fixed under the button: the canvas is zoomed, and the menu should read at full size.
+          // In RTL it hangs from the button's right edge, opening toward the reading direction.
           const r = kindMenu.anchor.getBoundingClientRect()
+          const left = isRtl() ? r.right - 224 : r.left
           return (
-            <div className="fixed" style={{ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 232)), zIndex: 60 }} data-widget-kind-menu>
+            <div className="fixed" style={{ top: r.bottom + 4, left: Math.max(8, Math.min(left, window.innerWidth - 232)), zIndex: 60 }} data-widget-kind-menu>
               <DesignerMenu
-                label={`Kind of widget ${kindMenu.index + 1}`}
-                heading="Change the kind"
+                label={t('Kind of widget {n}', { n: kindMenu.index + 1 })}
+                heading={t('Change the kind')}
                 items={kindMenuItems(kindMenu.page, kindMenu.index)}
                 returnFocus={kindMenu.anchor}
                 onClose={() => setKindMenu(null)}
@@ -1011,14 +1024,14 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
             </div>
           )
         })()}
-        <p className="sr-only" role="status">{issueCount === 0 ? '' : `${issueCount} layout problem${issueCount === 1 ? '' : 's'}`}</p>
+        <p className="sr-only" role="status">{issueCount === 0 ? '' : tn(issueCount, '{n} layout problem', '{n} layout problems')}</p>
       </div>
 
       {model.confirmRemove != null && pages[model.confirmRemove] && (
         <ConfirmDialog
-          title={`Remove “${pageLabel(pages[model.confirmRemove])}”?`}
-          message={`It is a tab of ${pagesEmbedding(pages, pages[model.confirmRemove].id).map(p => `“${pageLabel(p)}”`).join(', ')}. Removing it removes that tab too.`}
-          confirmLabel="Remove page and tab"
+          title={t('Remove “{page}”?', { page: pageLabel(pages[model.confirmRemove]) })}
+          message={t('It is a tab of {pages}. Removing it removes that tab too.', { pages: pagesEmbedding(pages, pages[model.confirmRemove].id).map(p => `“${pageLabel(p)}”`).join(', ') })}
+          confirmLabel={t('Remove page and tab')}
           tone="danger"
           onConfirm={() => model.removePage(model.confirmRemove!, true)}
           onCancel={() => model.setConfirmRemove(null)}
@@ -1026,9 +1039,9 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
       )}
       {bulkRemove && (
         <ConfirmDialog
-          title={`Remove ${bulkRemove.count} page${bulkRemove.count === 1 ? '' : 's'}?`}
-          message="Tabs, links and record openings that point at them go too. Undo brings them back."
-          confirmLabel="Remove pages"
+          title={tn(bulkRemove.count, 'Remove {n} page?', 'Remove {n} pages?')}
+          message={t('Tabs, links and record openings that point at them go too. Undo brings them back.')}
+          confirmLabel={t('Remove pages')}
           tone="danger"
           onConfirm={() => { bulkRemove.run(); setBulkRemove(null) }}
           onCancel={() => setBulkRemove(null)}
@@ -1036,9 +1049,12 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
       )}
       {confirmTemplate && (
         <ConfirmDialog
-          title={`Replace the layout with “${confirmTemplate.label}”?`}
-          message={`This builds ${confirmTemplate.built.length} page${confirmTemplate.built.length === 1 ? '' : 's'} from your entities in place of the ${pages.length} you have. Undo brings them back.`}
-          confirmLabel="Replace the layout"
+          title={t('Replace the layout with “{name}”?', { name: confirmTemplate.label })}
+          message={tn(confirmTemplate.built.length,
+            'This builds {n} page from your entities in place of the {count} you have. Undo brings them back.',
+            'This builds {n} pages from your entities in place of the {count} you have. Undo brings them back.',
+            { count: pages.length })}
+          confirmLabel={t('Replace the layout')}
           onConfirm={() => { model.startFromTemplate(confirmTemplate.label, confirmTemplate.built); setConfirmTemplate(null); setSelectedKey(null) }}
           onCancel={() => setConfirmTemplate(null)}
         />

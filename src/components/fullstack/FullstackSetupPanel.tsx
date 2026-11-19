@@ -9,6 +9,7 @@ import { FullstackDepPicker } from './FullstackDepPicker'
 import { OptionCoverage } from './OptionCoverage'
 import { DepartmentSelect } from '../shared/DepartmentSelect'
 import { OPTIONS_SECTION, RTL_OPTION, isEntityOptKey } from './scaffoldOptions'
+import { t } from '../../i18n'
 
 /**
  * Everything that configures the *project* rather than the *model*: Maven coordinates and
@@ -89,86 +90,86 @@ export function FullstackSetupPanel({
       <div className="grid grid-cols-12 gap-8 items-start">
         <div className="col-span-12 lg:col-span-5 space-y-8">
           <section id="fs-meta" className="space-y-3">
-            <SectionHeading icon="tune" title="Project Metadata" />
+            <SectionHeading icon="tune" title={t('Project Metadata')} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Labeled label="Group ID" htmlFor="fs-groupId" error={metaErrors.groupId}>
-                <input id="fs-groupId" className={inputClass(metaErrors.groupId)} value={meta.groupId}
+              <Labeled label={t('Group ID')} htmlFor="fs-groupId" error={metaErrors.groupId}>
+                <input id="fs-groupId" dir="ltr" className={inputClass(metaErrors.groupId)} value={meta.groupId}
                        aria-invalid={Boolean(metaErrors.groupId)}
                        onChange={e => updateMeta({ groupId: e.target.value })} />
               </Labeled>
-              <Labeled label="Artifact ID" htmlFor="fs-artifactId" error={metaErrors.artifactId}>
-                <input id="fs-artifactId" className={inputClass(metaErrors.artifactId)} value={meta.artifactId}
+              <Labeled label={t('Artifact ID')} htmlFor="fs-artifactId" error={metaErrors.artifactId}>
+                <input id="fs-artifactId" dir="ltr" className={inputClass(metaErrors.artifactId)} value={meta.artifactId}
                        aria-invalid={Boolean(metaErrors.artifactId)}
                        onChange={e => updateMeta({ artifactId: e.target.value })} />
               </Labeled>
-              <Labeled label="Name" htmlFor="fs-name" error={metaErrors.name}>
-                <input id="fs-name" className={inputClass(metaErrors.name)} value={meta.name}
+              <Labeled label={t('Name')} htmlFor="fs-name" error={metaErrors.name}>
+                <input id="fs-name" dir="auto" className={inputClass(metaErrors.name)} value={meta.name}
                        aria-invalid={Boolean(metaErrors.name)}
                        placeholder={meta.artifactId || 'demo'}
-                       title="Project name in the generated pom.xml (blank = the artifact id)"
+                       title={t('Project name in the generated pom.xml (blank = the artifact id)')}
                        onChange={e => updateMeta({ name: e.target.value })} />
               </Labeled>
-              <Labeled label="Description" htmlFor="fs-description">
-                <input id="fs-description" className={inputClass()} value={meta.description}
-                       placeholder="Optional one-liner for the pom"
+              <Labeled label={t('Description')} htmlFor="fs-description">
+                <input id="fs-description" dir="auto" className={inputClass()} value={meta.description}
+                       placeholder={t('Optional one-liner for the pom')}
                        onChange={e => updateMeta({ description: e.target.value })} />
               </Labeled>
-              <Labeled label="Package Name" htmlFor="fs-packageName" error={metaErrors.packageName}>
-                <input id="fs-packageName" className={inputClass(metaErrors.packageName)} value={meta.packageName}
+              <Labeled label={t('Package Name')} htmlFor="fs-packageName" error={metaErrors.packageName}>
+                <input id="fs-packageName" dir="ltr" className={inputClass(metaErrors.packageName)} value={meta.packageName}
                        aria-invalid={Boolean(metaErrors.packageName)}
                        onChange={e => updateMeta({ packageName: e.target.value })} />
               </Labeled>
-              <Labeled label="Domain Package" htmlFor="fs-domainPackage" error={metaErrors.domainPackage}>
-                <input id="fs-domainPackage" className={inputClass(metaErrors.domainPackage)} value={meta.domainPackage}
+              <Labeled label={t('Domain Package')} htmlFor="fs-domainPackage" error={metaErrors.domainPackage}>
+                <input id="fs-domainPackage" dir="ltr" className={inputClass(metaErrors.domainPackage)} value={meta.domainPackage}
                        aria-invalid={Boolean(metaErrors.domainPackage)}
                        placeholder={meta.packageName || 'com.menora.demo'}
                        onChange={e => updateMeta({ domainPackage: e.target.value })} />
                 <p className="text-[11px] text-on-surface-variant">
-                  Where entities/repositories/controllers go, split into <code>.entity</code>, <code>.repository</code>,
-                  <code>.dto</code>, <code>.service</code>, <code>.controller</code>. Blank = same as Package Name; must be under it.
+                  {t('Where entities/repositories/controllers go, split into')} <code>.entity</code>, <code>.repository</code>,{' '}
+                  <code>.dto</code>, <code>.service</code>, <code>.controller</code>. {t('Blank = same as Package Name; must be under it.')}
                 </p>
               </Labeled>
               {/* A restored/imported version that has left the catalog is kept visible as an "(unknown)"
                   option and flagged, rather than silently snapping the select to the first entry. */}
-              <Labeled label="Java Version" htmlFor="fs-javaVersion" error={metaErrors.javaVersion}>
+              <Labeled label={t('Java Version')} htmlFor="fs-javaVersion" error={metaErrors.javaVersion}>
                 <select id="fs-javaVersion" className={inputClass(metaErrors.javaVersion)} value={meta.javaVersion}
                         aria-invalid={Boolean(metaErrors.javaVersion)}
                         onChange={e => updateMeta({ javaVersion: e.target.value })}>
                   {(javaVersions.length === 0 || !javaVersions.includes(meta.javaVersion)) && (
-                    <option value={meta.javaVersion}>{meta.javaVersion}{javaVersions.length > 0 ? ' (unknown)' : ''}</option>
+                    <option value={meta.javaVersion}>{javaVersions.length > 0 ? t('{version} (unknown)', { version: meta.javaVersion }) : meta.javaVersion}</option>
                   )}
                   {javaVersions.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </Labeled>
-              <Labeled label="Boot Version" htmlFor="fs-bootVersion" error={metaErrors.bootVersion}>
+              <Labeled label={t('Boot Version')} htmlFor="fs-bootVersion" error={metaErrors.bootVersion}>
                 <select id="fs-bootVersion" className={inputClass(metaErrors.bootVersion)} value={meta.bootVersion}
                         aria-invalid={Boolean(metaErrors.bootVersion)}
                         onChange={e => updateMeta({ bootVersion: canonicalVersion(e.target.value) })}>
                   {(bootVersions.length === 0 || !bootVersions.includes(meta.bootVersion)) && (
-                    <option value={meta.bootVersion}>{meta.bootVersion}{bootVersions.length > 0 ? ' (unknown)' : ''}</option>
+                    <option value={meta.bootVersion}>{bootVersions.length > 0 ? t('{version} (unknown)', { version: meta.bootVersion }) : meta.bootVersion}</option>
                   )}
                   {bootVersions.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </Labeled>
-              <Labeled label="Version" htmlFor="fs-version" error={metaErrors.version}>
-                <input id="fs-version" className={inputClass(metaErrors.version)} value={meta.version}
+              <Labeled label={t('Version')} htmlFor="fs-version" error={metaErrors.version}>
+                <input id="fs-version" dir="ltr" className={inputClass(metaErrors.version)} value={meta.version}
                        aria-invalid={Boolean(metaErrors.version)}
                        placeholder="0.0.1-SNAPSHOT"
-                       title="Artifact version in the generated pom.xml (blank = the catalog default)"
+                       title={t('Artifact version in the generated pom.xml (blank = the catalog default)')}
                        onChange={e => updateMeta({ version: e.target.value })} />
               </Labeled>
               {/* configurationFileFormat is deliberately not offered: the common catalog writes
                   application.yaml and deletes application.properties whatever the request says. */}
-              <Labeled label="Department" htmlFor="fs-department"
-                       hint="Exposed to both halves' templates as {{department}} (k8s namespace, image repo, …)">
+              <Labeled label={t('Department')} htmlFor="fs-department"
+                       hint={t("Exposed to both halves' templates as {{department}} (k8s namespace, image repo, …)")}>
                 <DepartmentSelect id="fs-department" className={inputClass()} value={meta.department}
                                   onChange={department => updateMeta({ department })} />
               </Labeled>
-              <Labeled label="Packaging" htmlFor="fs-packaging">
+              <Labeled label={t('Packaging')} htmlFor="fs-packaging">
                 <select id="fs-packaging" className={inputClass()} value={meta.packaging}
                         onChange={e => updateMeta({ packaging: e.target.value })}>
                   {(packagings.length > 0 ? packagings : ['jar', 'war']).map(p => <option key={p} value={p}>{p}</option>)}
-                  {packagings.length > 0 && !packagings.includes(meta.packaging) && <option value={meta.packaging}>{meta.packaging} (unknown)</option>}
+                  {packagings.length > 0 && !packagings.includes(meta.packaging) && <option value={meta.packaging}>{t('{version} (unknown)', { version: meta.packaging })}</option>}
                 </select>
               </Labeled>
             </div>
@@ -177,14 +178,13 @@ export function FullstackSetupPanel({
           {/* Backend: which template set renders the Spring side. Frontend (below): a summary of the
               generated SPA's look, which the layout designer edits. */}
           <section id="fs-backend" className="space-y-3">
-            <SectionHeading icon="dns" title="Backend" />
+            <SectionHeading icon="dns" title={t('Backend')} />
             <p className="text-[11px] text-on-surface-variant">
-              Generated files come from the selected template sets. Edit them in the Config admin panel
-              under "Entity CRUD".
+              {t('Generated files come from the selected template sets. Edit them in the Config admin panel under "Entity CRUD".')}
             </p>
             {setsError && (
               <div className="flex items-center justify-between gap-3 text-[11px] text-error border border-error/30 bg-error/10 rounded px-3 py-2">
-                <span>Couldn't load template sets ({setsError}); showing defaults.</span>
+                <span>{t("Couldn't load template sets ({error}); showing defaults.", { error: setsError })}</span>
                 <button
                   type="button"
                   onClick={loadTemplateSets}
@@ -192,14 +192,14 @@ export function FullstackSetupPanel({
                   className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-error/40 text-error hover:bg-error/10 transition-colors disabled:opacity-60"
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>refresh</span>
-                  Retry
+                  {t('Retry')}
                 </button>
               </div>
             )}
             {setsLoading ? (
               <div className="h-[58px] rounded bg-surface-container-low animate-pulse" aria-hidden="true" />
             ) : (
-              <Labeled label="Template set" htmlFor="fs-backendSet">
+              <Labeled label={t('Template set')} htmlFor="fs-backendSet">
                 {/* A single-option <select> is just visual noise — show read-only text until a
                     second set of this kind exists. */}
                 {backendSets.length > 1 ? (
@@ -217,7 +217,7 @@ export function FullstackSetupPanel({
           {/* The generated app's look is edited in the layout designer, beside its preview; here
               it is one line that says what is chosen and opens the designer there. */}
           <section id="fs-frontend" className="space-y-3">
-            <SectionHeading icon="web" title="Frontend" />
+            <SectionHeading icon="web" title={t('Frontend')} />
             <div className="flex flex-wrap items-center gap-3 rounded-lg border border-outline-variant px-3 py-2.5" data-frontend-summary>
               {palette && (
                 <span
@@ -229,8 +229,8 @@ export function FullstackSetupPanel({
               <span className="min-w-0 flex-1 text-sm text-on-surface">
                 {currentFrontendSet?.name ?? frontendSet}
                 <span className="text-[11px] text-secondary">
-                  {palette && ` · ${palette.name}${colorPalette ? '' : ' (set default)'}`}
-                  {` · ${meta.locale === 'he' ? 'עברית' : 'English'} · ${scaffoldOpts.includes(RTL_OPTION.value) ? 'right-to-left' : 'left-to-right'}`}
+                  {palette && ` · ${colorPalette ? palette.name : t('{palette} (set default)', { palette: palette.name })}`}
+                  {` · ${meta.locale === 'he' ? 'עברית' : 'English'} · ${scaffoldOpts.includes(RTL_OPTION.value) ? t('right-to-left') : t('left-to-right')}`}
                 </span>
               </span>
               <button
@@ -240,20 +240,21 @@ export function FullstackSetupPanel({
                 data-edit-frontend
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">palette</span>
-                Edit in designer
+                {t('Edit in designer')}
               </button>
             </div>
             <p className="text-[11px] text-on-surface-variant">
-              Template set, colours, language and direction{hasPages ? '' : ', and the dashboard heading'} are set in the layout designer’s
-              Appearance view, beside a live preview of the app.
+              {hasPages
+                ? t('Template set, colours, language and direction are set in the layout designer’s Appearance view, beside a live preview of the app.')
+                : t('Template set, colours, language and direction, and the dashboard heading are set in the layout designer’s Appearance view, beside a live preview of the app.')}
             </p>
           </section>
 
           <section id="fs-options" className="space-y-3">
-            <SectionHeading icon="toggle_on" title="Options" />
+            <SectionHeading icon="toggle_on" title={t('Options')} />
             <p className="text-[11px] text-on-surface-variant">
-              Opt-in scaffolding extras applied to every entity. Off by default. An entity can switch
-              the per-entity ones On/Off for itself under its <strong>Overrides</strong>.
+              {t('Opt-in scaffolding extras applied to every entity. Off by default. An entity can switch the per-entity ones On/Off for itself under its')}{' '}
+              <strong>{t('Overrides')}</strong>.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {OPTIONS_SECTION.map(opt => {
@@ -273,7 +274,7 @@ export function FullstackSetupPanel({
                   <span className="flex flex-col min-w-0">
                     <span className="text-sm text-on-surface">
                       {opt.label}
-                      {!opt.perEntity && <span className="ml-1.5 text-[10px] uppercase tracking-wider text-secondary" title="Applies to the whole project — entities cannot override it">project-wide</span>}
+                      {!opt.perEntity && <span className="ms-1.5 text-[10px] uppercase tracking-wider text-secondary" title={t('Applies to the whole project — entities cannot override it')}>{t('project-wide')}</span>}
                     </span>
                     <span className="text-[11px] text-secondary">{opt.hint}</span>
                     {checked && isEntityOptKey(opt.value) && (
@@ -282,13 +283,13 @@ export function FullstackSetupPanel({
                     {missingDep && opt.requiresAnyDep && (
                       <span className="mt-1.5 flex items-center gap-1.5 text-[11px] text-warning" role="alert">
                         <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>warning</span>
-                        <span>Has no effect without <code className="font-mono">{opt.requiresAnyDep[0]}</code>.</span>
+                        <span>{t('Has no effect without')} <code className="font-mono">{opt.requiresAnyDep[0]}</code>.</span>
                         <button
                           type="button"
                           onClick={e => { e.preventDefault(); setSelectedDeps(prev => [...prev, opt.requiresAnyDep![0]]) }}
                           className="font-semibold underline hover:no-underline"
                         >
-                          Add it
+                          {t('Add it')}
                         </button>
                       </span>
                     )}
@@ -303,13 +304,11 @@ export function FullstackSetupPanel({
         <div className="col-span-12 lg:col-span-7">
           <section id="fs-deps" className="space-y-3">
             <div className="flex items-center justify-between gap-4">
-              <SectionHeading icon="inventory_2" title="Dependencies" />
-              <span className="text-[11px] text-secondary">{selectedDeps.length} selected</span>
+              <SectionHeading icon="inventory_2" title={t('Dependencies')} />
+              <span className="text-[11px] text-secondary">{t('{n} selected', { n: selectedDeps.length })}</span>
             </div>
             <p className="text-[11px] text-on-surface-variant">
-              Pre-checked from the chosen backend set's defaults. You can uncheck
-              anything — the generator respects your final selection. To change what
-              a set ships pre-checked, edit it under Admin → Entity CRUD.
+              {t("Pre-checked from the chosen backend set's defaults. You can uncheck anything — the generator respects your final selection. To change what a set ships pre-checked, edit it under Admin → Entity CRUD.")}
             </p>
             <FullstackDepPicker
               selected={selectedDeps}

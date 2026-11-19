@@ -1,5 +1,6 @@
 import { FULLSTACK_ENTITY_OPT_KEYS, type FullstackEntityDef, type FullstackEntityOptKey } from '../../types'
 import { entityOptApplicability } from './summary'
+import { t } from '../../i18n'
 
 /**
  * The one description of every `opts.scaffold` flag the editor offers — the Options section, the
@@ -13,6 +14,8 @@ import { entityOptApplicability } from './summary'
  * are project-wide only. `requiresAnyDep`: the backend silently no-ops the opt unless one of these
  * deps is selected, so the editor warns inline instead of letting the user discover the missing
  * scaffolding in the ZIP.
+ *
+ * The words are getters, read in the site's language each time they are shown.
  */
 export interface ScaffoldOption {
   value: string
@@ -28,24 +31,109 @@ export interface ScaffoldOption {
 }
 
 export const SCAFFOLD_OPTIONS: ScaffoldOption[] = [
-  { value: 'audit', label: 'Audit (who and when)', hint: 'createdAt / updatedAt and createdBy / updatedBy (the signed-in user) via JPA auditing; a "Changed by me" filter on the list', entityHint: 'created/updated at and by', perEntity: true },
-  { value: 'softDelete', label: 'Soft delete', hint: 'deleted flag + Hibernate @SQLDelete/@SQLRestriction; delete toast gets a real Undo', entityHint: 'deleted flag + restore endpoint', perEntity: true },
-  { value: 'inverseCollections', label: 'Inverse collections', hint: 'Read-only @OneToMany on the referenced side', perEntity: false },
-  { value: 'tests', label: 'Tests', hint: 'An API test per entity (its real endpoints on an in-memory H2, whatever the database), and Vitest tests of its form checks and list page', entityHint: 'API test + form-check and list-page tests', perEntity: true },
-  { value: 'openapi', label: 'OpenAPI annotations', hint: 'springdoc @Tag/@Operation on every controller; adds the openapi starter', perEntity: false },
-  { value: 'secured', label: 'Permission hints', hint: 'Retired: with ldap-auth or ldap-auth-rest selected every endpoint is checked, at each entity\'s access levels (entity Settings)', perEntity: false, retired: true },
-  { value: 'csvExport', label: 'CSV export', hint: 'GET /export.csv (streamed, honors search/filters/sort) + Export button', entityHint: 'GET /export.csv + Export button', perEntity: true },
-  { value: 'xlsxExport', label: 'Excel export', hint: 'GET /export.xlsx — the list as a workbook (column names as the UI shows them, numbers as numbers), streamed like the CSV + an Excel button', entityHint: 'GET /export.xlsx + Excel button', perEntity: true },
-  { value: 'history', label: 'Change history', hint: 'Every change to a row kept with who made it and the values before and after (table app_change_log); a History tab on the record, and Restore this version for admins', entityHint: 'GET /{id}/history + History tab + restore', perEntity: true },
-  { value: 'events', label: 'Events', hint: 'Every change to a row sent out through an outbox (table app_outbox): to a Kafka topic per entity with the kafka dependency, to the webhooks the app is configured with, and to open browsers, whose lists and bell refresh at once', entityHint: 'change events (Kafka, webhooks, live refresh)', perEntity: true },
-  { value: 'savedViews', label: 'Saved views', hint: 'A Views menu on the list: its search, filters, sort and columns kept under a name on the server (/api/views), per user, shareable, one the default', entityHint: 'Views menu + /api/views for this list', perEntity: true },
-  { value: 'csvImport', label: 'CSV import', hint: 'POST /import (every row checked, all saved or none) + Import button with column matching', entityHint: 'POST /import + Import button', perEntity: true },
-  { value: 'bulkDelete', label: 'Bulk delete', hint: 'Select rows, DELETE /bulk across all', entityHint: 'row selection + DELETE /bulk', perEntity: true },
-  { value: 'bulkUpdate', label: 'Bulk edit', hint: 'Select rows, set one field, PATCH /bulk across all', entityHint: 'row selection + PATCH /bulk', perEntity: true },
-  { value: 'inlineEdit', label: 'Inline cell edit', hint: 'Edit a table cell in place (a pencil on hover), saved with the row\'s PUT', entityHint: 'table cells edited in place', perEntity: true },
-  { value: 'optimisticLocking', label: 'Optimistic locking', hint: '@Version column: a save over someone else\'s newer change gets a 409, and the form offers to reload or overwrite', entityHint: '@Version + stale-save notice', perEntity: true },
-  { value: 'seedData', label: 'Demo data', hint: 'Seeds 8 rows per entity on first start (parents before children); off via app.demo-data.enabled=false', perEntity: false },
-  { value: 'rtl', label: 'RTL layout', hint: 'dir="rtl" + Hebrew lang; mirrored right-to-left UI', perEntity: false },
+  {
+    value: 'audit', perEntity: true,
+    get label() { return t('Audit (who and when)') },
+    get hint() { return t('createdAt / updatedAt and createdBy / updatedBy (the signed-in user) via JPA auditing; a "Changed by me" filter on the list') },
+    get entityHint() { return t('created/updated at and by') },
+  },
+  {
+    value: 'softDelete', perEntity: true,
+    get label() { return t('Soft delete') },
+    get hint() { return t('deleted flag + Hibernate @SQLDelete/@SQLRestriction; delete toast gets a real Undo') },
+    get entityHint() { return t('deleted flag + restore endpoint') },
+  },
+  {
+    value: 'inverseCollections', perEntity: false,
+    get label() { return t('Inverse collections') },
+    get hint() { return t('Read-only @OneToMany on the referenced side') },
+  },
+  {
+    value: 'tests', perEntity: true,
+    get label() { return t('Tests') },
+    get hint() { return t('An API test per entity (its real endpoints on an in-memory H2, whatever the database), and Vitest tests of its form checks and list page') },
+    get entityHint() { return t('API test + form-check and list-page tests') },
+  },
+  {
+    value: 'openapi', perEntity: false,
+    get label() { return t('OpenAPI annotations') },
+    get hint() { return t('springdoc @Tag/@Operation on every controller; adds the openapi starter') },
+  },
+  {
+    value: 'secured', perEntity: false, retired: true,
+    get label() { return t('Permission hints') },
+    get hint() { return t("Retired: with ldap-auth or ldap-auth-rest selected every endpoint is checked, at each entity's access levels (entity Settings)") },
+  },
+  {
+    value: 'csvExport', perEntity: true,
+    get label() { return t('CSV export') },
+    get hint() { return t('GET /export.csv (streamed, honors search/filters/sort) + Export button') },
+    get entityHint() { return t('GET /export.csv + Export button') },
+  },
+  {
+    value: 'xlsxExport', perEntity: true,
+    get label() { return t('Excel export') },
+    get hint() { return t('GET /export.xlsx — the list as a workbook (column names as the UI shows them, numbers as numbers), streamed like the CSV + an Excel button') },
+    get entityHint() { return t('GET /export.xlsx + Excel button') },
+  },
+  {
+    value: 'history', perEntity: true,
+    get label() { return t('Change history') },
+    get hint() { return t('Every change to a row kept with who made it and the values before and after (table app_change_log); a History tab on the record, and Restore this version for admins') },
+    get entityHint() { return t('GET /{id}/history + History tab + restore') },
+  },
+  {
+    value: 'events', perEntity: true,
+    get label() { return t('Events') },
+    get hint() { return t('Every change to a row sent out through an outbox (table app_outbox): to a Kafka topic per entity with the kafka dependency, to the webhooks the app is configured with, and to open browsers, whose lists and bell refresh at once') },
+    get entityHint() { return t('change events (Kafka, webhooks, live refresh)') },
+  },
+  {
+    value: 'savedViews', perEntity: true,
+    get label() { return t('Saved views') },
+    get hint() { return t('A Views menu on the list: its search, filters, sort and columns kept under a name on the server (/api/views), per user, shareable, one the default') },
+    get entityHint() { return t('Views menu + /api/views for this list') },
+  },
+  {
+    value: 'csvImport', perEntity: true,
+    get label() { return t('CSV import') },
+    get hint() { return t('POST /import (every row checked, all saved or none) + Import button with column matching') },
+    get entityHint() { return t('POST /import + Import button') },
+  },
+  {
+    value: 'bulkDelete', perEntity: true,
+    get label() { return t('Bulk delete') },
+    get hint() { return t('Select rows, DELETE /bulk across all') },
+    get entityHint() { return t('row selection + DELETE /bulk') },
+  },
+  {
+    value: 'bulkUpdate', perEntity: true,
+    get label() { return t('Bulk edit') },
+    get hint() { return t('Select rows, set one field, PATCH /bulk across all') },
+    get entityHint() { return t('row selection + PATCH /bulk') },
+  },
+  {
+    value: 'inlineEdit', perEntity: true,
+    get label() { return t('Inline cell edit') },
+    get hint() { return t("Edit a table cell in place (a pencil on hover), saved with the row's PUT") },
+    get entityHint() { return t('table cells edited in place') },
+  },
+  {
+    value: 'optimisticLocking', perEntity: true,
+    get label() { return t('Optimistic locking') },
+    get hint() { return t("@Version column: a save over someone else's newer change gets a 409, and the form offers to reload or overwrite") },
+    get entityHint() { return t('@Version + stale-save notice') },
+  },
+  {
+    value: 'seedData', perEntity: false,
+    get label() { return t('Demo data') },
+    get hint() { return t('Seeds 8 rows per entity on first start (parents before children); off via app.demo-data.enabled=false') },
+  },
+  {
+    value: 'rtl', perEntity: false,
+    get label() { return t('RTL layout') },
+    get hint() { return t('dir="rtl" + Hebrew lang; mirrored right-to-left UI') },
+  },
 ]
 
 /** RTL only touches the generated SPA, so it renders in the Frontend section, not with the
@@ -59,12 +147,12 @@ export const OPTIONS_SECTION = SCAFFOLD_OPTIONS.filter(o => o.value !== 'rtl' &&
  *  collections, demo data) or the build (OpenAPI, permission hints). */
 export const PROJECT_ONLY_OPTS = OPTIONS_SECTION.filter(o => !o.perEntity)
 
-/** Labels for the per-entity override panel, derived from the same list. */
+/** Labels for the per-entity override panel, derived from the same list (getters, like its words). */
 export const ENTITY_OPT_LABELS: Record<FullstackEntityOptKey, { label: string; hint: string }> = Object.fromEntries(
   FULLSTACK_ENTITY_OPT_KEYS.map(key => {
     const opt = SCAFFOLD_OPTIONS.find(o => o.value === key)
     if (!opt?.perEntity) throw new Error(`scaffoldOptions: ${key} is a per-entity opt key but is not listed as perEntity`)
-    return [key, { label: opt.label, hint: opt.entityHint ?? opt.hint }]
+    return [key, { get label() { return opt.label }, get hint() { return opt.entityHint ?? opt.hint } }]
   }),
 ) as Record<FullstackEntityOptKey, { label: string; hint: string }>
 
@@ -86,13 +174,13 @@ export function optCoverage(entities: FullstackEntityDef[], key: FullstackEntity
   const coverage: OptCoverage = { applies: [], excluded: [] }
   for (const entity of entities) {
     const uid = entity.uid ?? entity.name
-    const name = entity.name.trim() || '(unnamed)'
+    const name = entity.name.trim() || t('(unnamed)')
     if (entity.opts?.[key] === false) {
-      coverage.excluded.push({ uid, name, reason: 'opted out on the entity' })
+      coverage.excluded.push({ uid, name, reason: t('opted out on the entity') })
       continue
     }
     const a = entityOptApplicability(entity)[key]
-    if (!a.applicable) coverage.excluded.push({ uid, name, reason: a.reason ?? 'not applicable' })
+    if (!a.applicable) coverage.excluded.push({ uid, name, reason: a.reason ?? t('not applicable') })
     else coverage.applies.push({ uid, name })
   }
   return coverage

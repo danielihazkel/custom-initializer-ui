@@ -1,4 +1,5 @@
 import type { ModuleTemplate } from '../types'
+import { t, tn } from '../i18n'
 
 interface Props {
   modules: ModuleTemplate[]
@@ -23,7 +24,7 @@ export function ModuleSelector({ modules, selectedModules, onChange, wizardDeps 
 
   if (modules.length === 0) {
     return (
-      <p className="text-xs text-secondary">No module templates configured. Add modules in the admin panel.</p>
+      <p className="text-xs text-secondary">{t('No module templates configured. Add modules in the admin panel.')}</p>
     )
   }
 
@@ -39,10 +40,11 @@ export function ModuleSelector({ modules, selectedModules, onChange, wizardDeps 
         >
           <span className="material-symbols-outlined text-warning shrink-0" style={{ fontSize: '16px' }} aria-hidden="true">warning</span>
           <span>
-            <strong className="font-semibold">These modules will not be generated.</strong>{' '}
-            {wizardDeps.join(', ')} {wizardDeps.length === 1 ? 'has' : 'have'} a wizard set up, and a wizard's code
-            cannot be placed in modules, so the project is generated as one module. Remove the
-            wizard, or switch multi-module off.
+            <strong className="font-semibold">{t('These modules will not be generated.')}</strong>{' '}
+            {tn(wizardDeps.length,
+              "{deps} has a wizard set up, and a wizard's code cannot be placed in modules, so the project is generated as one module. Remove the wizard, or switch multi-module off.",
+              "{deps} have a wizard set up, and a wizard's code cannot be placed in modules, so the project is generated as one module. Remove the wizard, or switch multi-module off.",
+              { deps: wizardDeps.join(', ') })}
           </span>
         </div>
       )}
@@ -53,7 +55,7 @@ export function ModuleSelector({ modules, selectedModules, onChange, wizardDeps 
             key={m.moduleId}
             type="button"
             onClick={() => toggle(m.moduleId)}
-            className={`w-full text-left rounded-lg border px-4 py-3 transition-all duration-200 ${
+            className={`w-full text-start rounded-lg border px-4 py-3 transition-all duration-200 ${
               checked
                 ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
                 : 'border-outline-variant hover:border-secondary bg-surface-container-lowest'
@@ -66,14 +68,14 @@ export function ModuleSelector({ modules, selectedModules, onChange, wizardDeps 
                 </span>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-on-surface">{m.label}</span>
+                    <span dir="auto" className="text-sm font-semibold text-on-surface">{m.label}</span>
                     <code className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container-high text-secondary">{m.suffix}</code>
                     {m.hasMainClass && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-tertiary/15 text-tertiary font-medium">entry point</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-tertiary/15 text-tertiary font-medium">{t('entry point')}</span>
                     )}
                   </div>
                   {m.description && (
-                    <p className="text-xs text-secondary mt-0.5">{m.description}</p>
+                    <p dir="auto" className="text-xs text-secondary mt-0.5">{m.description}</p>
                   )}
                   {m.dependencyIds.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1.5">

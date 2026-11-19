@@ -2,17 +2,18 @@ import type { FullstackCalendarMode, FullstackEntityDef, FullstackFieldDef, Full
 import { contentLinks, isExternalLink } from './contentMarkdown'
 import { CHOICES, LIMITS } from './schema'
 import { isDateType, isLongTextType, isTextualType } from './fieldTypes'
+import { t, tn } from '../../i18n'
 
 /**
  * The calendar, board, content, import and search page types: their choices, defaults and the
  * rules FullstackPageValidator applies to them, kept apart from pageLayout.ts (which calls in).
  */
 
-export const CALENDAR_MODES: { value: FullstackCalendarMode; label: string }[] = [
-  { value: 'month', label: 'Month' },
-  { value: 'week', label: 'Week' },
-  { value: 'agenda', label: 'Agenda' },
-  { value: 'timeline', label: 'Timeline' },
+export const CALENDAR_MODES: { value: FullstackCalendarMode; readonly label: string }[] = [
+  { value: 'month', get label() { return t('Month') } },
+  { value: 'week', get label() { return t('Week') } },
+  { value: 'agenda', get label() { return t('Agenda') } },
+  { value: 'timeline', get label() { return t('Timeline') } },
 ]
 export const LANE_SIZES = CHOICES.laneSizes
 export const DEFAULT_LANE_SIZE = LIMITS.defaultLaneSize
@@ -23,10 +24,10 @@ export const MAX_SEARCH_ENTITIES = LIMITS.maxSearchEntities
 export const MIN_PER_ENTITY = LIMITS.minPerEntity
 export const MAX_PER_ENTITY = LIMITS.maxPerEntity
 export const DEFAULT_PER_ENTITY = LIMITS.defaultPerEntity
-export const INBOX_QUEUES: { value: FullstackInboxQueue; label: string }[] = [
-  { value: 'mine', label: 'My tasks' },
-  { value: 'unassigned', label: 'Unassigned' },
-  { value: 'open', label: 'All open' },
+export const INBOX_QUEUES: { value: FullstackInboxQueue; readonly label: string }[] = [
+  { value: 'mine', get label() { return t('My tasks') } },
+  { value: 'unassigned', get label() { return t('Unassigned') } },
+  { value: 'open', get label() { return t('All open') } },
 ]
 export const DEFAULT_INBOX_QUEUES: FullstackInboxQueue[] = ['mine', 'unassigned']
 
@@ -102,15 +103,15 @@ export const importable = (e: FullstackEntityDef) => !e.readOnly && !e.viewQuery
 export function newTypeReason(type: FullstackPageType, e: FullstackEntityDef, pages: FullstackPageDef[]): string | undefined {
   switch (type) {
     case 'calendar':
-      return calendarDateFields(e).length === 0 ? 'No filterable date field to place rows by' : undefined
+      return calendarDateFields(e).length === 0 ? t('No filterable date field to place rows by') : undefined
     case 'board':
-      return laneFields(e).length === 0 ? 'No filterable enum or boolean field for lanes' : undefined
+      return laneFields(e).length === 0 ? t('No filterable enum or boolean field for lanes') : undefined
     case 'inbox':
-      return !hasInbox(e) ? 'No workflow with an assignee' : undefined
+      return !hasInbox(e) ? t('No workflow with an assignee') : undefined
     case 'import':
-      return !importable(e) ? 'Read-only — nothing to import'
-        : e.opts?.csvImport === false ? 'Its CSV import option is off'
-          : pages.some(p => p.type === 'import' && eq(p.entity, e.name)) ? 'Already has an import page' : undefined
+      return !importable(e) ? t('Read-only — nothing to import')
+        : e.opts?.csvImport === false ? t('Its CSV import option is off')
+          : pages.some(p => p.type === 'import' && eq(p.entity, e.name)) ? t('Already has an import page') : undefined
     default:
       return undefined
   }
@@ -118,8 +119,8 @@ export function newTypeReason(type: FullstackPageType, e: FullstackEntityDef, pa
 
 /** Why a new search page cannot be added, or undefined when it can. */
 export function newSearchReason(entities: FullstackEntityDef[], pages: FullstackPageDef[]): string | undefined {
-  if (pages.some(p => p.type === 'search')) return 'The layout already has a search page'
-  if (!entities.some(searchableEntity)) return 'No entity has a text field to search'
+  if (pages.some(p => p.type === 'search')) return t('The layout already has a search page')
+  if (!entities.some(searchableEntity)) return t('No entity has a text field to search')
   return undefined
 }
 
@@ -149,19 +150,19 @@ type Add = (field: string, message: string, summary?: string) => void
 export function checkCalendar(page: FullstackPageDef, e: FullstackEntityDef, add: Add, where: string): void {
   const dates = calendarDateFields(e)
   const date = page.dateField ?? defaultCalendarDate(e)
-  if (!date) add('dateField', `${e.name} has no filterable date field to place rows by`)
-  else if (!dates.some(f => eq(f.name, date))) add('dateField', `“${date}” is not a filterable date field of ${e.name}`, `${where} places rows by “${date}”, which is not a filterable date of ${e.name}`)
+  if (!date) add('dateField', t('{entity} has no filterable date field to place rows by', { entity: e.name }))
+  else if (!dates.some(f => eq(f.name, date))) add('dateField', t('“{field}” is not a filterable date field of {entity}', { field: date, entity: e.name }), t('{where} places rows by “{field}”, which is not a filterable date of {entity}', { where, field: date, entity: e.name }))
   if (page.endField) {
-    if (!dates.some(f => eq(f.name, page.endField))) add('endField', `“${page.endField}” is not a filterable date field of ${e.name}`)
-    else if (eq(page.endField, date)) add('endField', 'must differ from the start date')
+    if (!dates.some(f => eq(f.name, page.endField))) add('endField', t('“{field}” is not a filterable date field of {entity}', { field: page.endField, entity: e.name }))
+    else if (eq(page.endField, date)) add('endField', t('must differ from the start date'))
   }
   const modes = page.modes ?? ['month']
-  if (modes.length === 0) add('modes', 'needs at least one view')
-  if (new Set(modes).size !== modes.length) add('modes', 'lists a view twice')
-  if (modes.some(m => !CALENDAR_MODES.some(c => c.value === m))) add('modes', 'has an unknown view')
-  if (modes.includes('timeline') && !page.endField) add('modes', 'the timeline needs an end date', `${where} has a timeline but no end date for its bars`)
+  if (modes.length === 0) add('modes', t('needs at least one view'))
+  if (new Set(modes).size !== modes.length) add('modes', t('lists a view twice'))
+  if (modes.some(m => !CALENDAR_MODES.some(c => c.value === m))) add('modes', t('has an unknown view'))
+  if (modes.includes('timeline') && !page.endField) add('modes', t('the timeline needs an end date'), t('{where} has a timeline but no end date for its bars', { where }))
   for (const key of Object.keys(page.presetFilter ?? {})) {
-    if (eq(key, date) || eq(key, page.endField)) add(`presetFilter.${key}`, 'the calendar’s own range sets it')
+    if (eq(key, date) || eq(key, page.endField)) add(`presetFilter.${key}`, t('the calendar’s own range sets it'))
   }
 }
 
@@ -169,98 +170,98 @@ export function checkCalendar(page: FullstackPageDef, e: FullstackEntityDef, add
 export function checkBoard(page: FullstackPageDef, e: FullstackEntityDef, add: Add, where: string): void {
   const lane = page.laneField ?? defaultLaneField(e)
   if (!lane) {
-    add('laneField', `${e.name} has no filterable enum or boolean field to split into lanes`)
+    add('laneField', t('{entity} has no filterable enum or boolean field to split into lanes', { entity: e.name }))
     return
   }
   if (!laneFields(e).some(f => eq(f.name, lane))) {
-    add('laneField', `“${lane}” is not a filterable enum or boolean field of ${e.name}`, `${where} splits by “${lane}”, which ${e.name} cannot filter by`)
+    add('laneField', t('“{lane}” is not a filterable enum or boolean field of {entity}', { lane, entity: e.name }), t('{where} splits by “{lane}”, which {entity} cannot filter by', { where, lane, entity: e.name }))
     return
   }
   const values = laneValues(e, lane)
   if (page.lanes) {
-    if (page.lanes.length === 0) add('lanes', 'needs at least one lane')
+    if (page.lanes.length === 0) add('lanes', t('needs at least one lane'))
     const unknown = page.lanes.filter(v => !values.some(x => eq(x, v)))
-    if (unknown.length) add('lanes', `${unknown.map(v => `“${v}”`).join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not a value of ${lane}`)
-    if (new Set(page.lanes).size !== page.lanes.length) add('lanes', 'lists a lane twice')
+    if (unknown.length) add('lanes', tn(unknown.length, '{values} is not a value of {lane}', '{values} are not a value of {lane}', { values: unknown.map(v => `“${v}”`).join(', '), lane }))
+    if (new Set(page.lanes).size !== page.lanes.length) add('lanes', t('lists a lane twice'))
   }
   const lanes = page.lanes ?? values
   for (const [key, limit] of Object.entries(page.wipLimits ?? {})) {
-    if (!lanes.some(v => eq(v, key))) add('wipLimits', `“${key}” is not one of its lanes`)
-    else if (!Number.isInteger(limit) || limit < 1 || limit > MAX_WIP_LIMIT) add('wipLimits', `a lane holds 1 to ${MAX_WIP_LIMIT} cards`)
+    if (!lanes.some(v => eq(v, key))) add('wipLimits', t('“{lane}” is not one of its lanes', { lane: key }))
+    else if (!Number.isInteger(limit) || limit < 1 || limit > MAX_WIP_LIMIT) add('wipLimits', t('a lane holds 1 to {max} cards', { max: MAX_WIP_LIMIT }))
   }
   checkCardFields(page, e, add)
-  if (page.laneSize != null && !LANE_SIZES.includes(page.laneSize)) add('laneSize', `loads ${LANE_SIZES.join(', ')} cards at a time`)
-  if (Object.keys(page.presetFilter ?? {}).some(k => eq(k, lane))) add(`presetFilter.${lane}`, 'the lanes already split by it')
+  if (page.laneSize != null && !LANE_SIZES.includes(page.laneSize)) add('laneSize', t('loads {sizes} cards at a time', { sizes: LANE_SIZES.join(', ') }))
+  if (Object.keys(page.presetFilter ?? {}).some(k => eq(k, lane))) add(`presetFilter.${lane}`, t('the lanes already split by it'))
 }
 
 function checkCardFields(page: FullstackPageDef, e: FullstackEntityDef, add: Add): void {
   if (!page.cardFields) return
   const options = cardFieldOptions(e)
-  if (page.cardFields.length === 0 || page.cardFields.length > MAX_CARD_FIELDS) add('cardFields', `shows 1 to ${MAX_CARD_FIELDS} fields`)
+  if (page.cardFields.length === 0 || page.cardFields.length > MAX_CARD_FIELDS) add('cardFields', t('shows 1 to {max} fields', { max: MAX_CARD_FIELDS }))
   const unknown = page.cardFields.filter(n => !options.some(o => eq(o, n)))
-  if (unknown.length) add('cardFields', `${e.name} has no field or relation ${unknown.map(n => `“${n}”`).join(', ')}`)
-  if (new Set(page.cardFields).size !== page.cardFields.length) add('cardFields', 'lists a field twice')
+  if (unknown.length) add('cardFields', t('{entity} has no field or relation {names}', { entity: e.name, names: unknown.map(n => `“${n}”`).join(', ') }))
+  if (new Set(page.cardFields).size !== page.cardFields.length) add('cardFields', t('lists a field twice'))
 }
 
 /** An inbox page's rules: an entity whose workflow assigns rows, its queues and its columns. */
 export function checkInbox(page: FullstackPageDef, e: FullstackEntityDef, add: Add, where: string): void {
   if (!hasInbox(e)) {
-    add('entity', `${e.name} has no workflow with an assignee`, `${where} lists ${e.name}, whose rows are not assigned to anyone`)
+    add('entity', t('{entity} has no workflow with an assignee', { entity: e.name }), t('{where} lists {entity}, whose rows are not assigned to anyone', { where, entity: e.name }))
     return
   }
   if (page.queues) {
-    if (page.queues.length === 0) add('queues', 'needs at least one queue')
-    if (page.queues.some(q => !INBOX_QUEUES.some(x => x.value === q))) add('queues', 'has an unknown queue')
-    if (new Set(page.queues).size !== page.queues.length) add('queues', 'lists a queue twice')
+    if (page.queues.length === 0) add('queues', t('needs at least one queue'))
+    if (page.queues.some(q => !INBOX_QUEUES.some(x => x.value === q))) add('queues', t('has an unknown queue'))
+    if (new Set(page.queues).size !== page.queues.length) add('queues', t('lists a queue twice'))
   }
   checkCardFields(page, e, add)
 }
 
 /** A content page's rules (FullstackPageValidator.body): a title, a body, and links that can open. */
 export function checkContent(page: FullstackPageDef, pages: FullstackPageDef[], add: Add, where: string): void {
-  if (!page.title?.trim()) add('title', 'needs a title', `${where} needs a title — a content page has no entity to name it`)
+  if (!page.title?.trim()) add('title', t('needs a title'), t('{where} needs a title — a content page has no entity to name it', { where }))
   const body = page.body?.trim() ?? ''
-  if (!body) add('body', 'needs some text')
-  else if (body.length > MAX_BODY) add('body', `is longer than ${MAX_BODY} characters`)
+  if (!body) add('body', t('needs some text'))
+  else if (body.length > MAX_BODY) add('body', t('is longer than {max} characters', { max: MAX_BODY }))
   for (const link of contentLinks(body)) {
     if (link.kind === 'link' && !isExternalLink(link.target ?? '')) {
-      add('body', `link “${link.target}” must be an http(s) or mailto address, or a page (#/page-id)`)
+      add('body', t('link “{target}” must be an http(s) or mailto address, or a page (#/page-id)', { target: link.target ?? '' }))
       continue
     }
     if (link.kind !== 'page-link') continue
     const target = pages.find(p => p.id === link.target)
-    if (!target) add('body', `links to no page “${link.target}”`, `${where} links to the missing page “${link.target}”`)
-    else if (target.type === 'record') add('body', `cannot link to the record page “${link.target}” — it opens from a row`)
-    else if (target.hidden && target.type !== 'wizard' && target.type !== 'form' && target.type !== 'search') add('body', `“${link.target}” is hidden, so a link cannot open it`)
+    if (!target) add('body', t('links to no page “{target}”', { target: link.target ?? '' }), t('{where} links to the missing page “{id}”', { where, id: link.target ?? '' }))
+    else if (target.type === 'record') add('body', t('cannot link to the record page “{target}” — it opens from a row', { target: link.target ?? '' }))
+    else if (target.hidden && target.type !== 'wizard' && target.type !== 'form' && target.type !== 'search') add('body', t('“{target}” is hidden, so a link cannot open it', { target: link.target ?? '' }))
   }
 }
 
 /** An import page's rules (the entity must be writable, one import page per entity). */
 export function checkImport(page: FullstackPageDef, e: FullstackEntityDef, pages: FullstackPageDef[], add: Add, where: string): void {
-  if (!importable(e)) add('entity', `${e.name} is read-only, so there is nothing to import`)
-  if (e.opts?.csvImport === false) add('entity', `${e.name}’s CSV import option is off`, `${where} imports ${e.name}, whose CSV import option is off`)
+  if (!importable(e)) add('entity', t('{entity} is read-only, so there is nothing to import', { entity: e.name }))
+  if (e.opts?.csvImport === false) add('entity', t('{entity}’s CSV import option is off', { entity: e.name }), t('{where} imports {entity}, whose CSV import option is off', { where, entity: e.name }))
   const first = pages.find(p => p.type === 'import' && eq(p.entity, e.name))
-  if (first && first !== page) add('entity', `${e.name} already has the import page “${first.id}”`, `${where} is a second import page for ${e.name}`)
+  if (first && first !== page) add('entity', t('{entity} already has the import page “{id}”', { entity: e.name, id: first.id }), t('{where} is a second import page for {entity}', { where, entity: e.name }))
 }
 
 /** A search page's rules (FullstackPageValidator.search). */
 export function checkSearch(page: FullstackPageDef, entities: FullstackEntityDef[], pages: FullstackPageDef[], add: Add, where: string): void {
   const first = pages.find(p => p.type === 'search')
-  if (first && first !== page) add('type', `the layout already has the search page “${first.id}”`, `${where} is a second search page`)
+  if (first && first !== page) add('type', t('the layout already has the search page “{id}”', { id: first.id }), t('{where} is a second search page', { where }))
   if (page.entities) {
-    if (page.entities.length === 0 || page.entities.length > MAX_SEARCH_ENTITIES) add('entities', `searches 1 to ${MAX_SEARCH_ENTITIES} entities`)
+    if (page.entities.length === 0 || page.entities.length > MAX_SEARCH_ENTITIES) add('entities', t('searches 1 to {max} entities', { max: MAX_SEARCH_ENTITIES }))
     for (const name of page.entities) {
       const e = entities.find(x => eq(x.name, name))
-      if (!e) add('entities', `“${name}” is no longer an entity`)
-      else if (!searchableEntity(e)) add('entities', `${e.name} has no searchable text field`)
+      if (!e) add('entities', t('“{name}” is no longer an entity', { name }))
+      else if (!searchableEntity(e)) add('entities', t('{entity} has no searchable text field', { entity: e.name }))
     }
   } else if (defaultSearchEntities(entities).length === 0) {
-    add('entities', 'no entity has a searchable text field')
+    add('entities', t('no entity has a searchable text field'))
   }
   if (page.perEntity != null && (!Number.isInteger(page.perEntity) || page.perEntity < MIN_PER_ENTITY || page.perEntity > MAX_PER_ENTITY)) {
-    add('perEntity', `shows ${MIN_PER_ENTITY} to ${MAX_PER_ENTITY} matches per entity`)
+    add('perEntity', t('shows {min} to {max} matches per entity', { min: MIN_PER_ENTITY, max: MAX_PER_ENTITY }))
   }
-  if (page.hidden && !page.shellSearch) add('shellSearch', 'a hidden search page needs the header’s search box — nothing else opens it')
+  if (page.hidden && !page.shellSearch) add('shellSearch', t('a hidden search page needs the header’s search box — nothing else opens it'))
 }
 
 /** One line describing one of these pages. */
@@ -269,28 +270,29 @@ export function describeNewTypePage(page: FullstackPageDef, entities: FullstackE
   switch (page.type) {
     case 'calendar': {
       const modes = (page.modes ?? ['month']).join(', ')
-      return `${page.entity ?? '?'} by ${page.dateField ?? defaultCalendarDate(e) ?? '?'}${page.endField ? `–${page.endField}` : ''} · ${modes}`
+      const date = `${page.dateField ?? defaultCalendarDate(e) ?? '?'}${page.endField ? `–${page.endField}` : ''}`
+      return `${t('{entity} by {date}', { entity: page.entity ?? '?', date })} · ${modes}`
     }
     case 'board': {
       const lane = page.laneField ?? defaultLaneField(e) ?? '?'
       const limits = Object.keys(page.wipLimits ?? {}).length
-      return `${page.entity ?? '?'} in lanes of ${lane}${limits ? ` · ${limits} lane limit${limits === 1 ? '' : 's'}` : ''}`
+      return `${t('{entity} in lanes of {lane}', { entity: page.entity ?? '?', lane })}${limits ? ` · ${tn(limits, '{n} lane limit', '{n} lane limits')}` : ''}`
     }
     case 'content': {
       const words = (page.body ?? '').trim().split(/\s+/).filter(Boolean).length
-      return `Text · ${words} word${words === 1 ? '' : 's'}`
+      return `${t('Text')} · ${tn(words, '{n} word', '{n} words')}`
     }
     case 'tree':
-      return `${page.entity ?? '?'} as a tree${page.via ? ` by ${page.via}` : ''}`
+      return page.via ? t('{entity} as a tree by {link}', { entity: page.entity ?? '?', link: page.via }) : t('{entity} as a tree', { entity: page.entity ?? '?' })
     case 'import':
-      return `CSV import of ${page.entity ?? '?'}`
+      return t('CSV import of {entity}', { entity: page.entity ?? '?' })
     case 'inbox': {
       const queues = (page.queues ?? DEFAULT_INBOX_QUEUES).map(q => INBOX_QUEUES.find(x => x.value === q)?.label ?? q)
-      return `${page.entity ?? '?'} tasks · ${queues.join(', ')}`
+      return `${t('{entity} tasks', { entity: page.entity ?? '?' })} · ${queues.join(', ')}`
     }
     case 'search': {
       const names = page.entities ?? defaultSearchEntities(entities)
-      return `Searches ${names.join(', ') || 'nothing'}${page.shellSearch ? ' · header box' : ''}`
+      return `${t('Searches {names}', { names: names.join(', ') || t('nothing') })}${page.shellSearch ? ` · ${t('header box')}` : ''}`
     }
     default:
       return ''

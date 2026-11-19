@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { t } from '../i18n'
 
 interface Props {
   error: string
@@ -49,10 +50,10 @@ export function BackendUnreachable({ error, retrying, onRetry }: Props) {
       <div role="alert" className="bg-surface-container border border-error-container rounded-xl p-8 max-w-md text-center space-y-4">
         <span className="material-symbols-outlined text-error" style={{ fontSize: '36px' }} aria-hidden="true">power_off</span>
         <div className="space-y-1.5">
-          <h2 className="text-lg font-bold text-on-surface">Cannot reach backend</h2>
-          <p className="text-sm text-secondary">Make sure the Spring Initializr backend is running on port 8080.</p>
+          <h2 className="text-lg font-bold text-on-surface">{t('Cannot reach backend')}</h2>
+          <p className="text-sm text-secondary">{t('Make sure the Spring Initializr backend is running on port 8080.')}</p>
         </div>
-        <code className="block text-xs text-error bg-surface-container-lowest rounded p-3 break-words">{error}</code>
+        <code dir="ltr" className="block text-xs text-error bg-surface-container-lowest rounded p-3 break-words">{error}</code>
         <div className="flex items-center justify-center gap-3">
           <button
             type="button"
@@ -63,10 +64,10 @@ export function BackendUnreachable({ error, retrying, onRetry }: Props) {
             <span className={`material-symbols-outlined ${retrying ? 'animate-spin' : ''}`} style={{ fontSize: '16px' }} aria-hidden="true">
               {retrying ? 'progress_activity' : 'refresh'}
             </span>
-            {retrying ? 'Trying…' : 'Retry now'}
+            {retrying ? t('Trying…') : t('Retry now')}
           </button>
           <span className="text-xs text-secondary" aria-live="off">
-            {retrying ? 'Asking the backend…' : `Trying again in ${secondsLeft} s`}
+            {retrying ? t('Asking the backend…') : t('Trying again in {seconds} s', { seconds: secondsLeft })}
           </span>
         </div>
       </div>

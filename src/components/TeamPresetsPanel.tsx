@@ -3,6 +3,7 @@ import type { ProjectSnapshot, TeamPresetSummary } from '../types'
 import { useTeamPresets } from '../hooks/useTeamPresets'
 import { registerCommands, type PaletteAction } from '../commands'
 import { PresetChip, relativeTime } from './presetCards'
+import { t, tn, useLang } from '../i18n'
 
 interface TeamPresetsPanelProps {
   /** Whether the Team tab is open: the panel is mounted from the start (for the count and the
@@ -21,6 +22,7 @@ interface TeamPresetsPanelProps {
  * palette.
  */
 export default function TeamPresetsPanel({ visible, reloadKey, onLoad, onCount }: TeamPresetsPanelProps) {
+  const lang = useLang()
   const team = useTeamPresets(reloadKey)
   // A team preset is deleted for everyone, so its × asks first, in the card.
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null)
@@ -51,12 +53,12 @@ export default function TeamPresetsPanel({ visible, reloadKey, onLoad, onCount }
   const loadRef = useRef(loadPreset)
   loadRef.current = loadPreset
   useEffect(() => {
-    const list: PaletteAction[] = team.presets.map(t => ({
-      id: `backend-team-preset-${t.id}`, title: `Load team preset: ${t.name}`, description: t.createdBy ?? undefined,
-      icon: 'groups', group: 'Presets', run: () => { void loadRef.current(t.id) },
+    const list: PaletteAction[] = team.presets.map(p => ({
+      id: `backend-team-preset-${p.id}`, title: t('Load team preset: {name}', { name: p.name }), description: p.createdBy ?? undefined,
+      icon: 'groups', group: t('Presets'), run: () => { void loadRef.current(p.id) },
     }))
     return registerCommands(list, 'backend-team-presets')
-  }, [team.presets])
+  }, [team.presets, lang])
 
   if (!visible) return null
 
@@ -64,17 +66,17 @@ export default function TeamPresetsPanel({ visible, reloadKey, onLoad, onCount }
     if (confirmingDelete === item.id) {
       return (
         <div key={item.id} className="relative flex-shrink-0 w-52 rounded-lg border-2 border-error/50 bg-surface-container p-4"
-          role="alertdialog" aria-label={`Delete ${item.name} for everyone?`}>
-          <p className="text-xs font-semibold text-on-surface mb-1">Delete “{item.name}”?</p>
-          <p className="text-[11px] text-secondary mb-3">It is gone for the whole team.</p>
+          role="alertdialog" aria-label={t('Delete {name} for everyone?', { name: item.name })}>
+          <p className="text-xs font-semibold text-on-surface mb-1">{t('Delete “{name}”?', { name: item.name })}</p>
+          <p className="text-[11px] text-secondary mb-3">{t('It is gone for the whole team.')}</p>
           <div className="flex gap-2">
             <button onClick={() => { void deletePreset(item.id) }}
               className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-error text-white active:scale-95 transition-transform">
-              Delete
+              {t('Delete')}
             </button>
             <button autoFocus onClick={() => setConfirmingDelete(null)}
               className="px-2.5 py-1 rounded-md text-[11px] font-medium text-secondary hover:text-on-surface transition-colors">
-              Keep
+              {t('Keep')}
             </button>
           </div>
         </div>
@@ -83,30 +85,30 @@ export default function TeamPresetsPanel({ visible, reloadKey, onLoad, onCount }
     return (
       <div key={item.id}
         className="relative flex-shrink-0 w-52 rounded-lg border-2 border-outline-variant bg-surface-container hover:border-outline group transition-all">
-        <button onClick={() => { void loadPreset(item.id) }} className="w-full p-4 text-left" title={item.description ?? undefined}>
+        <button onClick={() => { void loadPreset(item.id) }} className="w-full p-4 text-start" title={item.description ?? undefined}>
           <div className="flex items-center gap-2 mb-2">
             <span className="material-symbols-outlined text-secondary" style={{ fontSize: '20px' }}>groups</span>
-            <span className="font-semibold text-sm text-on-surface truncate">{item.name}</span>
+            <span dir="auto" className="font-semibold text-sm text-on-surface truncate">{item.name}</span>
           </div>
-          <p className="text-[11px] text-secondary leading-relaxed truncate">{item.coordinates}</p>
+          <p className="text-[11px] text-secondary leading-relaxed truncate" dir="ltr">{item.coordinates}</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <PresetChip icon="widgets">{item.dependencyCount} deps</PresetChip>
+            <PresetChip icon="widgets">{tn(item.dependencyCount, '{n} dep', '{n} deps')}</PresetChip>
             {item.moduleCount > 0 && <PresetChip icon="account_tree">{item.moduleCount}</PresetChip>}
-            <span className="text-[10px] text-secondary ml-auto">{relativeTime(Date.parse(item.updatedAt))}</span>
+            <span className="text-[10px] text-secondary ms-auto">{relativeTime(Date.parse(item.updatedAt))}</span>
           </div>
-          {item.createdBy && <p className="mt-1.5 text-[10px] text-secondary truncate">by {item.createdBy}</p>}
+          {item.createdBy && <p className="mt-1.5 text-[10px] text-secondary truncate">{t('by {user}', { user: item.createdBy })}</p>}
         </button>
-        <button onClick={() => setConfirmingDelete(item.id)} aria-label={`Delete ${item.name}`}
-          className="absolute top-1.5 right-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error/10 hover:text-error transition-all">
+        <button onClick={() => setConfirmingDelete(item.id)} aria-label={t('Delete {name}', { name: item.name })}
+          className="absolute top-1.5 end-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error/10 hover:text-error transition-all">
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
         </button>
       </div>
     )
   }
 
-  const empty = team.loading ? 'Loading team presets…'
-    : team.error ? `Team presets are unavailable: ${team.error}`
-      : 'No team presets yet. Save a setup "for the team" to share it — wizard documents and modules included.'
+  const empty = team.loading ? t('Loading team presets…')
+    : team.error ? t('Team presets are unavailable: {error}', { error: team.error })
+      : t('No team presets yet. Save a setup "for the team" to share it — wizard documents and modules included.')
 
   return (
     <>

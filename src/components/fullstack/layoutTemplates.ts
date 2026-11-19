@@ -15,6 +15,7 @@ import {
   splitListByField,
   uniquePageId,
 } from './pageLayout'
+import { t } from '../../i18n'
 
 /**
  * Whole layouts to start from, built from the model's own entities — the shapes teams keep
@@ -24,8 +25,8 @@ import {
 export interface LayoutTemplate {
   key: string
   icon: string
-  label: string
-  blurb: string
+  readonly label: string
+  readonly blurb: string
   /** Why the model cannot fill this template; the pages otherwise. */
   build: (entities: FullstackEntityDef[]) => { pages: FullstackPageDef[] } | { reason: string }
 }
@@ -71,11 +72,11 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
   {
     key: 'work-queue',
     icon: 'inbox',
-    label: 'Work queue',
-    blurb: 'A status overview, then one tab per status of the busiest entity — for tickets, orders, requests.',
+    get label() { return t('Work queue') },
+    get blurb() { return t('A status overview, then one tab per status of the busiest entity — for tickets, orders, requests.') },
     build: entities => {
       const e = entities.find(x => queueField(x))
-      if (!e) return { reason: 'Needs an entity with an enum or boolean field of 2 to 6 values to split by' }
+      if (!e) return { reason: t('Needs an entity with an enum or boolean field of 2 to 6 values to split by') }
       const field = queueField(e)!
       const id = idMaker()
       const overview: FullstackPageDef = {
@@ -101,11 +102,11 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
   {
     key: 'reporting',
     icon: 'monitoring',
-    label: 'Reporting',
-    blurb: 'A dashboard of totals and trends, a report page per chartable entity, and the lists they drill into.',
+    get label() { return t('Reporting') },
+    get blurb() { return t('A dashboard of totals and trends, a report page per chartable entity, and the lists they drill into.') },
     build: entities => {
       const chartable = entities.filter(e => chartableFields(e).length > 0)
-      if (chartable.length === 0) return { reason: 'Needs an entity with an enum, boolean or date field to chart' }
+      if (chartable.length === 0) return { reason: t('Needs an entity with an enum, boolean or date field to chart') }
       const id = idMaker()
       const widgets: FullstackWidgetDef[] = []
       for (const e of chartable.slice(0, 4)) widgets.push({ kind: 'kpi', entity: e.name })
@@ -121,11 +122,11 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
   {
     key: 'browser',
     icon: 'vertical_split',
-    label: 'Parent–child browser',
-    blurb: 'A master–detail page per parent, a record page for each, and every entity’s list.',
+    get label() { return t('Parent–child browser') },
+    get blurb() { return t('A master–detail page per parent, a record page for each, and every entity’s list.') },
     build: entities => {
       const pairs = masterDetailPairs(entities)
-      if (pairs.length === 0) return { reason: 'Needs a many-to-one relation between two entities' }
+      if (pairs.length === 0) return { reason: t('Needs a many-to-one relation between two entities') }
       const id = idMaker()
       const byParent = pairs.filter((p, i) => pairs.findIndex(q => q.parent === p.parent) === i).slice(0, 4)
       const browsers = byParent.map(p => ({
@@ -138,10 +139,10 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
   {
     key: 'admin',
     icon: 'admin_panel_settings',
-    label: 'Admin console',
-    blurb: 'A launcher dashboard, grouped lists, record pages, and a step-by-step form for the largest entity.',
+    get label() { return t('Admin console') },
+    get blurb() { return t('A launcher dashboard, grouped lists, record pages, and a step-by-step form for the largest entity.') },
     build: entities => {
-      if (entities.length === 0) return { reason: 'Needs an entity' }
+      if (entities.length === 0) return { reason: t('Needs an entity') }
       const id = idMaker()
       const lists = listPages(entities, id, 'Data')
       const big = [...entities].filter(e => !e.readOnly && askableFields(e).length >= 5)
@@ -164,10 +165,10 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
 /** A template filled from the model, capped like any layout; `reason` when it cannot be. */
 export function buildLayoutTemplate(template: LayoutTemplate, entities: FullstackEntityDef[]): { pages: FullstackPageDef[] } | { reason: string } {
   const named = entities.filter(e => e.name.trim())
-  if (named.length === 0) return { reason: 'Name an entity first' }
+  if (named.length === 0) return { reason: t('Name an entity first') }
   const built = template.build(named)
   if ('reason' in built) return built
-  if (built.pages.length > MAX_PAGES) return { reason: `Would take more than ${MAX_PAGES} pages` }
+  if (built.pages.length > MAX_PAGES) return { reason: t('Would take more than {max} pages', { max: MAX_PAGES }) }
   return built
 }
 

@@ -1,6 +1,7 @@
 import type { FullstackEntityDef, FullstackFormSection } from '../../types'
 import { askableFields } from './pageLayout'
 import { LIMITS } from './schema'
+import { t } from '../../i18n'
 
 /** Mirrors FullstackRequestValidator.MAX_FORM_SECTIONS / MAX_SECTION_TITLE. */
 export const MAX_FORM_SECTIONS = LIMITS.maxFormSections
@@ -41,19 +42,19 @@ export function syncFormSections(before: FullstackEntityDef, after: FullstackEnt
 export function formSectionsProblem(entity: FullstackEntityDef): string | undefined {
   const sections = entity.formSections ?? []
   if (sections.length === 0) return undefined
-  if (sections.length > MAX_FORM_SECTIONS) return `At most ${MAX_FORM_SECTIONS} form sections`
+  if (sections.length > MAX_FORM_SECTIONS) return t('At most {max} form sections', { max: MAX_FORM_SECTIONS })
   const askable = new Set(askableFields(entity).map(a => a.name.toLowerCase()))
   const seen = new Set<string>()
   for (let i = 0; i < sections.length; i++) {
     const s = sections[i]
-    const where = `Form section ${i + 1}`
-    if (!s.title.trim()) return `${where} needs a title`
-    if (s.title.trim().length > MAX_SECTION_TITLE) return `${where} has a title over ${MAX_SECTION_TITLE} characters`
-    if (s.fields.length === 0) return `${where} (“${s.title.trim()}”) lists no fields`
+    const n = i + 1
+    if (!s.title.trim()) return t('Form section {n} needs a title', { n })
+    if (s.title.trim().length > MAX_SECTION_TITLE) return t('Form section {n} has a title over {max} characters', { n, max: MAX_SECTION_TITLE })
+    if (s.fields.length === 0) return t('Form section {n} (“{title}”) lists no fields', { n, title: s.title.trim() })
     for (const name of s.fields) {
       const key = name.trim().toLowerCase()
-      if (!askable.has(key)) return `${where} (“${s.title.trim()}”) lists “${name}”, which is not one of its fields or relations`
-      if (seen.has(key)) return `“${name}” is in two form sections`
+      if (!askable.has(key)) return t('Form section {n} (“{title}”) lists “{field}”, which is not one of its fields or relations', { n, title: s.title.trim(), field: name })
+      if (seen.has(key)) return t('“{field}” is in two form sections', { field: name })
       seen.add(key)
     }
   }

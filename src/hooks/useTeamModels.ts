@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { TeamModelSummary } from '../types'
+import { t } from '../i18n'
 import { parseExportedModel, toExportedModel, type FullstackSnapshot } from '../components/fullstack/snapshot'
 
 export const TEAM_MODELS_URL = '/metadata/fullstack/models'
@@ -82,7 +83,7 @@ export function useTeamModels() {
     const body = await res.json() as { snapshot?: unknown }
     // Same validation as an imported file: shape-check and strip the file-level marker fields.
     const parsed = parseExportedModel(JSON.stringify(body.snapshot ?? null))
-    if ('error' in parsed) throw new TeamModelError(`This team model can't be loaded: ${parsed.error}`, 422)
+    if ('error' in parsed) throw new TeamModelError(t("This team model can't be loaded: {error}", { error: parsed.error }), 422)
     return parsed.snapshot
   }, [])
 

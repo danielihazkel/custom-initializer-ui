@@ -10,6 +10,7 @@ import {
 import type { FormProps } from './formTypes'
 import { ICON_BUTTON, SMALL_BUTTON } from './constants'
 import { AggFields, BucketSelect, DragGrip, EntitySelect, Field, MoveButtons, PresetFilters } from './fields'
+import { t } from '../../../i18n'
 
 export function ReportForm({ page, index, entities, errors, update, lossy, removed, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
   const entity = entities.find(e => e.name === page.entity)
@@ -20,9 +21,9 @@ export function ReportForm({ page, index, entities, errors, update, lossy, remov
 
   return (
     <div className="space-y-2">
-      <Field label="Entity" error={errors.entity} control="entity" hint="The report charts and filters this entity's rows">
+      <Field label={t('Entity')} error={errors.entity} control="entity" hint={t("The report charts and filters this entity's rows")}>
         <EntitySelect
-          label="Report entity"
+          label={t('Report entity')}
           value={page.entity ?? ''}
           options={entities.map(e => e.name)}
           error={errors.entity}
@@ -30,7 +31,7 @@ export function ReportForm({ page, index, entities, errors, update, lossy, remov
           // The charts and filter keep whatever the new entity also has.
           onChange={name => {
             const { patch, dropped } = retargetReport(page, entities.find(e => e.name === name))
-            lossy(`Reported on ${name} in “${pageLabel(page)}”`, dropped)
+            lossy(t('Reported on {entity} in “{page}”', { entity: name, page: pageLabel(page) }), dropped)
             update(index, patch)
           }}
         />
@@ -47,25 +48,25 @@ export function ReportForm({ page, index, entities, errors, update, lossy, remov
             {charts.length > 1 && <DragGrip dnd={dnd} list={`charts:${index}`} index={ci} />}
             {charts.length > 1 && (
               <MoveButtons
-                label={`chart ${ci + 1}`}
+                label={t('chart {n}', { n: ci + 1 })}
                 canUp={ci > 0}
                 canDown={ci < charts.length - 1}
                 onMove={delta => setCharts(moveItem(charts, ci, ci + delta))}
               />
             )}
             <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
-              Chart {charts.length > 1 ? ci + 1 : ''}{ci === 0 && <span className="font-normal normal-case tracking-normal"> · with the totals table</span>}
+              {charts.length > 1 ? t('Chart {n}', { n: ci + 1 }) : t('Chart')}{ci === 0 && <span className="font-normal normal-case tracking-normal"> {t('· with the totals table')}</span>}
             </span>
             <span className="flex-1" />
             {charts.length > 1 && (
               <button
                 type="button"
                 onClick={() => {
-                  removed?.(`Removed chart ${ci + 1} from “${pageLabel(page)}”`)
+                  removed?.(t('Removed chart {n} from “{page}”', { n: ci + 1, page: pageLabel(page) }))
                   setCharts(charts.filter((_, i) => i !== ci))
                 }}
                 className={ICON_BUTTON}
-                aria-label={`Remove chart ${ci + 1}`}
+                aria-label={t('Remove chart {n}', { n: ci + 1 })}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
               </button>
@@ -85,10 +86,10 @@ export function ReportForm({ page, index, entities, errors, update, lossy, remov
         onClick={() => setCharts([...charts, {}])}
         disabled={charts.length >= MAX_CHARTS}
         className={SMALL_BUTTON}
-        title={charts.length >= MAX_CHARTS ? `A report can have at most ${MAX_CHARTS} charts` : undefined}
+        title={charts.length >= MAX_CHARTS ? t('A report can have at most {max} charts', { max: MAX_CHARTS }) : undefined}
       >
         <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
-        Add chart
+        {t('Add chart')}
       </button>
       <PresetFilters filter={page.presetFilter} entity={entity} errors={errors} onChange={presetFilter => update(index, { presetFilter })} />
     </div>
@@ -125,27 +126,27 @@ function ChartFields({ chart, chartIndex, entity, errors, onChange }: {
     <div className="space-y-1">
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1" data-control={groupKey}>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Group by</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('Group by')}</span>
           <select
-            aria-label="Group by"
+            aria-label={t('Group by')}
             aria-invalid={Boolean(errors[groupKey])}
             value={chart.groupBy ?? ''}
             onChange={e => regroup(e.target.value || undefined)}
             className={`${inputClass(errors[groupKey])} max-w-[12rem] py-1 text-xs`}
           >
-            <option value="">{defaultOptionLabel(defaultReportGroupBy(entity), 'enum, boolean or date', k => keyOption(entity, k))}</option>
+            <option value="">{defaultOptionLabel(defaultReportGroupBy(entity), t('enum, boolean or date'), k => keyOption(entity, k))}</option>
             {groupByFields(entity).length > 0 && (
-              <optgroup label="Breakdown">
+              <optgroup label={t('Breakdown')}>
                 {groupByFields(entity).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
               </optgroup>
             )}
             {dateFields(entity).length > 0 && (
-              <optgroup label="Over time">
+              <optgroup label={t('Over time')}>
                 {dateFields(entity).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
               </optgroup>
             )}
             {relationKeys(entity).length > 0 && (
-              <optgroup label="By related record">
+              <optgroup label={t('By related record')}>
                 {relationKeys(entity).map(k => <option key={k} value={k}>{relationOption(k)}</option>)}
               </optgroup>
             )}
@@ -158,9 +159,9 @@ function ChartFields({ chart, chartIndex, entity, errors, onChange }: {
           <span data-control={bucketKey}><BucketSelect value={chart.bucket} onChange={bucket => setChart({ bucket })} /></span>
         )}
         <label className="flex flex-col gap-1" data-control={kindKey}>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Draw as</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('Draw as')}</span>
           <select
-            aria-label={`Chart ${chartIndex + 1} kind`}
+            aria-label={t('Chart {n} kind', { n: chartIndex + 1 })}
             aria-invalid={Boolean(errors[kindKey])}
             value={chart.kind ?? ''}
             onChange={e => {
@@ -169,22 +170,22 @@ function ChartFields({ chart, chartIndex, entity, errors, onChange }: {
             }}
             className={`${inputClass(errors[kindKey])} max-w-[10rem] py-1 text-xs`}
           >
-            <option value="">{overTime ? 'Line (default)' : 'Bars (default)'}</option>
+            <option value="">{overTime ? t('Line (default)') : t('Bars (default)')}</option>
             {kinds.filter(k => k.value !== (overTime ? 'line' : 'bar')).map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
             {chart.kind && !kinds.some(k => k.value === chart.kind) && <option value={chart.kind}>{chart.kind}</option>}
           </select>
         </label>
         {chart.kind === 'stacked' && (
           <label className="flex flex-col gap-1" data-control={seriesKey}>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Split by</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('Split by')}</span>
             <select
-              aria-label={`Chart ${chartIndex + 1} series`}
+              aria-label={t('Chart {n} series', { n: chartIndex + 1 })}
               aria-invalid={Boolean(errors[seriesKey])}
               value={chart.series ?? ''}
               onChange={e => setChart({ series: e.target.value || undefined })}
               className={`${inputClass(errors[seriesKey])} max-w-[12rem] py-1 text-xs`}
             >
-              <option value="">{defaultOptionLabel(defaultChartSeries(entity, effectiveGroupBy), 'second enum or boolean', k => keyOption(entity, k))}</option>
+              <option value="">{defaultOptionLabel(defaultChartSeries(entity, effectiveGroupBy), t('second enum or boolean'), k => keyOption(entity, k))}</option>
               {groupByFields(entity).filter(f => f.name !== effectiveGroupBy).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
             </select>
           </label>
@@ -198,16 +199,16 @@ function ChartFields({ chart, chartIndex, entity, errors, onChange }: {
             onChange={patch => setChart(patch)}
           />
         </span>
-        <label className="inline-flex items-center gap-1.5 pb-1 text-xs text-on-surface" title="The grouped totals under the chart (by default only under the first chart)">
+        <label className="inline-flex items-center gap-1.5 pb-1 text-xs text-on-surface" title={t('The grouped totals under the chart (by default only under the first chart)')}>
           <input
             type="checkbox"
             className="accent-primary"
-            aria-label={`Totals table under chart ${chartIndex + 1}`}
+            aria-label={t('Totals table under chart {n}', { n: chartIndex + 1 })}
             checked={chart.kind === 'table' || (chart.table ?? chartIndex === 0)}
             disabled={chart.kind === 'table'}
             onChange={e => setChart({ table: e.target.checked === (chartIndex === 0) ? undefined : e.target.checked })}
           />
-          Totals table
+          {t('Totals table')}
         </label>
       </div>
       {errors[groupKey] && <p className="text-[11px] text-error">{errors[groupKey]}</p>}

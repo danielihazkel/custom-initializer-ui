@@ -1,4 +1,5 @@
 import type { LintIssue } from './lint'
+import { t, tn } from '../../i18n'
 
 interface Props {
   issues: LintIssue[]
@@ -31,18 +32,18 @@ export function ModelLintPanel({ issues, onFix, onJump, open, onOpenChange, filt
         type="button"
         onClick={() => onOpenChange(!open)}
         aria-expanded={open}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px]"
+        className="w-full flex items-center gap-2 px-3 py-2 text-start text-[11px]"
       >
         <span className={`material-symbols-outlined ${warns > 0 ? 'text-warning' : 'text-secondary'}`} style={{ fontSize: '16px' }}>
           {warns > 0 ? 'lightbulb' : 'info'}
         </span>
         <span className="font-semibold text-on-surface">
-          {issues.length} suggestion{issues.length === 1 ? '' : 's'}
+          {tn(issues.length, '{n} suggestion', '{n} suggestions')}
         </span>
         <span className="text-secondary">
-          {warns > 0 && `${warns} worth a look`}{warns > 0 && infos > 0 && ' · '}{infos > 0 && `${infos} FYI`}
+          {warns > 0 && t('{n} worth a look', { n: warns })}{warns > 0 && infos > 0 && ' · '}{infos > 0 && t('{n} FYI', { n: infos })}
         </span>
-        <span className="ml-auto material-symbols-outlined text-secondary" style={{ fontSize: '16px' }}>
+        <span className="ms-auto material-symbols-outlined text-secondary" style={{ fontSize: '16px' }}>
           {open ? 'expand_less' : 'expand_more'}
         </span>
       </button>
@@ -50,9 +51,12 @@ export function ModelLintPanel({ issues, onFix, onJump, open, onOpenChange, filt
         <>
           {filterUid && (
             <p className="flex items-center gap-2 px-3 py-1.5 border-t border-outline-variant text-[11px] text-secondary" data-lint-filter>
-              <span>Showing {listed.length} for <span className="font-mono text-on-surface">{entityName?.(filterUid) || 'this entity'}</span></span>
+              <span>
+                {t('Showing {n} for', { n: listed.length })}{' '}
+                <span className="font-mono text-on-surface">{entityName?.(filterUid) || t('this entity')}</span>
+              </span>
               <button type="button" onClick={() => onFilterChange?.(null)} className="underline hover:no-underline">
-                Show all {issues.length}
+                {t('Show all {n}', { n: issues.length })}
               </button>
             </p>
           )}
@@ -62,7 +66,7 @@ export function ModelLintPanel({ issues, onFix, onJump, open, onOpenChange, filt
                 <span
                   className={`material-symbols-outlined mt-px shrink-0 ${issue.severity === 'warn' ? 'text-warning' : 'text-secondary'}`}
                   style={{ fontSize: '14px' }}
-                  aria-label={issue.severity === 'warn' ? 'Worth a look' : 'FYI'}
+                  aria-label={issue.severity === 'warn' ? t('Worth a look') : t('FYI')}
                 >
                   {issue.severity === 'warn' ? 'warning' : 'info'}
                 </span>
@@ -74,7 +78,7 @@ export function ModelLintPanel({ issues, onFix, onJump, open, onOpenChange, filt
                       onClick={() => onJump(issue.entityUid!)}
                       className="text-secondary hover:text-primary underline hover:no-underline"
                     >
-                      Show
+                      {t('Show')}
                     </button>
                   )}
                   {issue.fix && (
@@ -84,7 +88,7 @@ export function ModelLintPanel({ issues, onFix, onJump, open, onOpenChange, filt
                       className="font-semibold text-primary hover:underline"
                       title={issue.fix.label}
                     >
-                      Fix: {issue.fix.label}
+                      {t('Fix: {fix}', { fix: issue.fix.label })}
                     </button>
                   )}
                 </span>

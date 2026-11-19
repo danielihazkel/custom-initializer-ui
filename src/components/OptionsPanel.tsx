@@ -1,4 +1,5 @@
 import type { OptionsPanelProps, MetadataOption } from '../types'
+import { t } from '../i18n'
 
 /**
  * Compact <select> styled to match the frontend page's version pickers
@@ -46,7 +47,7 @@ export function OptionsPanel({ metadata, values, onChange, section }: OptionsPan
   const packagings = metadata.packaging?.values ?? []
   const types = metadata.type?.values ?? []
 
-  const buildTypes = types.filter(t => t.id === 'maven-project')
+  const buildTypes = types.filter(type => type.id === 'maven-project')
 
   const sectionLabelClass = 'text-[10px] font-bold uppercase tracking-widest text-secondary flex items-center gap-2'
 
@@ -58,30 +59,30 @@ export function OptionsPanel({ metadata, values, onChange, section }: OptionsPan
           <div className="space-y-3">
             <span className={sectionLabelClass}>
               <span className="material-symbols-outlined outline-none text-primary/70" style={{ fontSize: '16px' }}>account_tree</span>
-              Project Build
+              {t('Project Build')}
             </span>
             <div className="flex flex-col gap-3 mt-2">
-              {buildTypes.map(t => (
-                <label key={t.id} className="relative cursor-pointer group">
+              {buildTypes.map(bt => (
+                <label key={bt.id} className="relative cursor-pointer group">
                   <input
                     type="radio"
                     name="project-type"
-                    value={t.id}
-                    checked={values.type === t.id}
-                    onChange={() => onChange({ type: t.id })}
+                    value={bt.id}
+                    checked={values.type === bt.id}
+                    onChange={() => onChange({ type: bt.id })}
                     className="sr-only"
                   />
                   <div className={`p-4 rounded-xl border transition-all duration-300 flex items-center gap-4
-                    ${values.type === t.id
+                    ${values.type === bt.id
                       ? 'bg-primary/10 border-primary ring-1 ring-primary/30 glow-primary-soft'
                       : 'bg-surface-container-high border-outline-variant hover:bg-surface-container-highest hover:border-outline'}`}
                   >
-                    <div className={`p-2 rounded-lg flex items-center justify-center transition-colors ${values.type === t.id ? 'bg-primary text-on-primary' : 'bg-surface text-secondary group-hover:text-on-surface'}`}>
+                    <div className={`p-2 rounded-lg flex items-center justify-center transition-colors ${values.type === bt.id ? 'bg-primary text-on-primary' : 'bg-surface text-secondary group-hover:text-on-surface'}`}>
                       <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-                        {t.id.includes('maven') ? 'data_object' : 'build'}
+                        {bt.id.includes('maven') ? 'data_object' : 'build'}
                       </span>
                     </div>
-                    <span className={`text-sm font-bold ${values.type === t.id ? 'text-primary' : 'text-on-surface'}`}>{t.name}</span>
+                    <span className={`text-sm font-bold ${values.type === bt.id ? 'text-primary' : 'text-on-surface'}`}>{bt.name}</span>
                   </div>
                 </label>
               ))}
@@ -91,7 +92,7 @@ export function OptionsPanel({ metadata, values, onChange, section }: OptionsPan
           <div className="space-y-3">
             <span className={sectionLabelClass}>
               <span className="material-symbols-outlined outline-none text-tertiary/70" style={{ fontSize: '16px' }}>code</span>
-              Language
+              {t('Language')}
             </span>
             <div className="flex flex-col gap-3 mt-2">
               {languages.map(l => (
@@ -129,21 +130,21 @@ export function OptionsPanel({ metadata, values, onChange, section }: OptionsPan
     return (
       <div className="grid grid-cols-3 gap-6 pt-8 pb-4 mt-8 border-t border-outline-variant/50 items-start">
         <Dropdown
-          label="Spring Boot Version"
+          label={t('Spring Boot Version')}
           value={values.bootVersion}
           options={bootVersions}
           onChange={v => onChange({ bootVersion: v })}
         />
 
         <Dropdown
-          label="Java Version"
+          label={t('Java Version')}
           value={values.javaVersion}
           options={javaVersions}
           onChange={v => onChange({ javaVersion: v })}
         />
 
         <div className="space-y-3">
-          <span className={sectionLabelClass}>Packaging</span>
+          <span className={sectionLabelClass}>{t('Packaging')}</span>
           <div className="flex gap-2 mt-2 p-1 bg-surface-container-low rounded-lg border border-outline-variant w-fit">
             {packagings.map(p => (
               <label key={p.id} className="relative cursor-pointer">

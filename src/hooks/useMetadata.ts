@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { InitializrMetadata, UseMetadataResult } from '../types'
 import { invalidateCatalog } from './catalogCache'
+import { t } from '../i18n'
 
 // One in-flight/resolved promise shared by every useMetadata() caller (App, the
 // fullstack picker, the admin tabs) so the catalog is downloaded once per session.
@@ -13,7 +14,7 @@ export const ACCESS_BLOCKED_CODE = 'USERINFO_REQUIRED'
 /** The backend is up and refused this browser: there is no point asking again by itself. */
 export class AccessBlockedError extends Error {
   constructor(detail?: string) {
-    super(detail || 'Access is blocked')
+    super(detail || t('Access is blocked'))
     this.name = 'AccessBlockedError'
   }
 }

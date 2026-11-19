@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DependencySelector } from './DependencySelector'
 import type { DependencySelectorProps, InitializrMetadata } from '../types'
+import { setLang } from '../i18n'
 
 vi.mock('framer-motion', async () => {
   const React = await import('react')
@@ -176,5 +177,24 @@ describe('DependencySelector — search and keyboard', () => {
     // Quick picks step aside while searching.
     await act(async () => { fireEvent.change(search(), { target: { value: 'jpa' } }) })
     await waitFor(() => expect(document.querySelector('[data-quick-picks]')).toBeNull())
+  })
+})
+
+describe('DependencySelector — in Hebrew', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline'))))
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('speaks Hebrew, and keeps the catalog names as the server sent them', async () => {
+    await setLang('he')
+    render(<Harness />)
+    expect(screen.getByRole('searchbox', { name: 'חיפוש תלויות' })).toBeTruthy()
+    expect(screen.getByText('העגלה ריקה')).toBeTruthy()
+    expect(screen.getByText('Spring Data JPA')).toBeTruthy()
+    // A selected dependency's wizard button and its count line are in Hebrew too.
+    fireEvent.click(screen.getByText('PostgreSQL Driver'))
+    expect(screen.getByText('יצירת ישויות מ-SQL…')).toBeTruthy()
   })
 })

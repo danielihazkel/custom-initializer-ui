@@ -1,4 +1,5 @@
 import type { FullstackFieldDef } from '../../types'
+import { t, tn } from '../../i18n'
 
 /** The compact tags a field row shows for everything that lives inside its "More" panel, so a
  *  closed panel never hides a setting: constraints, default, lock and search/filter opt-outs
@@ -6,17 +7,22 @@ import type { FullstackFieldDef } from '../../types'
 export function fieldChips(field: FullstackFieldDef, opts: { includeLabel?: boolean } = {}): string[] {
   const chips: string[] = []
   if (opts.includeLabel && field.label?.trim()) chips.push(`“${field.label.trim()}”`)
-  if (field.length != null) chips.push(`len ${field.length}`)
+  if (field.length != null) chips.push(t('len {n}', { n: field.length }))
   if (field.min != null && field.max != null) chips.push(`${field.min}–${field.max}`)
-  else if (field.min != null) chips.push(`min ${field.min}`)
-  else if (field.max != null) chips.push(`max ${field.max}`)
-  if (field.pattern) chips.push('regex')
-  if (field.email) chips.push('email')
-  if (field.type === 'ENUM') chips.push(`${field.enumValues?.length ?? 0} value${(field.enumValues?.length ?? 0) === 1 ? '' : 's'}${Object.keys(field.enumLabels ?? {}).length > 0 ? ', labelled' : ''}`)
+  else if (field.min != null) chips.push(t('min {n}', { n: field.min }))
+  else if (field.max != null) chips.push(t('max {n}', { n: field.max }))
+  if (field.pattern) chips.push(t('regex'))
+  if (field.email) chips.push(t('email'))
+  if (field.type === 'ENUM') {
+    const count = field.enumValues?.length ?? 0
+    chips.push(Object.keys(field.enumLabels ?? {}).length > 0
+      ? tn(count, '{n} value, labelled', '{n} values, labelled')
+      : tn(count, '{n} value', '{n} values'))
+  }
   if (field.defaultValue?.trim()) chips.push(`= ${field.defaultValue.trim()}`)
-  if (field.readOnly && !field.primaryKey) chips.push('locked')
-  if (field.searchable === false) chips.push('no search')
-  if (field.filterable === false) chips.push('no filter')
+  if (field.readOnly && !field.primaryKey) chips.push(t('locked'))
+  if (field.searchable === false) chips.push(t('no search'))
+  if (field.filterable === false) chips.push(t('no filter'))
   return chips
 }
 
@@ -38,7 +44,7 @@ export function FieldChips({ field, includeLabel, onOpen }: Props) {
           type="button"
           onClick={onOpen}
           className="max-w-[9rem] truncate px-1.5 py-px rounded border border-outline-variant/70 bg-surface-container-low text-[10px] font-mono text-secondary hover:text-primary hover:border-primary/50 transition-colors"
-          title="Edit in the More panel"
+          title={t('Edit in the More panel')}
         >
           {chip}
         </button>

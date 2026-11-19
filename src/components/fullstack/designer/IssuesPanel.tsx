@@ -4,6 +4,7 @@ import type { PageLayoutValidation } from '../pageLayout'
 import { ICON_BUTTON } from '../pages/constants'
 import { LayoutWarnings } from '../pages/LayoutWarnings'
 import type { LayoutIssue, PagesModel } from '../pages/usePagesModel'
+import { t, tn } from '../../../i18n'
 
 /**
  * The layout's problems (they stop Generate) and tips (advice, dismissable), as a sheet over the
@@ -23,33 +24,33 @@ export function IssuesPanel({ pages, model, issues, validation, reveal, onClose,
   return (
     <section
       className="absolute inset-x-0 bottom-0 z-10 flex max-h-[45%] flex-col rounded-t-2xl border-t border-outline bg-surface-container-lowest shadow-[0_-12px_40px_rgba(0,0,0,0.35)]"
-      aria-label="Layout issues"
+      aria-label={t('Layout issues')}
       data-designer-issues
     >
       <div className="flex items-center gap-3 border-b border-outline-variant px-5 py-3">
-        <h2 className="text-sm font-semibold text-on-surface">Issues</h2>
+        <h2 className="text-sm font-semibold text-on-surface">{t('Issues')}</h2>
         <span className="text-[11px] text-secondary">
-          {issues.length === 0 ? 'No problems — the layout is ready to generate.' : `${issues.length} problem${issues.length === 1 ? '' : 's'} stop Generate until fixed.`}
-          {validation.warnings.length > 0 && ` ${validation.warnings.length} tip${validation.warnings.length === 1 ? '' : 's'} never do.`}
+          {issues.length === 0 ? t('No problems — the layout is ready to generate.') : tn(issues.length, '{n} problem stops Generate until fixed.', '{n} problems stop Generate until fixed.')}
+          {validation.warnings.length > 0 && ` ${tn(validation.warnings.length, '{n} tip never does.', '{n} tips never do.')}`}
         </span>
         {fixable > 1 && (
           <button
             type="button"
             onClick={model.fixAll}
             className="ms-auto rounded-md bg-primary px-2.5 py-1 text-[11px] font-semibold text-on-primary"
-            title="Apply each problem's own fix, one after another — one undo step"
+            title={t("Apply each problem's own fix, one after another — one undo step")}
             data-page-fix-all
           >
-            Fix all ({fixable})
+            {t('Fix all ({n})', { n: fixable })}
           </button>
         )}
-        <button type="button" onClick={onClose} className={`${ICON_BUTTON} ${fixable > 1 ? '' : 'ms-auto'}`} aria-label="Close the issues">
+        <button type="button" onClick={onClose} className={`${ICON_BUTTON} ${fixable > 1 ? '' : 'ms-auto'}`} aria-label={t('Close the issues')}>
           <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>expand_more</span>
         </button>
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-3">
         {issues.length > 0 && (
-          <ul className="space-y-1.5" aria-label="Layout problems" data-page-layout-problems>
+          <ul className="space-y-1.5" aria-label={t('Layout problems')} data-page-layout-problems>
             {issues.map((issue, i) => (
               <li key={`${i}:${issue.summary}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-error/30 bg-error/5 px-3 py-2 text-xs text-error">
                 <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">error</span>
@@ -60,17 +61,17 @@ export function IssuesPanel({ pages, model, issues, validation, reveal, onClose,
                     onClick={() => reveal({ page: issue.page!, control: issue.field })}
                     className="rounded-md border border-outline-variant px-2 py-1 text-[11px] font-semibold text-on-surface hover:border-primary/50"
                   >
-                    Jump to
+                    {t('Jump to')}
                   </button>
                 )}
                 {issue.fix && (
-                  <button type="button" onClick={() => model.applyFix(issue.fix!)} className="rounded-md bg-primary px-2 py-1 text-[11px] font-semibold text-on-primary" title="Apply this fix (undoable)" data-page-fix>
-                    Fix: {issue.fix.label}
+                  <button type="button" onClick={() => model.applyFix(issue.fix!)} className="rounded-md bg-primary px-2 py-1 text-[11px] font-semibold text-on-primary" title={t('Apply this fix (undoable)')} data-page-fix>
+                    {t('Fix: {label}', { label: issue.fix.label })}
                   </button>
                 )}
                 {issue.alsoFix && (
-                  <button type="button" onClick={() => model.applyFix(issue.alsoFix!)} className="rounded-md border border-outline-variant px-2 py-1 text-[11px] text-on-surface" title="Apply this fix instead (undoable)" data-page-fix-alt>
-                    or {issue.alsoFix.label}
+                  <button type="button" onClick={() => model.applyFix(issue.alsoFix!)} className="rounded-md border border-outline-variant px-2 py-1 text-[11px] text-on-surface" title={t('Apply this fix instead (undoable)')} data-page-fix-alt>
+                    {t('or {label}', { label: issue.alsoFix.label })}
                   </button>
                 )}
               </li>
@@ -90,7 +91,7 @@ export function IssuesPanel({ pages, model, issues, validation, reveal, onClose,
           />
         )}
         {issues.length === 0 && validation.warnings.length === 0 && (
-          <p className="py-4 text-center text-xs text-secondary">Nothing to fix.</p>
+          <p className="py-4 text-center text-xs text-secondary">{t('Nothing to fix.')}</p>
         )}
       </div>
     </section>

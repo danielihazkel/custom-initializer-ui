@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent } from 'react'
 import { humanizeConstant, lookupLabel } from './enumLabels'
+import { t } from '../../i18n'
 
 interface Props {
   values: string[]
@@ -97,7 +98,8 @@ export function EnumValuesEditor({ values, onChange, labels, onLabelsChange, inv
             <input
               type="text"
               autoFocus
-              aria-label={`New name for ${v}`}
+              aria-label={t('New name for {value}', { value: v })}
+              dir="ltr"
               className="w-[10ch] bg-background border border-primary/40 rounded px-1 py-0 text-[11px] font-mono outline-none"
               value={editing.text}
               onChange={e => setEditing({ index: i, text: e.target.value })}
@@ -111,8 +113,8 @@ export function EnumValuesEditor({ values, onChange, labels, onLabelsChange, inv
             <button
               type="button"
               className="hover:underline"
-              title="Rename this value (pages that filter on it follow)"
-              aria-label={`Rename ${v}`}
+              title={t('Rename this value (pages that filter on it follow)')}
+              aria-label={t('Rename {value}', { value: v })}
               onClick={() => setEditing({ index: i, text: v })}
             >
               {v}
@@ -121,9 +123,10 @@ export function EnumValuesEditor({ values, onChange, labels, onLabelsChange, inv
           {withLabels && (
             <input
               type="text"
-              aria-label={`Label for ${v}`}
-              title="Display label in the generated app (blank = derived from the constant)"
-              className="ml-1 w-[9ch] min-w-[6ch] bg-background/70 border border-primary/20 rounded px-1 py-0 text-[11px] font-sans text-on-surface placeholder:text-secondary/60 outline-none focus:border-primary"
+              aria-label={t('Label for {value}', { value: v })}
+              title={t('Display label in the generated app (blank = derived from the constant)')}
+              dir="auto"
+              className="ms-1 w-[9ch] min-w-[6ch] bg-background/70 border border-primary/20 rounded px-1 py-0 text-[11px] font-sans text-on-surface placeholder:text-secondary/60 outline-none focus:border-primary"
               placeholder={humanizeConstant(v)}
               value={lookupLabel(labels, v) ?? ''}
               onChange={e => setLabel(v, e.target.value)}
@@ -133,7 +136,7 @@ export function EnumValuesEditor({ values, onChange, labels, onLabelsChange, inv
             type="button"
             onClick={() => removeAt(i)}
             className="hover:text-error leading-none"
-            aria-label={`Remove ${v}`}
+            aria-label={t('Remove {value}', { value: v })}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>close</span>
           </button>
@@ -141,9 +144,10 @@ export function EnumValuesEditor({ values, onChange, labels, onLabelsChange, inv
       ))}
       <input
         type="text"
-        aria-label="Add enum value"
+        dir="ltr"
+        aria-label={t('Add enum value')}
         className="flex-1 min-w-[6ch] bg-transparent text-xs outline-none"
-        placeholder={values.length === 0 ? (withLabels ? 'ACTIVE, DISABLED… or OPEN:Open' : 'ACTIVE, DISABLED…') : ''}
+        placeholder={values.length === 0 ? (withLabels ? t('ACTIVE, DISABLED… or OPEN:Open') : 'ACTIVE, DISABLED…') : ''}
         value={draft}
         onChange={e => setDraft(e.target.value)}
         onKeyDown={onKeyDown}

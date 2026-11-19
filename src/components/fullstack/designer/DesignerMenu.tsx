@@ -10,6 +10,9 @@ export interface MenuItem {
   onSelect: () => void
 }
 
+/** Icons that point along the reading direction: turned round in RTL. */
+const DIRECTIONAL_ICONS = new Set(['arrow_back', 'arrow_forward', 'chevron_left', 'chevron_right', 'east', 'west', 'first_page', 'last_page'])
+
 /**
  * A small popover menu under (or beside) the control that opened it: the first item takes the
  * focus, ↑/↓/Home/End move it, Escape or a click outside closes it and hands the focus back.
@@ -87,7 +90,7 @@ export function DesignerMenu({ label, items, onClose, className = '', returnFocu
             className={`flex w-full items-center gap-2 px-3 py-1.5 text-start text-xs hover:bg-primary/5 focus:bg-primary/10 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
               item.tone === 'danger' ? 'text-error' : item.tone === 'muted' ? 'text-secondary' : 'text-on-surface'}`}
           >
-            {item.icon && <span className="material-symbols-outlined shrink-0 text-secondary" style={{ fontSize: '15px' }} aria-hidden="true">{item.icon}</span>}
+            {item.icon && <span className={`material-symbols-outlined shrink-0 text-secondary ${DIRECTIONAL_ICONS.has(item.icon) ? 'flip-rtl' : ''}`} style={{ fontSize: '15px' }} aria-hidden="true">{item.icon}</span>}
             <span className="min-w-0 flex-1 truncate">{item.label}</span>
           </button>
         ))}

@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { FullstackEntityDef, FullstackEntityOptKey } from '../../types'
 import { optCoverage } from './scaffoldOptions'
+import { t, tn, useLang } from '../../i18n'
 
 interface Props {
   optKey: FullstackEntityOptKey
@@ -16,7 +17,9 @@ interface Props {
  * model has no entities.
  */
 export function OptionCoverage({ optKey, entities, onReveal }: Props) {
-  const coverage = useMemo(() => optCoverage(entities, optKey), [entities, optKey])
+  const lang = useLang()
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the reasons are in the site's language
+  const coverage = useMemo(() => optCoverage(entities, optKey), [entities, optKey, lang])
   const total = entities.length
   if (total === 0) return null
   const n = coverage.applies.length
@@ -25,15 +28,17 @@ export function OptionCoverage({ optKey, entities, onReveal }: Props) {
     <span className="mt-1.5 flex flex-wrap items-center gap-1 text-[11px]" data-opt-coverage={optKey}>
       <span className={all ? 'text-secondary' : 'text-warning'}>
         {all
-          ? `Applies to ${total === 1 ? 'the entity' : `all ${total} entities`}`
-          : `Applies to ${n} of ${total} entit${total === 1 ? 'y' : 'ies'}${n === 0 ? ' — nothing will be generated for it' : ''}`}
+          ? (total === 1 ? t('Applies to the entity') : t('Applies to all {total} entities', { total }))
+          : n === 0
+            ? tn(total, 'Applies to {count} of {n} entity — nothing will be generated for it', 'Applies to {count} of {n} entities — nothing will be generated for it', { count: n })
+            : tn(total, 'Applies to {count} of {n} entity', 'Applies to {count} of {n} entities', { count: n })}
       </span>
       {coverage.excluded.map(e => (
         <button
           key={e.uid}
           type="button"
           onClick={ev => { ev.preventDefault(); onReveal(e.uid) }}
-          title={`${e.name}: ${e.reason} — click to open the entity`}
+          title={t('{entity}: {reason} — click to open the entity', { entity: e.name, reason: e.reason })}
           className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border border-warning/40 text-warning hover:bg-warning/10 transition-colors font-mono"
         >
           <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>block</span>

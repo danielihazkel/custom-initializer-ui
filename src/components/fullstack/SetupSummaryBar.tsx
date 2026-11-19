@@ -1,4 +1,5 @@
 import type { SetupChip } from './setupSummary'
+import { t, tn } from '../../i18n'
 
 /**
  * The collapsed face of the Setup panel: one row of chips naming what the project is configured
@@ -23,7 +24,7 @@ export function SetupSummaryBar({ open, onToggle, chips, errorCount, forced, onC
     <div className="flex items-center gap-2 flex-wrap px-5 py-2.5">
       <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-secondary">
         <span className="material-symbols-outlined text-secondary" style={{ fontSize: '15px' }}>tune</span>
-        Setup
+        {t('Setup')}
       </span>
 
       {!open && chips.map(chip => (
@@ -42,24 +43,24 @@ export function SetupSummaryBar({ open, onToggle, chips, errorCount, forced, onC
         </button>
       ))}
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ms-auto flex items-center gap-2">
         {errorCount > 0 && (
           <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-error" role="status">
             <span className="h-1.5 w-1.5 rounded-full bg-error" aria-hidden="true" />
-            {errorCount} issue{errorCount === 1 ? '' : 's'} here
+            {tn(errorCount, '{n} issue here', '{n} issues here')}
           </span>
         )}
         <button
           type="button"
           onClick={onToggle}
-          aria-label={open ? 'Hide project setup' : 'Edit project setup'}
+          aria-label={open ? t('Hide project setup') : t('Edit project setup')}
           aria-expanded={open}
           aria-controls="fs-setup-body"
           disabled={forced}
-          title={forced ? 'Fix the errors above to collapse this' : undefined}
+          title={forced ? t('Fix the errors above to collapse this') : undefined}
           className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-medium text-secondary hover:text-primary hover:bg-primary/5 transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-secondary"
         >
-          {open ? 'Hide' : 'Edit'}
+          {open ? t('Hide') : t('Edit')}
           <span className={`material-symbols-outlined transition-transform ${open ? 'rotate-180' : ''}`} style={{ fontSize: '16px' }}>expand_more</span>
         </button>
       </div>

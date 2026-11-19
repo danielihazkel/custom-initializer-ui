@@ -1,4 +1,5 @@
 import { scrollToElement } from './scroll'
+import { t, tn } from '../../i18n'
 
 export interface NavSection {
   id: string
@@ -23,17 +24,17 @@ export function SectionNav({ sections, onJump }: {
     requestAnimationFrame(() => scrollToElement(document.getElementById(id), 'start'))
   }
   return (
-    <nav aria-label="Page sections" className="flex items-center gap-1 flex-wrap" data-section-nav>
+    <nav aria-label={t('Page sections')} className="flex items-center gap-1 flex-wrap" data-section-nav>
       {sections.map(s => (
         <button
           key={s.id}
           type="button"
           onClick={() => jump(s.id)}
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-secondary hover:text-primary hover:bg-primary/5 transition-colors"
-          title={s.errors ? `${s.label}: ${s.errors} issue${s.errors === 1 ? '' : 's'}` : `Jump to ${s.label}`}
+          title={s.errors ? tn(s.errors, '{section}: {n} issue', '{section}: {n} issues', { section: s.label }) : t('Jump to {section}', { section: s.label })}
         >
           {s.label}
-          {s.errors ? <span className="h-1.5 w-1.5 rounded-full bg-error" aria-label={`${s.errors} issues`} /> : null}
+          {s.errors ? <span className="h-1.5 w-1.5 rounded-full bg-error" aria-label={tn(s.errors, '{n} issue', '{n} issues')} /> : null}
         </button>
       ))}
     </nav>

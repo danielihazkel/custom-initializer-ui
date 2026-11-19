@@ -6,6 +6,7 @@ import { pageLabel } from '../pageLayout'
 import type { FormProps } from './formTypes'
 import { SMALL_BUTTON } from './constants'
 import { EntitySelect, Field, PresetFilters } from './fields'
+import { t } from '../../../i18n'
 
 /** An inbox page: its entity (one whose workflow assigns rows), its queues, columns, sort and filter. */
 export function InboxForm({ page, index, entities, errors, update, lossy }: FormProps) {
@@ -26,21 +27,21 @@ export function InboxForm({ page, index, entities, errors, update, lossy }: Form
   }
   return (
     <div className="space-y-3">
-      <Field label="Entity" error={errors.entity} control="entity" hint="An entity whose workflow assigns rows to users">
+      <Field label={t('Entity')} error={errors.entity} control="entity" hint={t('An entity whose workflow assigns rows to users')}>
         <EntitySelect
-          label="Inbox entity"
+          label={t('Inbox entity')}
           value={page.entity ?? ''}
           options={entities.filter(hasInbox).map(e => e.name)}
           error={errors.entity}
           onChange={name => {
-            const dropped = [page.cardFields && 'columns', page.sort && 'sort', Object.keys(page.presetFilter ?? {}).length > 0 && 'filter']
+            const dropped = [page.cardFields && t('columns'), page.sort && t('sort'), Object.keys(page.presetFilter ?? {}).length > 0 && t('filter')]
               .filter((d): d is string => Boolean(d))
-            lossy(`Listed ${name} in “${pageLabel(page)}”`, dropped)
+            lossy(t('Listed {entity} in “{page}”', { entity: name, page: pageLabel(page) }), dropped)
             update(index, { entity: name, cardFields: undefined, sort: undefined, presetFilter: undefined })
           }}
         />
       </Field>
-      <Field label="Queues" error={errors.queues} control="queues" hint="Tabs, in the order picked; the first opens">
+      <Field label={t('Queues')} error={errors.queues} control="queues" hint={t('Tabs, in the order picked; the first opens')}>
         <div className="flex flex-wrap gap-1.5">
           {INBOX_QUEUES.map(q => {
             const at = queues.indexOf(q.value)
@@ -59,8 +60,10 @@ export function InboxForm({ page, index, entities, errors, update, lossy }: Form
           })}
         </div>
       </Field>
-      <Field label="A row shows" error={errors.cardFields} control="cardFields"
-             hint={`1–${MAX_CARD_FIELDS} fields before the status, assignee${wf?.dueField ? ' and due date' : ''}; the first names the row`}>
+      <Field label={t('A row shows')} error={errors.cardFields} control="cardFields"
+             hint={wf?.dueField
+               ? t('1–{max} fields before the status, assignee and due date; the first names the row', { max: MAX_CARD_FIELDS })
+               : t('1–{max} fields before the status and assignee; the first names the row', { max: MAX_CARD_FIELDS })}>
         <div className="flex flex-wrap gap-1.5">
           {options.map(name => {
             const at = cards.indexOf(name)
@@ -78,35 +81,35 @@ export function InboxForm({ page, index, entities, errors, update, lossy }: Form
             )
           })}
           {page.cardFields && (
-            <button type="button" onClick={() => update(index, { cardFields: undefined })} className={SMALL_BUTTON}>Reset to default</button>
+            <button type="button" onClick={() => update(index, { cardFields: undefined })} className={SMALL_BUTTON}>{t('Reset to default')}</button>
           )}
         </div>
       </Field>
-      <Field label="Sorted by" error={errors.sort} control="sort">
+      <Field label={t('Sorted by')} error={errors.sort} control="sort">
         <div className="flex flex-wrap items-center gap-2">
           <select
-            aria-label="Inbox sort"
+            aria-label={t('Inbox sort')}
             value={page.sort?.field ?? ''}
             onChange={e => update(index, { sort: e.target.value ? { field: e.target.value, dir: page.sort?.dir ?? 'asc' } : undefined })}
             className={`${inputClass(errors.sort)} max-w-[12rem] py-1 text-xs`}
           >
-            <option value="">{wf?.dueField ? 'Soonest due (default)' : 'Newest (default)'}</option>
+            <option value="">{wf?.dueField ? t('Soonest due (default)') : t('Newest (default)')}</option>
             {(entity?.fields ?? []).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
           </select>
           {page.sort?.field && (
             <select
-              aria-label="Inbox sort direction"
+              aria-label={t('Inbox sort direction')}
               value={page.sort.dir ?? 'asc'}
               onChange={e => update(index, { sort: { field: page.sort!.field, dir: e.target.value as 'asc' | 'desc' } })}
               className={`${inputClass()} max-w-[8rem] py-1 text-xs`}
             >
-              <option value="asc">Ascending</option>
-              <option value="desc">Descending</option>
+              <option value="asc">{t('Ascending')}</option>
+              <option value="desc">{t('Descending')}</option>
             </select>
           )}
         </div>
       </Field>
-      <PresetFilters filter={page.presetFilter} entity={entity} errors={errors} onChange={presetFilter => update(index, { presetFilter })} heading="Only tasks with" />
+      <PresetFilters filter={page.presetFilter} entity={entity} errors={errors} onChange={presetFilter => update(index, { presetFilter })} heading={t('Only tasks with')} />
     </div>
   )
 }

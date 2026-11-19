@@ -1,3 +1,5 @@
+import { t } from '../i18n'
+
 interface Props {
   /** The backend's own words for the refusal (which header is missing). */
   detail: string
@@ -16,12 +18,12 @@ export function AccessBlocked({ detail, retrying, onRetry }: Props) {
       <div role="alert" className="bg-surface-container border border-error-container rounded-xl p-8 max-w-md text-center space-y-4">
         <span className="material-symbols-outlined text-error" style={{ fontSize: '36px' }} aria-hidden="true">lock</span>
         <div className="space-y-1.5">
-          <h2 className="text-lg font-bold text-on-surface">No access</h2>
+          <h2 className="text-lg font-bold text-on-surface">{t('No access')}</h2>
           <p className="text-sm text-secondary">
-            This site can only be opened through the company sign-in. Open it from its usual address, then try again.
+            {t('This site can only be opened through the company sign-in. Open it from its usual address, then try again.')}
           </p>
         </div>
-        <code className="block text-xs text-error bg-surface-container-lowest rounded p-3 break-words">{detail}</code>
+        <code dir="ltr" className="block text-xs text-error bg-surface-container-lowest rounded p-3 break-words">{detail}</code>
         <button
           type="button"
           onClick={onRetry}
@@ -31,7 +33,7 @@ export function AccessBlocked({ detail, retrying, onRetry }: Props) {
           <span className={`material-symbols-outlined ${retrying ? 'animate-spin' : ''}`} style={{ fontSize: '16px' }} aria-hidden="true">
             {retrying ? 'progress_activity' : 'refresh'}
           </span>
-          {retrying ? 'Checking…' : 'Try again'}
+          {retrying ? t('Checking…') : t('Try again')}
         </button>
       </div>
     </div>

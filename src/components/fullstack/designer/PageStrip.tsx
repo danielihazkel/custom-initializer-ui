@@ -5,6 +5,7 @@ import { MAX_PAGES, PAGE_TYPE_META, canDuplicate, inNav, pageLabel, type PageLay
 import { dropIndicatorClass } from '../useDragReorder'
 import type { PagesModel } from '../pages/usePagesModel'
 import { DesignerMenu, type MenuItem } from './DesignerMenu'
+import { isRtl, t, tn, useLang } from '../../../i18n'
 
 /** The pages to find a page among: its label, route, entity, type or group. */
 export function pageMatches(page: FullstackPageDef, query: string): boolean {
@@ -52,6 +53,7 @@ export function PageStrip({ pages, model, validation, selected, onSelect, onAddP
   picked?: string[]
   onPick?: (ids: string[]) => void
 }) {
+  useLang()
   const { dnd, keys, preview } = model
   const startIndex = preview.nav[0]?.index
   // The chip whose menu is open, and the chip element to give the focus back to.
@@ -77,35 +79,36 @@ export function PageStrip({ pages, model, validation, selected, onSelect, onAddP
       model.requestRemove(index)
     } else if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       e.preventDefault()
-      model.move(index, e.key === 'ArrowRight' ? 1 : -1)
+      // The chips flow in the reading direction: in RTL, → is toward the start (earlier).
+      model.move(index, (e.key === 'ArrowRight') !== isRtl() ? 1 : -1)
     }
   }
   function menuItems(index: number): MenuItem[] {
     const page = pages[index]
     if (!page) return []
     const isStart = index === startIndex
-    const items: MenuItem[] = [{ key: 'open', label: 'Open', icon: 'edit', onSelect: () => onSelect(index) }]
-    if (inNav(page) && !isStart) items.push({ key: 'start', label: 'Make it the start page', icon: 'home', onSelect: () => model.makeStart(index, startIndex ?? 0) })
+    const items: MenuItem[] = [{ key: 'open', label: t('Open'), icon: 'edit', onSelect: () => onSelect(index) }]
+    if (inNav(page) && !isStart) items.push({ key: 'start', label: t('Make it the start page'), icon: 'home', onSelect: () => model.makeStart(index, startIndex ?? 0) })
     if (page.type !== 'record') {
       items.push({
         key: 'hidden',
-        label: page.hidden ? 'Show in the navigation' : 'Hide from the navigation',
+        label: page.hidden ? t('Show in the navigation') : t('Hide from the navigation'),
         icon: page.hidden ? 'visibility' : 'visibility_off',
         onSelect: () => model.toggleHidden(index),
       })
     }
     if (canDuplicate(page)) {
-      items.push({ key: 'duplicate', label: 'Duplicate', icon: 'content_copy', disabled: model.atPageCap && `A layout can have at most ${MAX_PAGES} pages`, onSelect: () => model.duplicate(index) })
+      items.push({ key: 'duplicate', label: t('Duplicate'), icon: 'content_copy', disabled: model.atPageCap && t('A layout can have at most {n} pages', { n: MAX_PAGES }), onSelect: () => model.duplicate(index) })
     }
     items.push(
-      { key: 'earlier', label: 'Move earlier', icon: 'arrow_back', disabled: index === 0, onSelect: () => model.move(index, -1) },
-      { key: 'later', label: 'Move later', icon: 'arrow_forward', disabled: index === pages.length - 1, onSelect: () => model.move(index, 1) },
+      { key: 'earlier', label: t('Move earlier'), icon: 'arrow_back', disabled: index === 0, onSelect: () => model.move(index, -1) },
+      { key: 'later', label: t('Move later'), icon: 'arrow_forward', disabled: index === pages.length - 1, onSelect: () => model.move(index, 1) },
     )
     if (onPick) {
       const on = picked.includes(page.id)
-      items.push({ key: 'pick', label: on ? 'Unpick' : 'Pick for a bulk action', icon: on ? 'check_box' : 'check_box_outline_blank', onSelect: () => onPick(pickedAfterClick(pages, picked, selected, index, 'toggle')) })
+      items.push({ key: 'pick', label: on ? t('Unpick') : t('Pick for a bulk action'), icon: on ? 'check_box' : 'check_box_outline_blank', onSelect: () => onPick(pickedAfterClick(pages, picked, selected, index, 'toggle')) })
     }
-    items.push({ key: 'delete', label: 'Delete page', icon: 'delete', tone: 'danger', onSelect: () => model.requestRemove(index) })
+    items.push({ key: 'delete', label: t('Delete page'), icon: 'delete', tone: 'danger', onSelect: () => model.requestRemove(index) })
     return items
   }
   const [query, setQuery] = useState('')
@@ -135,7 +138,9 @@ export function PageStrip({ pages, model, validation, selected, onSelect, onAddP
           if (newPageDrop) {
             e.preventDefault()
             const rect = e.currentTarget.getBoundingClientRect()
-            setNewAt(e.clientX < rect.left + rect.width / 2 ? index : index + 1)
+            // The half nearer the start of the row means "before" — the right half in RTL.
+            const startHalf = isRtl() ? e.clientX > rect.left + rect.width / 2 : e.clientX < rect.left + rect.width / 2
+            setNewAt(startHalf ? index : index + 1)
             return
           }
           reorder.onDragOver(e)
@@ -164,24 +169,26 @@ export function PageStrip({ pages, model, validation, selected, onSelect, onAddP
           onContextMenu={e => { e.preventDefault(); setMenu({ index, anchor: e.currentTarget }) }}
           aria-pressed={on}
           aria-haspopup="menu"
-          title={`${pageLabel(page)} — ${meta.label} · #/${page.id || '…'}. Drag to move it; right-click for more${onPick ? '; Ctrl-click to pick several' : ''}.`}
+          title={onPick
+            ? t('{page} — {type} · #/{route}. Drag to move it; right-click for more; Ctrl-click to pick several.', { page: pageLabel(page), type: meta.label, route: page.id || '…' })
+            : t('{page} — {type} · #/{route}. Drag to move it; right-click for more.', { page: pageLabel(page), type: meta.label, route: page.id || '…' })}
           className={`flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${
             on ? 'border-primary bg-primary/10 font-semibold text-on-surface' : 'border-outline-variant bg-surface-container text-on-surface hover:border-primary/50'
           } ${inNav(page) ? '' : 'border-dashed'} ${isPicked ? 'ring-2 ring-primary/60' : ''}`}
         >
           {isPicked
-            ? <span className="material-symbols-outlined text-primary" style={{ fontSize: '15px' }} role="img" aria-label="Picked">check_box</span>
+            ? <span className="material-symbols-outlined text-primary" style={{ fontSize: '15px' }} role="img" aria-label={t('Picked')}>check_box</span>
             : <span className="material-symbols-outlined text-secondary" style={{ fontSize: '15px' }} aria-hidden="true">{meta.icon}</span>}
           <span className="max-w-[12rem] truncate">{pageLabel(page)}</span>
           {index === startIndex && (
-            <span className="material-symbols-outlined text-amber-500" style={{ fontSize: '14px' }} role="img" aria-label="Start page" title="The app opens on this page">home</span>
+            <span className="material-symbols-outlined text-amber-500" style={{ fontSize: '14px' }} role="img" aria-label={t('Start page')} title={t('The app opens on this page')}>home</span>
           )}
-          {errors > 0 && <span className="h-2 w-2 rounded-full bg-error" role="img" aria-label={`${errors} problem${errors === 1 ? '' : 's'}`} />}
-          {errors === 0 && warnings > 0 && <span className="h-2 w-2 rounded-full bg-amber-400" role="img" aria-label={`${warnings} tip${warnings === 1 ? '' : 's'}`} />}
+          {errors > 0 && <span className="h-2 w-2 rounded-full bg-error" role="img" aria-label={tn(errors, '{n} problem', '{n} problems')} />}
+          {errors === 0 && warnings > 0 && <span className="h-2 w-2 rounded-full bg-amber-400" role="img" aria-label={tn(warnings, '{n} tip', '{n} tips')} />}
         </button>
         {menu?.index === index && menuPage && (
           <DesignerMenu
-            label={`${pageLabel(menuPage)} actions`}
+            label={t('{page} actions', { page: pageLabel(menuPage) })}
             heading={pageLabel(menuPage)}
             items={menuItems(index)}
             returnFocus={menu.anchor}
@@ -205,19 +212,19 @@ export function PageStrip({ pages, model, validation, selected, onSelect, onAddP
         newPageDrop.onDrop(newAt ?? pages.length)
         setNewAt(null)
       }}
-      aria-label="Pages"
+      aria-label={t('Pages')}
       role="group"
       data-page-strip
     >
       {model.navGroupSections.map((section, si) => (
         <div key={section.group ?? `loose-${si}`} className="min-w-0 space-y-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-secondary">{section.group ?? (si === 0 ? 'Navigation' : 'Ungrouped')}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-secondary">{section.group ?? (si === 0 ? t('Navigation') : t('Ungrouped'))}</p>
           <ul className="flex flex-wrap gap-1">{section.items.map(chip)}</ul>
         </div>
       ))}
       {offNav.length > 0 && (
         <div className="min-w-0 space-y-1" data-strip-off-nav>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-secondary" title="Opened from a row, a tab or a link — never from the menu">Off the navigation</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-secondary" title={t('Opened from a row, a tab or a link — never from the menu')}>{t('Off the navigation')}</p>
           <ul className="flex flex-wrap gap-1">{offNav.map(chip)}</ul>
         </div>
       )}
@@ -226,18 +233,18 @@ export function PageStrip({ pages, model, validation, selected, onSelect, onAddP
         onClick={onAddPage}
         disabled={model.atPageCap || model.named.length === 0}
         className="flex min-h-9 items-center gap-1 rounded-lg border border-dashed border-outline px-2.5 text-xs text-secondary hover:border-primary/50 hover:text-primary disabled:opacity-40"
-        title={model.named.length === 0 ? 'Name an entity first' : model.atPageCap ? 'The layout has the most pages it can have' : 'Add a page — or drag one from the library'}
+        title={model.named.length === 0 ? t('Name an entity first') : model.atPageCap ? t('The layout has the most pages it can have') : t('Add a page — or drag one from the library')}
       >
         <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">add</span>
-        Page
+        {t('Page')}
       </button>
       <label className="relative ms-auto w-48 min-w-0">
         <span className="material-symbols-outlined pointer-events-none absolute start-2 top-1/2 -translate-y-1/2 text-secondary" style={{ fontSize: '15px' }} aria-hidden="true">search</span>
         <input
           ref={searchRef}
           type="search"
-          aria-label="Find a page"
-          placeholder="Find a page"
+          aria-label={t('Find a page')}
+          placeholder={t('Find a page')}
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => {

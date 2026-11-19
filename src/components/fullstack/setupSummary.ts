@@ -1,6 +1,7 @@
 import type { EntityTemplateSetSummary } from '../../types'
 import type { FeColorPalette } from '../../hooks/useFrontendMetadata'
 import type { ProjectMeta } from './snapshot'
+import { t, tn } from '../../i18n'
 
 /**
  * The one-line description of a collapsed Setup panel.
@@ -49,27 +50,30 @@ export function describeSetup({
   const coords = `${meta.groupId || '—'}:${meta.artifactId || '—'}`
   chips.push({
     key: 'coords', target: 'fs-meta', icon: 'package_2', label: coords,
-    title: `Maven coordinates — groupId ${meta.groupId || '(unset)'}, artifactId ${meta.artifactId || '(unset)'}`,
+    title: t('Maven coordinates — groupId {groupId}, artifactId {artifactId}', {
+      groupId: meta.groupId || t('(unset)'), artifactId: meta.artifactId || t('(unset)'),
+    }),
   })
 
   chips.push({
     key: 'versions', target: 'fs-meta', icon: 'coffee',
     label: `Java ${meta.javaVersion} · Boot ${meta.bootVersion}`,
-    title: `Java ${meta.javaVersion}, Spring Boot ${meta.bootVersion}, ${meta.packaging} packaging`,
+    title: t('Java {java}, Spring Boot {boot}, {packaging} packaging', { java: meta.javaVersion, boot: meta.bootVersion, packaging: meta.packaging }),
   })
 
   chips.push({
     key: 'backendSet', target: 'fs-backend', icon: 'dns',
     label: currentBackendSet?.name ?? backendSet,
-    title: `Backend template set: ${backendSet}`,
+    title: t('Backend template set: {set}', { set: backendSet }),
   })
 
   const palette = palettes.find(p => p.id === effectivePalette)
   chips.push({
     key: 'frontendSet', target: 'fs-frontend', icon: 'web',
     label: currentFrontendSet?.name ?? frontendSet,
-    title: `Frontend template set: ${frontendSet}`
-      + (palette ? ` · palette ${palette.name}${paletteIsExplicit ? '' : ' (set default)'}` : ''),
+    title: !palette ? t('Frontend template set: {set}', { set: frontendSet })
+      : paletteIsExplicit ? t('Frontend template set: {set} · palette {palette}', { set: frontendSet, palette: palette.name })
+        : t('Frontend template set: {set} · palette {palette} (set default)', { set: frontendSet, palette: palette.name }),
     swatch: palette?.primary,
   })
 
@@ -79,20 +83,20 @@ export function describeSetup({
     chips.push({
       key: 'locale', target: 'fs-frontend', icon: 'translate',
       label: LOCALE_NAMES[meta.locale] ?? meta.locale,
-      title: `Generated app's chrome language: ${LOCALE_NAMES[meta.locale] ?? meta.locale}`,
+      title: t("Generated app's chrome language: {language}", { language: LOCALE_NAMES[meta.locale] ?? meta.locale }),
     })
   }
 
   chips.push({
     key: 'deps', target: 'fs-deps', icon: 'inventory_2',
-    label: `${selectedDeps.length} ${selectedDeps.length === 1 ? 'dependency' : 'dependencies'}`,
-    title: selectedDeps.length ? selectedDeps.join(', ') : 'No dependencies selected',
+    label: tn(selectedDeps.length, '{n} dependency', '{n} dependencies'),
+    title: selectedDeps.length ? selectedDeps.join(', ') : t('No dependencies selected'),
   })
 
   if (scaffoldOpts.length > 0) {
     chips.push({
       key: 'opts', target: 'fs-options', icon: 'toggle_on',
-      label: `${scaffoldOpts.length} ${scaffoldOpts.length === 1 ? 'option' : 'options'}`,
+      label: tn(scaffoldOpts.length, '{n} option', '{n} options'),
       title: scaffoldOpts.join(', '),
     })
   }

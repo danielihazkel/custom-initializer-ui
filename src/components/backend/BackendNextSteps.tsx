@@ -1,4 +1,5 @@
 import { NextSteps } from '../shared/NextSteps'
+import { t, tn } from '../../i18n'
 
 /** What the Backend tab's last successful Generate produced — in memory only. */
 export interface BackendRun {
@@ -26,8 +27,6 @@ interface Props {
   onCopied?: (ok: boolean, what: string) => void
 }
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
-
 /** Dependencies the generated compose.yaml starts a container for (the backend's LocalRun.SERVICES). */
 const COMPOSE_SERVICES = ['postgresql', 'oracle', 'mssql', 'mongodb', 'redis', 'kafka']
 
@@ -47,9 +46,9 @@ export function composeProfiles(dependencies: string[] | undefined): string | nu
 export function BackendNextSteps({ run, stale, onDismiss, onSavePreset, onCopyCurl, onShareLink, onExplore, onCopied }: Props) {
   const folder = run.artifactId || 'project'
   const made = [
-    plural(run.dependencyCount, 'dependency', 'dependencies'),
-    run.moduleCount > 0 ? plural(run.moduleCount, 'module') : '',
-    run.wizardCount > 0 ? plural(run.wizardCount, 'wizard') : '',
+    tn(run.dependencyCount, '{n} dependency', '{n} dependencies'),
+    run.moduleCount > 0 ? tn(run.moduleCount, '{n} module', '{n} modules') : '',
+    run.wizardCount > 0 ? tn(run.wizardCount, '{n} wizard', '{n} wizards') : '',
   ].filter(Boolean).join(', ')
   const profiles = composeProfiles(run.dependencies)
   // A multi-module project's compose file is at its root; the run command is its own business.
@@ -57,24 +56,23 @@ export function BackendNextSteps({ run, stale, onDismiss, onSavePreset, onCopyCu
 
   return (
     <NextSteps
-      title={`${folder}.zip is downloaded — ${made}`}
+      title={t('{file} is downloaded — {made}', { file: `${folder}.zip`, made })}
       hint={<>
-        The project keeps its own <span className="font-mono">menora-model.json</span>: import it here
-        later to change the project and download an update instead of generating again.
+        {t('The project keeps its own')} <span className="font-mono">menora-model.json</span>{t(': import it here later to change the project and download an update instead of generating again.')}
       </>}
       stale={stale}
       commands={[
-        { label: 'Unpack', cmd: `unzip ${folder}.zip -d ${folder} && cd ${folder}` },
-        ...(profiles ? [{ label: 'Services', cmd: 'docker compose up -d' }] : []),
-        { label: 'Run', cmd: runCommand },
-        { label: 'Test', cmd: 'mvn test' },
+        { label: t('Unpack'), cmd: `unzip ${folder}.zip -d ${folder} && cd ${folder}` },
+        ...(profiles ? [{ label: t('Services'), cmd: 'docker compose up -d' }] : []),
+        { label: t('Run'), cmd: runCommand },
+        { label: t('Test'), cmd: 'mvn test' },
       ]}
-      actionsLabel="Keep this setup:"
+      actionsLabel={t('Keep this setup:')}
       actions={[
-        { id: 'preset', label: 'Save as preset', icon: 'bookmark_add', onClick: onSavePreset },
-        { id: 'curl', label: 'Copy as curl', icon: 'terminal', onClick: onCopyCurl },
-        { id: 'link', label: 'Copy share link', icon: 'link', onClick: onShareLink },
-        { id: 'explore', label: 'Explore the files', icon: 'folder_open', onClick: onExplore },
+        { id: 'preset', label: t('Save as preset'), icon: 'bookmark_add', onClick: onSavePreset },
+        { id: 'curl', label: t('Copy as curl'), icon: 'terminal', onClick: onCopyCurl },
+        { id: 'link', label: t('Copy share link'), icon: 'link', onClick: onShareLink },
+        { id: 'explore', label: t('Explore the files'), icon: 'folder_open', onClick: onExplore },
       ]}
       onDismiss={onDismiss}
       onCopied={onCopied}

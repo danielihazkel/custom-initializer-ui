@@ -3,6 +3,7 @@ import { downloadBlob } from '../../utils/projectUtils'
 import { countsOf, describeCounts, describeUpdateBase, snapshotHeader } from '../../utils/updateCounts'
 import { backendUpdateRequest, type BackendBaseline } from './backendBaseline'
 import { requestOfSnapshot } from './backendRequest'
+import { t } from '../../i18n'
 
 /**
  * What the Backend tab does with an update once asked — loaded on that click, not at first paint
@@ -41,12 +42,12 @@ export async function downloadBackendUpdate(
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({})) as { detail?: string; error?: string; side?: string }
-      const reason = body.detail || body.error || `the server answered ${res.status}`
+      const reason = body.detail || body.error || t('the server answered {status}', { status: res.status })
       notify({
         // Nothing on screen to fix when it is the stored model that no longer generates.
         message: body.side === 'base'
-          ? `The model the project was generated from is no longer accepted: ${reason}`
-          : `Update failed: ${reason}`,
+          ? t('The model the project was generated from is no longer accepted: {reason}', { reason })
+          : t('Update failed: {error}', { error: reason }),
         type: 'error',
       })
       return false
@@ -57,12 +58,12 @@ export async function downloadBackendUpdate(
     const result = snapshotHeader(res.headers)
     if (result) remember({ ...baseline, pendingUpdate: { snapshotId: result, request: backendRequestKey(current) } })
     notify({
-      message: `Update downloaded (${describeCounts(counts)}${describeUpdateBase(res.headers)}) — UPDATE.md inside says how to apply it`,
+      message: t('Update downloaded ({what}) — UPDATE.md inside says how to apply it', { what: `${describeCounts(counts)}${describeUpdateBase(res.headers)}` }),
       type: 'success',
     })
     return true
   } catch (err) {
-    notify({ message: `Update failed: ${err instanceof Error ? err.message : String(err)}`, type: 'error' })
+    notify({ message: t('Update failed: {error}', { error: err instanceof Error ? err.message : String(err) }), type: 'error' })
     return false
   }
 }

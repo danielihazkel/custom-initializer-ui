@@ -1,6 +1,7 @@
 import type { FullstackEntityDef, FullstackFieldDef, FullstackRule } from '../../types'
 import { LIMITS } from './schema'
 import { checkExpr, ExprError, renameInExpr, renameNamesInExpr, type ExprType } from './expr'
+import { t } from '../../i18n'
 
 /** Mirrors FullstackRequestValidator.MAX_RULES / MAX_RULE_MESSAGE. */
 export const MAX_RULES = LIMITS.maxRules
@@ -19,9 +20,9 @@ export function ruleProblems(entity: FullstackEntityDef, entities: readonly Full
   const rules = entity.rules ?? []
   if (rules.length === 0) return []
   if (entity.readOnly || entity.viewQuery != null) {
-    return [{ index: -1, part: 'check', message: 'A read-only entity is never saved, so it has no rules to check' }]
+    return [{ index: -1, part: 'check', message: t('A read-only entity is never saved, so it has no rules to check') }]
   }
-  if (rules.length > MAX_RULES) return [{ index: -1, part: 'check', message: `At most ${MAX_RULES} rules` }]
+  if (rules.length > MAX_RULES) return [{ index: -1, part: 'check', message: t('At most {max} rules', { max: MAX_RULES }) }]
   const out: RuleProblem[] = []
   rules.forEach((rule, index) => {
     const problem = ruleProblem(entity, rule, entities)
@@ -31,7 +32,7 @@ export function ruleProblems(entity: FullstackEntityDef, entities: readonly Full
 }
 
 function ruleProblem(entity: FullstackEntityDef, rule: FullstackRule, entities: readonly FullstackEntityDef[]): Omit<RuleProblem, 'index'> | undefined {
-  if (!rule.check.trim()) return { part: 'check', message: 'Write the condition every row must meet' }
+  if (!rule.check.trim()) return { part: 'check', message: t('Write the condition every row must meet') }
   let refs: string[]
   try {
     refs = checkExpr(rule.check, entity, 'BOOL', entities)
@@ -47,14 +48,14 @@ function ruleProblem(entity: FullstackEntityDef, rule: FullstackRule, entities: 
       throw e
     }
   }
-  if (!rule.message.trim()) return { part: 'message', message: 'Write the message a user sees' }
-  if (rule.message.trim().length > MAX_RULE_MESSAGE) return { part: 'message', message: `At most ${MAX_RULE_MESSAGE} characters` }
+  if (!rule.message.trim()) return { part: 'message', message: t('Write the message a user sees') }
+  if (rule.message.trim().length > MAX_RULE_MESSAGE) return { part: 'message', message: t('At most {max} characters', { max: MAX_RULE_MESSAGE }) }
   if (rule.field?.trim()) {
     if (!entity.fields.some(f => f.name.toLowerCase() === rule.field!.trim().toLowerCase())) {
-      return { part: 'field', message: `“${rule.field}” is not one of its fields` }
+      return { part: 'field', message: t('“{field}” is not one of its fields', { field: rule.field }) }
     }
   } else if (refs.length === 0) {
-    return { part: 'field', message: 'The check reads no field: say which field the message is shown on' }
+    return { part: 'field', message: t('The check reads no field: say which field the message is shown on') }
   }
   return undefined
 }
@@ -84,17 +85,22 @@ export function derivationProblem(entity: FullstackEntityDef, field: FullstackFi
   if (!showWhen && !formula) return undefined
   const part = formula ? 'formula' : 'showWhen'
   if (entity.readOnly || entity.viewQuery != null) {
-    return { part, message: `A read-only entity is never saved, so it has no ${formula ? 'computed fields' : 'show-when conditions'}` }
+    return {
+      part,
+      message: formula
+        ? t('A read-only entity is never saved, so it has no computed fields')
+        : t('A read-only entity is never saved, so it has no show-when conditions'),
+    }
   }
-  if (field.primaryKey) return { part, message: 'The primary key is never hidden or computed' }
+  if (field.primaryKey) return { part, message: t('The primary key is never hidden or computed') }
   const wf = entity.workflow
   if (wf && (field.name === wf.statusField || field.name === wf.assigneeField)) {
-    return { part, message: 'The workflow’s moves set it: it cannot be hidden or computed' }
+    return { part, message: t('The workflow’s moves set it: it cannot be hidden or computed') }
   }
   if (showWhen) {
-    if (formula) return { part: 'showWhen', message: 'A computed field is not edited, so it has no show-when' }
+    if (formula) return { part: 'showWhen', message: t('A computed field is not edited, so it has no show-when') }
     try {
-      if (checkExpr(showWhen, entity, 'BOOL', entities).includes(field.name)) return { part: 'showWhen', message: 'It reads the field itself' }
+      if (checkExpr(showWhen, entity, 'BOOL', entities).includes(field.name)) return { part: 'showWhen', message: t('It reads the field itself') }
     } catch (e) {
       if (e instanceof ExprError) return { part: 'showWhen', message: e.describe() }
       throw e
@@ -102,13 +108,13 @@ export function derivationProblem(entity: FullstackEntityDef, field: FullstackFi
   }
   if (formula) {
     const wanted = formulaType(field.type)
-    if (!wanted) return { part: 'formula', message: `A ${field.type} field cannot be computed` }
-    if (field.required) return { part: 'formula', message: 'A computed field is set by the server, so it is never required' }
-    if (field.defaultValue != null && field.defaultValue !== '') return { part: 'formula', message: 'A computed field has no default' }
+    if (!wanted) return { part: 'formula', message: t('A {type} field cannot be computed', { type: field.type }) }
+    if (field.required) return { part: 'formula', message: t('A computed field is set by the server, so it is never required') }
+    if (field.defaultValue != null && field.defaultValue !== '') return { part: 'formula', message: t('A computed field has no default') }
     try {
       for (const ref of checkExpr(formula, entity, wanted, entities)) {
         if (entity.fields.find(f => f.name === ref)?.formula?.trim()) {
-          return { part: 'formula', message: `It reads “${ref}”, which is computed too (a formula reads entered fields only)` }
+          return { part: 'formula', message: t('It reads “{field}”, which is computed too (a formula reads entered fields only)', { field: ref }) }
         }
       }
     } catch (e) {
@@ -124,7 +130,7 @@ export function rulesProblem(entity: FullstackEntityDef, entities: readonly Full
   const problems = ruleProblems(entity, entities)
   if (problems.length === 0) return undefined
   const p = problems[0]
-  return p.index < 0 ? p.message : `Rule ${p.index + 1}: ${p.message}`
+  return p.index < 0 ? p.message : t('Rule {n}: {message}', { n: p.index + 1, message: p.message })
 }
 
 /**

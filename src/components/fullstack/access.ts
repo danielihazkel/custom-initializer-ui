@@ -1,5 +1,6 @@
 import type { FullstackAccess, FullstackAccessLevel, FullstackEntityDef } from '../../types'
 import { SCHEMA } from './schema'
+import { t } from '../../i18n'
 
 /**
  * An entity's access levels — who may read its rows and who may change them through the
@@ -14,10 +15,11 @@ export const ACCESS_LEVELS = SCHEMA.accessLevels as readonly FullstackAccessLeve
 
 export const DEFAULT_ACCESS = SCHEMA.defaultAccess as Readonly<Required<FullstackAccess>>
 
+/** Read in the site's language at the moment they are shown (getters). */
 export const ACCESS_LEVEL_LABELS: Record<FullstackAccessLevel, string> = {
-  SIGNED_IN: 'Anyone signed in',
-  USER: 'Users',
-  ADMIN: 'Admins',
+  get SIGNED_IN() { return t('Anyone signed in') },
+  get USER() { return t('Users') },
+  get ADMIN() { return t('Admins') },
 }
 
 /** The dependencies that put the role check on a generated backend. */
@@ -48,10 +50,10 @@ export function cleanAccess(access: FullstackAccess | undefined): FullstackAcces
 export function accessProblem(entity: Pick<FullstackEntityDef, 'access'>): string | undefined {
   const read = readLevel(entity)
   const write = writeLevel(entity)
-  if (!ACCESS_LEVELS.includes(read)) return `Read access '${read}' is not one of ${ACCESS_LEVELS.join(', ')}`
-  if (!ACCESS_LEVELS.includes(write)) return `Write access '${write}' is not one of ${ACCESS_LEVELS.join(', ')}`
+  if (!ACCESS_LEVELS.includes(read)) return t("Read access '{level}' is not one of {levels}", { level: read, levels: ACCESS_LEVELS.join(', ') })
+  if (!ACCESS_LEVELS.includes(write)) return t("Write access '{level}' is not one of {levels}", { level: write, levels: ACCESS_LEVELS.join(', ') })
   if (ACCESS_LEVELS.indexOf(write) < ACCESS_LEVELS.indexOf(read)) {
-    return `Write (${ACCESS_LEVEL_LABELS[write]}) cannot be open to more people than read (${ACCESS_LEVEL_LABELS[read]})`
+    return t('Write ({write}) cannot be open to more people than read ({read})', { write: ACCESS_LEVEL_LABELS[write], read: ACCESS_LEVEL_LABELS[read] })
   }
   return undefined
 }
@@ -59,5 +61,7 @@ export function accessProblem(entity: Pick<FullstackEntityDef, 'access'>): strin
 /** "read: anyone signed in · write: users" — for the closed Settings panel; nothing for the default. */
 export function accessSummary(entity: Pick<FullstackEntityDef, 'access'>): string | undefined {
   if (!cleanAccess(entity.access)) return undefined
-  return `read: ${ACCESS_LEVEL_LABELS[readLevel(entity)].toLowerCase()} · write: ${ACCESS_LEVEL_LABELS[writeLevel(entity)].toLowerCase()}`
+  return t('read: {read} · write: {write}', {
+    read: ACCESS_LEVEL_LABELS[readLevel(entity)].toLowerCase(), write: ACCESS_LEVEL_LABELS[writeLevel(entity)].toLowerCase(),
+  })
 }

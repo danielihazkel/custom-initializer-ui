@@ -1,6 +1,7 @@
 import type { FullstackEntityDef, FullstackFieldDef } from '../../types'
 import { enumLabel } from './enumLabels'
 import { humanize } from './naming'
+import { t } from '../../i18n'
 
 /**
  * How the page editor names fields, relations and enum values in its selects and chips: the label
@@ -38,17 +39,17 @@ export function keyOption(entity: FullstackEntityDef | undefined, key: string): 
   const field = entity?.fields.find(f => f.name === key)
   if (field) return fieldOption(field)
   if (entity?.relations?.some(r => r.fieldName === key)) return relationOption(key)
-  if (key === 'createdAt') return 'Created (createdAt)'
-  if (key === 'updatedAt') return 'Updated (updatedAt)'
-  if (key === 'createdBy') return 'Created by (createdBy)'
-  if (key === 'updatedBy') return 'Updated by (updatedBy)'
+  if (key === 'createdAt') return t('Created (createdAt)')
+  if (key === 'updatedAt') return t('Updated (updatedAt)')
+  if (key === 'createdBy') return t('Created by (createdBy)')
+  if (key === 'updatedBy') return t('Updated by (updatedBy)')
   return key
 }
 
 /** One value of an enum or boolean field, as the generated UI labels it. */
 export function enumValueOption(f: Pick<FullstackFieldDef, 'type' | 'enumLabels'> | undefined, value: string): string {
   if (!f) return value
-  if (f.type === 'BOOLEAN') return value === 'true' ? 'Yes (true)' : value === 'false' ? 'No (false)' : value
+  if (f.type === 'BOOLEAN') return value === 'true' ? t('Yes (true)') : value === 'false' ? t('No (false)') : value
   if (f.type === 'ENUM') return optionText(enumLabel(f, value), value)
   return value
 }

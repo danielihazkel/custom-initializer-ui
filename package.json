@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sync:schema": "node scripts/sync-backend-fixtures.mjs"
+    "sync:schema": "node scripts/sync-backend-fixtures.mjs",
+    "i18n:check": "vitest run src/i18n/coverage.test.ts"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",

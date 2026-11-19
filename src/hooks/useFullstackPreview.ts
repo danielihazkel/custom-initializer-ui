@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { FullstackStarterRequest, PreviewError, PreviewResponse } from '../types'
 import { readErrorBody } from '../utils/previewErrors'
+import { t } from '../i18n'
 
 export function useFullstackPreview() {
   const [preview,         setPreview]         = useState<PreviewResponse | null>(null)
@@ -79,7 +80,7 @@ export function useFullstackPreview() {
         throw Object.assign(new Error('preview failed'), {
           failure: side === 'target'
             ? failure
-            : { message: `The model the project was generated from is no longer accepted: ${failure.message}` },
+            : { message: t('The model the project was generated from is no longer accepted: {error}', { error: failure.message }) },
         })
       }
       return await res.json() as PreviewResponse

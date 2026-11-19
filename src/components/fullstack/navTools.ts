@@ -1,18 +1,19 @@
 import type { FullstackEntityDef, FullstackNav } from '../../types'
+import { t } from '../../i18n'
 
 /** The tools a layout's header can carry (`nav.userMenu`, `nav.notifications`, `nav.commandPalette`). */
 export type NavTool = 'commandPalette' | 'notifications' | 'userMenu'
 
-export const NAV_TOOLS: { value: NavTool; label: string; hint: string }[] = [
-  { value: 'commandPalette', label: 'Go to anything (Ctrl+K)', hint: 'Opens a page by its name and finds records by theirs' },
-  { value: 'notifications', label: 'Notification bell', hint: 'Counts the workflow tasks assigned to the user, overdue and not yet taken' },
-  { value: 'userMenu', label: 'User menu', hint: 'Who is signed in, their roles and the keyboard shortcuts' },
+export const NAV_TOOLS: { value: NavTool; readonly label: string; readonly hint: string }[] = [
+  { value: 'commandPalette', get label() { return t('Go to anything (Ctrl+K)') }, get hint() { return t('Opens a page by its name and finds records by theirs') } },
+  { value: 'notifications', get label() { return t('Notification bell') }, get hint() { return t('Counts the workflow tasks assigned to the user, overdue and not yet taken') } },
+  { value: 'userMenu', get label() { return t('User menu') }, get hint() { return t('Who is signed in, their roles and the keyboard shortcuts') } },
 ]
 
 /** Why a tool cannot be switched on for this model — the validator's rule — or undefined. */
 export function navToolDisabledReason(tool: NavTool, entities: readonly FullstackEntityDef[]): string | undefined {
   if (tool === 'notifications' && !entities.some(e => e.workflow?.assigneeField)) {
-    return 'Needs an entity whose workflow has an assignee — the bell counts the tasks assigned to the user'
+    return t('Needs an entity whose workflow has an assignee — the bell counts the tasks assigned to the user')
   }
   return undefined
 }

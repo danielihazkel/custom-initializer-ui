@@ -9,6 +9,7 @@ import {
 import type { FormProps } from './formTypes'
 import { ICON_BUTTON, SMALL_BUTTON } from './constants'
 import { AggFields, DragGrip, EntitySelect, Field, ListOptions, MoveButtons, ViaSelect } from './fields'
+import { t } from '../../../i18n'
 
 export function RecordForm({ page, index, entities, errors, update, lossy, removed, dnd, projectOpts }: FormProps & { dnd: ReturnType<typeof useDragReorder>; projectOpts: string[] }) {
   const entity = entities.find(e => e.name === page.entity)
@@ -32,28 +33,28 @@ export function RecordForm({ page, index, entities, errors, update, lossy, remov
 
   return (
     <div className="space-y-2">
-      <Field label="Entity" error={errors.entity} control="entity" hint="Rows of this entity open on this page">
+      <Field label={t('Entity')} error={errors.entity} control="entity" hint={t('Rows of this entity open on this page')}>
         <EntitySelect
-          label="Record entity"
+          label={t('Record entity')}
           value={page.entity ?? ''}
           options={entities.map(e => e.name)}
           error={errors.entity}
           onChange={name => {
             // The related lists and header numbers described the old entity's relations.
             const { patch, dropped } = retargetRecord(page, name)
-            lossy(`Opened ${name} on “${pageLabel(page)}”`, dropped)
+            lossy(t('Opened {entity} on “{page}”', { entity: name, page: pageLabel(page) }), dropped)
             update(index, patch)
           }}
         />
       </Field>
       <div className="space-y-1" data-control="childTabs">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
-          Related lists as tabs, in order
-          {page.childTabs == null && related.length > 0 && <span className="font-normal normal-case tracking-normal"> · every related list (default)</span>}
+          {t('Related lists as tabs, in order')}
+          {page.childTabs == null && related.length > 0 && <span className="font-normal normal-case tracking-normal"> · {t('every related list (default)')}</span>}
         </p>
         {related.length === 0 ? (
           <p className="text-[11px] text-secondary">
-            Nothing points at {entity?.name ?? 'this entity'} — the page shows its details only.
+            {t('Nothing points at {entity} — the page shows its details only.', { entity: entity?.name ?? t('this entity') })}
           </p>
         ) : (
           <ul className="space-y-0.5">
@@ -69,7 +70,7 @@ export function RecordForm({ page, index, entities, errors, update, lossy, remov
                   {on ? <DragGrip dnd={dnd} list={`childTabs:${index}`} index={at} /> : <span className="w-[14px]" />}
                   {on ? (
                     <MoveButtons
-                      label={`the ${name} tab`}
+                      label={t('the {entity} tab', { entity: name })}
                       canUp={at > 0}
                       canDown={at < selected.length - 1}
                       onMove={delta => update(index, { childTabs: moveItem(tabs, at, at + delta) })}
@@ -86,7 +87,7 @@ export function RecordForm({ page, index, entities, errors, update, lossy, remov
                   </label>
                   {on && (
                     <ViaSelect
-                      label={`Link ${name} through`}
+                      label={t('Link {entity} through', { entity: name })}
                       relations={relationsTo(entities.find(e => e.name === name), page.entity)}
                       value={childTabVia(tabs[at])}
                       error={errors[`childTab.${at}`]}
@@ -95,7 +96,7 @@ export function RecordForm({ page, index, entities, errors, update, lossy, remov
                   )}
                   {on && (
                     <ListOptions
-                      label={`${name} tab`}
+                      label={t('{entity} tab', { entity: name })}
                       entity={entities.find(e => e.name === name)}
                       projectOpts={projectOpts}
                       columns={childTabPresentation(tabs[at]).columns}
@@ -113,21 +114,21 @@ export function RecordForm({ page, index, entities, errors, update, lossy, remov
         {page.childTabs != null && related.length > 0 && (
           <button type="button" onClick={() => update(index, { childTabs: undefined })} className={SMALL_BUTTON}>
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">restart_alt</span>
-            All related lists (default)
+            {t('All related lists (default)')}
           </button>
         )}
       </div>
       <HeaderStatsFields page={page} index={index} entities={entities} errors={errors} update={update} lossy={lossy} removed={removed} />
-      <Field label="Print" control="printable" hint={page.printable ? 'A Print button; on paper the page stands alone, without the app around it or its buttons' : 'No Print button'}>
+      <Field label={t('Print')} control="printable" hint={page.printable ? t('A Print button; on paper the page stands alone, without the app around it or its buttons') : t('No Print button')}>
         <label className="inline-flex items-center gap-1.5 text-xs text-on-surface">
           <input
             type="checkbox"
             className="accent-primary"
             checked={Boolean(page.printable)}
-            aria-label="Offer a Print button on this page"
+            aria-label={t('Offer a Print button on this page')}
             onChange={e => update(index, { printable: e.target.checked ? true : undefined })}
           />
-          Offer Print
+          {t('Offer Print')}
         </label>
       </Field>
     </div>
@@ -143,10 +144,10 @@ function HeaderStatsFields({ page, index, entities, errors, update, lossy, remov
   return (
     <div className="space-y-1" data-control="headerStats">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
-        Header numbers <span className="font-normal normal-case tracking-normal">· tiles above the tabs</span>
+        {t('Header numbers')} <span className="font-normal normal-case tracking-normal">{t('· tiles above the tabs')}</span>
       </p>
-      <div role="radiogroup" aria-label="Header numbers" className="inline-flex overflow-hidden rounded border border-outline-variant text-xs">
-        {([['default', 'A count per tab'], ['none', 'None'], ['custom', 'Choose']] as const).map(([mode, label]) => {
+      <div role="radiogroup" aria-label={t('Header numbers')} className="inline-flex overflow-hidden rounded border border-outline-variant text-xs">
+        {([['default', t('A count per tab')], ['none', t('None')], ['custom', t('Choose')]] as const).map(([mode, label]) => {
           const current = stats == null ? 'default' : stats.length === 0 ? 'none' : 'custom'
           return (
             <button
@@ -169,19 +170,19 @@ function HeaderStatsFields({ page, index, entities, errors, update, lossy, remov
         return (
           <div key={si} className="flex flex-wrap items-center gap-2" data-control={`headerStat.${si}`} data-header-stat={si}>
             <EntitySelect
-              label="Counted entity"
+              label={t('Counted entity')}
               value={s.child}
               options={related.map(e => e.name)}
               error={error}
               className="max-w-[10rem]"
               onChange={name => {
                 const { stat, dropped } = retargetHeaderStat(s, entities.find(e => e.name === name), page.entity)
-                lossy(`Switched header number ${si + 1} to ${name}`, dropped)
+                lossy(t('Switched header number {n} to {entity}', { n: si + 1, entity: name }), dropped)
                 set(stats.map((x, i) => (i === si ? stat : x)))
               }}
             />
             <ViaSelect
-              label="Link the tile through"
+              label={t('Link the tile through')}
               relations={relationsTo(child, page.entity)}
               value={s.via}
               error={error}
@@ -196,21 +197,21 @@ function HeaderStatsFields({ page, index, entities, errors, update, lossy, remov
             />
             <input
               type="text"
-              aria-label="Header number title"
+              aria-label={t('Header number title')}
               value={s.title ?? ''}
               maxLength={MAX_TITLE}
-              placeholder="Title (optional)"
+              placeholder={t('Title (optional)')}
               onChange={e => set(stats.map((x, i) => (i === si ? { ...x, title: e.target.value || undefined } : x)))}
               className={`${inputClass()} min-w-[8rem] flex-1 py-1 text-xs`}
             />
             <button
               type="button"
               onClick={() => {
-                removed?.(`Removed header number ${si + 1} from “${pageLabel(page)}”`)
+                removed?.(t('Removed header number {n} from “{page}”', { n: si + 1, page: pageLabel(page) }))
                 set(stats.filter((_, i) => i !== si))
               }}
               className={ICON_BUTTON}
-              aria-label={`Remove header number ${si + 1}`}
+              aria-label={t('Remove header number {n}', { n: si + 1 })}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
             </button>
@@ -221,7 +222,7 @@ function HeaderStatsFields({ page, index, entities, errors, update, lossy, remov
       {stats && stats.length > 0 && stats.length < MAX_HEADER_STATS && (
         <button type="button" onClick={() => set([...stats, { child: related[0]?.name ?? '' }])} className={SMALL_BUTTON}>
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
-          Add number
+          {t('Add number')}
         </button>
       )}
       {errors.headerStats && <p className="text-[11px] text-error">{errors.headerStats}</p>}

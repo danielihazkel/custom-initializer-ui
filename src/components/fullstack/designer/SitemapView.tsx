@@ -8,6 +8,7 @@ import { NavToolsFields } from '../pages/NavTools'
 import { cleanNav } from '../navTools'
 import type { PagesModel } from '../pages/usePagesModel'
 import { PageFlowMap } from './PageFlowMap'
+import { t, useLang } from '../../../i18n'
 
 /**
  * The layout as the generated navigation sees it: one column per nav section, its pages in order
@@ -22,6 +23,7 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
   /** Back to the design view, on this page. */
   onOpenPage: (index: number) => void
 }) {
+  useLang()
   const { dnd, keys, preview, settings, navGroupSections } = model
   const startIndex = preview.nav[0]?.index
   // The menu as sections, or the map of where each page leads.
@@ -38,16 +40,16 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
           dnd.isDragging('pages', index) ? 'opacity-40' : ''} ${dropIndicatorClass(indicator)}`}
         data-sitemap-page={page.id}
       >
-        <span {...dnd.handleProps('pages', index)} className="cursor-grab text-secondary/70" title="Drag to move it — into another section to join it" aria-hidden="true">
+        <span {...dnd.handleProps('pages', index)} className="cursor-grab text-secondary/70" title={t('Drag to move it — into another section to join it')} aria-hidden="true">
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>drag_indicator</span>
         </span>
         <MoveButtons label={pageLabel(page)} canUp={index > 0} canDown={index < pages.length - 1} onMove={delta => model.move(index, delta)} />
-        <button type="button" onClick={() => onOpenPage(index)} className="min-w-0 flex-1 text-start" title="Open it in the design view">
+        <button type="button" onClick={() => onOpenPage(index)} className="min-w-0 flex-1 text-start" title={t('Open it in the design view')}>
           <span className="block truncate text-xs font-semibold text-on-surface">{pageLabel(page)}</span>
           <span className="block truncate text-[10px] text-secondary">{meta?.label ?? page.type} · <span className="font-mono">#/{page.id || '…'}</span></span>
         </button>
         {index === startIndex && (
-          <span className="material-symbols-outlined text-amber-500" style={{ fontSize: '15px' }} role="img" aria-label="Start page" title="The app opens on this page">home</span>
+          <span className="material-symbols-outlined text-amber-500" style={{ fontSize: '15px' }} role="img" aria-label={t('Start page')} title={t('The app opens on this page')}>home</span>
         )}
       </li>
     )
@@ -56,18 +58,18 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden" data-designer-sitemap>
-      <main className="min-w-0 flex-1 space-y-4 overflow-y-auto p-5" aria-label="Sitemap">
+      <main className="min-w-0 flex-1 space-y-4 overflow-y-auto p-5" aria-label={t('Sitemap')}>
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-semibold text-on-surface">{show === 'menu' ? 'Navigation' : 'Page flow'}</h2>
+            <h2 className="text-sm font-semibold text-on-surface">{show === 'menu' ? t('Navigation') : t('Page flow')}</h2>
             <p className="text-[11px] text-secondary">
               {show === 'menu'
-                ? 'The generated menu, section by section. Drag a page into another section to move it there; rename a section in place, or move it past its neighbour. A page joins a new section from its Basics in the design view.'
-                : 'Where each page leads in the generated app: columns are clicks from the menu. Point at a page to light its links; click it to edit it.'}
+                ? t('The generated menu, section by section. Drag a page into another section to move it there; rename a section in place, or move it past its neighbour. A page joins a new section from its Basics in the design view.')
+                : t('Where each page leads in the generated app: columns are clicks from the menu. Point at a page to light its links; click it to edit it.')}
             </p>
           </div>
-          <div role="radiogroup" aria-label="Sitemap view" className="flex gap-0.5 rounded-lg border border-outline-variant bg-surface-container p-0.5">
-            {([['menu', 'Menu'], ['flow', 'Page flow']] as const).map(([value, label]) => (
+          <div role="radiogroup" aria-label={t('Sitemap view')} className="flex gap-0.5 rounded-lg border border-outline-variant bg-surface-container p-0.5">
+            {([['menu', t('Menu')], ['flow', t('Page flow')]] as const).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
@@ -87,7 +89,7 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
         <>
         <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-4" data-nav-groups>
           {navGroupSections.map((section, si) => (
-            <section key={section.group ?? `loose-${si}`} className="space-y-2 rounded-xl border border-outline-variant bg-surface-container-lowest p-3" aria-label={section.group ?? 'Ungrouped pages'}>
+            <section key={section.group ?? `loose-${si}`} className="space-y-2 rounded-xl border border-outline-variant bg-surface-container-lowest p-3" aria-label={section.group ?? t('Ungrouped pages')}>
               <div className="flex items-center gap-1">
                 {section.group ? (
                   <GroupChip
@@ -100,8 +102,8 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
                   />
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-2 py-0.5 text-[11px] text-secondary" data-nav-group="">
-                    Ungrouped <span>{section.items.length}</span>
-                    <MoveButtons label={`the ungrouped pages${si > 0 ? ` (section ${si + 1})` : ''}`} canUp={si > 0} canDown={si < navGroupSections.length - 1} onMove={delta => model.moveGroup(si, delta)} />
+                    {t('Ungrouped')} <span>{section.items.length}</span>
+                    <MoveButtons label={si > 0 ? t('the ungrouped pages (section {n})', { n: si + 1 }) : t('the ungrouped pages')} canUp={si > 0} canDown={si < navGroupSections.length - 1} onMove={delta => model.moveGroup(si, delta)} />
                   </span>
                 )}
               </div>
@@ -110,10 +112,10 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
           ))}
         </div>
         {offNav.length > 0 && (
-          <section className="space-y-2 rounded-xl border border-dashed border-outline p-3" aria-label="Off the navigation" data-sitemap-off-nav>
+          <section className="space-y-2 rounded-xl border border-dashed border-outline p-3" aria-label={t('Off the navigation')} data-sitemap-off-nav>
             <div className="flex flex-wrap items-baseline gap-2">
-              <h3 className="text-xs font-semibold text-on-surface">Off the navigation</h3>
-              <span className="text-[11px] text-secondary">Reached from a row, a tab or a link — never from the menu</span>
+              <h3 className="text-xs font-semibold text-on-surface">{t('Off the navigation')}</h3>
+              <span className="text-[11px] text-secondary">{t('Reached from a row, a tab or a link — never from the menu')}</span>
             </div>
             <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-4">{offNav.map(card)}</ul>
           </section>
@@ -121,12 +123,12 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
         </>
         )}
       </main>
-      <aside className="space-y-4 border-outline-variant bg-surface-container-lowest p-5 lg:w-[22rem] lg:shrink-0 lg:overflow-y-auto lg:border-s" aria-label="Navigation style">
+      <aside className="space-y-4 border-outline-variant bg-surface-container-lowest p-5 lg:w-[22rem] lg:shrink-0 lg:overflow-y-auto lg:border-s" aria-label={t('Navigation style')}>
         {onNavChange && settings.skin === 'tailwind' ? (
           <div className="space-y-3" data-nav-options>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Menu style</p>
-            <div role="radiogroup" aria-label="Navigation style" className="grid grid-cols-2 gap-2">
-              {([['sidebar', 'Sidebar'], ['topbar', 'Top bar']] as const).map(([value, label]) => {
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('Menu style')}</p>
+            <div role="radiogroup" aria-label={t('Navigation style')} className="grid grid-cols-2 gap-2">
+              {([['sidebar', t('Sidebar')], ['topbar', t('Top bar')]] as const).map(([value, label]) => {
                 const on = (nav?.style ?? 'sidebar') === value
                 return (
                   <button
@@ -152,24 +154,24 @@ export function SitemapView({ pages, model, nav, onNavChange, onOpenPage }: {
                 type="checkbox"
                 className="mt-0.5 accent-primary"
                 checked={Boolean(nav?.collapsibleGroups)}
-                aria-label="Collapsible groups"
+                aria-label={t('Collapsible groups')}
                 onChange={e => onNavChange(cleanNav({ ...nav, collapsibleGroups: e.target.checked }))}
               />
-              <span>Groups fold open and closed<span className="block text-[11px] text-secondary">Nav sections with a name</span></span>
+              <span>{t('Groups fold open and closed')}<span className="block text-[11px] text-secondary">{t('Nav sections with a name')}</span></span>
             </label>
           </div>
         ) : (
-          <p className="text-[11px] text-secondary">The Menora Digital set always draws its own top bar.</p>
+          <p className="text-[11px] text-secondary">{t('The Menora Digital set always draws its own top bar.')}</p>
         )}
         {onNavChange && pages.length > 0 && <NavToolsFields nav={nav} entities={model.named} onNavChange={onNavChange} stacked />}
         {pages.length > 0 && (
           <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Preview</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('Preview')}</p>
             <LayoutPreview
               preview={preview}
               selected={startIndex ?? 0}
               onSelect={onOpenPage}
-              onEdit={t => onOpenPage(t.page)}
+              onEdit={target => onOpenPage(target.page)}
               skin={settings.skin}
               palette={settings.palette}
               navStyle={nav?.style}

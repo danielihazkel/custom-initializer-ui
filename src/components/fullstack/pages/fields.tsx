@@ -10,6 +10,7 @@ import {
 } from '../pageLayout'
 import type { FormProps } from './formTypes'
 import { ICON_BUTTON, SMALL_BUTTON } from './constants'
+import { t, tn } from '../../../i18n'
 
 /** Who may open the page: everyone, or users holding one of the generated security's roles. Always shown, so the option is discoverable: without an LDAP auth
  *  dependency the boxes are disabled and a shortcut adds ldap-auth-rest. */
@@ -25,14 +26,14 @@ export function RolesField({ page, index, errors, update, ldapAuth, onAddDep, is
   }
   return (
     <Field
-      label="Who can open it"
+      label={t('Who can open it')}
       error={errors.roles}
       control="roles"
       hint={roles.length
-        ? 'Hidden from the nav, and blocked, for users without one of these roles (checked against their LDAP groups)'
-        : locked ? 'The start page is open to everyone — make another page the start page to restrict this one'
-          : noLdap ? 'Restricting pages needs ldap-auth-rest (or ldap-auth) among the backend dependencies'
-            : 'Everyone — tick a role to restrict the page'}
+        ? t('Hidden from the nav, and blocked, for users without one of these roles (checked against their LDAP groups)')
+        : locked ? t('The start page is open to everyone — make another page the start page to restrict this one')
+          : noLdap ? t('Restricting pages needs ldap-auth-rest (or ldap-auth) among the backend dependencies')
+            : t('Everyone — tick a role to restrict the page')}
     >
       <div className="flex flex-wrap items-center gap-3">
         {PAGE_ROLES.map(role => (
@@ -43,15 +44,15 @@ export function RolesField({ page, index, errors, update, ldapAuth, onAddDep, is
               disabled={(noLdap || locked) && !roles.includes(role)}
               onChange={() => toggle(role)}
               className="accent-primary"
-              aria-label={`Only ${role}`}
+              aria-label={t('Only {role}', { role })}
             />
-            {role === 'ADMIN' ? 'Admins' : 'Users'} <span className="font-mono text-[10px] text-secondary">{role}</span>
+            {role === 'ADMIN' ? t('Admins') : t('Users')} <span className="font-mono text-[10px] text-secondary">{role}</span>
           </label>
         ))}
         {noLdap && !locked && onAddDep && (
           <button type="button" onClick={() => onAddDep('ldap-auth-rest')} className={SMALL_BUTTON} data-add-ldap-auth>
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">add</span>
-            Add ldap-auth-rest
+            {t('Add ldap-auth-rest')}
           </button>
         )}
       </div>
@@ -80,8 +81,8 @@ export function GroupChip({ group, count, canUp, canDown, onRename, onMove }: {
     <span className="inline-flex items-center gap-1 rounded-full border border-outline-variant bg-surface-container-low px-2 py-0.5 text-[11px]" data-nav-group={group}>
       <input
         type="text"
-        aria-label={`Rename the ${group} group`}
-        title="Rename this group on every page in it"
+        aria-label={t('Rename the {group} group', { group })}
+        title={t('Rename this group on every page in it')}
         value={draft}
         maxLength={MAX_GROUP}
         onChange={e => setDraft(e.target.value)}
@@ -94,7 +95,7 @@ export function GroupChip({ group, count, canUp, canDown, onRename, onMove }: {
         className="bg-transparent font-semibold text-on-surface outline-none focus:underline"
       />
       <span className="text-secondary">{count}</span>
-      <MoveButtons label={`the ${group} group`} canUp={canUp} canDown={canDown} onMove={onMove} />
+      <MoveButtons label={t('the {group} group', { group })} canUp={canUp} canDown={canDown} onMove={onMove} />
     </span>
   )
 }
@@ -108,8 +109,8 @@ export function MoveButtons({ label, canUp, canDown, onMove }: { label: string; 
         onClick={() => onMove(-1)}
         disabled={!canUp}
         className="leading-none text-secondary/70 hover:text-primary disabled:opacity-20"
-        aria-label={`Move ${label} up`}
-        title="Move up"
+        aria-label={t('Move {label} up', { label })}
+        title={t('Move up')}
       >
         <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>keyboard_arrow_up</span>
       </button>
@@ -118,8 +119,8 @@ export function MoveButtons({ label, canUp, canDown, onMove }: { label: string; 
         onClick={() => onMove(1)}
         disabled={!canDown}
         className="leading-none text-secondary/70 hover:text-primary disabled:opacity-20"
-        aria-label={`Move ${label} down`}
-        title="Move down"
+        aria-label={t('Move {label} down', { label })}
+        title={t('Move down')}
       >
         <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>keyboard_arrow_down</span>
       </button>
@@ -130,7 +131,7 @@ export function MoveButtons({ label, canUp, canDown, onMove }: { label: string; 
 /** The "opens filtered on" rows of a list, report or widget: values of a filterable enum column (any
  *  of several), a boolean, a period/range on a date or number column, or the ids a relation points
  *  at — what the backend accepts as a preset. */
-export function PresetFilters({ filter, entity, errors, onChange, heading = 'Opens filtered on', controlPrefix = 'presetFilter.' }: {
+export function PresetFilters({ filter, entity, errors, onChange, heading = t('Opens filtered on'), controlPrefix = 'presetFilter.' }: {
   filter: Record<string, string> | undefined
   entity: FullstackEntityDef | undefined
   /** Per-field messages under `presetFilter.<field>`. */
@@ -162,8 +163,8 @@ export function PresetFilters({ filter, entity, errors, onChange, heading = 'Ope
       {filters.length === 0 && (
         <p className="text-[11px] text-secondary">
           {filterable.length === 0 && relations.length === 0
-            ? `Every row — ${entity?.name ?? 'this entity'} has no filterable enum, boolean, date or number field or relation to preset.`
-            : 'Every row (no preset filter).'}
+            ? t('Every row — {entity} has no filterable enum, boolean, date or number field or relation to preset.', { entity: entity?.name ?? t('this entity') })
+            : t('Every row (no preset filter).')}
         </p>
       )}
       {filters.map(([field, value]) => {
@@ -173,7 +174,7 @@ export function PresetFilters({ filter, entity, errors, onChange, heading = 'Ope
         return (
           <div key={field} className="flex items-center gap-2" data-preset-filter={field} data-control={`${controlPrefix}${field}`}>
             <select
-              aria-label="Filter field"
+              aria-label={t('Filter field')}
               aria-invalid={Boolean(error)}
               value={field}
               onChange={e => setFilter(field, value, e.target.value)}
@@ -186,11 +187,12 @@ export function PresetFilters({ filter, entity, errors, onChange, heading = 'Ope
             {relation ? (
               <input
                 type="text"
-                aria-label={`${relation.targetEntity} ids for ${relation.fieldName}`}
+                aria-label={t('{target} ids for {field}', { target: relation.targetEntity, field: relation.fieldName })}
                 aria-invalid={Boolean(error)}
                 value={value}
-                placeholder="ids, e.g. 3, 7"
-                title={`The ${relation.targetEntity} rows to show, by id — any of them`}
+                dir="ltr"
+                placeholder={t('ids, e.g. 3, 7')}
+                title={t('The {target} rows to show, by id — any of them', { target: relation.targetEntity })}
                 onChange={e => setFilter(field, e.target.value)}
                 className={`${inputClass(error)} w-[9rem] py-1 text-xs`}
               />
@@ -200,7 +202,7 @@ export function PresetFilters({ filter, entity, errors, onChange, heading = 'Ope
               <PresetValuesInput field={f} value={value} error={error} onChange={v => setFilter(field, v)} />
             ) : (
               <select
-                aria-label={`Filter value for ${field}`}
+                aria-label={t('Filter value for {field}', { field })}
                 value={value}
                 onChange={e => setFilter(field, e.target.value)}
                 className={`${inputClass(error)} max-w-[12rem] py-1 text-xs`}
@@ -213,7 +215,7 @@ export function PresetFilters({ filter, entity, errors, onChange, heading = 'Ope
               type="button"
               onClick={() => setFilter(field, null)}
               className={ICON_BUTTON}
-              aria-label={`Remove the ${field} filter`}
+              aria-label={t('Remove the {field} filter', { field })}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
             </button>
@@ -230,7 +232,7 @@ export function PresetFilters({ filter, entity, errors, onChange, heading = 'Ope
           className={SMALL_BUTTON}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>filter_alt</span>
-          Add filter
+          {t('Add filter')}
         </button>
       )}
     </div>
@@ -254,7 +256,7 @@ function PresetValuesInput({ field, value, error, onChange }: {
   return (
     <span
       role="group"
-      aria-label={`Filter values for ${field.name}`}
+      aria-label={t('Filter values for {field}', { field: field.name })}
       aria-invalid={Boolean(error)}
       className="inline-flex flex-wrap items-center gap-1"
       data-preset-values={field.name}
@@ -293,29 +295,29 @@ function PresetRangeInput({ field, value, error, onChange }: {
     <span className="inline-flex flex-wrap items-center gap-1.5" data-preset-range={field.name}>
       {kind === 'date' && (
         <select
-          aria-label={`Filter period for ${field.name}`}
+          aria-label={t('Filter period for {field}', { field: field.name })}
           value={period ? period.value : 'custom'}
           onChange={e => onChange(e.target.value === 'custom' ? `${range.from}..${range.to}` : e.target.value)}
           className={`${inputClass(error)} max-w-[10rem] py-1 text-xs`}
         >
           {PRESET_PERIODS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-          <option value="custom">Between dates…</option>
+          <option value="custom">{t('Between dates…')}</option>
         </select>
       )}
       {(custom || kind === 'number') && (
         <>
           <input
             type={kind === 'date' ? 'date' : 'number'}
-            aria-label={`${kind === 'date' ? 'From date' : 'Min'} for ${field.name}`}
+            aria-label={kind === 'date' ? t('From date for {field}', { field: field.name }) : t('Min for {field}', { field: field.name })}
             value={range.from}
             step={kind === 'number' ? 'any' : undefined}
             onChange={e => onChange(`${e.target.value}..${range.to}`)}
             className={box}
           />
-          <span className="text-[11px] text-secondary">to</span>
+          <span className="text-[11px] text-secondary">{t('to')}</span>
           <input
             type={kind === 'date' ? 'date' : 'number'}
-            aria-label={`${kind === 'date' ? 'To date' : 'Max'} for ${field.name}`}
+            aria-label={kind === 'date' ? t('To date for {field}', { field: field.name }) : t('Max for {field}', { field: field.name })}
             value={range.to}
             step={kind === 'number' ? 'any' : undefined}
             onChange={e => onChange(`${range.from}..${e.target.value}`)}
@@ -330,14 +332,14 @@ function PresetRangeInput({ field, value, error, onChange }: {
 /** A widget's width on the four-column grid; its kind's default is stored as nothing. */
 export function SpanPicker({ span, fallback, onChange }: { span: number; fallback: number; onChange: (span: number | undefined) => void }) {
   return (
-    <div role="radiogroup" aria-label="Widget width" className="inline-flex overflow-hidden rounded border border-outline-variant">
+    <div role="radiogroup" aria-label={t('Widget width')} className="inline-flex overflow-hidden rounded border border-outline-variant">
       {Array.from({ length: MAX_SPAN }, (_, i) => i + 1).map(n => (
         <button
           key={n}
           type="button"
           role="radio"
           aria-checked={span === n}
-          aria-label={`${n} column${n === 1 ? '' : 's'}${n === fallback ? ' (default)' : ''}`}
+          aria-label={n === fallback ? tn(n, '{n} column (default)', '{n} columns (default)') : tn(n, '{n} column', '{n} columns')}
           onClick={() => onChange(n === fallback ? undefined : n)}
           className={`px-2 py-0.5 text-xs ${span === n ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5'}`}
         >
@@ -362,14 +364,14 @@ export function MiniField({ label, hint, grow, children }: { label: string; hint
 export function BucketSelect({ value, onChange }: { value: FullstackBucket | undefined; onChange: (bucket: FullstackBucket) => void }) {
   return (
     <select
-      aria-label="Bucket"
+      aria-label={t('Bucket')}
       value={value ?? 'month'}
       onChange={e => onChange(e.target.value as FullstackBucket)}
       className={`${inputClass()} max-w-[7rem] py-1 text-xs`}
     >
-      <option value="day">Per day</option>
-      <option value="month">Per month</option>
-      <option value="year">Per year</option>
+      <option value="day">{t('Per day')}</option>
+      <option value="month">{t('Per month')}</option>
+      <option value="year">{t('Per year')}</option>
     </select>
   )
 }
@@ -388,7 +390,7 @@ export function AggFields({ agg, field, entity, error, onChange }: {
   return (
     <>
       <select
-        aria-label="Aggregate"
+        aria-label={t('Aggregate')}
         value={agg ?? 'count'}
         // Going back to a plain count drops the field with it, which the backend requires.
         onChange={e => {
@@ -397,21 +399,21 @@ export function AggFields({ agg, field, entity, error, onChange }: {
         }}
         className={`${inputClass()} max-w-[8rem] py-1 text-xs`}
       >
-        <option value="count">Count rows</option>
-        <option value="sum" disabled={numeric.length === 0}>Sum of…</option>
-        <option value="avg" disabled={numeric.length === 0}>Average of…</option>
-        <option value="min" disabled={numeric.length === 0}>Lowest…</option>
-        <option value="max" disabled={numeric.length === 0}>Highest…</option>
+        <option value="count">{t('Count rows')}</option>
+        <option value="sum" disabled={numeric.length === 0}>{t('Sum of…')}</option>
+        <option value="avg" disabled={numeric.length === 0}>{t('Average of…')}</option>
+        <option value="min" disabled={numeric.length === 0}>{t('Lowest…')}</option>
+        <option value="max" disabled={numeric.length === 0}>{t('Highest…')}</option>
       </select>
       {reduces && (
         <select
-          aria-label="Value field"
+          aria-label={t('Value field')}
           aria-invalid={Boolean(error)}
           value={field ?? ''}
           onChange={e => onChange({ field: e.target.value || undefined })}
           className={`${inputClass(error)} max-w-[9rem] py-1 text-xs`}
         >
-          <option value="">Pick a number…</option>
+          <option value="">{t('Pick a number…')}</option>
           {numeric.map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
           {field && !numeric.some(f => f.name === field) && <option value={field}>{field}</option>}
         </select>
@@ -423,7 +425,7 @@ export function AggFields({ agg, field, entity, error, onChange }: {
 /** The grip that starts a drag of a row in `list` (the row itself is the drop target). */
 export function DragGrip({ dnd, list, index }: { dnd: ReturnType<typeof useDragReorder>; list: string; index: number }) {
   return (
-    <span {...dnd.handleProps(list, index)} className="cursor-grab select-none text-secondary/70 hover:text-secondary" title="Drag to reorder" aria-hidden="true">
+    <span {...dnd.handleProps(list, index)} className="cursor-grab select-none text-secondary/70 hover:text-secondary" title={t('Drag to reorder')} aria-hidden="true">
       <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>drag_indicator</span>
     </span>
   )
@@ -445,7 +447,7 @@ export function ListOptions({ label, entity, projectOpts, columns, sort, onChang
   const all = listColumns(entity, projectOpts)
   const keys = all.map(c => c.key)
   const shown = columns ?? keys
-  const summary = [columns ? `${columns.length} column${columns.length === 1 ? '' : 's'}` : null, sort ? `by ${sort.field} ${sort.dir === 'desc' ? '↓' : '↑'}` : null].filter(Boolean).join(' · ')
+  const summary = [columns ? tn(columns.length, '{n} column', '{n} columns') : null, sort ? t('by {field} {arrow}', { field: sort.field, arrow: sort.dir === 'desc' ? '↓' : '↑' }) : null].filter(Boolean).join(' · ')
   // Open on arrival when something is already set, so it is not missed; then the user's to fold.
   const [startOpen] = useState(Boolean(columns || sort))
   // The entity's order is the default: a list back to it drops the setting.
@@ -453,7 +455,7 @@ export function ListOptions({ label, entity, projectOpts, columns, sort, onChang
   const ordered = [...shown.flatMap(k => all.filter(c => c.key === k)), ...all.filter(c => !shown.includes(c.key))]
   return (
     <details className="text-[11px]" data-list-options open={startOpen}>
-      <summary className="cursor-pointer select-none text-secondary hover:text-primary">{summary || 'Columns & sort'}</summary>
+      <summary className="cursor-pointer select-none text-secondary hover:text-primary">{summary || t('Columns & sort')}</summary>
       <div className="mt-1 space-y-1.5">
         <div className="flex flex-wrap gap-1">
           {ordered.map(c => {
@@ -465,9 +467,9 @@ export function ListOptions({ label, entity, projectOpts, columns, sort, onChang
                   <button
                     type="button"
                     onClick={() => keep(moveItem(shown, at, at - 1))}
-                    className="rounded-full px-1 text-secondary hover:text-primary"
-                    aria-label={`Move the ${c.label} column earlier in the ${label}`}
-                    title="Move earlier"
+                    className="flip-rtl rounded-full px-1 text-secondary hover:text-primary"
+                    aria-label={t('Move the {column} column earlier in the {list}', { column: c.label, list: label })}
+                    title={t('Move earlier')}
                   >
                     ‹
                   </button>
@@ -476,7 +478,7 @@ export function ListOptions({ label, entity, projectOpts, columns, sort, onChang
                   type="button"
                   role="checkbox"
                   aria-checked={on}
-                  aria-label={`${c.label} column of the ${label}`}
+                  aria-label={t('{column} column of the {list}', { column: c.label, list: label })}
                   disabled={on && shown.length === 1}
                   onClick={() => keep(on ? shown.filter(k => k !== c.key) : [...shown, c.key])}
                   className={`rounded-full px-2 py-0.5 ${on ? 'bg-primary/10 text-primary' : 'border border-dashed border-outline-variant text-secondary'} disabled:opacity-50`}
@@ -489,12 +491,12 @@ export function ListOptions({ label, entity, projectOpts, columns, sort, onChang
         </div>
         <span className="inline-flex items-center gap-1.5">
           <select
-            aria-label={`Sort of the ${label}`}
+            aria-label={t('Sort of the {list}', { list: label })}
             value={sort?.field ?? ''}
             onChange={e => onChange({ columns, sort: e.target.value ? { field: e.target.value, ...(sort?.dir ? { dir: sort.dir } : {}) } : undefined })}
             className={`${inputClass()} max-w-[11rem] py-0.5 text-[11px]`}
           >
-            <option value="">Default order (the key)</option>
+            <option value="">{t('Default order (the key)')}</option>
             {sortableKeys(entity, projectOpts).map(k => <option key={k} value={k}>{all.find(c => c.key === k)?.label ?? k}</option>)}
           </select>
           {sort && (
@@ -502,7 +504,7 @@ export function ListOptions({ label, entity, projectOpts, columns, sort, onChang
               type="button"
               onClick={() => onChange({ columns, sort: { field: sort.field, ...(sort.dir === 'desc' ? {} : { dir: 'desc' as const }) } })}
               className="rounded border border-outline-variant px-1.5 py-0.5 text-secondary hover:text-primary"
-              aria-label={`Sort the ${label} ${sort.dir === 'desc' ? 'ascending' : 'descending'}`}
+              aria-label={sort.dir === 'desc' ? t('Sort the {list} ascending', { list: label }) : t('Sort the {list} descending', { list: label })}
             >
               {sort.dir === 'desc' ? '↓' : '↑'}
             </button>
@@ -536,15 +538,15 @@ export function ViaSelect({ label, relations, value, error, onChange }: {
   return (
     <select
       aria-label={label}
-      title="Which relation links these rows to the record"
+      title={t('Which relation links these rows to the record')}
       aria-invalid={Boolean(error)}
       value={value ?? ''}
       onChange={e => onChange(e.target.value)}
       className={`${inputClass(error)} max-w-[10rem] py-0.5 text-[11px]`}
     >
-      <option value="">via {relations[0] ? relationOption(relations[0]) : '?'} (default)</option>
-      {relations.slice(1).map(r => <option key={r} value={r}>via {relationOption(r)}</option>)}
-      {value && !relations.includes(value) && <option value={value}>via {value}</option>}
+      <option value="">{t('via {relation} (default)', { relation: relations[0] ? relationOption(relations[0]) : '?' })}</option>
+      {relations.slice(1).map(r => <option key={r} value={r}>{t('via {relation}', { relation: relationOption(r) })}</option>)}
+      {value && !relations.includes(value) && <option value={value}>{t('via {relation}', { relation: value })}</option>}
     </select>
   )
 }
@@ -571,7 +573,7 @@ export function EntitySelect({ label, value, options, error, empty, className, o
       onChange={e => onChange(e.target.value)}
       className={`${inputClass(error)} py-1 text-xs ${className ?? ''}`}
     >
-      <option value="">{empty ?? '— pick an entity —'}</option>
+      <option value="">{empty ?? t('— pick an entity —')}</option>
       {options.map(n => <option key={n} value={n}>{text.get(n) ?? n}</option>)}
       {value && !options.includes(value) && <option value={value}>{value}</option>}
     </select>

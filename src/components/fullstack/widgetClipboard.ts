@@ -1,6 +1,7 @@
 import type { FullstackEntityDef, FullstackPageDef, FullstackWidgetDef } from '../../types'
 import { MAX_WIDGETS, pageLabel } from './pageLayout'
 import { WIDGET_KINDS } from './pages/constants'
+import { t, tn } from '../../i18n'
 
 /**
  * The designer's widget clipboard and saved widgets. Copying keeps widgets in this tab's
@@ -54,7 +55,7 @@ export function readWidgetTemplates(): WidgetTemplate[] {
   try {
     const raw = JSON.parse(localStorage.getItem(TEMPLATES_KEY) ?? '[]') as unknown
     return Array.isArray(raw)
-      ? raw.filter((t): t is WidgetTemplate => !!t && typeof t === 'object' && typeof (t as WidgetTemplate).name === 'string' && isWidget((t as WidgetTemplate).widget))
+      ? raw.filter((x): x is WidgetTemplate => !!x && typeof x === 'object' && typeof (x as WidgetTemplate).name === 'string' && isWidget((x as WidgetTemplate).widget))
       : []
   } catch {
     return []
@@ -63,7 +64,7 @@ export function readWidgetTemplates(): WidgetTemplate[] {
 
 /** Saves `widget` under `name`, replacing one of that name. False when storage refused. */
 export function saveWidgetTemplate(name: string, widget: FullstackWidgetDef): boolean {
-  const next = [...readWidgetTemplates().filter(t => t.name !== name), { name, widget: clone(widget) }]
+  const next = [...readWidgetTemplates().filter(x => x.name !== name), { name, widget: clone(widget) }]
   try {
     localStorage.setItem(TEMPLATES_KEY, JSON.stringify(next))
     return true
@@ -74,7 +75,7 @@ export function saveWidgetTemplate(name: string, widget: FullstackWidgetDef): bo
 
 export function deleteWidgetTemplate(name: string): void {
   try {
-    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(readWidgetTemplates().filter(t => t.name !== name)))
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(readWidgetTemplates().filter(x => x.name !== name)))
   } catch { /* a preference only */ }
 }
 
@@ -98,21 +99,21 @@ export function fitWidget(widget: FullstackWidgetDef, pages: FullstackPageDef[],
   const names = new Set(entities.map(e => e.name))
   const ids = new Set(pages.map(p => p.id))
   if (!ENTITYLESS.includes(w.kind) && !names.has(w.entity)) {
-    return { reason: w.entity ? `There is no ${w.entity} entity in this model` : 'It reads no entity' }
+    return { reason: w.entity ? t('There is no {entity} entity in this model', { entity: w.entity }) : t('It reads no entity') }
   }
   if (w.drillTo && !ids.has(w.drillTo)) {
-    dropped.push(`its drill-down to “${w.drillTo}”`)
+    dropped.push(t('its drill-down to “{page}”', { page: w.drillTo }))
     delete w.drillTo
   }
   if (w.kind === 'links') {
     const kept = (w.pages ?? []).filter(id => ids.has(id))
-    if (kept.length === 0) return { reason: 'None of the pages it links to are in this layout' }
-    if (kept.length < (w.pages ?? []).length) dropped.push(`${(w.pages ?? []).length - kept.length} link${(w.pages ?? []).length - kept.length === 1 ? '' : 's'} to pages that are gone`)
+    if (kept.length === 0) return { reason: t('None of the pages it links to are in this layout') }
+    if (kept.length < (w.pages ?? []).length) dropped.push(tn((w.pages ?? []).length - kept.length, '{n} link to pages that are gone', '{n} links to pages that are gone'))
     w.pages = kept
   }
   if (w.kind === 'activity' && w.entities) {
     const kept = w.entities.filter(e => names.has(e))
-    if (kept.length < w.entities.length) dropped.push('entities that are gone')
+    if (kept.length < w.entities.length) dropped.push(t('entities that are gone'))
     if (kept.length) w.entities = kept
     else delete w.entities
   }
@@ -129,22 +130,22 @@ export type PastedWidgets =
  */
 export function pasteWidgets(pages: FullstackPageDef[], index: number, clip: WidgetClip, entities: FullstackEntityDef[], at?: number): PastedWidgets {
   const page = pages[index]
-  if (page?.type !== 'dashboard') return { reason: 'Widgets go on a dashboard — pick one, then paste' }
+  if (page?.type !== 'dashboard') return { reason: t('Widgets go on a dashboard — pick one, then paste') }
   const widgets = page.widgets ?? []
   const room = MAX_WIDGETS - widgets.length
-  if (room <= 0) return { reason: `“${pageLabel(page)}” already has the most widgets a dashboard can have (${MAX_WIDGETS})` }
+  if (room <= 0) return { reason: t('“{page}” already has the most widgets a dashboard can have ({max})', { page: pageLabel(page), max: MAX_WIDGETS }) }
   const fitted: FullstackWidgetDef[] = []
   const skipped: string[] = []
   for (const w of clip.widgets) {
     const fit = fitWidget(w, pages, entities)
     if ('reason' in fit) skipped.push(`${widgetName(w)}: ${fit.reason}`)
-    else if (fitted.length >= room) skipped.push(`${widgetName(w)}: no room under the ${MAX_WIDGETS}-widget cap`)
+    else if (fitted.length >= room) skipped.push(t('{widget}: no room under the {max}-widget cap', { widget: widgetName(w), max: MAX_WIDGETS }))
     else fitted.push(fit.widget)
   }
-  if (fitted.length === 0) return { reason: `Nothing to paste — ${skipped.join('; ')}` }
+  if (fitted.length === 0) return { reason: t('Nothing to paste — {skipped}', { skipped: skipped.join('; ') }) }
   const where = at == null ? widgets.length : Math.max(0, Math.min(at, widgets.length))
   const next = [...widgets]
   next.splice(where, 0, ...fitted)
-  const what = fitted.length === 1 ? `“${widgetName(fitted[0])}”` : `${fitted.length} widgets`
-  return { widgets: next, at: where, added: fitted.length, label: `Pasted ${what} into “${pageLabel(page)}”`, skipped }
+  const what = fitted.length === 1 ? `“${widgetName(fitted[0])}”` : tn(fitted.length, '{n} widget', '{n} widgets')
+  return { widgets: next, at: where, added: fitted.length, label: t('Pasted {what} into “{page}”', { what, page: pageLabel(page) }), skipped }
 }

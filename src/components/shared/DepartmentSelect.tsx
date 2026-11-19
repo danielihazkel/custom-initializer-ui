@@ -1,4 +1,5 @@
 import { defaultDepartmentId, useDepartments } from '../../hooks/useDepartments'
+import { t } from '../../i18n'
 
 interface Props {
   id: string
@@ -25,14 +26,14 @@ export function DepartmentSelect({ id, value, onChange, className }: Props) {
       className={className}
       value={effective}
       disabled={loading && departments.length === 0}
-      title={error ? `Could not load departments (${error}) — the default department is used` : undefined}
+      title={error ? t('Could not load departments ({error}) — the default department is used', { error }) : undefined}
       onChange={e => onChange(e.target.value)}
       data-department-select
     >
       {departments.length === 0 && (
-        <option value={effective}>{loading ? 'Loading…' : effective || 'Default department'}</option>
+        <option value={effective}>{loading ? t('Loading…') : effective || t('Default department')}</option>
       )}
-      {departments.length > 0 && !known && <option value={effective}>{effective} (unknown)</option>}
+      {departments.length > 0 && !known && <option value={effective}>{t('{name} (unknown)', { name: effective })}</option>}
       {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
     </select>
   )
@@ -46,12 +47,12 @@ export function FloatingDepartmentSelect({ id, value, onChange }: Omit<Props, 'c
         id={id}
         value={value}
         onChange={onChange}
-        className="w-full appearance-none bg-surface-container-high border border-outline-variant rounded-xl px-4 pt-6 pb-2 pr-10 text-sm text-on-surface outline-none transition-all shadow-sm focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-60"
+        className="w-full appearance-none bg-surface-container-high border border-outline-variant rounded-xl px-4 pt-6 pb-2 pe-10 text-sm text-on-surface outline-none transition-all shadow-sm focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-60"
       />
-      <label htmlFor={id} className="absolute left-4 top-2 text-[10px] uppercase font-bold text-primary pointer-events-none">
-        Department
+      <label htmlFor={id} className="absolute start-4 top-2 text-[10px] uppercase font-bold text-primary pointer-events-none">
+        {t('Department')}
       </label>
-      <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" style={{ fontSize: '18px' }}>
+      <span className="material-symbols-outlined absolute end-4 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" style={{ fontSize: '18px' }}>
         expand_more
       </span>
     </div>

@@ -15,12 +15,21 @@ interface AdminFormDrawerProps {
   /** Primary button copy; defaults to "Save" (and "Saving…" while `saving`). */
   saveLabel?: string
   savingLabel?: string
+  /** The footer's Cancel and the header's close button; English by default (Config is not
+   *  translated — the generator's wizard drawers pass their own). */
+  cancelLabel?: string
+  closeLabel?: string
+  /** 'rtl' (a wizard drawer on the site in Hebrew): the drawer is at the left edge and reads right
+   *  to left. Config's drawers stay 'ltr', whatever the page is. */
+  dir?: 'ltr' | 'rtl'
   children: ReactNode
 }
 
 export function AdminFormDrawer({
-  title, isOpen, onClose, onSave, saving, saveLabel = 'Save', savingLabel = 'Saving…', children,
+  title, isOpen, onClose, onSave, saving, saveLabel = 'Save', savingLabel = 'Saving…',
+  cancelLabel = 'Cancel', closeLabel = 'Close drawer', dir = 'ltr', children,
 }: AdminFormDrawerProps) {
+  const offscreen = dir === 'rtl' ? '-100%' : '100%'
   const drawerRef = useRef<HTMLDivElement>(null)
 
   // A form that throws from onSave (validation, failed parse) has already rendered its error;
@@ -78,11 +87,13 @@ export function AdminFormDrawer({
             aria-modal="true"
             aria-labelledby="drawer-title"
             tabIndex={-1}
-            initial={{ x: '100%' }}
+            dir={dir}
+            lang={dir === 'ltr' ? 'en' : undefined}
+            initial={{ x: offscreen }}
             animate={{ x: 0 }}
-            exit={{ x: '100%' }}
+            exit={{ x: offscreen }}
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-            className="fixed inset-y-0 right-0 w-full sm:w-[520px] z-40 glass-drawer flex flex-col outline-none"
+            className={`fixed inset-y-0 ${dir === 'rtl' ? 'left-0' : 'right-0'} w-full sm:w-[520px] z-40 glass-drawer flex flex-col outline-none`}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant flex-shrink-0">
@@ -90,7 +101,7 @@ export function AdminFormDrawer({
               <button
                 onClick={onClose}
                 className="p-1 rounded text-secondary hover:text-on-surface transition-colors"
-                aria-label="Close drawer"
+                aria-label={closeLabel}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>close</span>
               </button>
@@ -108,7 +119,7 @@ export function AdminFormDrawer({
                 disabled={saving}
                 className="px-4 py-2 rounded-xl text-sm font-medium border border-outline-variant text-secondary hover:text-on-surface hover:bg-surface-container-highest transition-all disabled:opacity-50"
               >
-                Cancel
+                {cancelLabel}
               </button>
               <button
                 onClick={runSave}

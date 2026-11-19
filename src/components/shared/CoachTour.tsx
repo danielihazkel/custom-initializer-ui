@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { isRtl, t } from '../../i18n'
 
 /** A stop of a tour: the part it points at, and what to say about it. */
 export interface TourStep {
@@ -41,7 +42,8 @@ interface Props {
 
 /**
  * A short coach-mark tour: a spotlight on one part at a time with a card saying what it is for,
- * Back / Next / Skip and step dots. Escape skips; the arrows step. Finishing or skipping marks
+ * Back / Next / Skip and step dots. Escape skips; the arrows step (in reading order: in Hebrew,
+ * ← is the next step). Finishing or skipping marks
  * it seen, so it opens by itself only once per browser; a Help menu can run it again.
  *
  * It began as the layout designer's tour (`designer/DesignerTour.tsx`, now a wrapper) and is
@@ -101,6 +103,11 @@ export function CoachTour({ root, steps, storageKey, label, scrollIntoView = fal
     opener.current?.focus?.({ preventScroll: true })
   }
 
+  // The arrow that points along the reading direction goes forward.
+  const rtl = isRtl()
+  const forward = rtl ? 'ArrowLeft' : 'ArrowRight'
+  const backward = rtl ? 'ArrowRight' : 'ArrowLeft'
+
   function onKey(e: ReactKeyboardEvent<HTMLDivElement>) {
     // The tour owns the keyboard while it is open: nothing reaches the page's own keys.
     e.stopPropagation()
@@ -112,8 +119,8 @@ export function CoachTour({ root, steps, storageKey, label, scrollIntoView = fal
       e.preventDefault()
       buttons[to]?.focus()
     } else if (e.key === 'Escape') { e.preventDefault(); finish() }
-    else if (e.key === 'ArrowRight' && at < shown.length - 1) { e.preventDefault(); setAt(at + 1) }
-    else if (e.key === 'ArrowLeft' && at > 0) { e.preventDefault(); setAt(at - 1) }
+    else if (e.key === forward && at < shown.length - 1) { e.preventDefault(); setAt(at + 1) }
+    else if (e.key === backward && at > 0) { e.preventDefault(); setAt(at - 1) }
   }
 
   if (!step) return null
@@ -125,7 +132,9 @@ export function CoachTour({ root, steps, storageKey, label, scrollIntoView = fal
     : box.top + box.height + GAP + 180 <= vh ? box.top + box.height + GAP
       : box.top - GAP - 180 >= 0 ? box.top - GAP - 180
         : Math.max(GAP, box.top + box.height / 2 - 90)
-  const cardLeft = Math.max(GAP, Math.min((box ? box.left : vw / 2 - CARD_WIDTH / 2), vw - CARD_WIDTH - GAP))
+  // Lined up with the part's start edge: its left in English, its right in Hebrew.
+  const startLeft = !box ? vw / 2 - CARD_WIDTH / 2 : rtl ? box.left + box.width - CARD_WIDTH : box.left
+  const cardLeft = Math.max(GAP, Math.min(startLeft, vw - CARD_WIDTH - GAP))
   const bodyId = `${storageKey.replace(/[^a-z0-9]/gi, '-')}-tour-body`
 
   return (
@@ -149,16 +158,16 @@ export function CoachTour({ root, steps, storageKey, label, scrollIntoView = fal
         style={{ top: cardTop, left: cardLeft, width: CARD_WIDTH }}
         data-tour-step={at}
       >
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-secondary">Tour · {at + 1} of {shown.length}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-secondary">{t('Tour · {n} of {total}', { n: at + 1, total: shown.length })}</p>
         <h2 className="text-sm font-semibold text-on-surface">{step.title}</h2>
         <p id={bodyId} className="text-secondary leading-relaxed">{step.body}</p>
         <div className="flex items-center gap-2 pt-1">
           <span className="flex gap-1" aria-hidden="true">
             {shown.map((_, i) => <span key={i} className={`h-1.5 w-1.5 rounded-full ${i === at ? 'bg-primary' : 'bg-outline-variant'}`} />)}
           </span>
-          <button type="button" onClick={finish} className="ms-auto rounded-md px-2 py-1 font-semibold text-secondary hover:text-on-surface">Skip</button>
+          <button type="button" onClick={finish} className="ms-auto rounded-md px-2 py-1 font-semibold text-secondary hover:text-on-surface">{t('Skip')}</button>
           {at > 0 && (
-            <button type="button" onClick={() => setAt(at - 1)} className="rounded-md border border-outline-variant px-2 py-1 font-semibold text-on-surface">Back</button>
+            <button type="button" onClick={() => setAt(at - 1)} className="rounded-md border border-outline-variant px-2 py-1 font-semibold text-on-surface">{t('Back')}</button>
           )}
           <button
             type="button"
@@ -166,7 +175,7 @@ export function CoachTour({ root, steps, storageKey, label, scrollIntoView = fal
             className="rounded-md bg-primary px-3 py-1 font-semibold text-on-primary"
             data-tour-primary
           >
-            {last ? 'Done' : 'Next'}
+            {last ? t('Done') : t('Next')}
           </button>
         </div>
       </div>

@@ -6,6 +6,7 @@ import { LayoutPreview, type PreviewPalette } from '../LayoutPreview'
 import type { LayoutPreview as LayoutPreviewModel } from '../layoutPreviewModel'
 import { PageFlowMap } from './PageFlowMap'
 import { buildSpecSheet, specFileName } from './specSheet'
+import { getLang } from '../../../i18n'
 
 /**
  * Static markup of `node`: rendered once into a detached element, read, and unmounted. Icons are
@@ -78,7 +79,7 @@ export function buildLayoutSpec(input: SpecExportInput, now = new Date()): strin
   }
   return buildSpecSheet({
     project: input.project,
-    date: now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+    date: now.toLocaleDateString(getLang() === 'he' ? 'he-IL' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
     frontendSet: input.skin === 'menora' ? 'Menora Digital' : 'Tailwind',
     locale: input.locale,
     pages: input.pages,

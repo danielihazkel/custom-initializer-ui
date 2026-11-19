@@ -1,4 +1,5 @@
 import { useCatalog } from '../../hooks/catalogCache'
+import { t } from '../../i18n'
 
 /**
  * The live schema endpoints (backend `config/LiveSchemaController`): read a database's schema
@@ -87,11 +88,11 @@ export async function postLive<T>(url: string, body: unknown, signal?: AbortSign
     })
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') throw err
-    throw new LiveSchemaError(0, 'Connection error', 'The server could not be reached.')
+    throw new LiveSchemaError(0, t('Connection error'), t('The server could not be reached.'))
   }
   if (!res.ok) {
     const b = await res.json().catch(() => null) as { error?: string; detail?: string } | null
-    throw new LiveSchemaError(res.status, b?.error ?? `HTTP ${res.status}`, b?.detail ?? 'The request failed.')
+    throw new LiveSchemaError(res.status, b?.error ?? `HTTP ${res.status}`, b?.detail ?? t('The request failed.'))
   }
   return res.json() as Promise<T>
 }

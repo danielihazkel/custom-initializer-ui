@@ -4,6 +4,7 @@ import type { ProjectPreset, ProjectSnapshot } from '../types'
 import { useHotkeys } from '../hooks/useHotkeys'
 import { registerCommands, type PaletteAction } from '../commands'
 import { PresetChip, relativeTime } from './presetCards'
+import { t, tn, useLang } from '../i18n'
 
 // The Team tab — the server's presets, their cards and palette entries — is a lazy chunk: this
 // strip is on the Backend tab's first paint.
@@ -30,6 +31,7 @@ export function PresetPicker({
   onDeletePreset,
   onDeleteRecent,
 }: PresetPickerProps) {
+  const lang = useLang()
   const [tab, setTab] = useState<Tab>('presets')
   const [savePromptOpen, setSavePromptOpen] = useState(false)
   const [draftName, setDraftName] = useState('')
@@ -81,20 +83,20 @@ export function PresetPicker({
   useEffect(() => {
     const onLoad = (snapshot: ProjectSnapshot) => onLoadRef.current(snapshot)
     const list: PaletteAction[] = [{
-      id: 'backend-save-preset', title: 'Save the current setup as a preset…', icon: 'bookmark_add',
-      group: 'Backend', shortcut: 'Ctrl+S', run: () => setSavePromptOpen(true),
+      id: 'backend-save-preset', title: t('Save the current setup as a preset…'), icon: 'bookmark_add',
+      group: t('Backend'), shortcut: 'Ctrl+S', run: () => setSavePromptOpen(true),
     }]
     for (const p of presets) {
-      list.push({ id: `backend-preset-${p.id}`, title: `Load preset: ${p.name}`, icon: 'bookmark', group: 'Presets', run: () => onLoad(p.snapshot) })
+      list.push({ id: `backend-preset-${p.id}`, title: t('Load preset: {name}', { name: p.name }), icon: 'bookmark', group: t('Presets'), run: () => onLoad(p.snapshot) })
     }
     for (const r of recents) {
       list.push({
-        id: `backend-recent-${r.id}`, title: `Load recent: ${r.name}`, description: relativeTime(r.createdAt),
-        icon: 'history', group: 'Recent projects', run: () => onLoad(r.snapshot),
+        id: `backend-recent-${r.id}`, title: t('Load recent: {name}', { name: r.name }), description: relativeTime(r.createdAt),
+        icon: 'history', group: t('Recent projects'), run: () => onLoad(r.snapshot),
       })
     }
     return registerCommands(list, 'backend-presets')
-  }, [presets, recents])
+  }, [presets, recents, lang])
 
   // Keyed, so it stays mounted when the strip switches between its empty and full layouts (a
   // remount would report no presets while it refetched, and switch the layout back).
@@ -109,13 +111,13 @@ export function PresetPicker({
     return (
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">My Presets</h2>
+          <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">{t('My Presets')}</h2>
           <button
             onClick={() => setSavePromptOpen(true)}
             className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>bookmark_add</span>
-            Save current as preset…
+            {t('Save current as preset…')}
           </button>
         </div>
         {/* Mounted for the count: when the team has presets, the strip opens up. */}
@@ -125,9 +127,9 @@ export function PresetPicker({
   }
 
   const tabs: { id: Tab; label: string; count: number; badge: string }[] = [
-    { id: 'presets', label: 'My Presets', count: presets.length, badge: 'bg-primary/15 text-primary' },
-    { id: 'team', label: 'Team', count: teamCount, badge: 'bg-secondary/15 text-secondary' },
-    { id: 'recents', label: 'Recent', count: recents.length, badge: 'bg-tertiary/15 text-tertiary' },
+    { id: 'presets', label: t('My Presets'), count: presets.length, badge: 'bg-primary/15 text-primary' },
+    { id: 'team', label: t('Team'), count: teamCount, badge: 'bg-secondary/15 text-secondary' },
+    { id: 'recents', label: t('Recent'), count: recents.length, badge: 'bg-tertiary/15 text-tertiary' },
   ]
   const local = tab === 'presets' ? presets : recents
   const onDelete = tab === 'presets' ? onDeletePreset : onDeleteRecent
@@ -135,18 +137,18 @@ export function PresetPicker({
   return (
     <div className="mb-6">
       <div className="flex items-center justify-between mb-3 gap-4">
-        <div className="flex items-center gap-4" role="tablist" aria-label="Presets">
-          {tabs.map(t => (
+        <div className="flex items-center gap-4" role="tablist" aria-label={t('Presets')}>
+          {tabs.map(item => (
             <button
-              key={t.id}
+              key={item.id}
               role="tab"
-              aria-selected={tab === t.id}
-              onClick={() => setTab(t.id)}
-              className={`text-xs font-bold uppercase tracking-widest transition-colors ${tab === t.id ? 'text-on-surface' : 'text-secondary hover:text-on-surface'}`}
+              aria-selected={tab === item.id}
+              onClick={() => setTab(item.id)}
+              className={`text-xs font-bold uppercase tracking-widest transition-colors ${tab === item.id ? 'text-on-surface' : 'text-secondary hover:text-on-surface'}`}
             >
-              {t.label}
-              {t.count > 0 && (
-                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${t.badge}`}>{t.count}</span>
+              {item.label}
+              {item.count > 0 && (
+                <span className={`ms-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${item.badge}`}>{item.count}</span>
               )}
             </button>
           ))}
@@ -156,7 +158,7 @@ export function PresetPicker({
           className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
         >
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>bookmark_add</span>
-          Save current as preset…
+          {t('Save current as preset…')}
         </button>
       </div>
 
@@ -179,30 +181,30 @@ export function PresetPicker({
                     if (e.key === 'Enter') void commitSave()
                     if (e.key === 'Escape') closePrompt()
                   }}
-                  placeholder="Preset name (e.g. My microservice baseline)"
-                  aria-label="Preset name"
+                  placeholder={t('Preset name (e.g. My microservice baseline)')}
+                  aria-label={t('Preset name')}
                   className="flex-1 min-w-[12rem] bg-surface-container-lowest border border-outline-variant rounded-md px-3 py-1.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
                 />
                 <label className="flex items-center gap-1.5 text-[11px] font-medium text-secondary cursor-pointer select-none">
                   <input type="checkbox" checked={forTeam} onChange={e => { setForTeam(e.target.checked); setSaveError(null) }} />
-                  For the team
+                  {t('For the team')}
                 </label>
                 <button
                   onClick={() => { void commitSave() }}
                   disabled={!draftName.trim() || saving}
                   className="px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-white disabled:opacity-40 active:scale-95 transition-transform"
                 >
-                  {saving ? 'Saving…' : 'Save'}
+                  {saving ? t('Saving…') : t('Save')}
                 </button>
                 <button
                   onClick={closePrompt}
                   className="px-3 py-1.5 rounded-md text-xs font-medium text-secondary hover:text-on-surface transition-colors"
                 >
-                  Cancel
+                  {t('Cancel')}
                 </button>
               </div>
               {saveError ? <p className="mt-2 text-[11px] text-error" role="alert">{saveError}</p>
-                : forTeam && <p className="mt-2 text-[11px] text-secondary">Everyone who opens the generator will see it — the wizard documents and modules too.</p>}
+                : forTeam && <p className="mt-2 text-[11px] text-secondary">{t('Everyone who opens the generator will see it — the wizard documents and modules too.')}</p>}
             </div>
           </motion.div>
         )}
@@ -212,8 +214,8 @@ export function PresetPicker({
       {tab !== 'team' && (local.length === 0 ? (
         <div className="text-xs text-secondary py-4 px-4 rounded-lg border border-dashed border-outline-variant/50 bg-surface-container-low/30">
           {tab === 'presets'
-            ? 'No presets yet. Configure a project and click "Save current as preset…" above.'
-            : 'No recent projects yet. Generate or explore a project to see it here.'}
+            ? t('No presets yet. Configure a project and click "Save current as preset…" above.')
+            : t('No recent projects yet. Generate or explore a project to see it here.')}
         </div>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2">
@@ -224,26 +226,26 @@ export function PresetPicker({
                 key={item.id}
                 className="relative flex-shrink-0 w-52 rounded-lg border-2 border-outline-variant bg-surface-container hover:border-outline group transition-all"
               >
-                <button onClick={() => onLoad(item.snapshot)} className="w-full p-4 text-left">
+                <button onClick={() => onLoad(item.snapshot)} className="w-full p-4 text-start">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="material-symbols-outlined text-secondary" style={{ fontSize: '20px' }}>
                       {tab === 'presets' ? 'bookmark' : 'history'}
                     </span>
-                    <span className="font-semibold text-sm text-on-surface truncate">{item.name}</span>
+                    <span dir="auto" className="font-semibold text-sm text-on-surface truncate">{item.name}</span>
                   </div>
-                  <p className="text-[11px] text-secondary leading-relaxed">
+                  <p className="text-[11px] text-secondary leading-relaxed" dir="ltr">
                     {item.snapshot.form.groupId}:{item.snapshot.form.artifactId}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <PresetChip icon="widgets">{item.snapshot.selected.length} deps</PresetChip>
+                    <PresetChip icon="widgets">{tn(item.snapshot.selected.length, '{n} dep', '{n} deps')}</PresetChip>
                     {moduleCount > 0 && <PresetChip icon="account_tree">{moduleCount}</PresetChip>}
-                    <span className="text-[10px] text-secondary ml-auto">{relativeTime(item.createdAt)}</span>
+                    <span className="text-[10px] text-secondary ms-auto">{relativeTime(item.createdAt)}</span>
                   </div>
                 </button>
                 <button
                   onClick={() => onDelete(item.id)}
-                  aria-label={`Delete ${item.name}`}
-                  className="absolute top-1.5 right-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 hover:bg-error/10 hover:text-error transition-all"
+                  aria-label={t('Delete {name}', { name: item.name })}
+                  className="absolute top-1.5 end-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 hover:bg-error/10 hover:text-error transition-all"
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
                 </button>

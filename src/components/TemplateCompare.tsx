@@ -4,6 +4,7 @@ import type { StarterTemplate, InitializrMetadata, DependencyExtensions } from '
 import { useTemplateComparison } from '../hooks/useTemplateComparison'
 import { TemplateCompareSelectionGrid } from './TemplateCompareSelectionGrid'
 import { TemplateCompareTable } from './TemplateCompareTable'
+import { t } from '../i18n'
 
 interface Props {
   templates: StarterTemplate[]
@@ -16,7 +17,7 @@ export function TemplateCompare({ templates, metadata, extensions, onClose }: Pr
   const [phase, setPhase] = useState<'select' | 'compare'>('select')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  const selectedTemplates = templates.filter(t => selectedIds.has(t.id))
+  const selectedTemplates = templates.filter(tpl => selectedIds.has(tpl.id))
   const comparison = useTemplateComparison(selectedTemplates, metadata, extensions)
 
   function toggleTemplate(id: string) {
@@ -44,7 +45,7 @@ export function TemplateCompare({ templates, metadata, extensions, onClose }: Pr
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Compare templates"
+        aria-label={t('Compare templates')}
         tabIndex={-1}
         className="w-full h-full bg-surface-container border border-outline-variant rounded-2xl flex flex-col overflow-hidden shadow-2xl outline-none panel-enter"
       >
@@ -56,25 +57,25 @@ export function TemplateCompare({ templates, metadata, extensions, onClose }: Pr
               <button
                 onClick={handleBack}
                 className="p-1.5 rounded text-secondary hover:text-on-surface hover:bg-surface-container transition-colors"
-                aria-label="Back to selection"
-                title="Back to template selection"
+                aria-label={t('Back to selection')}
+                title={t('Back to template selection')}
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_back</span>
+                <span className="material-symbols-outlined flip-rtl" style={{ fontSize: '20px' }}>arrow_back</span>
               </button>
             )}
             <span className="material-symbols-outlined text-secondary" style={{ fontSize: '18px' }}>compare_arrows</span>
             <span className="text-sm font-bold text-on-surface">
-              {phase === 'select' ? 'Compare Templates' : (
+              {phase === 'select' ? t('Compare Templates') : (
                 <span className="flex items-center gap-2">
-                  Compare Templates
+                  {t('Compare Templates')}
                   <span className="text-xs font-normal text-secondary flex items-center gap-1">
-                    {selectedTemplates.map((t, i) => (
-                      <span key={t.id} className="flex items-center gap-1">
-                        {i > 0 && <span className="text-outline-variant">vs</span>}
-                        {t.icon && (
-                          <span className="material-symbols-outlined" style={{ fontSize: '13px', color: t.color ?? undefined }}>{t.icon}</span>
+                    {selectedTemplates.map((tpl, i) => (
+                      <span key={tpl.id} className="flex items-center gap-1">
+                        {i > 0 && <span className="text-outline-variant">{t('vs')}</span>}
+                        {tpl.icon && (
+                          <span className="material-symbols-outlined" style={{ fontSize: '13px', color: tpl.color ?? undefined }}>{tpl.icon}</span>
                         )}
-                        {t.name}
+                        <bdi>{tpl.name}</bdi>
                       </span>
                     ))}
                   </span>
@@ -85,7 +86,7 @@ export function TemplateCompare({ templates, metadata, extensions, onClose }: Pr
           <button
             onClick={onClose}
             className="p-1.5 rounded text-secondary hover:text-on-surface hover:bg-surface-container transition-colors"
-            aria-label="Close"
+            aria-label={t('Close')}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>close</span>
           </button>

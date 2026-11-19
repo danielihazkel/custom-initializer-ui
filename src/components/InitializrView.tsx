@@ -8,6 +8,7 @@ const ModuleSelector = lazy(() => import('./ModuleSelector').then(m => ({ defaul
 import { DependencySelector } from './DependencySelector'
 import type { InitializrMetadata, ProjectFormValues, ProjectPreset, ProjectSnapshot, StarterTemplate, DependencyExtensions, CompatibilityRule, ModuleTemplate, SqlDialects, SqlByDep, SqlWizardEntry, OpenApiByDep, OpenApiWizardEntry, SoapByDep, SoapWizardEntry, EventsByDep, EventsWizardEntry, PreviewError } from '../types'
 import { wizardDepIds, type FormErrors } from '../utils/projectUtils'
+import { t } from '../i18n'
 
 interface InitializrViewProps {
   metadata: InitializrMetadata | null
@@ -125,8 +126,7 @@ export function InitializrView({
         {shareTooLarge && (
           <p className="-mt-3 mb-6 flex items-start gap-1.5 text-[11px] text-secondary" role="status">
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>link_off</span>
-            Too long for a link: a shared link carries the project and its dependencies, not the modules or
-            wizard documents. Save a team preset to share it all.
+            {t('Too long for a link: a shared link carries the project and its dependencies, not the modules or wizard documents. Save a team preset to share it all.')}
           </p>
         )}
       </div>
@@ -135,10 +135,10 @@ export function InitializrView({
         <section className="lg:col-span-5 space-y-8 min-w-0" data-tour="project-setup">
           <div className="mb-2">
             <h2 className="text-xs font-bold uppercase tracking-widest text-secondary">
-              Project Setup
+              {t('Project Setup')}
             </h2>
             <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">
-              Configure metadata and core language settings
+              {t('Configure metadata and core language settings')}
             </p>
           </div>
           <OptionsPanel metadata={metadata} values={form} onChange={onFormChange} section="upper" />
@@ -152,9 +152,9 @@ export function InitializrView({
                 <div>
                   <h3 id="multi-module-label" className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1.5">
                     <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
-                    Multi-Module Project
+                    {t('Multi-Module Project')}
                   </h3>
-                  <p className="text-[11px] text-on-surface-variant mt-0.5">Generate a parent POM with sub-modules</p>
+                  <p className="text-[11px] text-on-surface-variant mt-0.5">{t('Generate a parent POM with sub-modules')}</p>
                 </div>
                 <button
                   role="switch"
@@ -162,9 +162,9 @@ export function InitializrView({
                   aria-labelledby="multi-module-label"
                   onClick={onMultiModuleToggle}
                   className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${multiModuleEnabled ? 'bg-primary' : 'bg-surface-container-high'}`}
-                  aria-label="Toggle multi-module"
+                  aria-label={t('Toggle multi-module')}
                 >
-                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${multiModuleEnabled ? 'translate-x-5' : ''}`} />
+                  <span className={`absolute top-0.5 start-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${multiModuleEnabled ? 'translate-x-5 rtl:-translate-x-5' : ''}`} />
                 </button>
               </div>
               {multiModuleEnabled && (

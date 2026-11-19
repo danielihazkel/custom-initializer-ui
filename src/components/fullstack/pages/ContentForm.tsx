@@ -5,6 +5,7 @@ import { MAX_BODY } from '../newPageTypes'
 import { linkablePages, pageLabel } from '../pageLayout'
 import type { FormProps } from './formTypes'
 import { Field } from './fields'
+import { t } from '../../../i18n'
 
 export function ContentForm({ page, index, pages, errors, update }: Omit<FormProps, 'entities' | 'lossy'> & { pages: FullstackPageDef[] }) {
   const body = page.body ?? ''
@@ -26,10 +27,11 @@ export function ContentForm({ page, index, pages, errors, update }: Omit<FormPro
   }
   return (
     <div className="space-y-2">
-      <Field label="Text" error={errors.body} control="body" hint={`${body.length}/${MAX_BODY} · ## heading · - list · 1. list · > note · **bold** · *em* · \`code\` · [text](#/page-id or https://…) · --- rule`}>
+      <Field label={t('Text')} error={errors.body} control="body" hint={`${body.length}/${MAX_BODY} · ${t('## heading · - list · 1. list · > note · **bold** · *em* · `code` · [text](#/page-id or https://…) · --- rule')}`}>
         <textarea
           ref={areaRef}
-          aria-label="Page text"
+          dir="auto"
+          aria-label={t('Page text')}
           aria-invalid={Boolean(errors.body)}
           value={body}
           rows={10}
@@ -40,14 +42,14 @@ export function ContentForm({ page, index, pages, errors, update }: Omit<FormPro
       </Field>
       {targets.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <label className="text-secondary" htmlFor={`content-link-${index}`}>Insert a link to</label>
+          <label className="text-secondary" htmlFor={`content-link-${index}`}>{t('Insert a link to')}</label>
           <select
             id={`content-link-${index}`}
             value=""
             onChange={e => { if (e.target.value) insertLink(e.target.value) }}
             className={`${inputClass()} max-w-[14rem] py-1 text-xs`}
           >
-            <option value="">— a page —</option>
+            <option value="">{t('— a page —')}</option>
             {targets.map(p => <option key={p.id} value={p.id}>{pageLabel(p)}</option>)}
           </select>
         </div>

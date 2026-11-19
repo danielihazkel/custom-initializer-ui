@@ -29,6 +29,7 @@ import { ENTITY_OPT_LABELS, PROJECT_ONLY_OPTS } from './scaffoldOptions'
 import { joinEntity } from './joinEntity'
 import { enumLabel, pruneLabels } from './enumLabels'
 import { DEFAULT_CURRENCY, FIELD_TYPES, FIELD_TYPE_LABELS, isAttachmentType, isDateType, isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
+import { t, tn, useLang } from '../../i18n'
 
 /** A one-click follow-up on a notice — "Undo" after a removal. */
 export type NoticeAction = { label: string; onClick: () => void }
@@ -129,12 +130,12 @@ export interface EntityServerIssue {
 /** What the server's message is about, in the model's own names. */
 function serverIssueSubject(entity: FullstackEntityDef, issue: EntityServerIssue): string {
   const field = issue.field != null ? entity.fields[issue.field] : undefined
-  if (field) return `field “${field.name.trim() || `#${issue.field! + 1}`}”`
+  if (field) return t('field “{name}”', { name: field.name.trim() || `#${issue.field! + 1}` })
   const relation = issue.relation != null ? entity.relations?.[issue.relation] : undefined
-  if (relation) return `relation “${relation.fieldName.trim() || `#${issue.relation! + 1}`}”`
-  if (issue.panel === 'workflow') return 'this entity’s workflow'
-  if (issue.panel === 'formSections') return 'this entity’s form sections'
-  return 'this entity'
+  if (relation) return t('relation “{name}”', { name: relation.fieldName.trim() || `#${issue.relation! + 1}` })
+  if (issue.panel === 'workflow') return t('this entity’s workflow')
+  if (issue.panel === 'formSections') return t('this entity’s form sections')
+  return t('this entity')
 }
 
 function newField(): FullstackFieldDef {
@@ -156,6 +157,8 @@ export const EntitiesEditor = memo(function EntitiesEditor({
   onRowAdded, lintCounts, onShowLint, density = 'comfortable', visibleUids, previewCtx, onGoToOptions, onCodeFiles, codeState,
   ldapAuth, onAddDep,
 }: Props) {
+  // A memo component: it re-renders in a new language because it reads the language itself.
+  useLang()
   // Every edit keeps the entity's form sections in step: a renamed field or relation is renamed
   // there, a removed one dropped.
   const onChange = (next: FullstackEntityDef[]) => onChangeRaw(next.map(e => {
@@ -225,10 +228,10 @@ export const EntitiesEditor = memo(function EntitiesEditor({
   }
   function removeEntity(idx: number) {
     const removed = entities[idx]
-    const label = removed?.name.trim() || '(unnamed)'
-    onDestructive?.(`Removed entity ${label}`)
+    const label = removed?.name.trim() || t('(unnamed)')
+    onDestructive?.(t('Removed entity {entity}', { entity: label }))
     onChange(entities.filter((_, i) => i !== idx))
-    onNotice?.(`Removed entity ${label}`, { label: 'Undo', onClick: () => restoreEntity(removed, idx) })
+    onNotice?.(t('Removed entity {entity}', { entity: label }), { label: t('Undo'), onClick: () => restoreEntity(removed, idx) })
   }
   /** Puts a removed entity back at its old position (or the end if the list shrank). */
   function restoreEntity(entity: FullstackEntityDef, idx: number) {
@@ -254,7 +257,7 @@ export const EntitiesEditor = memo(function EntitiesEditor({
     onChange([...entities.slice(0, eIdx + 1), entity, ...entities.slice(eIdx + 1)])
     if (entity.uid) onRowAdded?.(entity.uid)
     focusRowWhenRendered(entity.uid)
-    onNotice?.(`Added ${entity.name} — a join entity with required relations to ${owner.name.trim()} and ${target}`)
+    onNotice?.(t('Added {entity} — a join entity with required relations to {owner} and {target}', { entity: entity.name, owner: owner.name.trim(), target }))
   }
   function duplicateEntity(idx: number) {
     const src = entities[idx]
@@ -312,22 +315,26 @@ export const EntitiesEditor = memo(function EntitiesEditor({
 
     const dropped: string[] = []
     const cleared = (key: keyof FullstackFieldDef) => key in updates && updates[key] === undefined && field[key] != null
-    if (cleared('length')) dropped.push(`length ${field.length}`)
-    if (cleared('enumValues') && field.enumValues?.length) dropped.push(`${field.enumValues.length} enum value${field.enumValues.length === 1 ? '' : 's'}${Object.keys(field.enumLabels ?? {}).length ? ' and their labels' : ''}`)
-    if (cleared('pattern') && field.pattern) dropped.push('pattern')
-    if (cleared('email') && field.email) dropped.push('email check')
-    if (cleared('min')) dropped.push(`min ${field.min}`)
-    if (cleared('max')) dropped.push(`max ${field.max}`)
-    if (cleared('generated') && field.generated) dropped.push('auto-generated')
-    if (cleared('searchable') && field.searchable === false) dropped.push('search opt-out')
-    if (cleared('filterable') && field.filterable === false) dropped.push('filter opt-out')
-    if (field.defaultValue?.trim() && kept === undefined) dropped.push(`default "${field.defaultValue.trim()}"`)
+    if (cleared('length')) dropped.push(t('length {n}', { n: field.length! }))
+    if (cleared('enumValues') && field.enumValues?.length) {
+      dropped.push(Object.keys(field.enumLabels ?? {}).length
+        ? tn(field.enumValues.length, '{n} enum value and their labels', '{n} enum values and their labels')
+        : tn(field.enumValues.length, '{n} enum value', '{n} enum values'))
+    }
+    if (cleared('pattern') && field.pattern) dropped.push(t('pattern'))
+    if (cleared('email') && field.email) dropped.push(t('email check'))
+    if (cleared('min')) dropped.push(t('min {n}', { n: field.min! }))
+    if (cleared('max')) dropped.push(t('max {n}', { n: field.max! }))
+    if (cleared('generated') && field.generated) dropped.push(t('auto-generated'))
+    if (cleared('searchable') && field.searchable === false) dropped.push(t('search opt-out'))
+    if (cleared('filterable') && field.filterable === false) dropped.push(t('filter opt-out'))
+    if (field.defaultValue?.trim() && kept === undefined) dropped.push(t('default "{value}"', { value: field.defaultValue.trim() }))
     if (dropped.length === 0) return
     const before = { ...field }
     const ownerUid = owner.uid
     onNotice?.(
-      `Changed ${field.name.trim() || 'the field'} to ${type} — cleared ${dropped.join(', ')}`,
-      { label: 'Undo', onClick: () => restoreField(ownerUid, before, fIdx) },
+      t('Changed {field} to {type} — cleared {what}', { field: field.name.trim() || t('the field'), type, what: dropped.join(', ') }),
+      { label: t('Undo'), onClick: () => restoreField(ownerUid, before, fIdx) },
     )
   }
   /** Puts a field back into its entity — replacing the row with the same uid if it is still
@@ -394,13 +401,13 @@ export const EntitiesEditor = memo(function EntitiesEditor({
   function removeField(eIdx: number, fIdx: number) {
     const owner = entities[eIdx]
     const removed = owner?.fields[fIdx]
-    const label = `Removed field ${removed?.name.trim() || '(unnamed)'} from ${owner?.name.trim() || '(unnamed)'}`
+    const label = t('Removed field {field} from {entity}', { field: removed?.name.trim() || t('(unnamed)'), entity: owner?.name.trim() || t('(unnamed)') })
     onDestructive?.(label)
     onChange(entities.map((e, i) => {
       if (i !== eIdx) return e
       return { ...e, fields: e.fields.filter((_, j) => j !== fIdx) }
     }))
-    if (removed) onNotice?.(label, { label: 'Undo', onClick: () => restoreField(owner?.uid, removed, fIdx) })
+    if (removed) onNotice?.(label, { label: t('Undo'), onClick: () => restoreField(owner?.uid, removed, fIdx) })
   }
   function addField(eIdx: number) {
     const field = newField()
@@ -416,7 +423,7 @@ export const EntitiesEditor = memo(function EntitiesEditor({
     updateEntity(eIdx, { viewQuery: checked ? '' : undefined })
     if (checked) {
       setPanelFor({ key, kind: 'settings' })
-      focusWithinRow(uid, 'textarea[aria-label="View SELECT query"]')
+      focusWithinRow(uid, 'textarea[data-view-query]')
     }
   }
 
@@ -483,7 +490,7 @@ export const EntitiesEditor = memo(function EntitiesEditor({
 
       {visibleUids && entities.length > 0 && visibleCount === 0 && (
         <p className="text-xs text-secondary text-center py-6" data-no-match>
-          No entity matches the filter. Clear it in the outline to see all {entities.length} entities.
+          {t('No entity matches the filter. Clear it in the outline to see all {n} entities.', { n: entities.length })}
         </p>
       )}
 
@@ -494,14 +501,14 @@ export const EntitiesEditor = memo(function EntitiesEditor({
         >
           <span className="material-symbols-outlined text-secondary/60" style={{ fontSize: '40px' }}>table_chart</span>
           <div className="space-y-1">
-            <p className="text-sm font-semibold text-on-surface">No entities yet</p>
+            <p className="text-sm font-semibold text-on-surface">{t('No entities yet')}</p>
             <p className="text-xs text-secondary max-w-xs">
-              Add an entity to define its fields and relations — pick an example above, or import from DDL/SELECT.
+              {t('Add an entity to define its fields and relations — pick an example above, or import from DDL/SELECT.')}
             </p>
             {noEntities && (
               <p className="text-[11px] text-error flex items-center justify-center gap-1" role="alert">
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
-                At least one entity is required to generate.
+                {t('At least one entity is required to generate.')}
               </p>
             )}
           </div>
@@ -511,7 +518,7 @@ export const EntitiesEditor = memo(function EntitiesEditor({
             className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition-opacity active:scale-95"
           >
             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
-            Add entity
+            {t('Add entity')}
           </button>
         </div>
       ) : (
@@ -520,7 +527,7 @@ export const EntitiesEditor = memo(function EntitiesEditor({
           onClick={addEntity}
           className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant hover:border-primary text-secondary hover:text-primary text-sm font-medium transition-colors"
         >
-          + Add entity
+          + {t('Add entity')}
         </button>
       )}
     </div>
@@ -597,6 +604,8 @@ const EntityCard = memo(function EntityCard({
   previewEntities, dnd, density, projectOpts, previewCtx, codeState, onCodeFiles, onGoToOptions, ldapAuth, onAddDep,
   onShowLint, onToggleCollapsed, onNotice, api,
 }: EntityCardProps) {
+  // A memo component: it re-renders in a new language because it reads the language itself.
+  useLang()
   const entityKey = entity.uid ?? `i${eIdx}`
   const expanded = useMemo(() => new Set(expandedRows ? expandedRows.split('\n') : []), [expandedRows])
   const compact = density === 'compact'
@@ -613,11 +622,11 @@ const EntityCard = memo(function EntityCard({
     const views: string[] = entity.listViews ?? (entity.listView ? [entity.listView] : ['table'])
     const VIEW_ORDER = ['table', 'cards', 'kanban', 'calendar', 'gallery']
     const viewOptions = [
-      { key: 'table', label: 'Table', applicable: true, hint: '' },
-      { key: 'cards', label: 'Cards', applicable: true, hint: '' },
-      { key: 'kanban', label: 'Kanban', applicable: kanbanOk, hint: 'Needs an enum/boolean field' },
-      { key: 'calendar', label: 'Calendar', applicable: calendarOk, hint: 'Needs a date field' },
-      { key: 'gallery', label: 'Gallery', applicable: entity.fields.some(f => f.type === 'IMAGE'), hint: 'Needs an image field' },
+      { key: 'table', label: t('Table'), applicable: true, hint: '' },
+      { key: 'cards', label: t('Cards'), applicable: true, hint: '' },
+      { key: 'kanban', label: t('Kanban'), applicable: kanbanOk, hint: t('Needs an enum/boolean field') },
+      { key: 'calendar', label: t('Calendar'), applicable: calendarOk, hint: t('Needs a date field') },
+      { key: 'gallery', label: t('Gallery'), applicable: entity.fields.some(f => f.type === 'IMAGE'), hint: t('Needs an image field') },
     ] as const
     function toggleView(key: string) {
       const has = views.includes(key)
@@ -661,7 +670,7 @@ const EntityCard = memo(function EntityCard({
       {serverIssue && (
         <p role="alert" data-error data-server-issue tabIndex={-1}
            className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-xs text-error outline-none focus-visible:ring-2 focus-visible:ring-error/40">
-          <span className="font-semibold">The server rejected {serverIssueSubject(entity, serverIssue)}:</span>{' '}
+          <span className="font-semibold">{t('The server rejected {subject}:', { subject: serverIssueSubject(entity, serverIssue) })}</span>{' '}
           {serverIssue.message}
         </p>
       )}
@@ -676,9 +685,9 @@ const EntityCard = memo(function EntityCard({
               <span
                 {...dnd.handleProps('entities', eIdx)}
                 role="button"
-                aria-label="Drag to reorder entity"
-                title="Drag to reorder (entity order = nav order in the generated app)"
-                className="material-symbols-outlined -ml-2 cursor-grab active:cursor-grabbing text-secondary/60 hover:text-secondary select-none shrink-0"
+                aria-label={t('Drag to reorder entity')}
+                title={t('Drag to reorder (entity order = nav order in the generated app)')}
+                className="material-symbols-outlined -ms-2 cursor-grab active:cursor-grabbing text-secondary/60 hover:text-secondary select-none shrink-0"
                 style={{ fontSize: '20px' }}
               >
                 drag_indicator
@@ -689,11 +698,11 @@ const EntityCard = memo(function EntityCard({
                 type="button"
                 onClick={() => onToggleCollapsed(entityKey)}
                 aria-expanded={!isCollapsed}
-                aria-label={isCollapsed ? 'Expand entity' : 'Collapse entity'}
-                title={isCollapsed ? 'Expand' : 'Collapse'}
-                className="p-0.5 -ml-1 rounded text-secondary hover:text-on-surface hover:bg-primary/10 transition-colors shrink-0"
+                aria-label={isCollapsed ? t('Expand entity') : t('Collapse entity')}
+                title={isCollapsed ? t('Expand') : t('Collapse')}
+                className="p-0.5 -ms-1 rounded text-secondary hover:text-on-surface hover:bg-primary/10 transition-colors shrink-0"
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+                <span className={`material-symbols-outlined ${isCollapsed ? 'flip-rtl' : ''}`} style={{ fontSize: '20px' }}>
                   {isCollapsed ? 'chevron_right' : 'expand_more'}
                 </span>
               </button>
@@ -701,7 +710,8 @@ const EntityCard = memo(function EntityCard({
             <div className="flex-1 max-w-sm">
               <input
                 type="text"
-                aria-label="Entity name"
+                dir="ltr"
+                aria-label={t('Entity name')}
                 aria-invalid={Boolean(eErr?.name)}
                 className={`w-full bg-background border rounded px-3 py-2 text-sm font-mono text-on-surface focus:ring-2 outline-none ${eErr?.name ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
                 placeholder="User, Order, Product…"
@@ -712,16 +722,16 @@ const EntityCard = memo(function EntityCard({
             </div>
             {isCollapsed && (
               <span className="hidden sm:inline-flex items-center gap-2 text-[11px] text-secondary shrink-0">
-                <span>{entity.fields.length} field{entity.fields.length === 1 ? '' : 's'}</span>
-                {relCount > 0 && <span>· {relCount} relation{relCount === 1 ? '' : 's'}</span>}
-                {(entity.readOnly || isView) && <span>· {isView ? 'view' : 'read-only'}</span>}
-                <span className="font-mono">· {summary.path}</span>
+                <span>{tn(entity.fields.length, '{n} field', '{n} fields')}</span>
+                {relCount > 0 && <span>· {tn(relCount, '{n} relation', '{n} relations')}</span>}
+                {(entity.readOnly || isView) && <span>· {isView ? t('SELECT view') : t('read-only')}</span>}
+                <span className="font-mono">· <span dir="ltr">{summary.path}</span></span>
               </span>
             )}
             {errCount > 0 && (
               <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-error/10 text-error text-[11px] font-semibold shrink-0"
-                title={`${errCount} issue${errCount === 1 ? '' : 's'} on this entity`}
+                title={tn(errCount, '{n} issue on this entity', '{n} issues on this entity')}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>error</span>
                 {errCount}
@@ -732,8 +742,8 @@ const EntityCard = memo(function EntityCard({
                 type="button"
                 onClick={() => onShowLint?.(entityKey)}
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/15 text-warning text-[11px] font-semibold shrink-0 hover:bg-warning/25 transition-colors"
-                title={`${lintCount} suggestion${lintCount === 1 ? '' : 's'} for this entity — click to see`}
-                aria-label={`${lintCount} suggestion${lintCount === 1 ? '' : 's'} for ${entity.name.trim() || 'this entity'}`}
+                title={tn(lintCount, '{n} suggestion for this entity — click to see', '{n} suggestions for this entity — click to see')}
+                aria-label={tn(lintCount, '{n} suggestion for {entity}', '{n} suggestions for {entity}', { entity: entity.name.trim() || t('this entity') })}
                 data-lint-badge
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>lightbulb</span>
@@ -745,11 +755,11 @@ const EntityCard = memo(function EntityCard({
             {entityCount > 1 && (
               <>
                 <button type="button" onClick={() => api.moveEntity(eIdx, -1)} disabled={eIdx === 0} className={ICON_BTN}
-                        title="Move entity up (earlier in the generated nav)" aria-label="Move entity up">
+                        title={t('Move entity up (earlier in the generated nav)')} aria-label={t('Move entity up')}>
                   <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_upward</span>
                 </button>
                 <button type="button" onClick={() => api.moveEntity(eIdx, 1)} disabled={eIdx === entityCount - 1} className={ICON_BTN}
-                        title="Move entity down" aria-label="Move entity down">
+                        title={t('Move entity down')} aria-label={t('Move entity down')}>
                   <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_downward</span>
                 </button>
               </>
@@ -759,8 +769,8 @@ const EntityCard = memo(function EntityCard({
               onClick={() => api.togglePanel(entityKey, 'preview')}
               aria-pressed={previewOpen}
               className={`p-1.5 rounded transition-colors ${previewOpen ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/10'}`}
-              title="Preview the generated list page and form for this entity (a mock, drawn here)"
-              aria-label="Preview UI"
+              title={t('Preview the generated list page and form for this entity (a mock, drawn here)')}
+              aria-label={t('Preview UI')}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>preview</span>
             </button>
@@ -770,21 +780,21 @@ const EntityCard = memo(function EntityCard({
                 onClick={() => api.togglePanel(entityKey, 'code')}
                 aria-pressed={codeOpen}
                 className={`p-1.5 rounded transition-colors ${codeOpen ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/10'}`}
-                title="The code this entity generates, from the last Explore preview"
-                aria-label="Generated code"
+                title={t('The code this entity generates, from the last Explore preview')}
+                aria-label={t('Generated code')}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>code</span>
               </button>
             )}
-            <button type="button" onClick={() => api.duplicateEntity(eIdx)} className={ICON_BTN} title="Duplicate entity" aria-label="Duplicate entity">
+            <button type="button" onClick={() => api.duplicateEntity(eIdx)} className={ICON_BTN} title={t('Duplicate entity')} aria-label={t('Duplicate entity')}>
               <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>content_copy</span>
             </button>
             <button
               type="button"
               onClick={() => api.removeEntity(eIdx)}
               className="p-1.5 rounded text-secondary hover:text-error hover:bg-error/10 transition-colors"
-              title="Remove entity"
-              aria-label="Remove entity"
+              title={t('Remove entity')}
+              aria-label={t('Remove entity')}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>delete</span>
             </button>
@@ -799,10 +809,10 @@ const EntityCard = memo(function EntityCard({
               onClick={() => api.togglePanel(entityKey, 'settings')}
               aria-expanded={settingsOpen}
               className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${settingsOpen || settingsChips.length > 0 ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/5'}`}
-              title="Display labels, schema / table name, SELECT-backed view"
+              title={t('Display labels, schema / table name, SELECT-backed view')}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>settings</span>
-              Settings
+              {t('Settings')}
             </button>
             {settingsChips.length > 0 && !settingsOpen && (
               <span className="text-[11px] text-secondary truncate max-w-[18rem]" title={settingsChips.join(' · ')} data-settings-summary>
@@ -815,28 +825,28 @@ const EntityCard = memo(function EntityCard({
             onClick={() => api.togglePanel(entityKey, 'overrides')}
             aria-expanded={overridesOpen}
             className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${overrideCount > 0 || overridesOpen ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/5'}`}
-            title="Turn a project-wide scaffolding option on or off for this entity only"
+            title={t('Turn a project-wide scaffolding option on or off for this entity only')}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>tune</span>
-            Overrides{overrideCount > 0 ? ` (${overrideCount})` : ''}
+            {t('Overrides')}{overrideCount > 0 ? ` (${overrideCount})` : ''}
           </button>
           <button
             type="button"
             onClick={() => api.togglePanel(entityKey, 'workflow')}
             aria-expanded={workflowOpen}
             className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${workflowChip || workflowOpen ? 'text-primary bg-primary/10' : 'text-secondary hover:text-primary hover:bg-primary/5'}`}
-            title={workflowChip ?? 'States, the steps between them, who may take each, and who a row is assigned to'}
+            title={workflowChip ?? t('States, the steps between them, who may take each, and who a row is assigned to')}
             data-workflow-toggle
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>account_tree</span>
-            Workflow{workflowChip ? ` (${entity.workflow!.transitions.length})` : ''}
+            {t('Workflow')}{workflowChip ? ` (${entity.workflow!.transitions.length})` : ''}
           </button>
           <div
             className="flex items-center gap-1.5 text-xs text-secondary shrink-0"
-            title="Which list views the generated page includes. A runtime toggle appears when you pick 2+; the first (Table > Cards > Kanban > Calendar) is the initial mode."
+            title={t('Which list views the generated page includes. A runtime toggle appears when you pick 2+; the first (Table > Cards > Kanban > Calendar) is the initial mode.')}
           >
-            <span>Views</span>
-            <div className="inline-flex rounded border border-outline-variant overflow-hidden" role="group" aria-label="List views">
+            <span>{t('Views')}</span>
+            <div className="inline-flex rounded border border-outline-variant overflow-hidden" role="group" aria-label={t('List views')}>
               {viewOptions.map(opt => {
                 const selected = views.includes(opt.key)
                 // Disabled blocks *adding* an unsupported view (an already-selected one can
@@ -844,7 +854,7 @@ const EntityCard = memo(function EntityCard({
                 // removing the last remaining view — a page needs at least one.
                 const lastRemaining = selected && views.length === 1
                 const interactive = (opt.applicable || selected) && !lastRemaining
-                const title = lastRemaining ? 'At least one view is required' : opt.applicable ? undefined : opt.hint
+                const title = lastRemaining ? t('At least one view is required') : opt.applicable ? undefined : opt.hint
                 return (
                   <button
                     key={opt.key}
@@ -863,7 +873,7 @@ const EntityCard = memo(function EntityCard({
           </div>
           {/* The headline of what this card generates, on the row that configures it. The
               breakdown (views / search / filters) is one disclosure down. */}
-          <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-secondary shrink-0" data-entity-summary>
+          <span className="ms-auto inline-flex items-center gap-1.5 text-[11px] text-secondary shrink-0" data-entity-summary dir="ltr">
             <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>api</span>
             <span className="font-semibold tracking-wide">{summary.verbs.join(' ')}</span>
             <code className="font-mono text-on-surface">{summary.path}</code>
@@ -878,16 +888,16 @@ const EntityCard = memo(function EntityCard({
         <details className="text-[11px]" data-entity-generates>
           <summary className="cursor-pointer select-none text-secondary hover:text-on-surface inline-flex items-center gap-1 flex-wrap">
             <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>list_alt</span>
-            Generates {summary.endpoints.length} endpoint{summary.endpoints.length === 1 ? '' : 's'}
+            {tn(summary.endpoints.length, 'Generates {n} endpoint', 'Generates {n} endpoints')}
             <span className="text-secondary/70">
-              {' · '}{summary.views.length} view{summary.views.length === 1 ? '' : 's'}
-              {' · '}{summary.search.length} searchable
-              {' · '}{summary.filters.length} filter{summary.filters.length === 1 ? '' : 's'}
+              {' · '}{tn(summary.views.length, '{n} list view', '{n} list views')}
+              {' · '}{t('{n} searchable', { n: summary.search.length })}
+              {' · '}{tn(summary.filters.length, '{n} filter', '{n} filters')}
             </span>
-            {summary.opts.length > 0 && <span className="text-secondary/70"> · {summary.opts.join(', ')}</span>}
+            {summary.opts.length > 0 && <span className="text-secondary/70"> · {summary.opts.map(o => (ENTITY_OPT_LABELS as Record<string, { label: string } | undefined>)[o]?.label ?? o).join(', ')}</span>}
           </summary>
           <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-            <ul className="grid grid-cols-1 gap-y-0.5 font-mono text-on-surface">
+            <ul className="grid grid-cols-1 gap-y-0.5 font-mono text-on-surface" dir="ltr">
               {summary.endpoints.map(ep => (
                 <li key={`${ep.method} ${ep.path}`} className="flex items-baseline gap-2 min-w-0">
                   <span className="w-14 shrink-0 text-[10px] font-bold tracking-wide text-secondary">{ep.method}</span>
@@ -896,11 +906,14 @@ const EntityCard = memo(function EntityCard({
               ))}
             </ul>
             <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-secondary">
-              <dt className="font-semibold">views</dt>
-              <dd className="text-on-surface">{summary.views.map(v => v.by ? `${v.name} (by ${v.by})` : v.name).join(', ')}</dd>
-              <dt className="font-semibold" title="Fields included in the text-search box">search</dt>
+              <dt className="font-semibold">{t('views')}</dt>
+              <dd className="text-on-surface">{summary.views.map(v => {
+                const name = viewOptions.find(o => o.key === v.name)?.label ?? v.name
+                return v.by ? t('{view} (by {field})', { view: name, field: v.by }) : name
+              }).join(', ')}</dd>
+              <dt className="font-semibold" title={t('Fields included in the text-search box')}>{t('search')}</dt>
               <dd className="text-on-surface">{summary.search.length ? summary.search.join(', ') : '—'}</dd>
-              <dt className="font-semibold" title="Fields that get a filter control">filters</dt>
+              <dt className="font-semibold" title={t('Fields that get a filter control')}>{t('filters')}</dt>
               <dd className="text-on-surface">{summary.filters.length ? summary.filters.join(', ') : '—'}</dd>
             </dl>
           </div>
@@ -929,8 +942,7 @@ const EntityCard = memo(function EntityCard({
       {overridesOpen && (
         <div className="rounded-lg border border-outline-variant bg-background/50 px-3 py-2.5 space-y-2" data-entity-overrides>
           <p className="text-[11px] text-secondary">
-            Per-entity overrides of the project-wide Options. <em>Inherit</em> follows the project setting
-            (shown in brackets); <em>On</em>/<em>Off</em> forces it for this entity only.
+            {t('Per-entity overrides of the project-wide Options. Inherit follows the project setting (shown in brackets); On/Off forces it for this entity only.')}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {FULLSTACK_ENTITY_OPT_KEYS.map(key => {
@@ -950,20 +962,20 @@ const EntityCard = memo(function EntityCard({
                       <span className="text-[10px] text-secondary truncate">{ENTITY_OPT_LABELS[key].hint}</span>
                     </span>
                     <select
-                      aria-label={`${ENTITY_OPT_LABELS[key].label} override`}
+                      aria-label={t('{option} override', { option: ENTITY_OPT_LABELS[key].label })}
                       className={`bg-background border rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-primary/20 ${current === 'inherit' ? 'border-outline-variant text-secondary' : 'border-primary/50 text-on-surface'}`}
                       value={current}
                       onChange={e => api.setEntityOpt(eIdx, key, e.target.value === 'inherit' ? undefined : e.target.value === 'on')}
                     >
-                      <option value="inherit">Inherit ({projectOn ? 'on' : 'off'})</option>
-                      <option value="on">On</option>
-                      <option value="off">Off</option>
+                      <option value="inherit">{projectOn ? t('Inherit (on)') : t('Inherit (off)')}</option>
+                      <option value="on">{t('On')}</option>
+                      <option value="off">{t('Off')}</option>
                     </select>
                   </span>
                   {noEffect && (
                     <span data-opt-no-effect className={`inline-flex items-center gap-1 text-[10px] ${value === true ? 'text-warning' : 'text-secondary'}`}>
                       <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>info</span>
-                      Has no effect: {noEffect}
+                      {t('Has no effect: {reason}', { reason: noEffect })}
                     </span>
                   )}
                 </label>
@@ -973,15 +985,15 @@ const EntityCard = memo(function EntityCard({
           {/* The flags that have no per-entity switch, with their project value, so nobody
               hunts this panel for an OpenAPI or demo-data override that cannot exist. */}
           <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-secondary border-t border-outline-variant pt-2" data-project-only-opts>
-            <span>Project-wide only:</span>
+            <span>{t('Project-wide only:')}</span>
             {PROJECT_ONLY_OPTS.map((opt, i) => (
               <span key={opt.value}>
-                {opt.label} <span className="font-mono">({projectOpts.includes(opt.value) ? 'on' : 'off'})</span>{i < PROJECT_ONLY_OPTS.length - 1 ? ',' : '.'}
+                {opt.label} <span className="font-mono">({projectOpts.includes(opt.value) ? t('on') : t('off')})</span>{i < PROJECT_ONLY_OPTS.length - 1 ? ',' : '.'}
               </span>
             ))}
             {onGoToOptions && (
               <button type="button" onClick={onGoToOptions} className="font-semibold text-primary underline hover:no-underline">
-                Go to Options
+                {t('Go to Options')}
               </button>
             )}
           </p>
@@ -1031,14 +1043,14 @@ const EntityCard = memo(function EntityCard({
           <thead>
             <tr className="text-[11px] font-bold uppercase tracking-wider text-secondary">
               <th className="w-6"></th>
-              <th className={`text-left ${cell}`}>Name</th>
-              <th className={`text-left ${cell}`}>Type</th>
-              {!compact && <th className={`text-left ${cell}`} title="Display label for the generated UI (defaults to the field name)">Label</th>}
-              <th className={`text-center ${cell} w-12`} title="Primary key (@Id). Tick more than one for a composite key.">PK</th>
-              <th className={`text-center ${cell} w-12`} title="Generated by the database on insert (IDENTITY for LONG/INTEGER, UUID generator for UUID). Primary key only.">Gen</th>
-              <th className={`text-center ${cell} w-12`} title="Required: NOT NULL column + @NotNull/@NotBlank on the DTO + a required form field">Req</th>
-              <th className={`text-center ${cell} w-12`} title="Unique: a unique constraint on the column; a duplicate value answers 409">Uniq</th>
-              <th className={`text-left ${cell}`} title="Constraints, default value, lock-after-create, search / filter inclusion">More</th>
+              <th className={`text-start ${cell}`}>{t('Name')}</th>
+              <th className={`text-start ${cell}`}>{t('Type')}</th>
+              {!compact && <th className={`text-start ${cell}`} title={t('Display label for the generated UI (defaults to the field name)')}>{t('Label')}</th>}
+              <th className={`text-center ${cell} w-12`} title={t('Primary key (@Id). Tick more than one for a composite key.')}>PK</th>
+              <th className={`text-center ${cell} w-12`} title={t('Generated by the database on insert (IDENTITY for LONG/INTEGER, UUID generator for UUID). Primary key only.')}>{t('Gen')}</th>
+              <th className={`text-center ${cell} w-12`} title={t('Required: NOT NULL column + @NotNull/@NotBlank on the DTO + a required form field')}>{t('Req')}</th>
+              <th className={`text-center ${cell} w-12`} title={t('Unique: a unique constraint on the column; a duplicate value answers 409')}>{t('Uniq')}</th>
+              <th className={`text-start ${cell}`} title={t('Constraints, default value, lock-after-create, search / filter inclusion')}>{t('More')}</th>
               <th className="w-8"></th>
             </tr>
           </thead>
@@ -1076,13 +1088,13 @@ const EntityCard = memo(function EntityCard({
                 data-row-uid={field.uid}
                 {...dnd.rowProps(fieldList, fIdx)}
               >
-                <td className="py-1.5 pl-1 align-top">
+                <td className="py-1.5 ps-1 align-top">
                   {entity.fields.length > 1 && (
                     <span
                       {...dnd.handleProps(fieldList, fIdx)}
                       role="button"
-                      aria-label="Drag to reorder field"
-                      title="Drag to reorder (field order = column / form order in the generated app)"
+                      aria-label={t('Drag to reorder field')}
+                      title={t('Drag to reorder (field order = column / form order in the generated app)')}
                       className="material-symbols-outlined cursor-grab active:cursor-grabbing text-secondary/60 hover:text-secondary select-none"
                       style={{ fontSize: '16px' }}
                     >
@@ -1093,7 +1105,8 @@ const EntityCard = memo(function EntityCard({
                 <td className={`${cell} align-top`}>
                   <input
                     type="text"
-                    aria-label="Field name"
+                    dir="ltr"
+                    aria-label={t('Field name')}
                     aria-invalid={Boolean(fErr?.name)}
                     className={`w-full bg-background border rounded px-2 py-1 text-xs font-mono focus:ring-1 outline-none ${fErr?.name ? 'border-error focus:ring-error/20 focus:border-error' : 'border-outline-variant focus:ring-primary/20 focus:border-primary'}`}
                     value={field.name}
@@ -1104,45 +1117,46 @@ const EntityCard = memo(function EntityCard({
                 </td>
                 <td className={`${cell} align-top`}>
                   <select
-                    aria-label="Field type"
+                    aria-label={t('Field type')}
                     className="w-full bg-background border border-outline-variant rounded px-2 py-1 text-xs focus:ring-1 focus:ring-primary/20 focus:border-primary outline-none"
                     value={field.type}
                     onChange={e => api.changeFieldType(eIdx, fIdx, e.target.value as FullstackFieldType)}
                   >
-                    {FIELD_TYPES.map(t => <option key={t} value={t}>{FIELD_TYPE_LABELS[t] ?? t}</option>)}
+                    {FIELD_TYPES.map(type => <option key={type} value={type}>{FIELD_TYPE_LABELS[type] ?? type}</option>)}
                   </select>
                 </td>
                 {!compact && (
                   <td className={`${cell} align-top`}>
                     <input
                       type="text"
-                      aria-label="Display label"
+                      dir="auto"
+                      aria-label={t('Display label')}
                       className="w-full bg-background border border-outline-variant rounded px-2 py-1 text-xs focus:ring-1 focus:ring-primary/20 focus:border-primary outline-none"
                       value={field.label ?? ''}
                       onChange={e => api.updateField(eIdx, fIdx, { label: e.target.value || undefined })}
-                      placeholder={field.name || 'label'}
-                      title="Display label for the generated UI. Leave blank to derive from the field name."
+                      placeholder={field.name || t('label')}
+                      title={t('Display label for the generated UI. Leave blank to derive from the field name.')}
                     />
                   </td>
                 )}
                 <td className={`${cell} text-center align-top`}>
-                  <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Primary key" checked={!!field.primaryKey}
+                  <input type="checkbox" className="h-4 w-4 accent-primary" aria-label={t('Primary key')} checked={!!field.primaryKey}
                     onChange={e => api.updateField(eIdx, fIdx, e.target.checked ? { primaryKey: true } : { primaryKey: false, generated: undefined })} />
                 </td>
                 <td className={`${cell} text-center align-top`}>
-                  <input type="checkbox" aria-label="Auto-generated value" checked={!!field.generated}
+                  <input type="checkbox" aria-label={t('Auto-generated value')} checked={!!field.generated}
                     disabled={!canGenerate}
-                    title={canGenerate ? undefined : (pkCount > 1 ? 'A generated key requires a single primary key' : 'Auto-generated applies to a LONG/INTEGER/UUID primary key only')}
+                    title={canGenerate ? undefined : (pkCount > 1 ? t('A generated key requires a single primary key') : t('Auto-generated applies to a LONG/INTEGER/UUID primary key only'))}
                     className="h-4 w-4 accent-primary disabled:opacity-40 disabled:cursor-not-allowed"
                     onChange={e => api.updateField(eIdx, fIdx, { generated: e.target.checked })} />
                   {fErr?.generated && <p className="mt-0.5 text-[11px] text-error">{fErr.generated}</p>}
                 </td>
                 <td className={`${cell} text-center align-top`}>
-                  <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Required (not null)" checked={!!field.required}
+                  <input type="checkbox" className="h-4 w-4 accent-primary" aria-label={t('Required (not null)')} checked={!!field.required}
                     onChange={e => api.updateField(eIdx, fIdx, { required: e.target.checked })} />
                 </td>
                 <td className={`${cell} text-center align-top`}>
-                  <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Unique" checked={!!field.unique}
+                  <input type="checkbox" className="h-4 w-4 accent-primary" aria-label={t('Unique')} checked={!!field.unique}
                     onChange={e => api.updateField(eIdx, fIdx, { unique: e.target.checked })} />
                 </td>
                 <td className={`${cell} align-top`}>
@@ -1152,8 +1166,8 @@ const EntityCard = memo(function EntityCard({
                         type="button"
                         onClick={() => api.toggleExpand(rowKey)}
                         aria-expanded={isOpen}
-                        aria-label={isOpen ? 'Hide field details' : 'Edit field details'}
-                        title={hasErr ? 'Problem in this field — fix below' : isOpen ? 'Hide' : 'Constraints, default, lock, search / filter'}
+                        aria-label={isOpen ? t('Hide field details') : t('Edit field details')}
+                        title={hasErr ? t('Problem in this field — fix below') : isOpen ? t('Hide') : t('Constraints, default, lock, search / filter')}
                         className={`inline-flex items-center gap-1 px-1.5 py-1 rounded text-[11px] font-medium transition-colors ${
                           hasErr ? 'text-error hover:bg-error/10' : 'text-secondary hover:text-primary hover:bg-primary/10'}`}
                       >
@@ -1163,30 +1177,30 @@ const EntityCard = memo(function EntityCard({
                         {hasErr && <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>error</span>}
                       </button>
                     ) : (
-                      <span className="text-secondary/40 px-1.5" title="A generated key takes no constraints or default" aria-hidden="true">—</span>
+                      <span className="text-secondary/40 px-1.5" title={t('A generated key takes no constraints or default')} aria-hidden="true">—</span>
                     )}
                     {!isOpen && <FieldChips field={field} includeLabel={compact} onOpen={() => api.expand(rowKey)} />}
                   </div>
                 </td>
-                <td className={`${cell} text-right align-top`}>
+                <td className={`${cell} text-end align-top`}>
                   <div className="flex items-center justify-end gap-0.5">
                     <button type="button" onClick={() => api.moveField(eIdx, fIdx, -1)} disabled={fIdx === 0} className={SMALL_ICON_BTN}
-                            title="Move field up (earlier column / form row)" aria-label="Move field up">
+                            title={t('Move field up (earlier column / form row)')} aria-label={t('Move field up')}>
                       <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_upward</span>
                     </button>
                     <button type="button" onClick={() => api.moveField(eIdx, fIdx, 1)} disabled={fIdx === entity.fields.length - 1} className={SMALL_ICON_BTN}
-                            title="Move field down" aria-label="Move field down">
+                            title={t('Move field down')} aria-label={t('Move field down')}>
                       <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_downward</span>
                     </button>
-                    <button type="button" onClick={() => api.duplicateField(eIdx, fIdx)} className={SMALL_ICON_BTN} title="Duplicate field" aria-label="Duplicate field">
+                    <button type="button" onClick={() => api.duplicateField(eIdx, fIdx)} className={SMALL_ICON_BTN} title={t('Duplicate field')} aria-label={t('Duplicate field')}>
                       <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>content_copy</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => api.removeField(eIdx, fIdx)}
                       className="p-1 rounded text-secondary hover:text-error hover:bg-error/10 transition-colors"
-                      title="Remove field"
-                      aria-label="Remove field"
+                      title={t('Remove field')}
+                      aria-label={t('Remove field')}
                     >
                       <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
                     </button>
@@ -1222,17 +1236,17 @@ const EntityCard = memo(function EntityCard({
             className="inline-flex items-center gap-1 px-3 py-1 rounded text-xs text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
-            Add field
+            {t('Add field')}
           </button>
           <button
             type="button"
             onClick={() => api.setQuickAddFor(prev => prev === entityKey ? null : entityKey)}
             aria-expanded={quickAddOpen}
             className="inline-flex items-center gap-1 px-3 py-1 rounded text-xs text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
-            title="Add many fields at once from a pasted list (one per line)"
+            title={t('Add many fields at once from a pasted list (one per line)')}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>playlist_add</span>
-            Paste fields…
+            {t('Paste fields…')}
           </button>
         </div>
         {quickAddOpen && (
@@ -1250,15 +1264,15 @@ const EntityCard = memo(function EntityCard({
         fieldNames={entity.fields.map(f => f.name)}
         onChange={rels => api.updateRelations(eIdx, rels)}
         onRemoved={(rel, rIdx) => onNotice?.(
-          `Removed relation ${rel.fieldName.trim() || '(unnamed)'} from ${entity.name.trim() || '(unnamed)'}`,
-          { label: 'Undo', onClick: () => api.restoreRelation(entity.uid, rel, rIdx) },
+          t('Removed relation {relation} from {entity}', { relation: rel.fieldName.trim() || t('(unnamed)'), entity: entity.name.trim() || t('(unnamed)') }),
+          { label: t('Undo'), onClick: () => api.restoreRelation(entity.uid, rel, rIdx) },
         )}
         onAddJoinEntity={isView || !entity.name.trim() ? undefined : target => api.addJoinEntity(eIdx, target)}
         errors={eErr?.relations}
         ownerName={entity.name}
         showInverse={projectOpts.includes('inverseCollections')}
         addDisabledReason={isView
-          ? 'A SELECT-backed view maps to a query, not a table, so it cannot own a foreign key.'
+          ? t('A SELECT-backed view maps to a query, not a table, so it cannot own a foreign key.')
           : undefined}
       />
       </>)}
@@ -1298,124 +1312,130 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
   return (
     <div className="flex flex-wrap items-start gap-x-5 gap-y-3 rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-3" data-field-more>
       {showLabel && (
-        <ConstraintBox label="Display label" wide>
+        <ConstraintBox label={t('Display label')} wide>
           <input
             type="text"
-            aria-label="Display label"
+            dir="auto"
+            aria-label={t('Display label')}
             className={inputClass()}
             value={field.label ?? ''}
             onChange={e => onUpdate({ label: e.target.value || undefined })}
-            placeholder={field.name || 'label'}
-            title="Display label for the generated UI. Leave blank to derive from the field name."
+            placeholder={field.name || t('label')}
+            title={t('Display label for the generated UI. Leave blank to derive from the field name.')}
           />
         </ConstraintBox>
       )}
       {showColumn && (
-        <ConstraintBox label="DB column" error={fErr?.column}>
+        <ConstraintBox label={t('DB column')} error={fErr?.column}>
           <input
             type="text"
-            aria-label="DB column"
+            dir="ltr"
+            aria-label={t('DB column')}
             aria-invalid={Boolean(fErr?.column)}
             className={`${inputClass(fErr?.column)} font-mono`}
             value={field.column ?? ''}
             onChange={e => onUpdate({ column: e.target.value || undefined })}
-            placeholder={toSnakeCase(field.name.trim()) || 'column'}
-            title="The database column, exactly as the schema spells it. Leave blank to derive it from the field name. Filled in by Import from DDL."
+            placeholder={toSnakeCase(field.name.trim()) || t('column')}
+            title={t('The database column, exactly as the schema spells it. Leave blank to derive it from the field name. Filled in by Import from DDL.')}
           />
         </ConstraintBox>
       )}
       {!(field.primaryKey && field.generated) && (
-        <ConstraintBox label="Help text" wide error={fErr?.help}>
+        <ConstraintBox label={t('Help text')} wide error={fErr?.help}>
           <input
             type="text"
-            aria-label="Help text"
+            dir="auto"
+            aria-label={t('Help text')}
             aria-invalid={Boolean(fErr?.help)}
             className={inputClass(fErr?.help)}
             value={field.help ?? ''}
             maxLength={MAX_HELP + 50}
             onChange={e => onUpdate({ help: e.target.value === '' ? undefined : e.target.value })}
-            placeholder="Shown under the input"
-            title="A hint under the field's input in the generated form."
+            placeholder={t('Shown under the input')}
+            title={t("A hint under the field's input in the generated form.")}
             data-field-help
           />
         </ConstraintBox>
       )}
       {(field.type === 'FILE' || field.type === 'IMAGE') && !field.primaryKey && (
-        <ConstraintBox label="Several files" error={fErr?.maxFiles}>
+        <ConstraintBox label={t('Several files')} error={fErr?.maxFiles}>
           <span className="flex items-center gap-2" data-field-several-files>
             <input
               type="checkbox"
-              aria-label="Several files"
+              aria-label={t('Several files')}
               checked={field.maxFiles != null}
               onChange={e => onUpdate({ maxFiles: e.target.checked ? 10 : undefined })}
-              title="The field holds a list of files instead of one (kept in a table of its own)."
+              title={t('The field holds a list of files instead of one (kept in a table of its own).')}
             />
             {field.maxFiles != null && (
               <input
                 type="number"
                 min={1}
                 max={MAX_FILES}
-                aria-label="At most"
+                aria-label={t('At most')}
                 aria-invalid={Boolean(fErr?.maxFiles)}
                 className={`${inputClass(fErr?.maxFiles)} w-20`}
                 value={field.maxFiles}
                 onChange={e => onUpdate({ maxFiles: e.target.value === '' ? 1 : Number(e.target.value) })}
-                title={`At most this many files (1–${MAX_FILES}).`}
+                title={t('At most this many files (1–{max}).', { max: MAX_FILES })}
               />
             )}
           </span>
         </ConstraintBox>
       )}
       {!field.primaryKey && (
-        <ConstraintBox label="Show when" wide error={fErr?.showWhen}>
+        <ConstraintBox label={t('Show when')} wide error={fErr?.showWhen}>
           <input
             type="text"
-            aria-label="Show when"
+            dir="ltr"
+            aria-label={t('Show when')}
             aria-invalid={Boolean(fErr?.showWhen)}
             className={`${inputClass(fErr?.showWhen)} font-mono`}
             value={field.showWhen ?? ''}
             spellCheck={false}
             onChange={e => onUpdate({ showWhen: e.target.value === '' ? undefined : e.target.value })}
-            placeholder="always — or e.g. status == 'REJECTED'"
-            title="Shown in the form only while this holds; a save clears the field while it does not. A required field is required only while shown."
+            placeholder={t("always — or e.g. status == 'REJECTED'")}
+            title={t('Shown in the form only while this holds; a save clears the field while it does not. A required field is required only while shown.')}
             data-field-show-when
           />
         </ConstraintBox>
       )}
       {!field.primaryKey && (
-        <ConstraintBox label="Computed as" wide error={fErr?.formula}>
+        <ConstraintBox label={t('Computed as')} wide error={fErr?.formula}>
           <input
             type="text"
-            aria-label="Computed as"
+            dir="ltr"
+            aria-label={t('Computed as')}
             aria-invalid={Boolean(fErr?.formula)}
             className={`${inputClass(fErr?.formula)} font-mono`}
             value={field.formula ?? ''}
             spellCheck={false}
             onChange={e => onUpdate({ formula: e.target.value === '' ? undefined : e.target.value })}
-            placeholder="entered — or e.g. quantity * unitPrice"
-            title="Computed by the server on every save from the row's other fields (a stored column). The form shows it read-only."
+            placeholder={t('entered — or e.g. quantity * unitPrice')}
+            title={t("Computed by the server on every save from the row's other fields (a stored column). The form shows it read-only.")}
             data-field-formula
           />
         </ConstraintBox>
       )}
       {takesConstraints && isString && (
         <>
-          <ConstraintBox label="Max length" error={fErr?.length}>
+          <ConstraintBox label={t('Max length')} error={fErr?.length}>
             <input
               type="number"
               min={1}
-              aria-label="Max length"
+              aria-label={t('Max length')}
               aria-invalid={Boolean(fErr?.length)}
               className={inputClass(fErr?.length)}
               value={field.length ?? ''}
-              placeholder="e.g. 200"
+              placeholder={t('e.g. 200')}
               onChange={e => onUpdate({ length: e.target.value === '' ? undefined : Number(e.target.value) })}
             />
           </ConstraintBox>
-          <ConstraintBox label="Pattern (regex)" error={fErr?.pattern} wide>
+          <ConstraintBox label={t('Pattern (regex)')} error={fErr?.pattern} wide>
             <input
               type="text"
-              aria-label="Regex pattern"
+              dir="ltr"
+              aria-label={t('Regex pattern')}
               aria-invalid={Boolean(fErr?.pattern)}
               className={`${inputClass(fErr?.pattern)} font-mono`}
               value={field.pattern ?? ''}
@@ -1427,30 +1447,30 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
             <input
               type="checkbox"
               className="h-4 w-4 accent-primary"
-              aria-label="Email format"
+              aria-label={t('Email format')}
               checked={!!field.email}
               onChange={e => onUpdate({ email: e.target.checked })}
             />
-            Email format
+            {t('Email format')}
           </label>
         </>
       )}
       {takesConstraints && isNumeric && (
         <>
-          <ConstraintBox label="Min" error={fErr?.min}>
+          <ConstraintBox label={t('Min')} error={fErr?.min}>
             <input
               type="number"
-              aria-label="Minimum value"
+              aria-label={t('Minimum value')}
               aria-invalid={Boolean(fErr?.min)}
               className={inputClass(fErr?.min)}
               value={field.min ?? ''}
               onChange={e => onUpdate({ min: e.target.value === '' ? undefined : Number(e.target.value) })}
             />
           </ConstraintBox>
-          <ConstraintBox label="Max" error={fErr?.max}>
+          <ConstraintBox label={t('Max')} error={fErr?.max}>
             <input
               type="number"
-              aria-label="Maximum value"
+              aria-label={t('Maximum value')}
               aria-invalid={Boolean(fErr?.max)}
               className={inputClass(fErr?.max)}
               value={field.max ?? ''}
@@ -1460,7 +1480,7 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
         </>
       )}
       {takesConstraints && field.type === 'ENUM' && (
-        <ConstraintBox label="Enum values" error={fErr?.enumValues} wide>
+        <ConstraintBox label={t('Enum values')} error={fErr?.enumValues} wide>
           <EnumValuesEditor
             values={field.enumValues ?? []}
             onChange={vals => onUpdate({ enumValues: vals, enumLabels: pruneLabels(field.enumLabels, vals) })}
@@ -1471,48 +1491,49 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
         </ConstraintBox>
       )}
       {field.type === 'MONEY' && (
-        <ConstraintBox label="Currency" error={fErr?.currency}>
+        <ConstraintBox label={t('Currency')} error={fErr?.currency}>
           <input
-            aria-label="Currency"
+            dir="ltr"
+            aria-label={t('Currency')}
             aria-invalid={Boolean(fErr?.currency)}
             className={inputClass(fErr?.currency)}
             value={field.currency ?? ''}
             placeholder={DEFAULT_CURRENCY}
             maxLength={3}
-            title="ISO 4217 code the amounts are printed in (ILS, USD, EUR…). Blank = ILS."
+            title={t('ISO 4217 code the amounts are printed in (ILS, USD, EUR…). Blank = ILS.')}
             onChange={e => onUpdate({ currency: e.target.value.trim() === '' ? undefined : e.target.value.toUpperCase() })}
           />
         </ConstraintBox>
       )}
       {takesConstraints && (
-        <ConstraintBox label="Default value" error={fErr?.defaultValue}>
+        <ConstraintBox label={t('Default value')} error={fErr?.defaultValue}>
           <DefaultValueInput field={field} invalid={Boolean(fErr?.defaultValue)} className={inputClass(fErr?.defaultValue)}
             onChange={v => onUpdate({ defaultValue: v === '' ? undefined : v })} />
         </ConstraintBox>
       )}
       {hasBehaviour && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 basis-full pt-1 border-t border-outline-variant/60" data-field-behaviour>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Behaviour</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('Behaviour')}</span>
           {!field.primaryKey && (
             <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer"
-                   title="Locked after create: set when a row is created and can't be edited afterwards (form disables it, the service never overwrites it)">
-              <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Locked after create" checked={!!field.readOnly}
+                   title={t("Locked after create: set when a row is created and can't be edited afterwards (form disables it, the service never overwrites it)")}>
+              <input type="checkbox" className="h-4 w-4 accent-primary" aria-label={t('Locked after create')} checked={!!field.readOnly}
                 onChange={e => onUpdate({ readOnly: e.target.checked || undefined })} />
-              Locked after create
+              {t('Locked after create')}
             </label>
           )}
           {isTextSearch && (
-            <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer" title="Include this field in the text-search box">
-              <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Include in search" checked={field.searchable !== false}
+            <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer" title={t('Include this field in the text-search box')}>
+              <input type="checkbox" className="h-4 w-4 accent-primary" aria-label={t('Include in search')} checked={field.searchable !== false}
                 onChange={e => onUpdate({ searchable: e.target.checked ? undefined : false })} />
-              In search
+              {t('In search')}
             </label>
           )}
           {isFilterableType && (
-            <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer" title="Include this field in the filter bar">
-              <input type="checkbox" className="h-4 w-4 accent-primary" aria-label="Include in filter bar" checked={field.filterable !== false}
+            <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer" title={t('Include this field in the filter bar')}>
+              <input type="checkbox" className="h-4 w-4 accent-primary" aria-label={t('Include in filter bar')} checked={field.filterable !== false}
                 onChange={e => onUpdate({ filterable: e.target.checked ? undefined : false })} />
-              In filter bar
+              {t('In filter bar')}
             </label>
           )}
         </div>
@@ -1527,11 +1548,11 @@ function DefaultValueInput({ field, invalid, className, onChange }: {
   field: FullstackFieldDef; invalid: boolean; className: string; onChange: (v: string) => void
 }) {
   const value = field.defaultValue ?? ''
-  const common = { 'aria-label': 'Default value', 'aria-invalid': invalid, className, title: 'Initial value: entity field initializer, the form\'s starting value and the demo-data seed' }
+  const common = { 'aria-label': t('Default value'), 'aria-invalid': invalid, className, title: t("Initial value: entity field initializer, the form's starting value and the demo-data seed") }
   if (field.type === 'BOOLEAN') {
     return (
       <select {...common} value={value.toLowerCase()} onChange={e => onChange(e.target.value)}>
-        <option value="">none</option>
+        <option value="">{t('none')}</option>
         <option value="true">true</option>
         <option value="false">false</option>
       </select>
@@ -1540,7 +1561,7 @@ function DefaultValueInput({ field, invalid, className, onChange }: {
   if (field.type === 'ENUM') {
     return (
       <select {...common} value={value} onChange={e => onChange(e.target.value)}>
-        <option value="">none</option>
+        <option value="">{t('none')}</option>
         {(field.enumValues ?? []).map(v => <option key={v} value={v}>{field.enumLabels ? `${v} — ${enumLabel(field, v)}` : v}</option>)}
         {value && !(field.enumValues ?? []).includes(value) && <option value={value}>{value}</option>}
       </select>
@@ -1552,7 +1573,7 @@ function DefaultValueInput({ field, invalid, className, onChange }: {
   const placeholder = field.type === 'UUID' ? '00000000-0000-…'
     : field.type === 'LONG' || field.type === 'INTEGER' ? '0'
     : isDecimalType(field.type) ? '0.00'
-    : field.type === 'INSTANT' ? '2026-01-31T08:00:00Z' : 'none'
+    : field.type === 'INSTANT' ? '2026-01-31T08:00:00Z' : t('none')
   return (
     <input {...common} type="text" inputMode={isTextualType(field.type) ? undefined : 'decimal'}
       value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)} />

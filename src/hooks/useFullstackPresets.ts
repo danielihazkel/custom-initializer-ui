@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { isSnapshot, snapshotsEqual, type FullstackSnapshot } from '../components/fullstack/snapshot'
+import { t } from '../i18n'
 
 const PRESETS_KEY = 'fullstackProjectPresets'
 const RECENTS_KEY = 'fullstackRecentProjects'
@@ -62,7 +63,7 @@ export function useFullstackPresets() {
   const savePreset = useCallback((name: string, snapshot: FullstackSnapshot): { preset: FullstackPreset; persisted: boolean } => {
     const preset: FullstackPreset = {
       id: makeId(),
-      name: name.trim() || 'Untitled preset',
+      name: name.trim() || t('Untitled preset'),
       createdAt: Date.now(),
       snapshot,
     }

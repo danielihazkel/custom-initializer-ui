@@ -8,6 +8,7 @@ import { GuideCallout } from './GuideCallout'
 import { GuideCodeBlock } from './GuideCodeBlock'
 import { GuideWorkflowStepper } from './GuideWorkflowStepper'
 import { parseMarkdown } from './guide-markdown'
+import { setLang as setSiteLang, useLang } from '../../i18n'
 
 interface GuideViewProps {
   onClose?: () => void
@@ -82,9 +83,8 @@ const renderContent = (content: string, isRtl: boolean) => {
 }
 
 export function GuideView({ initialTopic }: GuideViewProps) {
-  // Only 'he' is validated — any other persisted value would make `UI_STRINGS[lang]`
-  // undefined and crash the view.
-  const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('guide-lang') === 'he' ? 'he' : 'en'))
+  // The site's language: the toggle below switches the whole site, not the guide alone.
+  const lang: Lang = useLang()
   const [activeSection, setActiveSection] = useState<GuideSection>(GUIDE_SECTIONS[0])
   const [activeTopic, setActiveTopic] = useState<GuideTopic>(GUIDE_SECTIONS[0].topics[0])
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -158,11 +158,7 @@ export function GuideView({ initialTopic }: GuideViewProps) {
   }
 
   const handleLangToggle = () => {
-    setLang(l => {
-      const next: Lang = l === 'en' ? 'he' : 'en'
-      localStorage.setItem('guide-lang', next)
-      return next
-    })
+    void setSiteLang(lang === 'en' ? 'he' : 'en')
     setSearchQuery('')
   }
 

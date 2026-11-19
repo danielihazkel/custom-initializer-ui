@@ -1,5 +1,6 @@
 import type { FullstackFieldDef, FullstackFieldType } from '../../types'
 import { newUid } from './uid'
+import { t } from '../../i18n'
 
 /**
  * Parser behind "Paste fields": one field per line, so a 20-column entity is one paste instead of
@@ -132,19 +133,19 @@ export function parseQuickAdd(text: string): QuickAddResult {
             break
           }
           case 'type': {
-            const t = resolveType(value)
-            if (t) { field.type = t; typeSet = true } else problems.push(`unknown type '${value}'`)
+            const resolved = resolveType(value)
+            if (resolved) { field.type = resolved; typeSet = true } else problems.push(t("unknown type '{type}'", { type: value }))
             break
           }
-          default: problems.push(`unknown option '${key}'`)
+          default: problems.push(t("unknown option '{option}'", { option: key }))
         }
         if (['len', 'length', 'max_length', 'min', 'max'].includes(key) && Number.isNaN(Number(value))) {
-          problems.push(`'${key}' needs a number`)
+          problems.push(t("'{option}' needs a number", { option: key }))
         }
         continue
       }
-      if (typeMatch && !typeSet) problems.push(`unknown type '${typeMatch[1]}'`)
-      else problems.push(`unexpected '${token}'`)
+      if (typeMatch && !typeSet) problems.push(t("unknown type '{type}'", { type: typeMatch[1] }))
+      else problems.push(t("unexpected '{token}'", { token }))
     }
 
     if (field.type !== 'STRING' && field.length != null && !typeSet) field.length = undefined

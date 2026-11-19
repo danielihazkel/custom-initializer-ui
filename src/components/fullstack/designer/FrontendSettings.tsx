@@ -5,6 +5,7 @@ import { PalettePicker } from '../../shared/PalettePicker'
 import { SetDescription, SetLabel, inputClass } from '../controls'
 import { RTL_OPTION } from '../scaffoldOptions'
 import type { ProjectMeta } from '../snapshot'
+import { t } from '../../../i18n'
 
 /** Everything that decides how the generated React app looks, with its setters — owned by
  *  FullstackView (so undo, share links and drafts keep covering it) and edited in the layout
@@ -82,19 +83,19 @@ export function FrontendSettings({ appearance: a, hasPages, onEditStartDashboard
   const menora = isMenoraSet(a.currentFrontendSet, a.frontendSet)
   return (
     <div className="space-y-6" data-frontend-settings>
-      <Group title="Look" hint="The template set draws the whole app — its shell, navigation and components.">
+      <Group title={t('Look')} hint={t('The template set draws the whole app — its shell, navigation and components.')}>
         {a.setsError && (
           <div className="flex items-center justify-between gap-3 rounded border border-error/30 bg-error/10 px-3 py-2 text-[11px] text-error">
-            <span>Couldn't load template sets ({a.setsError}); showing defaults.</span>
+            <span>{t("Couldn't load template sets ({error}); showing defaults.", { error: a.setsError })}</span>
             <button type="button" onClick={a.loadTemplateSets} disabled={a.setsLoading} className="shrink-0 rounded-lg border border-error/40 px-2.5 py-1 text-xs font-medium hover:bg-error/10 disabled:opacity-60">
-              Retry
+              {t('Retry')}
             </button>
           </div>
         )}
         {a.setsLoading ? (
           <div className="h-[58px] animate-pulse rounded bg-surface-container-low" aria-hidden="true" />
         ) : a.frontendSets.length > 1 ? (
-          <div role="radiogroup" aria-label="Frontend template set" className="space-y-1.5" id="fs-frontendSet">
+          <div role="radiogroup" aria-label={t('Frontend template set')} className="space-y-1.5" id="fs-frontendSet">
             {a.frontendSets.map(s => {
               const on = s.setKey === a.frontendSet
               return (
@@ -109,8 +110,8 @@ export function FrontendSettings({ appearance: a, hasPages, onEditStartDashboard
                 >
                   <ShellSketch menora={isMenoraSet(s, s.setKey)} />
                   <span className="min-w-0">
-                    <span className="block text-xs font-semibold text-on-surface">{s.name}</span>
-                    {s.description?.trim() && <span className="line-clamp-2 text-[11px] text-secondary" title={s.description}>{s.description}</span>}
+                    <span dir="auto" className="block text-xs font-semibold text-on-surface">{s.name}</span>
+                    {s.description?.trim() && <span dir="auto" className="line-clamp-2 text-[11px] text-secondary" title={s.description}>{s.description}</span>}
                   </span>
                 </button>
               )
@@ -124,28 +125,28 @@ export function FrontendSettings({ appearance: a, hasPages, onEditStartDashboard
         )}
       </Group>
 
-      <Group title="Colours" hint={menora ? 'Menora Digital keeps its brand colours; the palette only feeds the success and danger accents.' : 'The shell, buttons and charts take the palette’s two colours.'}>
+      <Group title={t('Colours')} hint={menora ? t('Menora Digital keeps its brand colours; the palette only feeds the success and danger accents.') : t('The shell, buttons and charts take the palette’s two colours.')}>
         {a.feError && a.palettes.length === 0 && (
           <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-on-surface" data-palette-error>
-            <span>Couldn't load the colour palettes ({a.feError}); the generated app uses the set's default palette.</span>
-            <button type="button" onClick={a.reloadFe} className="shrink-0 rounded-lg border border-error/40 px-2.5 py-1 text-xs font-medium text-error hover:bg-error/10">Retry</button>
+            <span>{t("Couldn't load the colour palettes ({error}); the generated app uses the set's default palette.", { error: a.feError })}</span>
+            <button type="button" onClick={a.reloadFe} className="shrink-0 rounded-lg border border-error/40 px-2.5 py-1 text-xs font-medium text-error hover:bg-error/10">{t('Retry')}</button>
           </div>
         )}
         {a.palettes.length > 0 && (
           <PalettePicker
-            label="Frontend colour palette"
+            label={t('Frontend colour palette')}
             palettes={a.palettes}
             selectedId={a.effectivePalette}
             onChange={id => a.setColorPalette(id === a.setDefaultPalette ? '' : id)}
             caption={a.colorPalette
-              ? <button type="button" onClick={() => a.setColorPalette('')} className="underline hover:no-underline">use the set's default</button>
-              : '(set default)'}
+              ? <button type="button" onClick={() => a.setColorPalette('')} className="underline hover:no-underline">{t("use the set's default")}</button>
+              : t('(set default)')}
           />
         )}
       </Group>
 
-      <Group title="Language & direction" hint="The app's own words — menus, buttons, dialogs, empty states. Your entity and field labels stay exactly as typed.">
-        <div role="radiogroup" aria-label="Language" id="fs-locale" className="flex gap-0.5 rounded-lg border border-outline-variant bg-surface-container p-0.5">
+      <Group title={t('Language & direction')} hint={t("The app's own words — menus, buttons, dialogs, empty states. Your entity and field labels stay exactly as typed.")}>
+        <div role="radiogroup" aria-label={t('Language')} id="fs-locale" className="flex gap-0.5 rounded-lg border border-outline-variant bg-surface-container p-0.5">
           {([['en', 'English'], ['he', 'עברית']] as const).map(([value, label]) => (
             <button
               key={value}
@@ -168,20 +169,20 @@ export function FrontendSettings({ appearance: a, hasPages, onEditStartDashboard
         </label>
       </Group>
 
-      <Group title="Classic dashboard" hint={hasPages ? 'Your page layout is in charge: each dashboard page has its own title and description.' : 'The heading of the home page the app gets without a page layout.'}>
+      <Group title={t('Classic dashboard')} hint={hasPages ? t('Your page layout is in charge: each dashboard page has its own title and description.') : t('The heading of the home page the app gets without a page layout.')}>
         {hasPages ? (
           <div className="space-y-2" data-dashboard-meta-note>
-            <p className="text-[11px] text-secondary">These two only apply to the classic layout, so they are off while you have pages.</p>
+            <p className="text-[11px] text-secondary">{t('These two only apply to the classic layout, so they are off while you have pages.')}</p>
             {onEditStartDashboard && (
               <button type="button" onClick={onEditStartDashboard} className="text-xs font-semibold text-primary hover:underline">
-                Edit the dashboard page’s title
+                {t('Edit the dashboard page’s title')}
               </button>
             )}
           </div>
         ) : (
           <div className="space-y-3">
             <label className="block space-y-1" htmlFor="fs-dashboardTitle">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Dashboard title</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('Dashboard title')}</span>
               <input
                 id="fs-dashboardTitle"
                 className={inputClass()}
@@ -191,7 +192,7 @@ export function FrontendSettings({ appearance: a, hasPages, onEditStartDashboard
               />
             </label>
             <label className="block space-y-1" htmlFor="fs-dashboardOverview">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Dashboard overview</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('Dashboard overview')}</span>
               <input
                 id="fs-dashboardOverview"
                 className={inputClass()}

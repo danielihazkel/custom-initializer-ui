@@ -1,6 +1,7 @@
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import { defaultSearchEntities } from './newPageTypes'
 import { childTabEntity, relationsTo } from './pageLayout'
+import { t } from '../../i18n'
 
 /**
  * Where the generated app goes when a part of a page is clicked — what the layout designer's Play
@@ -84,7 +85,7 @@ export function buildPlayLinks(pages: FullstackPageDef[], entities: FullstackEnt
         return {
           ...base,
           row: opensRecord ? record : null,
-          rowNote: page.detail === 'side' ? 'Rows open in the pane beside the list' : opensRecord ? undefined : 'Rows open in a quick-look drawer — add a record page to open a page',
+          rowNote: page.detail === 'side' ? t('Rows open in the pane beside the list') : opensRecord ? undefined : t('Rows open in a quick-look drawer — add a record page to open a page'),
           create: links.createOf(page.entity),
         }
       }

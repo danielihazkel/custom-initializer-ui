@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { Highlight } from './shared/Highlight'
+import { t, useLang } from '../i18n'
 
 interface Props {
   id: string
@@ -39,6 +40,8 @@ export const DependencyCard = memo(function DependencyCard({
   id, name, description, versionBadge, versionTitle, isSelected, onToggle,
   nameRanges, descriptionRanges, wizard, favourite = false, onFavourite,
 }: Props) {
+  // Memoised: it re-renders by itself when the language changes.
+  useLang()
   return (
     <div className="relative group/card">
       <label
@@ -50,7 +53,7 @@ export const DependencyCard = memo(function DependencyCard({
       >
         <span
           aria-hidden="true"
-          className={`absolute left-0 top-0 bottom-0 w-1 bg-primary origin-center transition-transform duration-200 ${isSelected ? 'scale-y-100' : 'scale-y-0'}`}
+          className={`absolute start-0 top-0 bottom-0 w-1 bg-primary origin-center transition-transform duration-200 ${isSelected ? 'scale-y-100' : 'scale-y-0'}`}
         />
         <input
           type="checkbox"
@@ -70,11 +73,12 @@ export const DependencyCard = memo(function DependencyCard({
             </span>
           )}
         </div>
-        <div className={`flex-1 min-w-0 ${onFavourite ? 'pr-6' : ''}`}>
+        <div className={`flex-1 min-w-0 ${onFavourite ? 'pe-6' : ''}`}>
           <div className="text-sm font-bold text-on-surface flex items-center flex-wrap gap-2">
-            <span><Highlight text={name} ranges={nameRanges} /></span>
+            <span dir="auto"><Highlight text={name} ranges={nameRanges} /></span>
             {versionBadge && (
               <span
+                dir="ltr"
                 title={versionTitle}
                 className="text-[9px] font-bold text-secondary bg-surface-container px-1.5 py-0.5 rounded-full border border-outline-variant/50"
               >
@@ -83,17 +87,17 @@ export const DependencyCard = memo(function DependencyCard({
             )}
             {wizard && (
               <span
-                title={`Select it to generate code from ${wizard}`}
+                title={t('Select it to generate code from {wizard}', { wizard })}
                 className="inline-flex items-center gap-0.5 text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full border border-primary/25"
                 data-wizard-badge
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '11px' }} aria-hidden="true">auto_fix_high</span>
-                {wizard} wizard
+                {t('{wizard} wizard', { wizard })}
               </span>
             )}
           </div>
           {description && (
-            <div className="text-xs text-on-surface-variant leading-relaxed mt-1">
+            <div dir="auto" className="text-xs text-on-surface-variant leading-relaxed mt-1">
               <Highlight text={description} ranges={descriptionRanges} />
             </div>
           )}
@@ -104,9 +108,9 @@ export const DependencyCard = memo(function DependencyCard({
           type="button"
           onClick={() => onFavourite(id)}
           aria-pressed={favourite}
-          aria-label={favourite ? `Remove ${name} from favourites` : `Add ${name} to favourites`}
-          title={favourite ? 'Remove from favourites' : 'Add to favourites'}
-          className={`absolute top-2.5 right-2.5 p-1 rounded-lg transition-opacity hover:bg-surface-container ${
+          aria-label={favourite ? t('Remove {name} from favourites', { name }) : t('Add {name} to favourites', { name })}
+          title={favourite ? t('Remove from favourites') : t('Add to favourites')}
+          className={`absolute top-2.5 end-2.5 p-1 rounded-lg transition-opacity hover:bg-surface-container ${
             favourite ? 'text-warning opacity-100' : 'text-secondary opacity-0 group-hover/card:opacity-100 focus-visible:opacity-100'
           }`}
         >

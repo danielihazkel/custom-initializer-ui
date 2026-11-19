@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AdminFormDrawer } from './admin/shared/AdminFormDrawer'
 import { CodeEditor } from './admin/file-contributions/CodeEditor'
 import type { EventsChannelChoice, EventsWizardEntry } from '../types'
+import { isRtl, t } from '../i18n'
+import { codeText } from '../utils/codeText'
 
 interface Props {
   isOpen: boolean
@@ -99,7 +101,7 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
           if (!res.ok) {
             const body = await res.json().catch(() => ({} as Record<string, unknown>))
             const msgs = (body as { messages?: unknown }).messages
-            setParseError(Array.isArray(msgs) ? msgs.join('; ') : 'Invalid AsyncAPI document')
+            setParseError(Array.isArray(msgs) ? msgs.join('; ') : t('Invalid AsyncAPI document'))
             setChannels([])
             return
           }
@@ -109,7 +111,7 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
         })
         .catch(() => {
           if (controller.signal.aborted) return
-          setParseError('Could not reach backend to read the document')
+          setParseError(t('Could not reach backend to read the document'))
           setChannels([])
         })
     }, 400)
@@ -179,37 +181,39 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
 
   return (
     <AdminFormDrawer
-      title={`Events — ${depName}`}
+      title={t('Events — {dep}', { dep: depName })}
       isOpen={isOpen}
       onClose={onClose}
       onSave={handleSave}
       saving={false}
+      saveLabel={t('Save')}
+      cancelLabel={t('Cancel')}
+      closeLabel={t('Close')}
+      dir={isRtl() ? 'rtl' : 'ltr'}
     >
       <div className="space-y-4">
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/30 text-xs text-primary">
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>cell_tower</span>
           <span>
-            Paste an AsyncAPI 2.x or 3.x document (YAML or JSON). Each channel becomes a
-            {' '}<span className="font-bold">producer</span>, a <span className="font-bold">listener</span> or both,
-            and each payload a record. Messages travel as JSON.
+            {t('Paste an AsyncAPI 2.x or 3.x document (YAML or JSON). Each channel becomes a producer, a listener or both, and each payload a record. Messages travel as JSON.')}
           </span>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={LABEL} htmlFor="events-sub-package">Sub-package</label>
+            <label className={LABEL} htmlFor="events-sub-package">{t('Sub-package')}</label>
             <input id="events-sub-package" type="text" value={subPackage} onChange={e => setSubPackage(e.target.value)}
-              placeholder="events" className={INPUT} />
+              placeholder="events" className={INPUT} dir="ltr" />
           </div>
           <div>
-            <label className={LABEL} htmlFor="events-payload-package">Payload sub-package</label>
+            <label className={LABEL} htmlFor="events-payload-package">{t('Payload sub-package')}</label>
             <input id="events-payload-package" type="text" value={payloadSubPackage}
-              onChange={e => setPayloadSubPackage(e.target.value)} placeholder="events.model" className={INPUT} />
+              onChange={e => setPayloadSubPackage(e.target.value)} placeholder="events.model" className={INPUT} dir="ltr" />
           </div>
           <div className="col-span-2">
-            <label className={LABEL} htmlFor="events-group-id">Consumer group</label>
+            <label className={LABEL} htmlFor="events-group-id">{t('Consumer group')}</label>
             <input id="events-group-id" type="text" value={groupId} onChange={e => setGroupId(e.target.value)}
-              placeholder="the application's own (spring.kafka.consumer.group-id)" className={INPUT} />
+              placeholder={t("the application's own (spring.kafka.consumer.group-id)")} className={INPUT} />
           </div>
         </div>
 
@@ -217,56 +221,49 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
           <input type="checkbox" checked={generateTests} onChange={e => setGenerateTests(e.target.checked)}
             className="mt-0.5 accent-primary" />
           <span>
-            <span className="font-semibold text-on-surface">Generate tests</span>
+            <span className="font-semibold text-on-surface">{t('Generate tests')}</span>
             <span className="block text-[10px] text-on-surface-variant leading-relaxed">
-              A unit test per producer and listener: a payload out as JSON and back. No broker needed.
+              {t('A unit test per producer and listener: a payload out as JSON and back. No broker needed.')}
             </span>
           </span>
         </label>
 
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-bold uppercase tracking-widest text-secondary">AsyncAPI document</label>
+            <label className="text-xs font-bold uppercase tracking-widest text-secondary">{t('AsyncAPI document')}</label>
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => fileInputRef.current?.click()}
                 className="text-[10px] text-secondary hover:text-on-surface transition-colors">
-                Upload file…
+                {t('Upload file…')}
               </button>
               {spec.length > 0 && (
                 <button type="button" onClick={handleClear}
                   className="text-[10px] text-secondary hover:text-error transition-colors">
-                  Clear
+                  {t('Clear')}
                 </button>
               )}
             </div>
           </div>
           <input ref={fileInputRef} type="file" accept=".yaml,.yml,.json" className="hidden" onChange={handleFile} />
-          <CodeEditor value={spec} onChange={setSpec} targetPath="asyncapi.yaml" />
+          <div dir="ltr"><CodeEditor value={spec} onChange={setSpec} targetPath="asyncapi.yaml" /></div>
           <p className="text-[10px] text-on-surface-variant mt-1.5 leading-relaxed">
-            Producers and listeners go to <code className="text-primary">{subPackage || 'events'}</code>, payload
-            types to <code className="text-primary">{payloadSubPackage || 'events.model'}</code>. Each topic is a
-            property, <code className="text-primary">app.events.topics.&lt;channel&gt;</code>, set to the channel's
-            address. The <code className="text-primary">{depId}</code> dependency's own configuration is left as it is.
+            {codeText(t("Producers and listeners go to `{package}`, payload types to `{payloadPackage}`. Each topic is a property, `app.events.topics.<channel>`, set to the channel's address. The `{dep}` dependency's own configuration is left as it is.", { package: subPackage || 'events', payloadPackage: payloadSubPackage || 'events.model', dep: depId }))}
           </p>
           {channels.some(c => c.format === 'avro') && (
             <div className="mt-1 space-y-1.5" data-events-avro-note>
               <p className="text-[10px] text-on-surface-variant leading-relaxed">
-                Avro payloads become <code className="text-primary">.avsc</code> files under{' '}
-                <code className="text-primary">src/main/avro</code>, made into classes by the avro-maven-plugin at build
-                time.{' '}
+                {codeText(t('Avro payloads become `.avsc` files under `src/main/avro`, made into classes by the avro-maven-plugin at build time.'))}{' '}
                 {schemaRegistry
-                  ? <>They go through Confluent's schema registry (<code className="text-primary">SCHEMA_REGISTRY_URL</code>);
-                    the local run starts one beside Kafka.</>
-                  : <>They travel as bytes in Avro's single-object encoding with no schema registry, so both sides must
-                    hold the same schema.</>}
+                  ? codeText(t("They go through Confluent's schema registry (`SCHEMA_REGISTRY_URL`); the local run starts one beside Kafka."))
+                  : t("They travel as bytes in Avro's single-object encoding with no schema registry, so both sides must hold the same schema.")}
               </p>
               <label className="flex items-center gap-2 text-[10px]">
-                <span className="font-bold uppercase tracking-widest text-secondary">Avro through</span>
+                <span className="font-bold uppercase tracking-widest text-secondary">{t('Avro through')}</span>
                 <select value={schemaRegistry ?? ''} data-events-registry
                   onChange={e => setSchemaRegistry(e.target.value === 'confluent' ? 'confluent' : undefined)}
                   className="bg-surface-container-highest border border-outline-variant rounded px-2 py-1 text-[11px] text-on-surface">
-                  <option value="">No registry (single-object encoding)</option>
-                  <option value="confluent">Confluent schema registry</option>
+                  <option value="">{t('No registry (single-object encoding)')}</option>
+                  <option value="confluent">{t('Confluent schema registry')}</option>
                 </select>
               </label>
             </div>
@@ -283,22 +280,22 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
         {channels.length > 0 && (
           <div data-events-channels>
             <div className="flex items-center justify-between mb-2 gap-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-secondary">Channels</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-secondary">{t('Channels')}</label>
               <span className="text-[10px] font-bold py-0.5 px-2 bg-primary/10 text-primary rounded-full">
-                {chosen} of {channels.length}
+                {t('{chosen} of {total}', { chosen, total: channels.length })}
               </span>
             </div>
             <div className="flex items-center gap-2 mb-2 text-[10px]">
-              <span className="text-on-surface-variant">This project is</span>
+              <span className="text-on-surface-variant">{t('This project is')}</span>
               <button type="button" onClick={() => setChoices(null)} aria-pressed={choices === null}
                 className={'rounded-full border px-2 py-0.5 font-bold transition-all ' + (choices === null
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-outline-variant text-on-surface-variant hover:border-primary/60')}>
-                the application described
+                {t('the application described')}
               </button>
               <button type="button" onClick={() => setChoices(asOtherParty(channels))}
                 className="rounded-full border border-outline-variant px-2 py-0.5 font-bold text-on-surface-variant hover:border-primary/60 transition-all">
-                the other party
+                {t('the other party')}
               </button>
             </div>
             <div className="space-y-2 border border-outline-variant rounded-lg p-3 bg-surface-container-lowest">
@@ -308,10 +305,10 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
                   <div key={c.name} className="flex items-start justify-between gap-3 text-xs" data-channel={c.name}>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="font-mono font-semibold text-on-surface truncate">{c.address}</span>
+                        <span className="font-mono font-semibold text-on-surface truncate" dir="ltr">{c.address}</span>
                         {c.format === 'avro' && (
                           <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider py-px px-1.5 rounded-full bg-tertiary/15 text-tertiary"
-                            title={schemaRegistry ? 'Avro records through the schema registry' : 'Avro records in the single-object encoding, no schema registry'}
+                            title={schemaRegistry ? t('Avro records through the schema registry') : t('Avro records in the single-object encoding, no schema registry')}
                             data-channel-avro>
                             Avro
                           </span>
@@ -319,21 +316,23 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
                       </div>
                       <div className="text-[10px] text-on-surface-variant leading-relaxed">
                         {c.name !== c.address && <>{c.name} · </>}
-                        {c.messages.length > 0 ? c.messages.join(', ') : 'no message declared'}
+                        {c.messages.length > 0 ? c.messages.join(', ') : t('no message declared')}
                         {' · '}
-                        {c.sends && c.receives ? 'sent and received' : c.sends ? 'sent' : c.receives ? 'received' : 'no operation'}
-                        {' by the application'}
+                        {c.sends && c.receives ? t('sent and received by the application')
+                          : c.sends ? t('sent by the application')
+                          : c.receives ? t('received by the application')
+                          : t('no operation by the application')}
                       </div>
                       {(c.key === 'uuid' || (c.headers?.length ?? 0) > 0) && (
                         <div className="text-[10px] text-on-surface-variant leading-relaxed" data-channel-extras>
-                          {c.key === 'uuid' && <>UUID key</>}
+                          {c.key === 'uuid' && t('UUID key')}
                           {c.key === 'uuid' && (c.headers?.length ?? 0) > 0 && ' · '}
-                          {(c.headers?.length ?? 0) > 0 && <>headers: <span className="font-mono">{c.headers!.join(', ')}</span></>}
+                          {(c.headers?.length ?? 0) > 0 && <>{t('headers:')} <span className="font-mono" dir="ltr">{c.headers!.join(', ')}</span></>}
                         </div>
                       )}
                       {c.problem && (
                         <div className="text-[10px] text-warning leading-relaxed">
-                          No code can be written for it: {c.problem}.
+                          {t('No code can be written for it: {problem}.', { problem: c.problem })}
                         </div>
                       )}
                     </div>
@@ -343,8 +342,8 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
                           + (c.problem ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer')}>
                           <input type="checkbox" checked={state[side]} disabled={!!c.problem}
                             onChange={() => toggle(c.name, side)} className="accent-primary"
-                            aria-label={`${side === 'produce' ? 'Produce to' : 'Consume from'} ${c.name}`} />
-                          {side === 'produce' ? 'Produce' : 'Consume'}
+                            aria-label={side === 'produce' ? t('Produce to {channel}', { channel: c.name }) : t('Consume from {channel}', { channel: c.name })} />
+                          {side === 'produce' ? t('Produce') : t('Consume')}
                         </label>
                       ))}
                     </div>
@@ -354,7 +353,7 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
             </div>
             {chosen === 0 && (
               <p className="text-[10px] text-warning mt-1.5 leading-relaxed" data-events-none>
-                No channel is chosen: tick what this project produces to or consumes from.
+                {t('No channel is chosen: tick what this project produces to or consumes from.')}
               </p>
             )}
           </div>

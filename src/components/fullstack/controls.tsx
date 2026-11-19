@@ -55,7 +55,7 @@ export function Labeled({ label, htmlFor, error, hint, children }: {
 /** What a template set does, in the set's own words — the picker only names it. */
 export function SetDescription({ set }: { set?: EntityTemplateSetSummary }) {
   if (!set?.description?.trim()) return null
-  return <p className="text-[11px] text-on-surface-variant" data-set-description>{set.description}</p>
+  return <p dir="auto" className="text-[11px] text-on-surface-variant" data-set-description>{set.description}</p>
 }
 
 /** Stand-in for a one-option `<select>`: a single template set is not a choice, so it renders as
@@ -64,7 +64,7 @@ export function SetLabel({ name, setKey }: { name?: string; setKey: string }) {
   return (
     <div className="w-full bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-sm text-on-surface">
       {name ?? setKey}
-      <span className="ml-2 text-[11px] text-secondary font-mono">{setKey}</span>
+      <span className="ms-2 text-[11px] text-secondary font-mono" dir="ltr">{setKey}</span>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import type { FullstackEntityDef, FullstackEntityOptKey, FullstackFieldDef } from '../../types'
 import { pluralize, toKebabCase } from './naming'
 import { isDateType, isNumericType, isTextualType } from './fieldTypes'
+import { t } from '../../i18n'
 
 /** Whether each per-entity scaffold override can take effect on this entity, mirroring the
  *  `*Applicable` derivations in `EntityScaffoldContext.buildEntityContext`: audit/soft delete/bulk
@@ -13,26 +14,28 @@ export function entityOptApplicability(entity: FullstackEntityDef): EntityOptApp
   const mutable = !entity.readOnly && !entity.viewQuery?.trim()
   const composite = entity.fields.filter(f => f.primaryKey).length > 1
   const editable = entity.fields.some(f => !f.primaryKey && !f.readOnly)
-  const readOnlyReason = entity.viewQuery?.trim() ? 'SELECT-backed view' : 'read-only entity'
+  const readOnlyReason = entity.viewQuery?.trim() ? t('SELECT-backed view') : t('read-only entity')
+  const compositeReason = t('composite primary key')
+  const noEditable = t('no editable field')
   const gate = (...checks: [boolean, string][]) => {
     const failed = checks.find(([ok]) => !ok)
     return failed ? { applicable: false, reason: failed[1] } : { applicable: true }
   }
   return {
     audit: gate([mutable, readOnlyReason]),
-    softDelete: gate([mutable, readOnlyReason], [!composite, 'composite primary key']),
+    softDelete: gate([mutable, readOnlyReason], [!composite, compositeReason]),
     csvExport: { applicable: true },
     xlsxExport: { applicable: true },
     savedViews: { applicable: true },
-    history: gate([mutable, readOnlyReason], [!composite, 'composite primary key']),
-    events: gate([mutable, readOnlyReason], [!composite, 'composite primary key']),
-    bulkDelete: gate([mutable, readOnlyReason], [!composite, 'composite primary key']),
-    bulkUpdate: gate([mutable, readOnlyReason], [!composite, 'composite primary key'], [editable, 'no editable field']),
+    history: gate([mutable, readOnlyReason], [!composite, compositeReason]),
+    events: gate([mutable, readOnlyReason], [!composite, compositeReason]),
+    bulkDelete: gate([mutable, readOnlyReason], [!composite, compositeReason]),
+    bulkUpdate: gate([mutable, readOnlyReason], [!composite, compositeReason], [editable, noEditable]),
     tests: { applicable: true },
     csvImport: gate([mutable, readOnlyReason]),
     optimisticLocking: gate([mutable, readOnlyReason]),
-    inlineEdit: gate([mutable, readOnlyReason], [!composite, 'composite primary key'], [editable, 'no editable field'],
-      [(entity.listViews ?? (entity.listView ? [entity.listView] : ['table'])).includes('table'), 'no table view']),
+    inlineEdit: gate([mutable, readOnlyReason], [!composite, compositeReason], [editable, noEditable],
+      [(entity.listViews ?? (entity.listView ? [entity.listView] : ['table'])).includes('table'), t('no table view')]),
   }
 }
 

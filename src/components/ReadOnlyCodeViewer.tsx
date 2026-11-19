@@ -31,16 +31,19 @@ export function ReadOnlyCodeViewer({ code, targetPath, wrap = false }: Props) {
   // CodeMirror takes its syntax colours from this prop, not from CSS: follow the app theme, or
   // light mode shows dark-theme token colours on a white panel.
   const dark = useIsDark()
+  // Code reads left to right in either language.
   return (
-    <CodeMirror
-      value={code}
-      extensions={extensions}
-      basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: true }}
-      theme={dark ? 'dark' : 'light'}
-      editable={false}
-      readOnly={true}
-      height="100%"
-      style={{ fontSize: '12px', height: '100%' }}
-    />
+    <div dir="ltr" className="h-full">
+      <CodeMirror
+        value={code}
+        extensions={extensions}
+        basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: true }}
+        theme={dark ? 'dark' : 'light'}
+        editable={false}
+        readOnly={true}
+        height="100%"
+        style={{ fontSize: '12px', height: '100%' }}
+      />
+    </div>
   )
 }

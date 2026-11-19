@@ -19,6 +19,7 @@ import { useHotkeys } from '../hooks/useHotkeys'
 import { useDepFavorites } from '../hooks/useDepFavorites'
 import { usePopularDeps } from '../hooks/usePopularDeps'
 import { registerCommands, type PaletteAction } from '../commands'
+import { t, tn, useLang } from '../i18n'
 
 /** Where a search matched one dependency. */
 interface Hit { name?: [number, number][]; description?: [number, number][] }
@@ -28,10 +29,10 @@ const NO_RECENT: string[] = []
 /** Why a dependency is among the Quick picks. */
 type PickKind = 'favourite' | 'recent' | 'popular'
 const PICK_ICON: Record<PickKind, string> = { favourite: 'star', recent: 'history', popular: 'trending_up' }
-const PICK_TITLE: Record<PickKind, string> = {
-  favourite: 'One of your favourites',
-  recent: 'In a project you generated or explored lately',
-  popular: 'Among the most used here',
+function pickTitle(kind: PickKind): string {
+  return kind === 'favourite' ? t('One of your favourites')
+    : kind === 'recent' ? t('In a project you generated or explored lately')
+    : t('Among the most used here')
 }
 /** Dependency checkboxes Tab and the arrows can reach: those of the groups that are open. */
 const OPEN_CARD_INPUTS = '.collapse-rows:not([data-collapsed="true"]) input[data-dep-card]'
@@ -65,9 +66,8 @@ const DB_DRIVER_KINDS: Record<string, 'jdbc' | 'mongodb'> = {
   h2: 'jdbc',
   mongodb: 'mongodb',
 }
-const DB_KIND_LABELS: Record<string, string> = {
-  jdbc: 'Primary JDBC Database',
-  mongodb: 'Primary MongoDB Connection',
+function dbKindLabel(kind: string): string {
+  return kind === 'jdbc' ? t('Primary JDBC Database') : kind === 'mongodb' ? t('Primary MongoDB Connection') : t('Primary Database')
 }
 
 
@@ -94,6 +94,7 @@ export function DependencySelector({
   sqlParseError,
   recentDepIds = NO_RECENT,
 }: DependencySelectorProps) {
+  const lang = useLang()
   const [search, setSearch] = useState<string>('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [wizardDepId, setWizardDepId] = useState<string | null>(null)
@@ -308,20 +309,20 @@ export function DependencySelector({
   // ⌘K: the search box, and the wizard of every selected dependency that has one.
   useEffect(() => {
     const list: PaletteAction[] = [{
-      id: 'backend-search-deps', title: 'Search dependencies', icon: 'search', group: 'Backend',
+      id: 'backend-search-deps', title: t('Search dependencies'), icon: 'search', group: t('Backend'),
       shortcut: '/', run: focusSearch,
     }]
     for (const dep of selectedDeps) {
       const wizard = (id: string, title: string, icon: string, open: (depId: string) => void) => list.push({
-        id: `backend-wizard-${id}-${dep.id}`, title: `${dep.name}: ${title}`, icon, group: 'Wizards', run: () => open(dep.id),
+        id: `backend-wizard-${id}-${dep.id}`, title, icon, group: t('Wizards'), run: () => open(dep.id),
       })
-      if (sqlDialects[dep.id]) wizard('sql', 'generate entities from SQL…', 'auto_fix_high', setWizardDepId)
-      if (openApiCapableDeps.includes(dep.id)) wizard('openapi', 'generate from an OpenAPI spec…', 'integration_instructions', setOpenApiWizardDepId)
-      if (soapCapableDeps.includes(dep.id)) wizard('soap', 'generate from a WSDL…', 'hub', setSoapWizardDepId)
-      if (eventsCapableDeps.includes(dep.id)) wizard('events', 'generate from an AsyncAPI document…', 'cell_tower', setEventsWizardDepId)
+      if (sqlDialects[dep.id]) wizard('sql', t('{dep}: generate entities from SQL…', { dep: dep.name }), 'auto_fix_high', setWizardDepId)
+      if (openApiCapableDeps.includes(dep.id)) wizard('openapi', t('{dep}: generate from an OpenAPI spec…', { dep: dep.name }), 'integration_instructions', setOpenApiWizardDepId)
+      if (soapCapableDeps.includes(dep.id)) wizard('soap', t('{dep}: generate from a WSDL…', { dep: dep.name }), 'hub', setSoapWizardDepId)
+      if (eventsCapableDeps.includes(dep.id)) wizard('events', t('{dep}: generate from an AsyncAPI document…', { dep: dep.name }), 'cell_tower', setEventsWizardDepId)
     }
     return registerCommands(list, 'backend-deps')
-  }, [selectedDeps, sqlDialects, openApiCapableDeps, soapCapableDeps, eventsCapableDeps, focusSearch])
+  }, [selectedDeps, sqlDialects, openApiCapableDeps, soapCapableDeps, eventsCapableDeps, focusSearch, lang])
 
   const wizardDep = wizardDepId ? allDeps.find(d => d.id === wizardDepId) : null
   const openApiWizardDep = openApiWizardDepId ? allDeps.find(d => d.id === openApiWizardDepId) : null
@@ -342,7 +343,7 @@ export function DependencySelector({
           <div className="flex items-center justify-between mb-4 pb-4 border-b border-outline-variant/50">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>shopping_cart</span>
-              <h3 className="text-xs font-bold uppercase tracking-widest">Selected Dependencies</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest">{t('Selected Dependencies')}</h3>
             </div>
             <span className="text-xs font-bold py-1 px-3 bg-primary/10 text-primary rounded-full">
               <AnimatePresence mode="popLayout" initial={false}>
@@ -361,7 +362,7 @@ export function DependencySelector({
           </div>
 
           {/* Single scroll container — warnings + primary DB selector + deps list */}
-          <div className="flex flex-col gap-3 flex-grow overflow-y-auto pr-2 tutorial-scroll">
+          <div className="flex flex-col gap-3 flex-grow overflow-y-auto pe-2 tutorial-scroll">
 
             {/* Compatibility warnings (conflicts + requires only; recommends live above search) */}
             <AnimatePresence>
@@ -387,7 +388,7 @@ export function DependencySelector({
                         onClick={() => onChange([...selected, w.target])}
                         className="flex-shrink-0 text-[10px] font-bold px-3 py-1 rounded bg-warning text-background shadow-sm transition-transform active:scale-95 hover:brightness-110"
                       >
-                        ADD IT
+                        {t('ADD IT')}
                       </button>
                     </div>
                   ))}
@@ -409,7 +410,7 @@ export function DependencySelector({
                   >
                     <div className="flex items-center gap-2 mb-3">
                       <span className="material-symbols-outlined text-secondary" style={{ fontSize: '16px' }}>database</span>
-                      <span className="text-xs font-bold uppercase tracking-widest text-secondary">{DB_KIND_LABELS[kind] ?? 'Primary Database'}</span>
+                      <span className="text-xs font-bold uppercase tracking-widest text-secondary">{dbKindLabel(kind)}</span>
                     </div>
                     <div className="space-y-2">
                       {drivers.map(drv => {
@@ -453,18 +454,18 @@ export function DependencySelector({
                   className="p-4 rounded-xl border bg-surface-container-highest border-outline-variant shadow-sm flex flex-col gap-1"
                 >
                   <div className="flex justify-between items-start">
-                    <h4 className="text-sm font-bold text-on-surface">{dep.name}</h4>
+                    <h4 dir="auto" className="text-sm font-bold text-on-surface">{dep.name}</h4>
                     <button
                       type="button"
                       onClick={() => toggle(dep.id)}
-                      className="text-secondary hover:text-error bg-surface-container hover:bg-error/10 p-1.5 rounded-lg transition-colors ml-2 flex-shrink-0"
-                      aria-label={`Remove ${dep.name}`}
+                      className="text-secondary hover:text-error bg-surface-container hover:bg-error/10 p-1.5 rounded-lg transition-colors ms-2 flex-shrink-0"
+                      aria-label={t('Remove {name}', { name: dep.name })}
                     >
                       <span className="material-symbols-outlined block" style={{ fontSize: '14px' }}>close</span>
                     </button>
                   </div>
                   {dep.description && (
-                    <p className="text-xs text-on-surface-variant leading-relaxed opacity-80">{dep.description}</p>
+                    <p dir="auto" className="text-xs text-on-surface-variant leading-relaxed opacity-80">{dep.description}</p>
                   )}
                   {(filteredExtensions[dep.id]?.length ?? 0) > 0 && (
                     <div className="mt-3 pt-3 border-t border-outline-variant/60 space-y-2">
@@ -507,11 +508,11 @@ export function DependencySelector({
                         className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
                       >
                         <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>auto_fix_high</span>
-                        {sqlByDep[dep.id] ? 'Edit SQL entities…' : 'Generate entities from SQL…'}
+                        {sqlByDep[dep.id] ? t('Edit SQL entities…') : t('Generate entities from SQL…')}
                       </button>
                       {sqlByDep[dep.id] && (
                         <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
-                          ✓ {sqlByDep[dep.id].tables.length} {sqlByDep[dep.id].tables.length === 1 ? 'table' : 'tables'}
+                          ✓ {tn(sqlByDep[dep.id].tables.length, '{n} table', '{n} tables')}
                         </span>
                       )}
                     </div>
@@ -524,11 +525,11 @@ export function DependencySelector({
                         className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
                       >
                         <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>integration_instructions</span>
-                        {openApiByDep[dep.id] ? 'Edit OpenAPI controllers…' : 'Generate from OpenAPI spec…'}
+                        {openApiByDep[dep.id] ? t('Edit OpenAPI controllers…') : t('Generate from OpenAPI spec…')}
                       </button>
                       {openApiByDep[dep.id] && (
                         <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
-                          ✓ spec attached
+                          ✓ {t('spec attached')}
                         </span>
                       )}
                     </div>
@@ -541,11 +542,11 @@ export function DependencySelector({
                         className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
                       >
                         <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>hub</span>
-                        {soapByDep[dep.id] ? 'Edit SOAP services…' : 'Generate from WSDL…'}
+                        {soapByDep[dep.id] ? t('Edit SOAP services…') : t('Generate from WSDL…')}
                       </button>
                       {soapByDep[dep.id] && (
                         <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
-                          ✓ WSDL attached
+                          ✓ {t('WSDL attached')}
                         </span>
                       )}
                     </div>
@@ -558,11 +559,11 @@ export function DependencySelector({
                         className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
                       >
                         <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>cell_tower</span>
-                        {eventsByDep[dep.id] ? 'Edit events…' : 'Generate from AsyncAPI…'}
+                        {eventsByDep[dep.id] ? t('Edit events…') : t('Generate from AsyncAPI…')}
                       </button>
                       {eventsByDep[dep.id] && (
                         <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
-                          ✓ document attached
+                          ✓ {t('document attached')}
                         </span>
                       )}
                     </div>
@@ -577,11 +578,11 @@ export function DependencySelector({
                   <div className="w-16 h-16 rounded-full bg-surface-container-highest flex items-center justify-center mb-4">
                     <span className="material-symbols-outlined text-secondary opacity-50" style={{ fontSize: '32px' }}>inventory_2</span>
                   </div>
-                  <h4 className="text-sm font-bold text-on-surface mb-1">Your cart is empty</h4>
+                  <h4 className="text-sm font-bold text-on-surface mb-1">{t('Your cart is empty')}</h4>
                   <p className="text-xs text-secondary max-w-[220px]">
-                    Tick dependencies in the catalog, or press{' '}
+                    {t('Tick dependencies in the catalog, or press')}{' '}
                     <kbd className="px-1.5 py-0.5 rounded border border-outline-variant bg-surface-container font-mono text-[10px] text-on-surface">/</kbd>{' '}
-                    and type a name.
+                    {t('and type a name.')}
                   </p>
                   <button
                     type="button"
@@ -589,7 +590,7 @@ export function DependencySelector({
                     className="mt-3 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 transition-colors"
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">search</span>
-                    Search dependencies
+                    {t('Search dependencies')}
                   </button>
                 </motion.div>
               )}
@@ -601,7 +602,7 @@ export function DependencySelector({
         <div className="glass-panel rounded-2xl p-6 flex flex-col overflow-hidden text-on-surface max-lg:max-h-[80vh]" data-dep-catalog>
           <div className="flex items-center gap-2 mb-4 pb-4 border-b border-outline-variant/50">
             <span className="material-symbols-outlined text-tertiary" style={{ fontSize: '20px' }}>explore</span>
-            <h3 className="text-xs font-bold uppercase tracking-widest">Explore Dependencies</h3>
+            <h3 className="text-xs font-bold uppercase tracking-widest">{t('Explore Dependencies')}</h3>
           </div>
 
           {/* Aggregated recommendations */}
@@ -613,7 +614,7 @@ export function DependencySelector({
           {/* Search */}
           <div className="relative mb-6 group" data-tour="dep-search">
             <span
-              className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-primary transition-transform group-focus-within:scale-110"
+              className="material-symbols-outlined absolute start-4 top-1/2 -translate-y-1/2 text-primary transition-transform group-focus-within:scale-110"
               style={{ fontSize: '20px' }}
             >
               search
@@ -621,25 +622,25 @@ export function DependencySelector({
             <input
               ref={searchRef}
               type="search"
-              aria-label="Search dependencies"
+              aria-label={t('Search dependencies')}
               aria-keyshortcuts="/"
-              className="w-full bg-surface-container-highest border border-outline-variant rounded-xl pl-12 pr-12 py-3.5 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all placeholder-secondary/70 shadow-inner"
-              placeholder="Search Web, Security, JPA..."
+              className="w-full bg-surface-container-highest border border-outline-variant rounded-xl ps-12 pe-12 py-3.5 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all placeholder-secondary/70 shadow-inner"
+              placeholder={t('Search Web, Security, JPA...')}
               value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={onSearchKeyDown}
               data-dep-search
             />
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded border border-outline-variant text-[10px] font-bold text-secondary bg-surface-container">
+            <div className="absolute end-4 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded border border-outline-variant text-[10px] font-bold text-secondary bg-surface-container">
               /
             </div>
           </div>
 
           {/* Grouped checkboxes */}
-          <div ref={listRef} onKeyDown={onListKeyDown} className="flex-grow space-y-6 overflow-y-auto pr-2 tutorial-scroll pb-20">
+          <div ref={listRef} onKeyDown={onListKeyDown} className="flex-grow space-y-6 overflow-y-auto pe-2 tutorial-scroll pb-20">
             {!deferredSearch.trim() && quickPicks.length > 0 && (
               <div className="space-y-2" data-quick-picks>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-secondary">Quick picks</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-secondary">{t('Quick picks')}</div>
                 <div className="flex flex-wrap gap-1.5">
                   {quickPicks.map(({ dep, kind }) => {
                     const picked = selectedSet.has(dep.id)
@@ -649,8 +650,8 @@ export function DependencySelector({
                         type="button"
                         onClick={() => toggle(dep.id)}
                         aria-pressed={picked}
-                        title={`${PICK_TITLE[kind]} — ${dep.description ?? dep.name}`}
-                        className={`inline-flex items-center gap-1 pl-2 pr-2.5 py-1 rounded-full border text-[11px] font-semibold transition-colors ${
+                        title={`${pickTitle(kind)} — ${dep.description ?? dep.name}`}
+                        className={`inline-flex items-center gap-1 ps-2 pe-2.5 py-1 rounded-full border text-[11px] font-semibold transition-colors ${
                           picked
                             ? 'border-primary bg-primary/15 text-primary'
                             : 'border-outline-variant text-secondary hover:text-on-surface hover:border-primary/50'
@@ -684,14 +685,14 @@ export function DependencySelector({
                     <div className="factory-pipe h-px flex-1 bg-outline-variant/50"></div>
                     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-secondary px-2 py-1 bg-surface-container-lowest rounded-full border border-outline-variant/30 group-hover/header:border-primary/50 group-hover/header:text-on-surface transition-colors">
                       <span
-                        className={`material-symbols-outlined transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`}
+                        className={`material-symbols-outlined transition-transform ${collapsed ? '-rotate-90 rtl:rotate-90' : 'rotate-0'}`}
                         style={{ fontSize: '14px' }}
                       >
                         expand_more
                       </span>
                       {group.name}
                       {selectedCount > 0 && (
-                        <span className="ml-1 px-1.5 py-px rounded-full bg-primary/15 text-primary text-[9px] font-bold">
+                        <span className="ms-1 px-1.5 py-px rounded-full bg-primary/15 text-primary text-[9px] font-bold">
                           {selectedCount}
                         </span>
                       )}
@@ -726,14 +727,14 @@ export function DependencySelector({
             {filtered.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
                 <span className="material-symbols-outlined text-secondary opacity-30 mb-3" style={{ fontSize: '48px' }}>search_off</span>
-                <p className="text-sm font-medium text-on-surface">No results found</p>
-                <p className="text-xs text-secondary mt-1 max-w-[200px]">We couldn't find any dependencies matching &ldquo;{search}&rdquo;</p>
+                <p className="text-sm font-medium text-on-surface">{t('No results found')}</p>
+                <p className="text-xs text-secondary mt-1 max-w-[200px]">{t('We couldn\'t find any dependencies matching “{search}”', { search })}</p>
                 <button
                   type="button"
                   onClick={() => { setSearch(''); focusSearch() }}
                   className="mt-3 px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 transition-colors"
                 >
-                  Clear search
+                  {t('Clear search')}
                 </button>
               </div>
             )}

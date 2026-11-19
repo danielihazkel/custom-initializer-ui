@@ -9,6 +9,7 @@ import { searchFiles, MAX_SEARCH_HITS, type SearchHit } from '../utils/searchFil
 import { DiffContentViewer } from './DiffContentViewer'
 import { ReadOnlyCodeViewer } from './ReadOnlyCodeViewer'
 import { FileTree, collectChangedDirs, fileIcon, mergeRemovedIntoTree } from './explore/FileTree'
+import { isRtl, t, tn } from '../i18n'
 
 interface Props {
   preview:          PreviewResponse
@@ -37,6 +38,11 @@ function readNumber(key: string, fallback: number): number {
 
 function store(storage: 'local' | 'session', key: string, value: string): void {
   try { (storage === 'local' ? localStorage : sessionStorage).setItem(key, value) } catch { /* this visit only */ }
+}
+
+/** A file's diff status, in words. */
+function statusLabel(status: string): string {
+  return status === 'added' ? t('added') : status === 'removed' ? t('removed') : status === 'modified' ? t('modified') : status
 }
 
 /**
@@ -111,8 +117,10 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
   }
   function resize(e: React.PointerEvent<HTMLDivElement>) {
     if (!dragging.current) return
-    const left = e.currentTarget.parentElement?.getBoundingClientRect().left ?? 0
-    setTreeWidth(Math.min(MAX_TREE, Math.max(MIN_TREE, e.clientX - left)))
+    // The tree is at the start edge: the left in English, the right in Hebrew.
+    const box = e.currentTarget.parentElement?.getBoundingClientRect()
+    const width = isRtl() ? (box?.right ?? 0) - e.clientX : e.clientX - (box?.left ?? 0)
+    setTreeWidth(Math.min(MAX_TREE, Math.max(MIN_TREE, width)))
   }
   function endResize() {
     if (!dragging.current) return
@@ -122,7 +130,9 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
   function resizeByKey(e: React.KeyboardEvent) {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
     e.preventDefault()
-    const next = Math.min(MAX_TREE, Math.max(MIN_TREE, treeWidth + (e.key === 'ArrowRight' ? 16 : -16)))
+    // The arrow pointing away from the tree widens it — → in English, ← in Hebrew.
+    const wider = e.key === (isRtl() ? 'ArrowLeft' : 'ArrowRight')
+    const next = Math.min(MAX_TREE, Math.max(MIN_TREE, treeWidth + (wider ? 16 : -16)))
     setTreeWidth(next)
     store('local', WIDTH_KEY, String(next))
   }
@@ -160,8 +170,8 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
   const crumbs = selected.split('/')
 
   // The button itself shows the tick; a toast only when the browser refused.
-  function copied(ok: boolean, what: string) {
-    if (!ok) showToast({ message: `Couldn't copy the ${what}`, type: 'error' })
+  function copied(ok: boolean, what: 'path' | 'file') {
+    if (!ok) showToast({ message: what === 'path' ? t("Couldn't copy the path") : t("Couldn't copy the file"), type: 'error' })
   }
 
   const tool = 'p-1.5 rounded text-secondary hover:text-on-surface hover:bg-surface-container-high transition-colors'
@@ -175,7 +185,7 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`Files of ${artifactId}.zip`}
+        aria-label={t('Files of {name}', { name: `${artifactId}.zip` })}
         tabIndex={-1}
         onKeyDown={onKeyDown}
         className="w-full h-full bg-surface-container border border-outline-variant rounded-2xl flex flex-col overflow-hidden shadow-2xl outline-none panel-enter"
@@ -185,14 +195,14 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
         <div className="flex items-center justify-between gap-3 px-4 py-2.5 flex-shrink-0 surface-toolbar">
           <div className="flex items-center gap-3 min-w-0">
             <span className="material-symbols-outlined text-secondary" style={{ fontSize: '18px' }} aria-hidden="true">folder_zip</span>
-            <span className="text-sm font-bold text-on-surface truncate">{artifactId}.zip</span>
-            <span className="text-xs text-secondary whitespace-nowrap">{preview.files.length} files</span>
+            <span className="text-sm font-bold text-on-surface truncate" dir="ltr">{artifactId}.zip</span>
+            <span className="text-xs text-secondary whitespace-nowrap">{tn(preview.files.length, '{n} file', '{n} files')}</span>
             {diffResult?.hasChanges && (
               <span className="text-xs text-secondary whitespace-nowrap hidden sm:inline">
                 {[
-                  diffResult.addedCount    > 0 && <span key="a" className="text-green-500">{diffResult.addedCount} added</span>,
-                  diffResult.modifiedCount > 0 && <span key="m" className="text-amber-400">{diffResult.modifiedCount} modified</span>,
-                  diffResult.removedCount  > 0 && <span key="r" className="text-red-400">{diffResult.removedCount} removed</span>,
+                  diffResult.addedCount    > 0 && <span key="a" className="text-green-500">{t('{n} added', { n: diffResult.addedCount })}</span>,
+                  diffResult.modifiedCount > 0 && <span key="m" className="text-amber-400">{t('{n} modified', { n: diffResult.modifiedCount })}</span>,
+                  diffResult.removedCount  > 0 && <span key="r" className="text-red-400">{t('{n} removed', { n: diffResult.removedCount })}</span>,
                 ].filter(Boolean).reduce<React.ReactNode[]>((acc, el, i) => {
                   if (i > 0) acc.push(<span key={`sep-${i}`} className="text-secondary"> · </span>)
                   acc.push(el)
@@ -203,20 +213,20 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {diffResult !== null && (
-              <div className="flex rounded overflow-hidden border border-outline-variant text-xs" role="group" aria-label="What to show">
+              <div className="flex rounded overflow-hidden border border-outline-variant text-xs" role="group" aria-label={t('What to show')}>
                 <button
                   onClick={() => setDiffMode(false)}
                   aria-pressed={!diffMode}
                   className={`px-3 py-1 transition-colors ${!diffMode ? 'bg-primary text-on-primary font-bold' : 'text-secondary hover:bg-surface-container'}`}
                 >
-                  Normal
+                  {t('Normal')}
                 </button>
                 <button
                   onClick={() => setDiffMode(true)}
                   aria-pressed={diffMode}
                   className={`px-3 py-1 transition-colors ${diffMode ? 'bg-primary text-on-primary font-bold' : 'text-secondary hover:bg-surface-container'}`}
                 >
-                  Diff{diffResult.hasChanges ? ` (${diffResult.addedCount + diffResult.modifiedCount + diffResult.removedCount})` : ''}
+                  {t('Diff')}{diffResult.hasChanges ? ` (${diffResult.addedCount + diffResult.modifiedCount + diffResult.removedCount})` : ''}
                 </button>
               </div>
             )}
@@ -225,13 +235,13 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
               className="flex items-center gap-1.5 px-4 py-1.5 rounded text-sm font-bold bg-primary text-on-primary hover:brightness-110 transition-all active:scale-95"
             >
               <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">download</span>
-              Download ZIP
+              {t('Download ZIP')}
             </button>
             <button
               onClick={onClose}
               className="p-1.5 rounded text-secondary hover:text-on-surface hover:bg-surface-container transition-colors"
-              aria-label="Close preview"
-              title="Close (Esc)"
+              aria-label={t('Close preview')}
+              title={t('Close (Esc)')}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '20px' }} aria-hidden="true">close</span>
             </button>
@@ -243,12 +253,12 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
 
           {/* Tree / search */}
           <div className="flex-shrink-0 flex flex-col bg-surface-container-low min-w-0" style={{ width: treeWidth }} data-explore-side>
-            <div className="flex border-b border-outline-variant flex-shrink-0" role="tablist" aria-label="Find a file">
-              <button type="button" role="tab" aria-selected={pane === 'files'} onClick={() => openPane('files')} className={tab(pane === 'files')} title="Files (Ctrl+P or /)">
-                <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">account_tree</span>Files
+            <div className="flex border-b border-outline-variant flex-shrink-0" role="tablist" aria-label={t('Find a file')}>
+              <button type="button" role="tab" aria-selected={pane === 'files'} onClick={() => openPane('files')} className={tab(pane === 'files')} title={t('Files (Ctrl+P or /)')}>
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">account_tree</span>{t('Files')}
               </button>
-              <button type="button" role="tab" aria-selected={pane === 'search'} onClick={() => openPane('search')} className={tab(pane === 'search')} title="Search in files (Ctrl+Shift+F)">
-                <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">search</span>Search
+              <button type="button" role="tab" aria-selected={pane === 'search'} onClick={() => openPane('search')} className={tab(pane === 'search')} title={t('Search in files (Ctrl+Shift+F)')}>
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">search</span>{t('Search')}
               </button>
             </div>
 
@@ -267,8 +277,8 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
                         dialogRef.current?.querySelector<HTMLElement>('[role="tree"] [tabindex="0"]')?.focus()
                       }
                     }}
-                    placeholder="Filter files…"
-                    aria-label="Filter files by name"
+                    placeholder={t('Filter files…')}
+                    aria-label={t('Filter files by name')}
                     className={field}
                   />
                 </div>
@@ -280,7 +290,7 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
                     fileStatuses={fileStatuses}
                     changedDirs={changedDirs}
                     filter={filter}
-                    label={`Files of ${artifactId}.zip`}
+                    label={t('Files of {name}', { name: `${artifactId}.zip` })}
                   />
                 </div>
               </>
@@ -293,20 +303,23 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
                     value={query}
                     onChange={e => setQuery(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Escape' && query) { e.preventDefault(); setQuery('') } }}
-                    placeholder="Search in every file…"
-                    aria-label="Search in every file"
+                    placeholder={t('Search in every file…')}
+                    aria-label={t('Search in every file')}
                     className={field}
                   />
                 </div>
                 <div className="flex-1 overflow-y-auto p-1.5 pt-0 text-xs" data-search-results>
                   {query.trim().length < 2 ? (
-                    <p className="px-2 py-3 text-[11px] text-secondary">Type two letters or more.</p>
+                    <p className="px-2 py-3 text-[11px] text-secondary">{t('Type two letters or more.')}</p>
                   ) : hitsByFile.length === 0 ? (
-                    <p className="px-2 py-3 text-[11px] text-secondary">Nothing in these files says “{query.trim()}”.</p>
+                    <p className="px-2 py-3 text-[11px] text-secondary">{t('Nothing in these files says “{query}”.', { query: query.trim() })}</p>
                   ) : (
                     <>
                       <p className="px-2 pb-1 text-[10px] text-secondary">
-                        {search.hits.length}{search.more ? '+' : ''} {search.hits.length === 1 ? 'line' : 'lines'} in {hitsByFile.length} {hitsByFile.length === 1 ? 'file' : 'files'}
+                        {t('{lines} in {files}', {
+                          lines: tn(search.hits.length, '{n} line', '{n} lines', { n: `${search.hits.length}${search.more ? '+' : ''}` }),
+                          files: tn(hitsByFile.length, '{n} file', '{n} files'),
+                        })}
                       </p>
                       {hitsByFile.map(([path, hits]) => (
                         <div key={path} className="mb-1.5">
@@ -314,17 +327,18 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
                             type="button"
                             onClick={() => select(path)}
                             title={path}
-                            className={`w-full flex items-center gap-1.5 px-2 py-0.5 rounded text-left font-medium transition-colors ${path === selected ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container-high'}`}
+                            className={`w-full flex items-center gap-1.5 px-2 py-0.5 rounded text-start font-medium transition-colors ${path === selected ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container-high'}`}
                           >
                             <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: '14px' }} aria-hidden="true">{fileIcon(path.split('/').pop() ?? path)}</span>
-                            <span className="truncate">{path.split('/').pop()}</span>
-                            <span className="ml-auto text-[10px] text-secondary flex-shrink-0">{hits.length}</span>
+                            <span className="truncate" dir="ltr">{path.split('/').pop()}</span>
+                            <span className="ms-auto text-[10px] text-secondary flex-shrink-0">{hits.length}</span>
                           </button>
                           {hits.map(hit => (
                             <button
                               key={`${hit.path}:${hit.line}`}
                               type="button"
                               onClick={() => select(hit.path)}
+                              dir="ltr"
                               className="w-full flex gap-2 pl-7 pr-2 py-px rounded text-left font-mono text-[11px] text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
                             >
                               <span className="text-secondary/60 flex-shrink-0 tabular-nums">{hit.line}</span>
@@ -337,7 +351,7 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
                           ))}
                         </div>
                       ))}
-                      {search.more && <p className="px-2 py-1 text-[10px] text-secondary">Only the first {MAX_SEARCH_HITS} lines are listed — add a word.</p>}
+                      {search.more && <p className="px-2 py-1 text-[10px] text-secondary">{t('Only the first {n} lines are listed — add a word.', { n: MAX_SEARCH_HITS })}</p>}
                     </>
                   )}
                 </div>
@@ -349,7 +363,7 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
           <div
             role="separator"
             aria-orientation="vertical"
-            aria-label="Resize the file list"
+            aria-label={t('Resize the file list')}
             aria-valuenow={treeWidth}
             aria-valuemin={MIN_TREE}
             aria-valuemax={MAX_TREE}
@@ -366,8 +380,8 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
           {/* Content viewer */}
           <div className="flex-1 overflow-hidden flex flex-col min-w-0">
             {selected && (
-              <div className="pl-4 pr-2 py-1 border-b border-outline-variant bg-surface-container flex-shrink-0 flex items-center gap-2 min-w-0">
-                <nav className="flex items-center gap-0.5 text-[11px] font-mono text-secondary min-w-0 overflow-hidden" aria-label="Path">
+              <div className="ps-4 pe-2 py-1 border-b border-outline-variant bg-surface-container flex-shrink-0 flex items-center gap-2 min-w-0">
+                <nav className="flex items-center gap-0.5 text-[11px] font-mono text-secondary min-w-0 overflow-hidden" aria-label={t('Path')} dir="ltr">
                   {crumbs.map((part, i) => {
                     const last = i === crumbs.length - 1
                     const dir = crumbs.slice(0, i + 1).join('/')
@@ -380,7 +394,7 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
                           <button
                             type="button"
                             onClick={() => { setPane('files'); setFilter(`${dir}/`) }}
-                            title={`Show only ${dir}/`}
+                            title={t('Show only {dir}', { dir: `${dir}/` })}
                             className="truncate hover:text-primary hover:underline"
                           >
                             {part}
@@ -396,20 +410,20 @@ export function ProjectPreview({ preview, previousPreview, artifactId, onClose, 
                     selectedStatus === 'removed'  ? 'bg-red-400/15 text-red-400'    :
                     selectedStatus === 'modified' ? 'bg-amber-400/15 text-amber-500' : ''
                   }`}>
-                    {selectedStatus}
+                    {statusLabel(selectedStatus)}
                   </span>
                 )}
-                <div className="ml-auto flex items-center flex-shrink-0">
-                  <button type="button" onClick={toggleWrap} aria-pressed={wrap} aria-label="Wrap long lines" title="Wrap long lines" className={`${tool} ${wrap ? 'text-primary' : ''}`}>
+                <div className="ms-auto flex items-center flex-shrink-0">
+                  <button type="button" onClick={toggleWrap} aria-pressed={wrap} aria-label={t('Wrap long lines')} title={t('Wrap long lines')} className={`${tool} ${wrap ? 'text-primary' : ''}`}>
                     <span className="material-symbols-outlined block" style={{ fontSize: '16px' }} aria-hidden="true">wrap_text</span>
                   </button>
-                  <CopyButton text={selected} label="Copy path" icon="link" size={16} className="!p-1.5" onCopied={ok => copied(ok, 'path')} />
-                  <CopyButton text={() => content} label="Copy file" size={16} className="!p-1.5" onCopied={ok => copied(ok, 'file')} />
+                  <CopyButton text={selected} label={t('Copy path')} icon="link" size={16} className="!p-1.5" onCopied={ok => copied(ok, 'path')} />
+                  <CopyButton text={() => content} label={t('Copy file')} size={16} className="!p-1.5" onCopied={ok => copied(ok, 'file')} />
                   <button
                     type="button"
                     onClick={() => downloadBlob(new Blob([content], { type: 'text/plain;charset=utf-8' }), fileName)}
-                    aria-label="Download file"
-                    title={`Download ${fileName}`}
+                    aria-label={t('Download file')}
+                    title={t('Download {file}', { file: fileName })}
                     className={tool}
                   >
                     <span className="material-symbols-outlined block" style={{ fontSize: '16px' }} aria-hidden="true">download</span>

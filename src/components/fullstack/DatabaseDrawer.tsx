@@ -9,6 +9,7 @@ import {
   createModelTables, DatabaseError, ddlFileName, fetchModelDdl, projectDialect,
   SCHEMA_DIALECT_LABELS, SCHEMA_DIALECTS, type CreateTablesResult, type DdlResult, type SchemaDialectId,
 } from './databaseApi'
+import { t, tn } from '../../i18n'
 
 export type DatabaseMode = 'export' | 'create'
 
@@ -54,7 +55,7 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
       .catch(err => {
         if (err instanceof DOMException && err.name === 'AbortError') return
         setDdl(null)
-        setDdlError(err instanceof DatabaseError ? err : new DatabaseError(0, 'Error', String(err)))
+        setDdlError(err instanceof DatabaseError ? err : new DatabaseError(0, t('Error'), String(err)))
         setLoadingDdl(false)
       })
     return () => abort.abort()
@@ -128,7 +129,7 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
   async function check() {
     const request = requestRef.current
     if (!request || !source || !schema) {
-      setCreateError(new DatabaseError(0, 'Pick a target', 'Pick a source and a schema first.'))
+      setCreateError(new DatabaseError(0, t('Pick a target'), t('Pick a source and a schema first.')))
       throw new Error('no target')
     }
     setBusy(true)
@@ -137,7 +138,7 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
       setPlan(await createModelTables(request, source, schema, true))
     } catch (err) {
       setPlan(null)
-      setCreateError(err instanceof DatabaseError ? err : new DatabaseError(0, 'Error', String(err)))
+      setCreateError(err instanceof DatabaseError ? err : new DatabaseError(0, t('Error'), String(err)))
       throw err
     } finally {
       setBusy(false)
@@ -152,10 +153,10 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
     setCreateError(null)
     try {
       const done = await createModelTables(request, source, schema, false)
-      showToast({ message: `Created ${done.created.length} table${done.created.length === 1 ? '' : 's'} in ${done.schema} on ${source}`, type: 'success' })
+      showToast({ message: tn(done.created.length, 'Created {n} table in {schema} on {source}', 'Created {n} tables in {schema} on {source}', { schema: done.schema, source }), type: 'success' })
       onClose()
     } catch (err) {
-      setCreateError(err instanceof DatabaseError ? err : new DatabaseError(0, 'Error', String(err)))
+      setCreateError(err instanceof DatabaseError ? err : new DatabaseError(0, t('Error'), String(err)))
     } finally {
       setBusy(false)
     }
@@ -175,24 +176,24 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
   }
 
   const saveLabel = mode === 'export'
-    ? 'Download .sql'
-    : planReady && plan ? `Create ${plan.tables.length} table${plan.tables.length === 1 ? '' : 's'}` : 'Check'
+    ? t('Download .sql')
+    : planReady && plan ? tn(plan.tables.length, 'Create {n} table', 'Create {n} tables') : t('Check')
 
   return (
     <>
       <AdminFormDrawer
-        title="Model tables"
+        title={t('Model tables')}
         isOpen={isOpen}
         onClose={onClose}
         onSave={primary}
         saving={busy || (mode === 'export' && loadingDdl)}
         saveLabel={saveLabel}
-        savingLabel={mode === 'export' ? 'Writing…' : 'Working…'}
+        savingLabel={mode === 'export' ? t('Writing…') : t('Working…')}
       >
         <div className="space-y-4" data-database-drawer>
-          <div role="radiogroup" aria-label="What to do with the tables" data-database-mode
+          <div role="radiogroup" aria-label={t('What to do with the tables')} data-database-mode
                className="flex gap-1 p-1 rounded-lg bg-surface-container-low border border-outline-variant">
-            {([['export', 'Export DDL', 'description'], ['create', 'Create in database', 'database']] as const).map(([id, text, icon]) => (
+            {([['export', t('Export DDL'), 'description'], ['create', t('Create in database'), 'database']] as const).map(([id, text, icon]) => (
               <button key={id} type="button" role="radio" aria-checked={mode === id}
                       onClick={() => setMode(id)}
                       className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
@@ -205,15 +206,15 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
 
           {mode === 'export' && (<>
             <p className="text-[12px] text-secondary leading-relaxed">
-              The CREATE TABLE script for this model — the same one a project with Flyway gets as its first
-              migration (<code>V1__init.sql</code>), so the tables are the ones the generated entities expect.
+              {t('The CREATE TABLE script for this model — the same one a project with Flyway gets as its first migration')}{' '}
+              (<code>V1__init.sql</code>){t(', so the tables are the ones the generated entities expect.')}
             </p>
             <div>
-              <label className={LABEL} htmlFor="db-dialect">Database</label>
+              <label className={LABEL} htmlFor="db-dialect">{t('Database')}</label>
               <select id="db-dialect" className={SELECT} value={dialect} data-ddl-dialect
                       onChange={e => setDialect(e.target.value as SchemaDialectId)}>
                 {SCHEMA_DIALECTS.map(d => (
-                  <option key={d} value={d}>{SCHEMA_DIALECT_LABELS[d]}{d === ownDialect ? ' (this project’s)' : ''}</option>
+                  <option key={d} value={d}>{d === ownDialect ? t('{database} (this project’s)', { database: SCHEMA_DIALECT_LABELS[d] }) : SCHEMA_DIALECT_LABELS[d]}</option>
                 ))}
               </select>
             </div>
@@ -222,9 +223,9 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
               <div className={`space-y-2 ${loadingDdl ? 'opacity-60' : ''}`} data-ddl-result>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-widest text-secondary">
-                    {ddl.tables.length} table{ddl.tables.length === 1 ? '' : 's'} · {ddl.label}
+                    {tn(ddl.tables.length, '{n} table', '{n} tables')} · {ddl.label}
                   </span>
-                  <CopyButton text={ddl.sql} label="Copy SQL" />
+                  <CopyButton text={ddl.sql} label={t('Copy SQL')} />
                 </div>
                 <pre className="font-mono text-[11px] leading-relaxed bg-background border border-outline-variant rounded p-3 max-h-[50vh] overflow-auto whitespace-pre" data-ddl-sql>
                   {ddl.sql}
@@ -235,19 +236,18 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
 
           {mode === 'create' && (<>
             <p className="text-[12px] text-secondary leading-relaxed">
-              Runs this model’s CREATE TABLE script on a database an admin set up as a source and allowed it
-              for. <b>Check</b> shows what would run; nothing is created until you confirm, and nothing at all
-              if one of the tables is already there.
+              {t('Runs this model’s CREATE TABLE script on a database an admin set up as a source and allowed it for.')}{' '}
+              <b>{t('Check')}</b> {t('shows what would run; nothing is created until you confirm, and nothing at all if one of the tables is already there.')}
             </p>
             {!loadingOptions && writable.length === 0 ? (
               <p className="text-[12px] rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2" data-no-writable-source>
-                No database source allows creating tables. An admin can allow it for a source under
-                Admin → Schema sources. Meanwhile, <button type="button" className="text-primary underline" onClick={() => setMode('export')}>export the DDL</button> and run it yourself.
+                {t('No database source allows creating tables. An admin can allow it for a source under Admin → Schema sources. Meanwhile,')}{' '}
+                <button type="button" className="text-primary underline" onClick={() => setMode('export')}>{t('export the DDL')}</button> {t('and run it yourself.')}
               </p>
             ) : (<>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className={LABEL} htmlFor="db-source">Source</label>
+                  <label className={LABEL} htmlFor="db-source">{t('Source')}</label>
                   <select id="db-source" className={SELECT} value={source} data-create-source
                           onChange={e => setSource(e.target.value)}>
                     {writable.map(s => (
@@ -256,11 +256,11 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
                   </select>
                 </div>
                 <div>
-                  <label className={LABEL} htmlFor="db-schema">Schema</label>
+                  <label className={LABEL} htmlFor="db-schema">{t('Schema')}</label>
                   <select id="db-schema" className={SELECT} value={schema} data-create-schema
                           disabled={schemas.length === 0}
                           onChange={e => { setSchema(e.target.value); setPlan(null); setCreateError(null) }}>
-                    {schemas.length === 0 && <option value="">{schemasError ? '—' : 'Connecting…'}</option>}
+                    {schemas.length === 0 && <option value="">{schemasError ? '—' : t('Connecting…')}</option>}
                     {schemas.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
@@ -268,8 +268,9 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
               {schemasError && <p className="text-[12px] text-error" role="alert">{schemasError}</p>}
               {sourceDialect && sourceDialect !== ownDialect && !plan && (
                 <p className="text-[11px] text-warning" data-dialect-mismatch>
-                  This project runs on {SCHEMA_DIALECT_LABELS[ownDialect]}; the tables will be written for
-                  {' '}{DIALECT_LABELS[sourceDialect] ?? sourceDialect}, the source’s database.
+                  {t('This project runs on {project}; the tables will be written for {source}, the source’s database.', {
+                    project: SCHEMA_DIALECT_LABELS[ownDialect], source: DIALECT_LABELS[sourceDialect] ?? sourceDialect,
+                  })}
                 </p>
               )}
             </>)}
@@ -280,26 +281,27 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
               <div className="space-y-2" data-create-plan>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-widest text-secondary">
-                    {plan.tables.length} table{plan.tables.length === 1 ? '' : 's'} · {plan.statements} statements · {plan.schema}
+                    {tn(plan.tables.length, '{n} table', '{n} tables')} · {t('{n} statements', { n: plan.statements })} · {plan.schema}
                   </span>
-                  <CopyButton text={plan.sql} label="Copy SQL" />
+                  <CopyButton text={plan.sql} label={t('Copy SQL')} />
                 </div>
                 {plan.dialect !== plan.projectDialect && (
                   <p className="text-[11px] text-warning" data-dialect-mismatch>
-                    Written for {plan.label}, the source’s database — this project runs on {SCHEMA_DIALECT_LABELS[plan.projectDialect]}.
+                    {t('Written for {source}, the source’s database — this project runs on {project}.', {
+                      source: plan.label, project: SCHEMA_DIALECT_LABELS[plan.projectDialect],
+                    })}
                   </p>
                 )}
                 {plan.flyway && (
                   <p className="text-[11px] text-secondary" data-flyway-note>
-                    This project has Flyway, whose <code>V1__init.sql</code> makes these same tables. On this
-                    database the app’s first start finds them there and marks V1 as applied
-                    (<code>baseline-on-migrate</code>); Hibernate then checks them against the entities.
+                    {t('This project has Flyway, whose')} <code>V1__init.sql</code>{' '}
+                    {t('makes these same tables. On this database the app’s first start finds them there and marks V1 as applied')}{' '}
+                    (<code>baseline-on-migrate</code>){t('; Hibernate then checks them against the entities.')}
                   </p>
                 )}
                 {!plan.transactional && (
                   <p className="text-[11px] text-secondary" data-not-transactional>
-                    On {plan.label} each CREATE commits at once: if a statement fails, the tables made before it
-                    are dropped again.
+                    {t('On {database} each CREATE commits at once: if a statement fails, the tables made before it are dropped again.', { database: plan.label })}
                   </p>
                 )}
                 <pre className="font-mono text-[11px] leading-relaxed bg-background border border-outline-variant rounded p-3 max-h-[40vh] overflow-auto whitespace-pre" data-create-sql>
@@ -313,9 +315,11 @@ export function DatabaseDrawer({ isOpen, onClose, buildRequest, selectedDeps, ar
 
       {confirming && plan && (
         <ConfirmDialog
-          title={`Create ${plan.tables.length} tables?`}
-          message={`This runs ${plan.statements} statements on ${source}, in schema ${plan.schema}, as the source’s user. Nothing there is changed or dropped.`}
-          confirmLabel="Create tables"
+          title={tn(plan.tables.length, 'Create {n} table?', 'Create {n} tables?')}
+          message={t('This runs {n} statements on {source}, in schema {schema}, as the source’s user. Nothing there is changed or dropped.', {
+            n: plan.statements, source, schema: plan.schema,
+          })}
+          confirmLabel={t('Create tables')}
           tone="danger"
           onConfirm={() => { void run() }}
           onCancel={() => setConfirming(false)}
@@ -331,8 +335,8 @@ function ErrorBox({ error }: { error: DatabaseError }) {
       <p className="font-semibold text-error">{error.title}</p>
       <p>{error.message}{error.path ? <span className="text-secondary"> ({error.path})</span> : null}</p>
       {error.existing.length > 0 && (
-        <ul className="list-disc pl-5 font-mono text-[11px]" data-existing-tables>
-          {error.existing.map(t => <li key={t}>{t}</li>)}
+        <ul className="list-disc ps-5 font-mono text-[11px]" data-existing-tables dir="ltr">
+          {error.existing.map(table => <li key={table}>{table}</li>)}
         </ul>
       )}
     </div>

@@ -1,4 +1,5 @@
 import type { FullstackStarterRequest } from '../../types'
+import { t } from '../../i18n'
 
 /**
  * The model's tables as SQL (`POST /starter-fullstack.ddl`) and created on a schema source an admin
@@ -75,13 +76,13 @@ async function post<T>(url: string, body: unknown, signal?: AbortSignal): Promis
     })
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') throw err
-    throw new DatabaseError(0, 'Connection error', 'The server could not be reached.')
+    throw new DatabaseError(0, t('Connection error'), t('The server could not be reached.'))
   }
   if (!res.ok) {
     const b = await res.json().catch(() => null) as
       { error?: string; detail?: string; path?: string; existing?: unknown } | null
     const existing = Array.isArray(b?.existing) ? b!.existing.filter((x): x is string => typeof x === 'string') : []
-    throw new DatabaseError(res.status, b?.error ?? `HTTP ${res.status}`, b?.detail ?? 'The request failed.',
+    throw new DatabaseError(res.status, b?.error ?? `HTTP ${res.status}`, b?.detail ?? t('The request failed.'),
       typeof b?.path === 'string' ? b.path : undefined, existing)
   }
   return res.json() as Promise<T>

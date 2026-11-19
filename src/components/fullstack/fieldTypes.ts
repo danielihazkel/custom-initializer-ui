@@ -1,4 +1,5 @@
 import type { FullstackFieldType } from '../../types'
+import { t } from '../../i18n'
 
 /**
  * What kind of thing a field type is — the editor's mirror of the predicates on the backend's
@@ -13,14 +14,14 @@ export const FIELD_TYPES: FullstackFieldType[] = [
   'LOCAL_DATE', 'LOCAL_DATE_TIME', 'LOCAL_TIME', 'INSTANT', 'UUID', 'ENUM', 'FILE', 'IMAGE',
 ]
 
-/** What the picker calls a type whose name does not say it. */
+/** What the picker calls a type whose name does not say it (getters: in the site's language). */
 export const FIELD_TYPE_LABELS: Partial<Record<FullstackFieldType, string>> = {
-  MARKDOWN: 'MARKDOWN (rich text)',
-  MONEY: 'MONEY (amount + currency)',
-  LOCAL_TIME: 'LOCAL_TIME (time of day)',
-  INSTANT: 'INSTANT (UTC timestamp)',
-  FILE: 'FILE (upload)',
-  IMAGE: 'IMAGE (picture upload)',
+  get MARKDOWN() { return t('MARKDOWN (rich text)') },
+  get MONEY() { return t('MONEY (amount + currency)') },
+  get LOCAL_TIME() { return t('LOCAL_TIME (time of day)') },
+  get INSTANT() { return t('INSTANT (UTC timestamp)') },
+  get FILE() { return t('FILE (upload)') },
+  get IMAGE() { return t('IMAGE (picture upload)') },
 }
 
 /** A number: bounds, sums, averages, range filters. Money is one. */

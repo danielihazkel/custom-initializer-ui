@@ -6,6 +6,7 @@ import { seedLayout } from '../pageLayout'
 import { offNavNoteFor, type PagesModel } from '../pages/usePagesModel'
 import { CanvasFrame, DeviceSwitch, ZoomControl, type PreviewDevice } from './CanvasFrame'
 import { FrontendSettings, type FrontendAppearance } from './FrontendSettings'
+import { t, useLang } from '../../../i18n'
 
 /**
  * The generated app's look, beside the app itself: template set, colours, language and
@@ -30,6 +31,7 @@ export function AppearanceView({ pages, entities, model, appearance, nav, select
   onZoom?: (zoom: number) => void
   onEditStartDashboard?: () => void
 }) {
+  useLang()
   const { settings, preview } = model
   const hasPages = pages.length > 0
   // Without pages, the classic shell: a dashboard (with the heading set here) plus a list per entity.
@@ -42,20 +44,20 @@ export function AppearanceView({ pages, entities, model, appearance, nav, select
 
   const setName = appearance.currentFrontendSet?.name ?? appearance.frontendSet
   const paletteName = appearance.palettes.find(p => p.id === appearance.effectivePalette)?.name
-  const caption = [setName, paletteName && `${paletteName} palette`, appearance.locale === 'he' ? 'עברית' : 'English', appearance.rtl ? 'right-to-left' : 'left-to-right']
+  const caption = [setName, paletteName && t('{name} palette', { name: paletteName }), appearance.locale === 'he' ? 'עברית' : 'English', appearance.rtl ? t('right-to-left') : t('left-to-right')]
     .filter(Boolean).join(' · ')
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden" data-designer-appearance>
-      <aside className="border-outline-variant bg-surface-container-lowest p-5 lg:w-[24rem] lg:shrink-0 lg:overflow-y-auto lg:border-e" aria-label="Appearance settings">
-        <h2 className="text-sm font-semibold text-on-surface">Appearance</h2>
-        <p className="mb-5 text-[11px] text-secondary">How the generated app looks. The preview follows every change.</p>
+      <aside className="border-outline-variant bg-surface-container-lowest p-5 lg:w-[24rem] lg:shrink-0 lg:overflow-y-auto lg:border-e" aria-label={t('Appearance settings')}>
+        <h2 className="text-sm font-semibold text-on-surface">{t('Appearance')}</h2>
+        <p className="mb-5 text-[11px] text-secondary">{t('How the generated app looks. The preview follows every change.')}</p>
         <FrontendSettings appearance={appearance} hasPages={hasPages} onEditStartDashboard={onEditStartDashboard} />
       </aside>
-      <main className="flex min-h-[28rem] min-w-0 flex-1 flex-col" aria-label="Appearance preview">
+      <main className="flex min-h-[28rem] min-w-0 flex-1 flex-col" aria-label={t('Appearance preview')}>
         <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container-lowest px-4 py-1.5 text-[11px] text-secondary">
           <span className="font-semibold text-on-surface" data-appearance-caption>{caption}</span>
-          <span className="ms-auto">{hasPages ? 'Click the menu to see another page; click a part to edit it' : 'Classic layout — the app you get without pages'}</span>
+          <span className="ms-auto">{hasPages ? t('Click the menu to see another page; click a part to edit it') : t('Classic layout — the app you get without pages')}</span>
           {zoom != null && onZoom && <ZoomControl zoom={zoom} onChange={onZoom} />}
           <DeviceSwitch device={device} onChange={onDevice} />
         </div>

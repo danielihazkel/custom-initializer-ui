@@ -3,6 +3,7 @@ import { inputClass } from '../controls'
 import { DEFAULT_NAV_ICON, MAX_GROUP, NAV_ICONS } from '../pageLayout'
 import type { FormProps } from './formTypes'
 import { Field } from './fields'
+import { t } from '../../../i18n'
 
 /** Where a nav page sits in the generated nav: its section (group) and its icon. */
 export function NavFields({ page, index, pages, errors, update }: Omit<FormProps, 'entities' | 'lossy'> & { pages: FullstackPageDef[] }) {
@@ -11,28 +12,28 @@ export function NavFields({ page, index, pages, errors, update }: Omit<FormProps
   const current = page.icon ?? fallback
   return (
     <div className="grid grid-cols-1 gap-2 @sm:grid-cols-[12rem_minmax(0,1fr)]">
-      <Field label="Nav group" error={errors.group} control="group" hint={`Pages with the same group are listed together · up to ${MAX_GROUP} characters`}>
+      <Field label={t('Nav group')} error={errors.group} control="group" hint={t('Pages with the same group are listed together · up to {max} characters', { max: MAX_GROUP })}>
         <div className="flex flex-wrap items-center gap-1.5">
           <input
             type="text"
             list={`nav-groups-${index}`}
-            aria-label="Nav group"
+            aria-label={t('Nav group')}
             aria-invalid={Boolean(errors.group)}
             maxLength={MAX_GROUP}
             value={page.group ?? ''}
             onChange={e => update(index, { group: e.target.value || undefined })}
-            placeholder="None"
+            placeholder={t('None')}
             className={`${inputClass(errors.group)} min-w-0 flex-1`}
           />
           {groups.some(g => g !== page.group?.trim()) && (
             <select
-              aria-label="Move to group"
+              aria-label={t('Move to group')}
               value={groups.includes(page.group?.trim() ?? '') ? page.group!.trim() : ''}
               onChange={e => update(index, { group: e.target.value || undefined })}
               className={`${inputClass()} max-w-[10rem] py-1 text-xs`}
-              title="Put this page in one of the existing groups"
+              title={t('Put this page in one of the existing groups')}
             >
-              <option value="">No group</option>
+              <option value="">{t('No group')}</option>
               {groups.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
           )}
@@ -41,11 +42,11 @@ export function NavFields({ page, index, pages, errors, update }: Omit<FormProps
           {groups.map(g => <option key={g} value={g} />)}
         </datalist>
       </Field>
-      <Field label="Nav icon" error={errors.icon} control="icon">
-        <div role="radiogroup" aria-label="Nav icon" className="flex flex-wrap gap-1">
+      <Field label={t('Nav icon')} error={errors.icon} control="icon">
+        <div role="radiogroup" aria-label={t('Nav icon')} className="flex flex-wrap gap-1">
           {(Object.keys(NAV_ICONS) as FullstackNavIcon[]).map(name => {
             const selected = current === name
-            const label = `${NAV_ICONS[name].label}${name === fallback ? ' (default)' : ''}`
+            const label = name === fallback ? t('{icon} (default)', { icon: NAV_ICONS[name].label }) : NAV_ICONS[name].label
             return (
               <button
                 key={name}

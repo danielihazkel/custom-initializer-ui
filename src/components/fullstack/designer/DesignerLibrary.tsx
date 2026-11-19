@@ -10,23 +10,34 @@ import { TemplateGallery } from '../pages/TemplateGallery'
 import { useDrawnPages, type PagesModel } from '../pages/usePagesModel'
 import { fitWidget, widgetName, type WidgetClip } from '../widgetClipboard'
 import { startLibraryDrag, type LibraryDrag } from './dragPayload'
+import { t, tn, useLang } from '../../../i18n'
 
 export type LibraryTab = 'pages' | 'widgets' | 'templates'
 
-const WIDGET_GROUPS: { label: string; kinds: FullstackWidgetDef['kind'][] }[] = [
-  { label: 'Numbers', kinds: ['kpi', 'progress', 'gauge'] },
-  { label: 'Charts', kinds: ['bar', 'donut', 'stacked', 'line', 'pivot', 'funnel', 'timeInState'] },
-  { label: 'Lists', kinds: ['recent', 'top', 'list', 'activity'] },
-  { label: 'Other', kinds: ['text', 'links'] },
+const WIDGET_GROUPS: { key: string; label: () => string; kinds: FullstackWidgetDef['kind'][] }[] = [
+  { key: 'numbers', label: () => t('Numbers'), kinds: ['kpi', 'progress', 'gauge'] },
+  { key: 'charts', label: () => t('Charts'), kinds: ['bar', 'donut', 'stacked', 'line', 'pivot', 'funnel', 'timeInState'] },
+  { key: 'lists', label: () => t('Lists'), kinds: ['recent', 'top', 'list', 'activity'] },
+  { key: 'other', label: () => t('Other'), kinds: ['text', 'links'] },
 ]
+
+/** The library's tab names, lowercase like the tab ids (the tab capitalises them). */
+const TAB_LABELS: Record<LibraryTab | 'parts', () => string> = {
+  pages: () => t('pages'),
+  widgets: () => t('widgets'),
+  templates: () => t('templates'),
+  parts: () => t('parts'),
+}
 
 const CARD = 'flex w-full items-center gap-2.5 rounded-lg border border-outline-variant bg-surface-container px-2.5 py-2 text-start transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:hover:border-outline-variant'
 const HEADING = 'text-[10px] font-semibold uppercase tracking-wider text-secondary'
 
 const matches = (query: string, ...texts: (string | undefined)[]) => {
   const q = query.trim().toLowerCase()
-  return !q || texts.some(t => t?.toLowerCase().includes(q))
+  return !q || texts.some(text => text?.toLowerCase().includes(q))
 }
+
+const atMostWidgets = () => t('At most {n} widgets', { n: MAX_WIDGETS })
 
 /**
  * The designer's library: page types, widgets and whole-layout templates. Every card is
@@ -72,6 +83,7 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
     onAddPage: (id: number) => void
   }
 }) {
+  const lang = useLang()
   // A team template whose delete was asked for once — the second click deletes it for everyone.
   const [confirmRemove, setConfirmRemove] = useState<number | null>(null)
   const [query, setQuery] = useState('')
@@ -84,40 +96,42 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
   const drawnPages = useDrawnPages(pages)
   const suggested = useMemo(
     () => (isDashboard ? suggestWidgets(entityDef, drawnPages, pageIndex, { entities: named, scaffoldOpts: projectOpts }) : []),
-    [isDashboard, entityDef, drawnPages, pageIndex, named, projectOpts],
+    // `lang`: the suggestions' labels and blurbs are in it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isDashboard, entityDef, drawnPages, pageIndex, named, projectOpts, lang],
   ).filter(s => matches(query, s.label, s.blurb))
 
   // Widgets saved in this browser, each fitted to this layout (or why it no longer fits).
   const myWidgets = model.widgetTemplates
-    .filter(t => matches(query, t.name, WIDGET_KINDS.find(k => k.kind === t.widget.kind)?.label ?? ''))
-    .map(t => ({ ...t, fit: fitWidget(t.widget, pages, named) }))
+    .filter(saved => matches(query, saved.name, WIDGET_KINDS.find(k => k.kind === saved.widget.kind)?.label ?? ''))
+    .map(saved => ({ ...saved, fit: fitWidget(saved.widget, pages, named) }))
 
-  const teamPages = (team?.templates ?? []).filter((t): t is Extract<TeamTemplate, { kind: 'page' }> => t.kind === 'page' && matches(query, t.name, t.createdBy ?? ''))
+  const teamPages = (team?.templates ?? []).filter((tpl): tpl is Extract<TeamTemplate, { kind: 'page' }> => tpl.kind === 'page' && matches(query, tpl.name, tpl.createdBy ?? ''))
   const teamWidgets = (team?.templates ?? [])
-    .filter((t): t is Extract<TeamTemplate, { kind: 'widget' }> => t.kind === 'widget' && matches(query, t.name, t.createdBy ?? ''))
-    .map(t => ({ ...t, fit: fitWidget(t.content, pages, named) }))
-  const by = (t: TeamTemplate) => (t.createdBy ? ` · by ${t.createdBy}` : '')
-  const teamRemove = (t: TeamTemplate) => (
+    .filter((tpl): tpl is Extract<TeamTemplate, { kind: 'widget' }> => tpl.kind === 'widget' && matches(query, tpl.name, tpl.createdBy ?? ''))
+    .map(tpl => ({ ...tpl, fit: fitWidget(tpl.content, pages, named) }))
+  const by = (tpl: TeamTemplate) => (tpl.createdBy ? ` · ${t('by {name}', { name: tpl.createdBy })}` : '')
+  const teamRemove = (tpl: TeamTemplate) => (
     <button
       type="button"
-      onClick={() => { if (confirmRemove === t.id) { setConfirmRemove(null); team?.onRemove(t.id) } else setConfirmRemove(t.id) }}
-      onBlur={() => setConfirmRemove(prev => (prev === t.id ? null : prev))}
-      className={`shrink-0 rounded-lg p-1.5 ${confirmRemove === t.id ? 'bg-error/10 text-[10px] font-semibold text-error' : 'text-secondary hover:bg-error/5 hover:text-error'}`}
-      aria-label={confirmRemove === t.id ? `Delete “${t.name}” for everyone` : `Delete the team template “${t.name}”`}
-      title={confirmRemove === t.id ? 'Click again: it goes for the whole team' : 'Delete for the whole team'}
+      onClick={() => { if (confirmRemove === tpl.id) { setConfirmRemove(null); team?.onRemove(tpl.id) } else setConfirmRemove(tpl.id) }}
+      onBlur={() => setConfirmRemove(prev => (prev === tpl.id ? null : prev))}
+      className={`shrink-0 rounded-lg p-1.5 ${confirmRemove === tpl.id ? 'bg-error/10 text-[10px] font-semibold text-error' : 'text-secondary hover:bg-error/5 hover:text-error'}`}
+      aria-label={confirmRemove === tpl.id ? t('Delete “{name}” for everyone', { name: tpl.name }) : t('Delete the team template “{name}”', { name: tpl.name })}
+      title={confirmRemove === tpl.id ? t('Click again: it goes for the whole team') : t('Delete for the whole team')}
     >
-      {confirmRemove === t.id ? 'Delete?' : <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">delete</span>}
+      {confirmRemove === tpl.id ? t('Delete?') : <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">delete</span>}
     </button>
   )
   const shareButton = (item: TeamShare) => {
-    const replaces = (team?.templates ?? []).some(t => t.kind === item.kind && t.name.toLowerCase() === item.name.toLowerCase())
+    const replaces = (team?.templates ?? []).some(tpl => tpl.kind === item.kind && tpl.name.toLowerCase() === item.name.toLowerCase())
     return (
       <button
         type="button"
         onClick={() => team?.onShare(item)}
         className="shrink-0 rounded-lg p-1.5 text-secondary hover:bg-primary/5 hover:text-primary"
-        aria-label={replaces ? `Update the team's “${item.name}”` : `Share “${item.name}” with the team`}
-        title={replaces ? 'Replace the team’s template of this name with yours' : 'Share with the team'}
+        aria-label={replaces ? t('Update the team\'s “{name}”', { name: item.name }) : t('Share “{name}” with the team', { name: item.name })}
+        title={replaces ? t('Replace the team’s template of this name with yours') : t('Share with the team')}
       >
         <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">group_add</span>
       </button>
@@ -125,7 +139,12 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
   }
 
   // The page's own parts, when it is a page that takes some (tabs, report, record, wizard).
-  const partGroups = useMemo(() => (page && !isDashboard ? pageParts(pages, pageIndex, named) : []), [page, isDashboard, pages, pageIndex, named])
+  const partGroups = useMemo(
+    () => (page && !isDashboard ? pageParts(pages, pageIndex, named) : []),
+    // `lang`: the groups' labels and hints are in it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [page, isDashboard, pages, pageIndex, named, lang],
+  )
   const steps = page?.type === 'wizard' ? wizardStepsOf(page, named) : []
 
   const dragProps = (payload: LibraryDrag, disabled: boolean) => (disabled ? {} : {
@@ -134,46 +153,48 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
     onDragEnd: () => onDrag(null),
   })
 
+  const tabLabel = (id: LibraryTab) => TAB_LABELS[id === 'widgets' && partGroups.length > 0 ? 'parts' : id]()
+
   return (
-    <aside className="@container flex min-h-0 flex-col border-outline-variant bg-surface-container-lowest lg:w-72 lg:shrink-0 lg:border-e" aria-label="Library" data-designer-library>
+    <aside className="@container flex min-h-0 flex-col border-outline-variant bg-surface-container-lowest lg:w-72 lg:shrink-0 lg:border-e" aria-label={t('Library')} data-designer-library>
       <div className="space-y-2 border-b border-outline-variant p-3">
         <label className="relative block">
           <span className="material-symbols-outlined pointer-events-none absolute start-2 top-1/2 -translate-y-1/2 text-secondary" style={{ fontSize: '16px' }} aria-hidden="true">search</span>
           <input
             ref={searchRef}
             type="search"
-            aria-label="Search the library"
-            placeholder="Search pages, widgets, templates"
+            aria-label={t('Search the library')}
+            placeholder={t('Search pages, widgets, templates')}
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Escape' && query) { e.preventDefault(); e.stopPropagation(); setQuery('') } }}
             className={`${inputClass()} py-1.5 ps-8 text-xs`}
           />
         </label>
-        <div role="tablist" aria-label="Library" className="flex gap-0.5 rounded-lg border border-outline-variant bg-surface-container p-0.5">
-          {(['pages', 'widgets', 'templates'] as const).map(t => (
+        <div role="tablist" aria-label={t('Library')} className="flex gap-0.5 rounded-lg border border-outline-variant bg-surface-container p-0.5">
+          {(['pages', 'widgets', 'templates'] as const).map(id => (
             <button
-              key={t}
+              key={id}
               type="button"
               role="tab"
-              aria-selected={tab === t}
-              onClick={() => onTab(t)}
-              className={`flex-1 rounded-md py-1.5 text-xs capitalize ${tab === t ? 'bg-surface-container-high font-semibold text-on-surface' : 'text-secondary hover:text-on-surface'}`}
+              aria-selected={tab === id}
+              onClick={() => onTab(id)}
+              className={`flex-1 rounded-md py-1.5 text-xs capitalize ${tab === id ? 'bg-surface-container-high font-semibold text-on-surface' : 'text-secondary hover:text-on-surface'}`}
             >
-              {t === 'widgets' && partGroups.length > 0 ? 'parts' : t}
+              {tabLabel(id)}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3" role="tabpanel" aria-label={`Library: ${tab}`}>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3" role="tabpanel" aria-label={t('Library: {tab}', { tab: tabLabel(tab) })}>
         {tab === 'widgets' && partGroups.length > 0 && partGroups.map(group => {
           const cards = group.cards.filter(c => matches(query, c.label, c.blurb))
           return (
             <section key={group.slot} className="space-y-1.5" aria-label={group.label} data-part-group={group.slot}>
               <h3 className={HEADING}>{group.label}</h3>
               <p className="text-[11px] text-secondary">{group.hint}</p>
-              {group.cards.length === 0 && <p className="text-[11px] text-secondary">Nothing fits this page yet.</p>}
+              {group.cards.length === 0 && <p className="text-[11px] text-secondary">{t('Nothing fits this page yet.')}</p>}
               <ul className="space-y-1.5">
                 {cards.map(c => (
                   <li key={c.key}>
@@ -185,8 +206,8 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                           {...dragProps({ kind: 'part', part: c.part }, Boolean(c.reason))}
                           onClick={() => onAddPart(c.part)}
                           disabled={Boolean(c.reason)}
-                          title={c.reason ?? `${c.blurb} — drag onto the page, or click to add it at the end`}
-                          aria-label={`Add ${c.label}`}
+                          title={c.reason ?? t('{blurb} — drag onto the page, or click to add it at the end', { blurb: c.blurb })}
+                          aria-label={t('Add {name}', { name: c.label })}
                           className={`${CARD} ${c.reason ? '' : 'cursor-grab'}`}
                           data-library-part={c.key}
                         >
@@ -208,7 +229,7 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
         {tab === 'widgets' && partGroups.length === 0 && (
           !isDashboard ? (
             <div className="space-y-2 text-[11px] text-secondary" data-library-no-dashboard>
-              <p>Widgets go on a dashboard. Pick one on the canvas, or add a dashboard page.</p>
+              <p>{t('Widgets go on a dashboard. Pick one on the canvas, or add a dashboard page.')}</p>
               {dashboards.length > 0 && (
                 <ul className="space-y-1">
                   {dashboards.map(({ p, i }) => (
@@ -219,19 +240,19 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                 </ul>
               )}
               <button type="button" onClick={() => onChooseType('dashboard')} disabled={model.atPageCap} className="text-xs font-semibold text-primary hover:underline disabled:opacity-40">
-                Add a dashboard
+                {t('Add a dashboard')}
               </button>
             </div>
           ) : (
             <>
               <label className="block space-y-1">
-                <span className={HEADING}>New widgets read</span>
-                <EntitySelect label="New widget entity" value={entity} options={named.map(e => e.name)} onChange={onEntity} className="w-full" />
+                <span className={HEADING}>{t('New widgets read')}</span>
+                <EntitySelect label={t('New widget entity')} value={entity} options={named.map(e => e.name)} onChange={onEntity} className="w-full" />
               </label>
-              {widgetCap && <p className="text-[11px] text-secondary">This dashboard has the most widgets it can have ({MAX_WIDGETS}).</p>}
+              {widgetCap && <p className="text-[11px] text-secondary">{t('This dashboard has the most widgets it can have ({n}).', { n: MAX_WIDGETS })}</p>}
               {suggested.length > 0 && (
-                <section className="space-y-1.5" aria-label={`Suggested for ${entity}`}>
-                  <h3 className={HEADING}>Suggested for {entity}</h3>
+                <section className="space-y-1.5" aria-label={t('Suggested for {entity}', { entity })}>
+                  <h3 className={HEADING}>{t('Suggested for {entity}', { entity })}</h3>
                   <ul className="space-y-1.5" data-widget-suggestions>
                     {suggested.map(s => (
                       <li key={s.key}>
@@ -239,8 +260,8 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                           type="button"
                           {...dragProps({ kind: 'widget', widget: s.widget.kind, def: s.widget }, false)}
                           onClick={() => onAddWidgetDef(s.widget)}
-                          title={`${s.blurb} — drag onto the dashboard, or click to add it at the end`}
-                          aria-label={`Add ${s.label}`}
+                          title={t('{blurb} — drag onto the dashboard, or click to add it at the end', { blurb: s.blurb })}
+                          aria-label={t('Add {name}', { name: s.label })}
                           className={`${CARD} cursor-grab border-primary/30 bg-primary/5`}
                           data-widget-suggestion={s.key}
                         >
@@ -259,14 +280,14 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                 </section>
               )}
               {clip && onPaste && (
-                <section className="space-y-1.5" aria-label="Clipboard">
-                  <h3 className={HEADING}>Clipboard</h3>
+                <section className="space-y-1.5" aria-label={t('Clipboard')}>
+                  <h3 className={HEADING}>{t('Clipboard')}</h3>
                   <button
                     type="button"
                     onClick={onPaste}
                     disabled={widgetCap}
-                    title={widgetCap ? `At most ${MAX_WIDGETS} widgets` : 'Paste onto this dashboard, after the selected widget (Ctrl+V)'}
-                    aria-label={`Paste ${clip.widgets.length === 1 ? `“${widgetName(clip.widgets[0])}”` : `${clip.widgets.length} widgets`}`}
+                    title={widgetCap ? atMostWidgets() : t('Paste onto this dashboard, after the selected widget (Ctrl+V)')}
+                    aria-label={t('Paste {what}', { what: clip.widgets.length === 1 ? `“${widgetName(clip.widgets[0])}”` : tn(clip.widgets.length, '{n} widget', '{n} widgets') })}
                     className={`${CARD} border-primary/30`}
                     data-library-clipboard
                   >
@@ -275,48 +296,50 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-xs font-semibold text-on-surface">
-                        {clip.widgets.length === 1 ? widgetName(clip.widgets[0]) : `${clip.widgets.length} widgets`}
+                        {clip.widgets.length === 1 ? widgetName(clip.widgets[0]) : tn(clip.widgets.length, '{n} widget', '{n} widgets')}
                       </span>
-                      <span className="block truncate text-[11px] text-secondary">Copied from {clip.from || 'a dashboard'} · click to paste</span>
+                      <span className="block truncate text-[11px] text-secondary">
+                        {clip.from ? t('Copied from {page} · click to paste', { page: clip.from }) : t('Copied from a dashboard · click to paste')}
+                      </span>
                     </span>
                   </button>
                 </section>
               )}
               {myWidgets.length > 0 && (
-                <section className="space-y-1.5" aria-label="My widgets">
-                  <h3 className={HEADING}>My widgets</h3>
+                <section className="space-y-1.5" aria-label={t('My widgets')}>
+                  <h3 className={HEADING}>{t('My widgets')}</h3>
                   <ul className="space-y-1.5" data-my-widgets>
-                    {myWidgets.map(t => {
-                      const kind = WIDGET_KINDS.find(k => k.kind === t.widget.kind)
-                      const reason = 'reason' in t.fit ? t.fit.reason : widgetCap ? `At most ${MAX_WIDGETS} widgets` : undefined
-                      const def = 'widget' in t.fit ? t.fit.widget : t.widget
+                    {myWidgets.map(saved => {
+                      const kind = WIDGET_KINDS.find(k => k.kind === saved.widget.kind)
+                      const reason = 'reason' in saved.fit ? saved.fit.reason : widgetCap ? atMostWidgets() : undefined
+                      const def = 'widget' in saved.fit ? saved.fit.widget : saved.widget
                       return (
-                        <li key={t.name} className="flex items-center gap-1">
+                        <li key={saved.name} className="flex items-center gap-1">
                           <button
                             type="button"
                             {...dragProps({ kind: 'widget', widget: def.kind, def }, Boolean(reason))}
                             onClick={() => onAddWidgetDef(def)}
                             disabled={Boolean(reason)}
-                            title={reason ?? 'Saved in this browser — drag onto the dashboard, or click to add it at the end'}
-                            aria-label={`Add ${t.name}`}
+                            title={reason ?? t('Saved in this browser — drag onto the dashboard, or click to add it at the end')}
+                            aria-label={t('Add {name}', { name: saved.name })}
                             className={`${CARD} ${reason ? '' : 'cursor-grab'}`}
-                            data-my-widget={t.name}
+                            data-my-widget={saved.name}
                           >
                             <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${reason ? 'bg-surface-container text-secondary' : 'bg-primary/10 text-primary'}`}>
                               <span className="material-symbols-outlined" style={{ fontSize: '17px' }} aria-hidden="true">{kind?.icon ?? 'widgets'}</span>
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className={`block truncate text-xs font-semibold ${reason ? 'text-secondary' : 'text-on-surface'}`}>{t.name}</span>
+                              <span className={`block truncate text-xs font-semibold ${reason ? 'text-secondary' : 'text-on-surface'}`}>{saved.name}</span>
                               <span className="block truncate text-[11px] text-secondary">{reason ?? kind?.label}</span>
                             </span>
                           </button>
-                          {team && shareButton({ kind: 'widget', name: t.name, content: t.widget })}
+                          {team && shareButton({ kind: 'widget', name: saved.name, content: saved.widget })}
                           <button
                             type="button"
-                            onClick={() => model.forgetWidgetTemplate(t.name)}
+                            onClick={() => model.forgetWidgetTemplate(saved.name)}
                             className="shrink-0 rounded p-1 text-secondary hover:bg-error/10 hover:text-error"
-                            aria-label={`Forget ${t.name}`}
-                            title="Forget this saved widget"
+                            aria-label={t('Forget {name}', { name: saved.name })}
+                            title={t('Forget this saved widget')}
                           >
                             <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>close</span>
                           </button>
@@ -327,34 +350,34 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                 </section>
               )}
               {teamWidgets.length > 0 && (
-                <section className="space-y-1.5" aria-label="Team widgets">
-                  <h3 className={HEADING}>Team widgets</h3>
+                <section className="space-y-1.5" aria-label={t('Team widgets')}>
+                  <h3 className={HEADING}>{t('Team widgets')}</h3>
                   <ul className="space-y-1.5" data-team-widgets>
-                    {teamWidgets.map(t => {
-                      const kind = WIDGET_KINDS.find(k => k.kind === t.content.kind)
-                      const reason = 'reason' in t.fit ? t.fit.reason : widgetCap ? `At most ${MAX_WIDGETS} widgets` : undefined
-                      const def = 'widget' in t.fit ? t.fit.widget : t.content
+                    {teamWidgets.map(tpl => {
+                      const kind = WIDGET_KINDS.find(k => k.kind === tpl.content.kind)
+                      const reason = 'reason' in tpl.fit ? tpl.fit.reason : widgetCap ? atMostWidgets() : undefined
+                      const def = 'widget' in tpl.fit ? tpl.fit.widget : tpl.content
                       return (
-                        <li key={t.id} className="flex items-center gap-1">
+                        <li key={tpl.id} className="flex items-center gap-1">
                           <button
                             type="button"
                             {...dragProps({ kind: 'widget', widget: def.kind, def }, Boolean(reason))}
                             onClick={() => onAddWidgetDef(def)}
                             disabled={Boolean(reason)}
-                            title={reason ?? `Shared with the team${by(t)} — drag onto the dashboard, or click to add it at the end`}
-                            aria-label={`Add ${t.name}`}
+                            title={reason ?? t('Shared with the team{by} — drag onto the dashboard, or click to add it at the end', { by: by(tpl) })}
+                            aria-label={t('Add {name}', { name: tpl.name })}
                             className={`${CARD} ${reason ? '' : 'cursor-grab'}`}
-                            data-team-widget={t.id}
+                            data-team-widget={tpl.id}
                           >
                             <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${reason ? 'bg-surface-container text-secondary' : 'bg-primary/10 text-primary'}`}>
                               <span className="material-symbols-outlined" style={{ fontSize: '17px' }} aria-hidden="true">{kind?.icon ?? 'widgets'}</span>
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className={`block truncate text-xs font-semibold ${reason ? 'text-secondary' : 'text-on-surface'}`}>{t.name}</span>
-                              <span className="block truncate text-[11px] text-secondary">{reason ?? `${kind?.label ?? t.content.kind}${by(t)}`}</span>
+                              <span className={`block truncate text-xs font-semibold ${reason ? 'text-secondary' : 'text-on-surface'}`}>{tpl.name}</span>
+                              <span className="block truncate text-[11px] text-secondary">{reason ?? `${kind?.label ?? tpl.content.kind}${by(tpl)}`}</span>
                             </span>
                           </button>
-                          {teamRemove(t)}
+                          {teamRemove(tpl)}
                         </li>
                       )
                     })}
@@ -365,11 +388,11 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                 const kinds = WIDGET_KINDS.filter(k => group.kinds.includes(k.kind) && matches(query, k.label, k.short, k.hint))
                 if (kinds.length === 0) return null
                 return (
-                  <section key={group.label} className="space-y-1.5" aria-label={group.label}>
-                    <h3 className={HEADING}>{group.label}</h3>
+                  <section key={group.key} className="space-y-1.5" aria-label={group.label()}>
+                    <h3 className={HEADING}>{group.label()}</h3>
                     <ul className="space-y-1.5">
                       {kinds.map(k => {
-                        const reason = widgetCap ? `At most ${MAX_WIDGETS} widgets` : widgetKindDisabledReason(k.kind, entityDef, { entities: named, scaffoldOpts: projectOpts })
+                        const reason = widgetCap ? atMostWidgets() : widgetKindDisabledReason(k.kind, entityDef, { entities: named, scaffoldOpts: projectOpts })
                         return (
                           <li key={k.kind}>
                             <button
@@ -377,8 +400,8 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                               {...dragProps({ kind: 'widget', widget: k.kind }, Boolean(reason))}
                               onClick={() => onAddWidget(k.kind)}
                               disabled={Boolean(reason)}
-                              title={reason ?? `${k.hint} — drag onto the dashboard, or click to add it at the end`}
-                              aria-label={`Add ${k.label.toLowerCase()}`}
+                              title={reason ?? t('{blurb} — drag onto the dashboard, or click to add it at the end', { blurb: k.hint })}
+                              aria-label={t('Add {name}', { name: k.label.toLowerCase() })}
                               className={`${CARD} ${reason ? '' : 'cursor-grab'}`}
                               data-library-widget={k.kind}
                             >
@@ -404,31 +427,31 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
 
         {tab === 'pages' && (
           <>
-            {model.named.length === 0 && <p className="text-[11px] text-secondary">Pages are built from your entities — name at least one entity first.</p>}
-            {model.myTemplates.some(t => matches(query, t.name)) && (
-              <section className="space-y-1.5" aria-label="My templates">
-                <h3 className={HEADING}>My templates</h3>
+            {model.named.length === 0 && <p className="text-[11px] text-secondary">{t('Pages are built from your entities — name at least one entity first.')}</p>}
+            {model.myTemplates.some(mine => matches(query, mine.name)) && (
+              <section className="space-y-1.5" aria-label={t('My templates')}>
+                <h3 className={HEADING}>{t('My templates')}</h3>
                 <ul className="space-y-1.5" data-my-templates>
-                  {model.myTemplates.filter(t => matches(query, t.name)).map(t => (
-                    <li key={t.name} className="flex items-center gap-1">
+                  {model.myTemplates.filter(mine => matches(query, mine.name)).map(mine => (
+                    <li key={mine.name} className="flex items-center gap-1">
                       <button
                         type="button"
-                        {...dragProps({ kind: 'my-template', name: t.name }, model.atPageCap)}
-                        onClick={() => onAddMyTemplate(t.name)}
+                        {...dragProps({ kind: 'my-template', name: mine.name }, model.atPageCap)}
+                        onClick={() => onAddMyTemplate(mine.name)}
                         disabled={model.atPageCap}
                         className={CARD}
-                        title={`Add a page like “${t.name}”`}
+                        title={t('Add a page like “{name}”', { name: mine.name })}
                       >
-                        <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{PAGE_TYPE_META[t.page.type]?.icon ?? 'web_asset'}</span>
-                        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-on-surface">{t.name}</span>
+                        <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{PAGE_TYPE_META[mine.page.type]?.icon ?? 'web_asset'}</span>
+                        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-on-surface">{mine.name}</span>
                       </button>
-                      {team && shareButton({ kind: 'page', name: t.name, content: t.page })}
+                      {team && shareButton({ kind: 'page', name: mine.name, content: mine.page })}
                       <button
                         type="button"
-                        onClick={() => model.forgetTemplate(t.name)}
+                        onClick={() => model.forgetTemplate(mine.name)}
                         className="rounded-lg p-1.5 text-secondary hover:bg-error/5 hover:text-error"
-                        aria-label={`Forget the template “${t.name}”`}
-                        title="Forget this template"
+                        aria-label={t('Forget the template “{name}”', { name: mine.name })}
+                        title={t('Forget this template')}
                       >
                         <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">close</span>
                       </button>
@@ -438,42 +461,42 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
               </section>
             )}
             {team && (teamPages.length > 0 || team.error) && (
-              <section className="space-y-1.5" aria-label="Team templates">
-                <h3 className={HEADING}>Team templates</h3>
+              <section className="space-y-1.5" aria-label={t('Team templates')}>
+                <h3 className={HEADING}>{t('Team templates')}</h3>
                 {team.error && (
                   <p className="text-[11px] text-secondary" data-team-error>
-                    The team's templates did not load ({team.error}).{' '}
-                    <button type="button" onClick={team.onRetry} className="font-semibold text-primary hover:underline">Try again</button>
+                    {t("The team's templates did not load ({error}).", { error: team.error })}{' '}
+                    <button type="button" onClick={team.onRetry} className="font-semibold text-primary hover:underline">{t('Try again')}</button>
                   </p>
                 )}
                 <ul className="space-y-1.5" data-team-templates>
-                  {teamPages.map(t => (
-                    <li key={t.id} className="flex items-center gap-1">
+                  {teamPages.map(tpl => (
+                    <li key={tpl.id} className="flex items-center gap-1">
                       <button
                         type="button"
-                        {...dragProps({ kind: 'team-template', id: t.id }, model.atPageCap)}
-                        onClick={() => team.onAddPage(t.id)}
+                        {...dragProps({ kind: 'team-template', id: tpl.id }, model.atPageCap)}
+                        onClick={() => team.onAddPage(tpl.id)}
                         disabled={model.atPageCap}
                         className={CARD}
-                        title={`Add a page like “${t.name}” — shared with the team${by(t)}`}
-                        aria-label={`Add the team template ${t.name}`}
-                        data-team-template={t.id}
+                        title={t('Add a page like “{name}” — shared with the team{by}', { name: tpl.name, by: by(tpl) })}
+                        aria-label={t('Add the team template {name}', { name: tpl.name })}
+                        data-team-template={tpl.id}
                       >
-                        <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{PAGE_TYPE_META[t.content.type]?.icon ?? 'web_asset'}</span>
+                        <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{PAGE_TYPE_META[tpl.content.type]?.icon ?? 'web_asset'}</span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-xs font-semibold text-on-surface">{t.name}</span>
-                          {t.createdBy && <span className="block truncate text-[11px] text-secondary">by {t.createdBy}</span>}
+                          <span className="block truncate text-xs font-semibold text-on-surface">{tpl.name}</span>
+                          {tpl.createdBy && <span className="block truncate text-[11px] text-secondary">{t('by {name}', { name: tpl.createdBy })}</span>}
                         </span>
                       </button>
-                      {teamRemove(t)}
+                      {teamRemove(tpl)}
                     </li>
                   ))}
                 </ul>
               </section>
             )}
             {model.suggestions.some(s => matches(query, s.label, s.blurb)) && (
-              <section className="space-y-1.5" aria-label="Suggested for your entities">
-                <h3 className={HEADING}>Suggested for your entities</h3>
+              <section className="space-y-1.5" aria-label={t('Suggested for your entities')}>
+                <h3 className={HEADING}>{t('Suggested for your entities')}</h3>
                 <ul className="space-y-1.5" data-page-suggestions>
                   {model.suggestions.filter(s => matches(query, s.label, s.blurb)).map(s => (
                     <li key={s.key}>
@@ -496,12 +519,12 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                 </ul>
               </section>
             )}
-            <section className="space-y-1.5" aria-label="Page types">
-              <h3 className={HEADING}>Page types</h3>
+            <section className="space-y-1.5" aria-label={t('Page types')}>
+              <h3 className={HEADING}>{t('Page types')}</h3>
               <ul className="grid grid-cols-1 gap-1.5 @[15rem]:grid-cols-2" data-page-gallery>
-                {(Object.keys(PAGE_TYPE_META) as FullstackPageType[]).filter(t => matches(query, PAGE_TYPE_META[t].label, PAGE_TYPE_META[t].blurb)).map(type => {
+                {(Object.keys(PAGE_TYPE_META) as FullstackPageType[]).filter(type => matches(query, PAGE_TYPE_META[type].label, PAGE_TYPE_META[type].blurb)).map(type => {
                   const meta = PAGE_TYPE_META[type]
-                  const reason = model.atPageCap ? 'The layout has the most pages it can have' : model.newTypeReason(type)
+                  const reason = model.atPageCap ? t('The layout has the most pages it can have') : model.newTypeReason(type)
                   return (
                     <li key={type}>
                       <button
@@ -509,7 +532,7 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
                         {...dragProps({ kind: 'page', type }, Boolean(reason))}
                         onClick={() => onChooseType(type)}
                         disabled={Boolean(reason)}
-                        title={reason ?? `${meta.blurb} Drag into the page strip, or click to add it.`}
+                        title={reason ?? t('{blurb} Drag into the page strip, or click to add it.', { blurb: meta.blurb })}
                         className={`${CARD} h-full flex-col items-start gap-0.5 ${reason ? '' : 'cursor-grab'}`}
                         data-library-page-type={type}
                       >
@@ -528,22 +551,22 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
         )}
 
         {tab === 'templates' && (
-          <section className="space-y-2" aria-label="Whole layouts">
-            <h3 className={HEADING}>Whole layouts</h3>
+          <section className="space-y-2" aria-label={t('Whole layouts')}>
+            <h3 className={HEADING}>{t('Whole layouts')}</h3>
             <p className="text-[11px] text-secondary">
-              {pages.length > 0 ? 'Builds a new layout from your entities in place of this one — Undo brings this one back.' : 'Builds a layout from your entities; every page stays editable.'}
+              {pages.length > 0 ? t('Builds a new layout from your entities in place of this one — Undo brings this one back.') : t('Builds a layout from your entities; every page stays editable.')}
             </p>
             {model.named.length === 0
-              ? <p className="text-[11px] text-secondary">Name an entity first.</p>
-              : <TemplateGallery templates={model.layoutTemplates().filter(t => matches(query, t.template.label, t.template.blurb))} onPick={onTemplate} />}
+              ? <p className="text-[11px] text-secondary">{t('Name an entity first.')}</p>
+              : <TemplateGallery templates={model.layoutTemplates().filter(tpl => matches(query, tpl.template.label, tpl.template.blurb))} onPick={onTemplate} />}
           </section>
         )}
       </div>
       <p className="border-t border-outline-variant px-3 py-2 text-[11px] text-secondary">
-        {tab === 'widgets' && partGroups.length > 0 ? 'Drag a part onto the page, or click it to add it at the end.'
-          : tab === 'widgets' ? 'Drag a widget onto the dashboard, or click it to add it at the end.'
-          : tab === 'pages' ? 'Drag a page into the strip above the canvas, or click to add it.'
-            : 'Pick a template to build the whole layout from it.'}
+        {tab === 'widgets' && partGroups.length > 0 ? t('Drag a part onto the page, or click it to add it at the end.')
+          : tab === 'widgets' ? t('Drag a widget onto the dashboard, or click it to add it at the end.')
+          : tab === 'pages' ? t('Drag a page into the strip above the canvas, or click to add it.')
+            : t('Pick a template to build the whole layout from it.')}
       </p>
     </aside>
   )
@@ -568,21 +591,21 @@ function StepFieldCard({ card, steps, dragProps, onMove }: {
   const name = card.part.kind === 'step-field' ? card.part.field : ''
   const step = steps.findIndex(s => s.fields.includes(name))
   return (
-    <div {...dragProps} className={`${CARD} cursor-grab`} title={`${card.blurb} — drag onto a step of the wizard`} data-library-part={card.key}>
+    <div {...dragProps} className={`${CARD} cursor-grab`} title={t('{blurb} — drag onto a step of the wizard', { blurb: card.blurb })} data-library-part={card.key}>
       <PartIcon icon={card.icon} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-semibold text-on-surface">{card.label}</span>
         <span className="block text-[11px] text-secondary">{card.blurb}</span>
       </span>
       <select
-        aria-label={`Step for ${card.label}`}
+        aria-label={t('Step for {name}', { name: card.label })}
         value={step}
         onChange={e => onMove(Number(e.target.value))}
         className="max-w-[6.5rem] shrink-0 rounded border border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-[11px]"
       >
-        {step < 0 && <option value={-1} disabled>Not asked</option>}
-        {steps.map((s, i) => <option key={i} value={i}>Step {i + 1}{s.title ? ` · ${s.title}` : ''}</option>)}
-        {steps.length < MAX_STEPS && <option value={steps.length}>New step</option>}
+        {step < 0 && <option value={-1} disabled>{t('Not asked')}</option>}
+        {steps.map((s, i) => <option key={i} value={i}>{s.title ? t('Step {n} · {title}', { n: i + 1, title: s.title }) : t('Step {n}', { n: i + 1 })}</option>)}
+        {steps.length < MAX_STEPS && <option value={steps.length}>{t('New step')}</option>}
       </select>
     </div>
   )

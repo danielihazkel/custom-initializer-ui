@@ -9,6 +9,7 @@ import {
 import type { FormProps } from './formTypes'
 import { SMALL_BUTTON } from './constants'
 import { DragGrip, EntitySelect, Field, MiniField, PresetFilters } from './fields'
+import { t } from '../../../i18n'
 
 export function EntityListForm({ page, index, entities, errors, update, lossy, dnd, projectOpts, pages, pushUndo, onChange }: FormProps & {
   dnd: ReturnType<typeof useDragReorder>
@@ -29,7 +30,7 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
   const splitReason = splitDisabledReason(page, splitField, pages)
   function split() {
     if (!splitField || splitReason) return
-    pushUndo(`Split “${pageLabel(page)}” by ${splitField.name}`)
+    pushUndo(t('Split “{page}” by {field}', { page: pageLabel(page), field: splitField.name }))
     onChange(splitListByField(page, splitField, pages))
   }
   const allKeys = columns.map(c => c.key)
@@ -54,16 +55,16 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
 
   return (
     <div className="space-y-2">
-      <Field label="Entity" error={errors.entity} control="entity">
+      <Field label={t('Entity')} error={errors.entity} control="entity">
         <EntitySelect
-          label="List entity"
+          label={t('List entity')}
           value={page.entity ?? ''}
           options={entities.map(e => e.name)}
           error={errors.entity}
           onChange={name => {
             // Columns, sort, view and filter stay when the new entity also has them; the rest is named.
             const { patch, dropped } = retargetEntityList(page, entities.find(e => e.name === name), projectOpts)
-            lossy(`Listed ${name} on “${pageLabel(page)}”`, dropped)
+            lossy(t('Listed {entity} on “{page}”', { entity: name, page: pageLabel(page) }), dropped)
             update(index, patch)
           }}
         />
@@ -76,10 +77,10 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
       />
       {splittable.length > 0 && (
         <div className="flex flex-wrap items-end gap-2" data-control="split">
-          <MiniField label="Split into tabs by" hint={splitReason ?? `A hidden list per ${splitField?.name} value, side by side under a new tabs page`}>
+          <MiniField label={t('Split into tabs by')} hint={splitReason ?? t('A hidden list per {field} value, side by side under a new tabs page', { field: splitField?.name ?? '' })}>
             <div className="flex flex-wrap items-center gap-2">
               <select
-                aria-label="Split by field"
+                aria-label={t('Split by field')}
                 value={splitField?.name ?? ''}
                 onChange={e => setPickedSplit(e.target.value)}
                 className={`${inputClass()} max-w-[12rem] py-1 text-xs`}
@@ -91,19 +92,19 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
                 onClick={split}
                 disabled={Boolean(splitReason)}
                 className={SMALL_BUTTON}
-                title={splitReason ?? 'One undoable step'}
+                title={splitReason ?? t('One undoable step')}
                 data-split-list
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>tab</span>
-                Split into tabs
+                {t('Split into tabs')}
               </button>
             </div>
           </MiniField>
         </div>
       )}
-      <div className="space-y-1" data-control="columns" role="group" aria-label="Columns">
+      <div className="space-y-1" data-control="columns" role="group" aria-label={t('Columns')}>
         <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
-          Columns <span className="font-normal normal-case tracking-normal">· in table order — click one to hide it, drag to reorder</span>
+          {t('Columns')} <span className="font-normal normal-case tracking-normal">{t('· in table order — click one to hide it, drag to reorder')}</span>
         </p>
         <div className="flex flex-wrap items-center gap-1">
           {shown.map((key, i) => {
@@ -122,8 +123,8 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
                 <button
                   type="button"
                   aria-pressed="true"
-                  aria-label={`Hide the ${labelOf(key)} column`}
-                  title={last ? 'Keep at least one column' : col ? 'Shown — click to hide' : `${entity?.name ?? 'The entity'} no longer has this column`}
+                  aria-label={t('Hide the {column} column', { column: labelOf(key) })}
+                  title={last ? t('Keep at least one column') : col ? t('Shown — click to hide') : t('{entity} no longer has this column', { entity: entity?.name ?? t('The entity') })}
                   disabled={last}
                   onClick={() => toggle(key)}
                   className="inline-flex items-center gap-1 leading-none hover:text-error disabled:cursor-default disabled:hover:text-inherit"
@@ -138,8 +139,8 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
               key={key}
               type="button"
               aria-pressed="false"
-              aria-label={`Show the ${labelOf(key)} column`}
-              title="Hidden — click to show"
+              aria-label={t('Show the {column} column', { column: labelOf(key) })}
+              title={t('Hidden — click to show')}
               onClick={() => toggle(key)}
               className="inline-flex items-center gap-1 rounded-full border border-dashed border-outline-variant px-2 py-0.5 text-[11px] text-secondary hover:border-primary/50 hover:text-primary"
             >
@@ -151,26 +152,26 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
         {page.columns && (
           <button type="button" onClick={() => update(index, { columns: undefined })} className={SMALL_BUTTON}>
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">restart_alt</span>
-            All columns (default)
+            {t('All columns (default)')}
           </button>
         )}
       </div>
       <div className="grid grid-cols-1 @sm:grid-cols-3 gap-2">
-        <Field label="Sort rows by" error={errors.sort} control="sort" hint="How the table opens; the primary key when unset">
+        <Field label={t('Sort rows by')} error={errors.sort} control="sort" hint={t('How the table opens; the primary key when unset')}>
           <div className="flex items-center gap-1">
             <select
-              aria-label="Sort rows by"
+              aria-label={t('Sort rows by')}
               aria-invalid={Boolean(errors.sort)}
               value={page.sort?.field ?? ''}
               onChange={e => setSort(e.target.value || undefined, page.sort?.dir)}
               className={`${inputClass(errors.sort)} min-w-0 flex-1 py-1 text-xs`}
             >
-              <option value="">Default (primary key)</option>
+              <option value="">{t('Default (primary key)')}</option>
               {sortable.map(k => <option key={k} value={k}>{labelOf(k)}</option>)}
               {page.sort?.field && !sortable.includes(page.sort.field) && <option value={page.sort.field}>{page.sort.field}</option>}
             </select>
             {page.sort?.field && (
-              <span role="radiogroup" aria-label="Sort direction" className="inline-flex shrink-0 overflow-hidden rounded-lg border border-outline-variant">
+              <span role="radiogroup" aria-label={t('Sort direction')} className="inline-flex shrink-0 overflow-hidden rounded-lg border border-outline-variant">
                 {(['asc', 'desc'] as const).map(dir => {
                   const on = (page.sort?.dir ?? 'asc') === dir
                   return (
@@ -179,8 +180,8 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
                       type="button"
                       role="radio"
                       aria-checked={on}
-                      aria-label={dir === 'asc' ? 'Ascending' : 'Descending'}
-                      title={dir === 'asc' ? 'Ascending' : 'Descending'}
+                      aria-label={dir === 'asc' ? t('Ascending') : t('Descending')}
+                      title={dir === 'asc' ? t('Ascending') : t('Descending')}
                       onClick={() => setSort(page.sort?.field, dir)}
                       className={`px-1.5 py-1 ${on ? 'bg-primary/10 text-primary' : 'text-secondary hover:text-primary'}`}
                     >
@@ -193,16 +194,16 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
           </div>
         </Field>
         <Field
-          label="Row detail opens in"
+          label={t('Row detail opens in')}
           error={errors.detail}
           control="detail"
-          hint={hasRecord ? 'Default: the record page' : 'Default: the quick-look drawer — add a record page to open rows there'}
+          hint={hasRecord ? t('Default: the record page') : t('Default: the quick-look drawer — add a record page to open rows there')}
         >
-          <span role="radiogroup" aria-label="Row detail opens in" className="inline-flex flex-wrap overflow-hidden rounded-lg border border-outline-variant">
+          <span role="radiogroup" aria-label={t('Row detail opens in')} className="inline-flex flex-wrap overflow-hidden rounded-lg border border-outline-variant">
             {([
-              { value: 'drawer', label: 'Drawer', reason: undefined },
-              { value: 'side', label: 'Side pane', reason: entity && !singlePkEntity(entity) ? 'A side pane needs a single-key entity' : undefined },
-              { value: 'record', label: 'Record page', reason: hasRecord ? undefined : `Add a record page for ${entity?.name ?? 'the entity'} first` },
+              { value: 'drawer', label: t('Drawer'), reason: undefined },
+              { value: 'side', label: t('Side pane'), reason: entity && !singlePkEntity(entity) ? t('A side pane needs a single-key entity') : undefined },
+              { value: 'record', label: t('Record page'), reason: hasRecord ? undefined : t('Add a record page for {entity} first', { entity: entity?.name ?? t('the entity') }) },
             ] as { value: FullstackListDetail; label: string; reason?: string }[]).map(d => {
               const on = (page.detail ?? (hasRecord ? 'record' : 'drawer')) === d.value
               return (
@@ -224,12 +225,12 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
           </span>
         </Field>
         <Field
-          label="Opens as"
+          label={t('Opens as')}
           error={errors.view}
           control="view"
-          hint={views.length > 1 ? 'The view it opens in; its toggle offers the others' : `${entity?.name ?? 'It'} offers the table only — tick more list views on the entity`}
+          hint={views.length > 1 ? t('The view it opens in; its toggle offers the others') : t('{entity} offers the table only — tick more list views on the entity', { entity: entity?.name ?? t('It') })}
         >
-          <span role="radiogroup" aria-label="Opens as" className="inline-flex flex-wrap overflow-hidden rounded-lg border border-outline-variant">
+          <span role="radiogroup" aria-label={t('Opens as')} className="inline-flex flex-wrap overflow-hidden rounded-lg border border-outline-variant">
             {LIST_VIEWS.map(v => {
               const enabled = views.includes(v.value)
               const on = (page.view ?? views[0]) === v.value
@@ -242,7 +243,7 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
                   aria-checked={on}
                   aria-label={v.label}
                   disabled={!enabled}
-                  title={reason ?? (v.value === views[0] ? `${v.label} (default)` : v.label)}
+                  title={reason ?? (v.value === views[0] ? t('{view} (default)', { view: v.label }) : v.label)}
                   onClick={() => update(index, { view: v.value === views[0] ? undefined : v.value })}
                   className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] ${on ? 'bg-primary/10 font-semibold text-primary' : 'text-secondary hover:text-primary'} disabled:opacity-40 disabled:hover:text-secondary`}
                 >
@@ -253,24 +254,24 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
             })}
           </span>
         </Field>
-        <Field label="Rows per page" error={errors.pageSize} control="pageSize">
+        <Field label={t('Rows per page')} error={errors.pageSize} control="pageSize">
           <select
-            aria-label="Rows per page"
+            aria-label={t('Rows per page')}
             aria-invalid={Boolean(errors.pageSize)}
             value={page.pageSize ?? ''}
             onChange={e => update(index, { pageSize: e.target.value ? Number(e.target.value) : undefined })}
             className={`${inputClass(errors.pageSize)} max-w-[10rem] py-1 text-xs`}
           >
-            <option value="">Default ({DEFAULT_PAGE_SIZE})</option>
+            <option value="">{t('Default ({n})', { n: DEFAULT_PAGE_SIZE })}</option>
             {LIST_PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
             {page.pageSize != null && !LIST_PAGE_SIZES.includes(page.pageSize) && <option value={page.pageSize}>{page.pageSize}</option>}
           </select>
         </Field>
         <Field
-          label="Hide actions"
+          label={t('Hide actions')}
           error={errors.hideActions}
           control="hideActions"
-          hint="Leave buttons out of this list — presentation only; use roles to restrict who may do it"
+          hint={t('Leave buttons out of this list — presentation only; use roles to restrict who may do it')}
         >
           <span className="inline-flex flex-wrap gap-1.5" data-hide-actions>
             {LIST_ACTIONS.map(a => {
@@ -286,7 +287,7 @@ export function EntityListForm({ page, index, entities, errors, update, lossy, d
                     type="checkbox"
                     className="accent-primary"
                     checked={on}
-                    aria-label={`Hide ${a.label}`}
+                    aria-label={t('Hide {action}', { action: a.label })}
                     onChange={() => {
                       const next = on ? hidden.filter(x => x !== a.value) : LIST_ACTIONS.map(x => x.value).filter(x => x === a.value || hidden.includes(x))
                       update(index, { hideActions: next.length ? next : undefined })

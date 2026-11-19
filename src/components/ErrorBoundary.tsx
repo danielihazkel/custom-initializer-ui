@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { t } from '../i18n'
 
 interface Props { children: ReactNode }
 interface State { error: Error | null }
@@ -29,12 +30,11 @@ export class ErrorBoundary extends Component<Props, State> {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div role="alert" className="bg-surface-container border border-error-container rounded-xl p-8 max-w-md text-center space-y-4">
-          <h2 className="text-lg font-bold text-on-surface">Something went wrong</h2>
+          <h2 className="text-lg font-bold text-on-surface">{t('Something went wrong')}</h2>
           <p className="text-sm text-secondary">
-            The page hit an unexpected error. Reloading usually fixes it; if it keeps happening,
-            reset the locally saved project data.
+            {t('The page hit an unexpected error. Reloading usually fixes it; if it keeps happening, reset the locally saved project data.')}
           </p>
-          <code className="block text-xs text-error bg-surface-container-lowest rounded p-3 break-words text-left">
+          <code className="block text-xs text-error bg-surface-container-lowest rounded p-3 break-words text-start" dir="ltr">
             {this.state.error.message}
           </code>
           <div className="flex justify-center gap-3">
@@ -42,13 +42,13 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={() => window.location.reload()}
               className="px-4 py-1.5 rounded-lg text-xs font-semibold border border-outline-variant hover:bg-surface-container-high transition-colors"
             >
-              Reload
+              {t('Reload')}
             </button>
             <button
               onClick={this.resetLocalData}
               className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-90 transition-opacity"
             >
-              Reset local data
+              {t('Reset local data')}
             </button>
           </div>
         </div>

@@ -2,6 +2,7 @@ import type {
   EventsByDep, OpenApiByDep, OpenApiMode, ProjectSnapshot, SoapByDep, SoapMode, SqlApiMode, SqlByDep,
 } from '../../types'
 import { defaultForm } from '../../utils/projectUtils'
+import { t } from '../../i18n'
 
 /**
  * `menora-model.json` of a plain backend, as the generator writes it at a project's root
@@ -36,19 +37,19 @@ export function parseBackendModel(text: string): ParsedBackendModel | { error: s
   try {
     parsed = JSON.parse(text)
   } catch {
-    return { error: 'The file is not JSON.' }
+    return { error: t('The file is not JSON.') }
   }
-  if (!isObject(parsed)) return { error: 'The file is not a project model.' }
+  if (!isObject(parsed)) return { error: t('The file is not a project model.') }
   const format = str(parsed.format)
   if (format.startsWith('menora-fullstack') || Array.isArray(parsed.entities)) {
-    return { error: 'This is a fullstack project\'s model: import it on the Fullstack tab.' }
+    return { error: t('This is a fullstack project\'s model: import it on the Fullstack tab.') }
   }
   if (format && format !== BACKEND_MODEL_FORMAT) {
-    return { error: `Unknown model format "${format}": this generator reads ${BACKEND_MODEL_FORMAT}.` }
+    return { error: t('Unknown model format "{format}": this generator reads {expected}.', { format, expected: BACKEND_MODEL_FORMAT }) }
   }
   const request = isObject(parsed.request) ? parsed.request : parsed
   if (typeof request.artifactId !== 'string' && !Array.isArray(request.dependencies)) {
-    return { error: 'The file is not a project model: it names no artifact and no dependencies.' }
+    return { error: t('The file is not a project model: it names no artifact and no dependencies.') }
   }
   const generator = isObject(parsed.generator) ? parsed.generator : {}
   const catalogHash = str(generator.catalogHash) || undefined

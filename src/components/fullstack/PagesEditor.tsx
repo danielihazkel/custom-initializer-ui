@@ -23,6 +23,7 @@ import { PageList } from './pages/PageList'
 import { NavToolsFields } from './pages/NavTools'
 import { cleanNav } from './navTools'
 import { offNavNoteFor, usePagesModel, type PagesPreviewSettings } from './pages/usePagesModel'
+import { t, tn, useLang } from '../../i18n'
 
 export type { PagesPreviewSettings } from './pages/usePagesModel'
 
@@ -101,13 +102,15 @@ function readSectionOpen(): boolean {
 
 /** One line for the collapsed section: what the generated app's navigation will hold. */
 export function summarizeLayout(pages: FullstackPageDef[]): string {
-  if (pages.length === 0) return 'Classic layout — a dashboard plus one list page per entity.'
+  if (pages.length === 0) return t('Classic layout — a dashboard plus one list page per entity.')
   const labels = pages.filter(inNav).map(pageLabel)
   const more = labels.length - SUMMARY_NAMES
   const offNav = pages.length - labels.length
   const parts = [
-    labels.length > 0 ? `${labels.slice(0, SUMMARY_NAMES).join(', ')}${more > 0 ? ` and ${more} more` : ''}` : 'Nothing in the navigation',
-    offNav > 0 ? `${offNav} off the navigation` : '',
+    labels.length > 0
+      ? (more > 0 ? t('{names} and {n} more', { names: labels.slice(0, SUMMARY_NAMES).join(', '), n: more }) : labels.join(', '))
+      : t('Nothing in the navigation'),
+    offNav > 0 ? t('{n} off the navigation', { n: offNav }) : '',
   ]
   return parts.filter(Boolean).join(' · ')
 }
@@ -119,6 +122,7 @@ export function summarizeLayout(pages: FullstackPageDef[]): string {
  * editable starting point.
  */
 export function PagesEditor({ pages, entities, validation, onChange, pushUndo, onClear, previewSettings, revealRequest, addRequest, previewRequest, findRequest, layout = 'split', history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, dismissedWarnings, onDismissedWarningsChange }: PagesEditorProps) {
+  useLang()
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   // The "Tabs" gallery card asks which pages to embed before adding anything.
@@ -366,7 +370,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       ref={sectionRef}
       id="fs-pages"
       className="@container rounded-xl border border-outline-variant bg-surface-container-lowest p-4 space-y-3"
-      aria-label="Frontend page layout"
+      aria-label={t('Frontend page layout')}
       data-page-layout
       onKeyDown={onSectionKey}
     >
@@ -375,15 +379,15 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           <span className="material-symbols-outlined text-primary mt-0.5" style={{ fontSize: '20px' }}>web</span>
           <div>
             <h2 className="text-sm font-bold text-on-surface">
-              Frontend pages
+              {t('Frontend pages')}
               {pages.length > 0 && <span className="ms-1.5 text-[11px] font-normal text-secondary">{pages.length}</span>}
               {onOpenGuide && (
                 <button
                   type="button"
                   onClick={() => onOpenGuide('fs-pages')}
                   className={`${ICON_BUTTON} ms-1 align-middle`}
-                  aria-label="Open the guide on frontend pages"
-                  title="How page layouts work — opens the guide"
+                  aria-label={t('Open the guide on frontend pages')}
+                  title={t('How page layouts work — opens the guide')}
                   data-pages-help
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>help</span>
@@ -392,7 +396,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             </h2>
             {sectionOpen ? (
               <p className="text-[11px] text-secondary">
-                The generated app opens on the first page in the navigation. A hidden page shows up only as a tab of a tabs page, and a record page opens from a row of its entity.
+                {t('The generated app opens on the first page in the navigation. A hidden page shows up only as a tab of a tabs page, and a record page opens from a row of its entity.')}
               </p>
             ) : (
               <p className="text-[11px] text-secondary" data-pages-summary>{summarizeLayout(pages)}</p>
@@ -403,13 +407,13 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           {!sectionOpen && issues.length > 0 && (
             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-error" role="status">
               <span className="h-1.5 w-1.5 rounded-full bg-error" aria-hidden="true" />
-              {issues.length} problem{issues.length === 1 ? '' : 's'} here
+              {tn(issues.length, '{n} problem here', '{n} problems here')}
             </span>
           )}
           {!sectionOpen && issues.length === 0 && validation.warnings.length > 0 && (
             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300" role="status">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />
-              {validation.warnings.length} warning{validation.warnings.length === 1 ? '' : 's'} here
+              {tn(validation.warnings.length, '{n} warning here', '{n} warnings here')}
             </span>
           )}
           {sectionOpen && history && (
@@ -419,8 +423,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 onClick={history.onUndo}
                 disabled={!history.undoLabel}
                 className={ICON_BUTTON}
-                title={history.undoLabel ? `${history.undoLabel} (Ctrl+Z)` : 'Nothing to undo'}
-                aria-label={history.undoLabel ?? 'Undo (nothing to undo)'}
+                title={history.undoLabel ? `${history.undoLabel} (Ctrl+Z)` : t('Nothing to undo')}
+                aria-label={history.undoLabel ?? t('Undo (nothing to undo)')}
                 data-pages-undo
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>undo</span>
@@ -430,8 +434,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 onClick={history.onRedo}
                 disabled={!history.redoLabel}
                 className={ICON_BUTTON}
-                title={history.redoLabel ? `${history.redoLabel} (Ctrl+Shift+Z)` : 'Nothing to redo'}
-                aria-label={history.redoLabel ?? 'Redo (nothing to redo)'}
+                title={history.redoLabel ? `${history.redoLabel} (Ctrl+Shift+Z)` : t('Nothing to redo')}
+                aria-label={history.redoLabel ?? t('Redo (nothing to redo)')}
                 data-pages-redo
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>redo</span>
@@ -443,11 +447,11 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               type="button"
               onClick={() => setPreviewDrawer(true)}
               className={`${SMALL_BUTTON} xl:hidden`}
-              title="Open a preview of the generated app"
+              title={t('Open a preview of the generated app')}
               data-open-preview-drawer
             >
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>preview</span>
-              Open preview
+              {t('Open preview')}
             </button>
           )}
           {sectionOpen && pages.length > 0 && (
@@ -456,11 +460,11 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               onClick={() => setPreviewOpen(o => !o)}
               aria-pressed={previewOpen}
               className={`${SMALL_BUTTON} ${layout === 'split' ? 'hidden xl:inline-flex' : ''}`}
-              title={previewOpen ? 'Hide the layout preview' : 'Show a preview of the generated app'}
+              title={previewOpen ? t('Hide the layout preview') : t('Show a preview of the generated app')}
               data-toggle-preview
             >
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{previewOpen ? 'visibility_off' : 'preview'}</span>
-              {previewOpen ? 'Hide preview' : 'Preview'}
+              {previewOpen ? t('Hide preview') : t('Preview')}
             </button>
           )}
           {sectionOpen && pages.length > 0 && named.length > 0 && (
@@ -469,11 +473,11 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               onClick={() => setTemplatesOpen(o => !o)}
               aria-expanded={templatesOpen}
               className={SMALL_BUTTON}
-              title="Replace this layout with one built from a template (undoable)"
+              title={t('Replace this layout with one built from a template (undoable)')}
               data-open-templates
             >
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>auto_awesome_mosaic</span>
-              Templates
+              {t('Templates')}
             </button>
           )}
           {sectionOpen && pages.length > 0 && (
@@ -481,10 +485,10 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               type="button"
               onClick={() => setConfirmClassic(true)}
               className={SMALL_BUTTON}
-              title="Generate the default dashboard plus one list page per entity instead"
+              title={t('Generate the default dashboard plus one list page per entity instead')}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>restart_alt</span>
-              Use classic layout
+              {t('Use classic layout')}
             </button>
           )}
           {sectionOpen && (
@@ -494,23 +498,23 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               aria-expanded={addOpen}
               disabled={named.length === 0 || atPageCap}
               className={SMALL_BUTTON}
-              title={named.length === 0 ? 'Name an entity first' : atPageCap ? `A layout can have at most ${MAX_PAGES} pages` : 'Add a page to the layout'}
+              title={named.length === 0 ? t('Name an entity first') : atPageCap ? t('A layout can have at most {n} pages', { n: MAX_PAGES }) : t('Add a page to the layout')}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
-              Add page
+              {t('Add page')}
             </button>
           )}
           <button
             type="button"
             onClick={() => setSectionOpen(o => !o)}
-            aria-label={sectionOpen ? 'Collapse frontend pages' : 'Expand frontend pages'}
+            aria-label={sectionOpen ? t('Collapse frontend pages') : t('Expand frontend pages')}
             aria-expanded={sectionOpen}
             aria-controls="fs-pages-body"
-            title={sectionOpen ? 'Collapse to one line' : 'Expand the page layout'}
+            title={sectionOpen ? t('Collapse to one line') : t('Expand the page layout')}
             className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-medium text-secondary hover:text-primary hover:bg-primary/5 transition-colors"
             data-toggle-pages-section
           >
-            {sectionOpen ? 'Hide' : 'Show'}
+            {sectionOpen ? t('Hide') : t('Show')}
             <span className={`material-symbols-outlined transition-transform ${sectionOpen ? 'rotate-180' : ''}`} style={{ fontSize: '16px' }}>expand_more</span>
           </button>
         </div>
@@ -520,11 +524,11 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       <div id="fs-pages-body" className="space-y-3">
       {named.length === 0 && (
         <p className="text-[11px] text-secondary" data-pages-need-entity>
-          Pages are built from your entities — name at least one entity in the Entities section above, then add pages here.
+          {t('Pages are built from your entities — name at least one entity in the Entities section above, then add pages here.')}
         </p>
       )}
       {atPageCap && (
-        <p className="text-[11px] text-secondary">This layout has the maximum of {MAX_PAGES} pages — remove one to add another.</p>
+        <p className="text-[11px] text-secondary">{t('This layout has the maximum of {n} pages — remove one to add another.', { n: MAX_PAGES })}</p>
       )}
       {notice && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-[11px] text-on-surface" role="status" data-pages-notice>
@@ -532,10 +536,10 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           <span className="flex-1">{notice}</span>
           {history?.undoLabel && (
             <button type="button" onClick={() => { setNotice(null); history.onUndo() }} className="font-semibold text-primary hover:underline">
-              Undo
+              {t('Undo')}
             </button>
           )}
-          <button type="button" onClick={() => setNotice(null)} className={ICON_BUTTON} aria-label="Dismiss">
+          <button type="button" onClick={() => setNotice(null)} className={ICON_BUTTON} aria-label={t('Dismiss')}>
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
           </button>
         </div>
@@ -545,26 +549,26 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         <div className="space-y-2" data-page-gallery>
           {myTemplates.length > 0 && (
             <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">My templates</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('My templates')}</p>
               <ul className="flex flex-wrap gap-2" data-my-templates>
-                {myTemplates.map(t => (
-                  <li key={t.name} className="inline-flex items-center overflow-hidden rounded-lg border border-outline-variant">
+                {myTemplates.map(mine => (
+                  <li key={mine.name} className="inline-flex items-center overflow-hidden rounded-lg border border-outline-variant">
                     <button
                       type="button"
                       disabled={atPageCap}
-                      onClick={() => add(pageFromTemplate(t, pages))}
+                      onClick={() => add(pageFromTemplate(mine, pages))}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-on-surface hover:bg-primary/5 disabled:opacity-50"
-                      title={`Add a ${PAGE_TYPE_META[t.page.type]?.label.toLowerCase() ?? t.page.type} page like “${t.name}”`}
+                      title={t('Add a {type} page like “{name}”', { type: PAGE_TYPE_META[mine.page.type]?.label.toLowerCase() ?? mine.page.type, name: mine.name })}
                     >
-                      <span className="material-symbols-outlined text-primary" style={{ fontSize: '14px' }} aria-hidden="true">{PAGE_TYPE_META[t.page.type]?.icon ?? 'web_asset'}</span>
-                      {t.name}
+                      <span className="material-symbols-outlined text-primary" style={{ fontSize: '14px' }} aria-hidden="true">{PAGE_TYPE_META[mine.page.type]?.icon ?? 'web_asset'}</span>
+                      {mine.name}
                     </button>
                     <button
                       type="button"
-                      onClick={() => model.forgetTemplate(t.name)}
+                      onClick={() => model.forgetTemplate(mine.name)}
                       className="px-1.5 py-1 text-secondary hover:bg-error/5 hover:text-error"
-                      aria-label={`Forget the template “${t.name}”`}
-                      title="Forget this template"
+                      aria-label={t('Forget the template “{name}”', { name: mine.name })}
+                      title={t('Forget this template')}
                     >
                       <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">close</span>
                     </button>
@@ -575,7 +579,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           )}
           {suggestions.length > 0 && (
             <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Suggested for your entities</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('Suggested for your entities')}</p>
               <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2" data-page-suggestions>
                 {suggestions.map(s => (
                   <li key={s.key}>
@@ -623,9 +627,11 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           {entityForm && (
             <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2" data-entity-form>
               <p className="text-xs font-semibold text-on-surface">
-                New {PAGE_TYPE_META[entityForm.type].label.toLowerCase()} page — {entityForm.type === 'master-detail' ? 'which parent and child?' : 'which entity?'}
+                {entityForm.type === 'master-detail'
+                  ? t('New {type} page — which parent and child?', { type: PAGE_TYPE_META[entityForm.type].label.toLowerCase() })
+                  : t('New {type} page — which entity?', { type: PAGE_TYPE_META[entityForm.type].label.toLowerCase() })}
               </p>
-              <ul role="radiogroup" aria-label="Entity for the new page" className="flex flex-wrap gap-2">
+              <ul role="radiogroup" aria-label={t('Entity for the new page')} className="flex flex-wrap gap-2">
                 {(newPageChoices(entityForm.type, named, pages) ?? []).map(c => {
                   const on = entityForm.pick === c.value
                   return (
@@ -653,9 +659,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                   onClick={() => addPage(entityForm.type, entityForm.pick)}
                   className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-on-primary"
                 >
-                  Add {PAGE_TYPE_META[entityForm.type].label.toLowerCase()} page
+                  {t('Add {type} page', { type: PAGE_TYPE_META[entityForm.type].label.toLowerCase() })}
                 </button>
-                <button type="button" onClick={() => setEntityForm(null)} className={SMALL_BUTTON}>Cancel</button>
+                <button type="button" onClick={() => setEntityForm(null)} className={SMALL_BUTTON}>{t('Cancel')}</button>
               </div>
             </div>
           )}
@@ -674,10 +680,10 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
 
       {/* Announced as a count, politely — the list itself would be read out again on every edit. */}
       <p className="sr-only" role="status">
-        {issues.length === 0 ? '' : `${issues.length} layout problem${issues.length === 1 ? '' : 's'}`}
+        {issues.length === 0 ? '' : tn(issues.length, '{n} layout problem', '{n} layout problems')}
       </p>
       {issues.length > 0 && (
-        <ul className="rounded-lg border border-error/40 bg-error/5 px-3 py-2 space-y-1" aria-label="Layout problems" data-page-layout-problems>
+        <ul className="rounded-lg border border-error/40 bg-error/5 px-3 py-2 space-y-1" aria-label={t('Layout problems')} data-page-layout-problems>
           {issues.map((issue, i) => (
             <li key={`${i}:${issue.summary}`} className="flex flex-wrap items-start gap-x-3 gap-y-1 text-[11px] text-error">
               {issue.page != null ? (
@@ -685,7 +691,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                   type="button"
                   onClick={() => reveal({ page: issue.page!, control: issue.field })}
                   className="flex items-start gap-1.5 text-start hover:underline"
-                  title="Open this page at the problem"
+                  title={t('Open this page at the problem')}
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '13px' }} aria-hidden="true">error</span>
                   {issue.summary}
@@ -701,11 +707,11 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                   type="button"
                   onClick={() => model.applyFix(issue.fix!)}
                   className="inline-flex items-center gap-1 rounded border border-error/40 px-1.5 py-0.5 text-[10px] font-semibold text-error hover:bg-error/10"
-                  title="Apply this fix (undoable)"
+                  title={t('Apply this fix (undoable)')}
                   data-page-fix
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">auto_fix_high</span>
-                  Fix: {issue.fix.label}
+                  {t('Fix: {label}', { label: issue.fix.label })}
                 </button>
               )}
               {issue.alsoFix && (
@@ -713,10 +719,10 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                   type="button"
                   onClick={() => model.applyFix(issue.alsoFix!)}
                   className="inline-flex items-center gap-1 rounded border border-error/30 px-1.5 py-0.5 text-[10px] text-error hover:bg-error/10"
-                  title="Apply this fix instead (undoable)"
+                  title={t('Apply this fix instead (undoable)')}
                   data-page-fix-alt
                 >
-                  or {issue.alsoFix.label}
+                  {t('or {label}', { label: issue.alsoFix.label })}
                 </button>
               )}
             </li>
@@ -739,7 +745,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       {pages.length === 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-outline-variant px-3 py-3">
           <p className="text-[11px] text-secondary">
-            <span className="font-semibold text-on-surface">Classic layout</span> — a dashboard plus one list page per entity.
+            <span className="font-semibold text-on-surface">{t('Classic layout')}</span> — {t('a dashboard plus one list page per entity.')}
           </p>
           <button
             type="button"
@@ -749,7 +755,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             data-seed-layout
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>auto_awesome</span>
-            Start from my entities
+            {t('Start from my entities')}
           </button>
           {named.length > 0 && (
             <button
@@ -757,16 +763,16 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
               onClick={() => setClassicPreview(o => !o)}
               aria-pressed={classicPreview}
               className={SMALL_BUTTON}
-              title="See what the classic layout generates"
+              title={t('See what the classic layout generates')}
               data-classic-preview
             >
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{classicPreview ? 'visibility_off' : 'preview'}</span>
-              {classicPreview ? 'Hide preview' : 'Preview'}
+              {classicPreview ? t('Hide preview') : t('Preview')}
             </button>
           )}
           {classicModel && (
-            <div className="w-full space-y-1.5" aria-label="Classic layout preview" role="region">
-              <p className="text-[11px] text-secondary">Sample data · this is the app you get without a page layout</p>
+            <div className="w-full space-y-1.5" aria-label={t('Classic layout preview')} role="region">
+              <p className="text-[11px] text-secondary">{t('Sample data · this is the app you get without a page layout')}</p>
               <LayoutPreview
                 preview={classicModel}
                 selected={classicSelected}
@@ -779,7 +785,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           )}
           {named.length > 0 && (
             <div className="w-full space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Or start from a layout template</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('Or start from a layout template')}</p>
               <TemplateGallery templates={layoutTemplates()} onPick={startFromTemplate} />
             </div>
           )}
@@ -789,7 +795,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
         {templatesOpen && (
           <div className="mb-2 space-y-1 rounded-lg border border-dashed border-outline-variant px-3 py-2" data-replace-templates>
             <p className="text-[11px] text-secondary">
-              <span className="font-semibold text-on-surface">Replace the layout</span> — builds a new one from your entities; Undo brings this one back.
+              <span className="font-semibold text-on-surface">{t('Replace the layout')}</span> — {t('builds a new one from your entities; Undo brings this one back.')}
             </p>
             <TemplateGallery templates={layoutTemplates()} onPick={startFromTemplate} />
           </div>
@@ -799,9 +805,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           <div className="min-w-0 space-y-2">
           {onNavChange && settings.skin === 'tailwind' && (
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant px-2 py-1" data-nav-options>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary" title="How the generated app lays out its navigation">Nav style</span>
-              <span role="radiogroup" aria-label="Navigation style" className="inline-flex overflow-hidden rounded border border-outline-variant">
-                {([['sidebar', 'Sidebar'], ['topbar', 'Top bar']] as const).map(([value, label]) => {
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary" title={t('How the generated app lays out its navigation')}>{t('Nav style')}</span>
+              <span role="radiogroup" aria-label={t('Navigation style')} className="inline-flex overflow-hidden rounded border border-outline-variant">
+                {([['sidebar', t('Sidebar')], ['topbar', t('Top bar')]] as const).map(([value, label]) => {
                   const on = (nav?.style ?? 'sidebar') === value
                   return (
                     <button
@@ -818,15 +824,15 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                   )
                 })}
               </span>
-              <label className="inline-flex items-center gap-1.5 text-[11px] text-on-surface" title="Nav sections with a group name fold">
+              <label className="inline-flex items-center gap-1.5 text-[11px] text-on-surface" title={t('Nav sections with a group name fold')}>
                 <input
                   type="checkbox"
                   className="accent-primary"
                   checked={Boolean(nav?.collapsibleGroups)}
-                  aria-label="Collapsible groups"
+                  aria-label={t('Collapsible groups')}
                   onChange={e => onNavChange(cleanNav({ ...nav, collapsibleGroups: e.target.checked }))}
                 />
-                Collapsible groups
+                {t('Collapsible groups')}
               </label>
             </div>
           )}
@@ -835,9 +841,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
             <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-outline-variant px-2 py-1" data-nav-groups>
               <span
                 className="text-[11px] font-semibold uppercase tracking-wider text-secondary"
-                title="The sections of the generated navigation, in order. Rename a group here to rename it on every page; move a section past its neighbour."
+                title={t('The sections of the generated navigation, in order. Rename a group here to rename it on every page; move a section past its neighbour.')}
               >
-                Nav groups
+                {t('Nav groups')}
               </span>
               {navGroupSections.map((s, si) => (s.group ? (
                 <GroupChip
@@ -851,8 +857,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 />
               ) : (
                 <span key={`loose-${si}`} className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-2 py-0.5 text-[11px] text-secondary" data-nav-group="">
-                  Ungrouped <span>{s.items.length}</span>
-                  <MoveButtons label={`the ungrouped pages${si > 0 ? ` (section ${si + 1})` : ''}`} canUp={si > 0} canDown={si < navGroupSections.length - 1} onMove={delta => moveGroup(si, delta)} />
+                  {t('Ungrouped')} <span>{s.items.length}</span>
+                  <MoveButtons label={si > 0 ? t('the ungrouped pages (section {n})', { n: si + 1 }) : t('the ungrouped pages')} canUp={si > 0} canDown={si < navGroupSections.length - 1} onMove={delta => moveGroup(si, delta)} />
                 </span>
               )))}
             </div>
@@ -864,8 +870,8 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 <input
                   ref={searchRef}
                   type="search"
-                  aria-label="Find a page"
-                  placeholder="Find a page — title, route, entity, type or group"
+                  aria-label={t('Find a page')}
+                  placeholder={t('Find a page — title, route, entity, type or group')}
                   value={pageQuery}
                   onChange={e => setPageQuery(e.target.value)}
                   onKeyDown={e => {
@@ -884,12 +890,12 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
                 />
               </label>
               {pageQuery.trim() && (
-                <span className="shrink-0 text-[11px] text-secondary" data-page-search-count>{matchCount} of {pages.length}</span>
+                <span className="shrink-0 text-[11px] text-secondary" data-page-search-count>{t('{n} of {count}', { n: matchCount, count: pages.length })}</span>
               )}
             </div>
           )}
           {pageQuery.trim() && matchCount === 0 && (
-            <p className="text-[11px] text-secondary" data-page-search-empty>No page matches “{pageQuery.trim()}”.</p>
+            <p className="text-[11px] text-secondary" data-page-search-empty>{t('No page matches “{query}”.', { query: pageQuery.trim() })}</p>
           )}
           {picked.length > 0 && (
             <BulkPageBar
@@ -940,10 +946,10 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
           />
           </div>
           {showPreview && (
-            <aside className={`min-w-0 space-y-1.5 ${layout === 'split' ? 'hidden xl:block xl:sticky xl:top-20 xl:self-start' : ''}`} aria-label="Layout preview">
+            <aside className={`min-w-0 space-y-1.5 ${layout === 'split' ? 'hidden xl:block xl:sticky xl:top-20 xl:self-start' : ''}`} aria-label={t('Layout preview')}>
               <p className="flex items-center justify-between gap-2 text-[11px] text-secondary">
-                <span className="font-semibold uppercase tracking-wider">Preview</span>
-                <span>Sample data · click a part to edit it</span>
+                <span className="font-semibold uppercase tracking-wider">{t('Preview')}</span>
+                <span>{t('Sample data · click a part to edit it')}</span>
               </p>
               <LayoutPreview
                 preview={preview}
@@ -987,9 +993,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       )}
       {confirmRemove != null && pages[confirmRemove] && (
         <ConfirmDialog
-          title={`Remove “${pageLabel(pages[confirmRemove])}”?`}
-          message={`It is a tab of ${pagesEmbedding(pages, pages[confirmRemove].id).map(p => `“${pageLabel(p)}”`).join(', ')}. Removing it removes that tab too.`}
-          confirmLabel="Remove page and tab"
+          title={t('Remove “{page}”?', { page: pageLabel(pages[confirmRemove]) })}
+          message={t('It is a tab of {pages}. Removing it removes that tab too.', { pages: pagesEmbedding(pages, pages[confirmRemove].id).map(p => `“${pageLabel(p)}”`).join(', ') })}
+          confirmLabel={t('Remove page and tab')}
           tone="danger"
           onConfirm={() => removePage(confirmRemove, true)}
           onCancel={() => setConfirmRemove(null)}
@@ -997,9 +1003,9 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       )}
       {bulkRemove && (
         <ConfirmDialog
-          title={`Remove ${bulkRemove.count} page${bulkRemove.count === 1 ? '' : 's'}?`}
-          message="Tabs, links and record openings that point at them go too. Undo brings them back."
-          confirmLabel="Remove pages"
+          title={tn(bulkRemove.count, 'Remove {n} page?', 'Remove {n} pages?')}
+          message={t('Tabs, links and record openings that point at them go too. Undo brings them back.')}
+          confirmLabel={t('Remove pages')}
           tone="danger"
           onConfirm={() => { bulkRemove.run(); setBulkRemove(null) }}
           onCancel={() => setBulkRemove(null)}
@@ -1007,9 +1013,11 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
       )}
       {confirmClassic && (
         <ConfirmDialog
-          title="Use the classic layout?"
-          message={`This drops the ${pages.length} page${pages.length === 1 ? '' : 's'} of your layout; the app gets a dashboard plus one list page per entity. Undo brings the layout back.`}
-          confirmLabel="Use classic layout"
+          title={t('Use the classic layout?')}
+          message={tn(pages.length,
+            'This drops the {n} page of your layout; the app gets a dashboard plus one list page per entity. Undo brings the layout back.',
+            'This drops the {n} pages of your layout; the app gets a dashboard plus one list page per entity. Undo brings the layout back.')}
+          confirmLabel={t('Use classic layout')}
           tone="danger"
           onConfirm={() => { setConfirmClassic(false); onClear() }}
           onCancel={() => setConfirmClassic(false)}

@@ -1,5 +1,6 @@
 import type { FullstackEntityDef, FullstackNav } from '../../../types'
 import { NAV_TOOLS, cleanNav, navToolDisabledReason } from '../navTools'
+import { t } from '../../../i18n'
 
 /**
  * The header's tools of a page layout — the palette, the bell and the user menu — as three
@@ -17,8 +18,8 @@ export function NavToolsFields({ nav, entities, onNavChange, stacked }: {
       className={stacked ? 'space-y-2' : 'flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-outline-variant px-2 py-1'}
       data-nav-tools
     >
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary" title="What the generated app's header carries beside its theme switch">
-        Header tools
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-secondary" title={t("What the generated app's header carries beside its theme switch")}>
+        {t('Header tools')}
       </span>
       {NAV_TOOLS.map(tool => {
         const reason = navToolDisabledReason(tool.value, entities)

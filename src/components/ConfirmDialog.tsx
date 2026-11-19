@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import { useModal } from '../hooks/useModal'
+import { t } from '../i18n'
 
 interface ConfirmDialogProps {
   title: string
@@ -23,8 +24,8 @@ interface ConfirmDialogProps {
 export function ConfirmDialog({
   title,
   message,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  confirmLabel = t('Confirm'),
+  cancelLabel = t('Cancel'),
   tone = 'default',
   onConfirm,
   onCancel,

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { StarterTemplate, InitializrMetadata, DependencyExtensions } from '../types'
+import { t, useLang } from '../i18n'
 
 export interface SettingComparison {
   field: string
@@ -37,6 +38,7 @@ export function useTemplateComparison(
   metadata: InitializrMetadata | null,
   extensions: DependencyExtensions
 ): ComparisonResult {
+  const lang = useLang()
   return useMemo(() => {
     if (selectedTemplates.length < 2) {
       return { settings: [], dependencies: [], sharedCount: 0, uniqueCount: 0, differenceCount: 0 }
@@ -45,19 +47,19 @@ export function useTemplateComparison(
     // Settings comparison
     const settings: SettingComparison[] = [
       {
-        field: 'Boot Version',
-        values: selectedTemplates.map(t => t.bootVersion),
-        allSame: new Set(selectedTemplates.map(t => t.bootVersion ?? '')).size === 1,
+        field: t('Boot Version'),
+        values: selectedTemplates.map(tpl => tpl.bootVersion),
+        allSame: new Set(selectedTemplates.map(tpl => tpl.bootVersion ?? '')).size === 1,
       },
       {
-        field: 'Java Version',
-        values: selectedTemplates.map(t => t.javaVersion),
-        allSame: new Set(selectedTemplates.map(t => t.javaVersion ?? '')).size === 1,
+        field: t('Java Version'),
+        values: selectedTemplates.map(tpl => tpl.javaVersion),
+        allSame: new Set(selectedTemplates.map(tpl => tpl.javaVersion ?? '')).size === 1,
       },
       {
-        field: 'Packaging',
-        values: selectedTemplates.map(t => t.packaging),
-        allSame: new Set(selectedTemplates.map(t => t.packaging ?? '')).size === 1,
+        field: t('Packaging'),
+        values: selectedTemplates.map(tpl => tpl.packaging),
+        allSame: new Set(selectedTemplates.map(tpl => tpl.packaging ?? '')).size === 1,
       },
     ]
 
@@ -129,7 +131,7 @@ export function useTemplateComparison(
         depId,
         depName: depNameMap.get(depId) ?? depId,
         depDescription: depDescMap.get(depId) ?? '',
-        groupName: depGroupMap.get(depId) ?? 'Other',
+        groupName: depGroupMap.get(depId) ?? t('Other'),
         presence,
         subOptions,
         shared: presentCount === selectedTemplates.length,
@@ -142,5 +144,7 @@ export function useTemplateComparison(
     const differenceCount = dependencies.filter(d => !d.shared).length
 
     return { settings, dependencies, sharedCount, uniqueCount, differenceCount }
-  }, [selectedTemplates, metadata, extensions])
+    // `lang`: the field and group names come from `t`, so they are worked out again in a new language.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTemplates, metadata, extensions, lang])
 }

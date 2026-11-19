@@ -1,6 +1,7 @@
 import type { FullstackEntityDef, FullstackFieldDef, FullstackTransition, FullstackWorkflow } from '../../types'
 import { LIMITS, NAME_RULES } from './schema'
 import { isDateType } from './fieldTypes'
+import { t } from '../../i18n'
 
 /** Mirrors FullstackRequestValidator (parseWorkflow). */
 export const MAX_TRANSITIONS = LIMITS.maxTransitions
@@ -132,9 +133,17 @@ export function newTransition(entity: FullstackEntityDef): FullstackTransition {
 
 /** Why `entity` cannot carry a workflow at all, or undefined when it can. */
 export function workflowUnavailableReason(entity: FullstackEntityDef): string | undefined {
-  if (entity.readOnly || entity.viewQuery != null) return 'A read-only entity cannot change state'
-  if (entity.fields.filter(f => f.primaryKey).length !== 1) return 'A workflow needs a single primary key'
-  if (statusFieldChoices(entity).length === 0) return 'Add a filterable enum field for its states (e.g. status)'
+  const blocker = workflowBlocker(entity)
+  return blocker === 'read-only' ? t('A read-only entity cannot change state')
+    : blocker === 'key' ? t('A workflow needs a single primary key')
+      : blocker === 'no-status' ? t('Add a filterable enum field for its states (e.g. status)')
+        : undefined
+}
+
+function workflowBlocker(entity: FullstackEntityDef): 'read-only' | 'key' | 'no-status' | undefined {
+  if (entity.readOnly || entity.viewQuery != null) return 'read-only'
+  if (entity.fields.filter(f => f.primaryKey).length !== 1) return 'key'
+  if (statusFieldChoices(entity).length === 0) return 'no-status'
   return undefined
 }
 
@@ -143,54 +152,54 @@ export function workflowProblem(entity: FullstackEntityDef,
                                 context: { ldapAuth?: boolean; audited?: boolean } = {}): string | undefined {
   const wf = entity.workflow
   if (!wf) return undefined
-  const unavailable = workflowUnavailableReason(entity)
-  if (unavailable && unavailable !== 'Add a filterable enum field for its states (e.g. status)') return unavailable
+  const blocker = workflowBlocker(entity)
+  if (blocker && blocker !== 'no-status') return workflowUnavailableReason(entity)
   const status = fieldOf(entity, wf.statusField)
-  if (!wf.statusField?.trim()) return 'Pick the status field'
-  if (!status) return `“${wf.statusField}” is no longer a field`
-  if (status.primaryKey || status.type !== 'ENUM' || status.filterable === false) return `“${status.name}” must be a filterable, non-key enum field`
+  if (!wf.statusField?.trim()) return t('Pick the status field')
+  if (!status) return t('“{field}” is no longer a field', { field: wf.statusField })
+  if (status.primaryKey || status.type !== 'ENUM' || status.filterable === false) return t('“{field}” must be a filterable, non-key enum field', { field: status.name })
   const states = workflowStates(entity)
   const isState = (s: string) => states.includes(upper(s))
-  if (wf.initial && !isState(wf.initial)) return `“${wf.initial}” is not a state of ${status.name}`
+  if (wf.initial && !isState(wf.initial)) return t('“{state}” is not a state of {field}', { state: wf.initial, field: status.name })
   if (wf.initial && status.defaultValue && upper(status.defaultValue) !== upper(wf.initial)) {
-    return `Starts in ${upper(wf.initial)}, but ${status.name} defaults to ${upper(status.defaultValue)}`
+    return t('Starts in {state}, but {field} defaults to {initial}', { state: upper(wf.initial), field: status.name, initial: upper(status.defaultValue) })
   }
   if (wf.assigneeField) {
     const f = fieldOf(entity, wf.assigneeField)
-    if (!f || f.primaryKey || f.unique || f.type !== 'STRING') return `The assignee “${wf.assigneeField}” must be a non-key, non-unique text field`
-    if (f.required) return `The assignee “${wf.assigneeField}” cannot be required — a task nobody has taken has none`
-    if (entity.fields.some(x => same(x.name, 'inbox'))) return 'A field named “inbox” clashes with the inbox queue — rename it'
+    if (!f || f.primaryKey || f.unique || f.type !== 'STRING') return t('The assignee “{field}” must be a non-key, non-unique text field', { field: wf.assigneeField })
+    if (f.required) return t('The assignee “{field}” cannot be required — a task nobody has taken has none', { field: wf.assigneeField })
+    if (entity.fields.some(x => same(x.name, 'inbox'))) return t('A field named “inbox” clashes with the inbox queue — rename it')
   }
   if (wf.dueField) {
     const f = fieldOf(entity, wf.dueField)
-    if (!f || f.primaryKey || !isDate(f)) return `The due date “${wf.dueField}” must be a non-key date field`
+    if (!f || f.primaryKey || !isDate(f)) return t('The due date “{field}” must be a non-key date field', { field: wf.dueField })
   }
-  if (wf.transitions.length === 0) return 'Add at least one transition'
-  if (wf.transitions.length > MAX_TRANSITIONS) return `At most ${MAX_TRANSITIONS} transitions`
+  if (wf.transitions.length === 0) return t('Add at least one transition')
+  if (wf.transitions.length > MAX_TRANSITIONS) return t('At most {max} transitions', { max: MAX_TRANSITIONS })
   const names = new Set<string>()
   const requirable = requirableNames(entity).map(n => n.toLowerCase())
-  for (const t of wf.transitions) {
-    const at = `Transition “${t.name || '?'}”`
-    if (!TRANSITION_NAME.test(t.name)) return `${at}: the name starts with a lower-case letter, then letters and digits (max 40)`
-    if (names.has(t.name)) return `Two transitions are named “${t.name}”`
-    names.add(t.name)
-    if ((t.label?.trim().length ?? 0) > MAX_TRANSITION_LABEL) return `${at}: the label is over ${MAX_TRANSITION_LABEL} characters`
-    if (t.from.length === 0) return `${at} needs the states it moves from`
-    const bad = [...t.from, t.to].find(s => !s || !isState(s))
-    if (bad !== undefined) return `${at}: “${bad}” is not a state of ${status.name}`
-    if (t.from.some(s => upper(s) === upper(t.to))) return `${at} moves from ${upper(t.to)} to itself`
-    if ((t.roles?.length ?? 0) > 0 && context.ldapAuth === false) return `${at} has roles, which need the ldap-auth or ldap-auth-rest dependency`
+  for (const tr of wf.transitions) {
+    const step = tr.name || '?'
+    if (!TRANSITION_NAME.test(tr.name)) return t('Transition “{step}”: the name starts with a lower-case letter, then letters and digits (max 40)', { step })
+    if (names.has(tr.name)) return t('Two transitions are named “{step}”', { step: tr.name })
+    names.add(tr.name)
+    if ((tr.label?.trim().length ?? 0) > MAX_TRANSITION_LABEL) return t('Transition “{step}”: the label is over {max} characters', { step, max: MAX_TRANSITION_LABEL })
+    if (tr.from.length === 0) return t('Transition “{step}” needs the states it moves from', { step })
+    const bad = [...tr.from, tr.to].find(s => !s || !isState(s))
+    if (bad !== undefined) return t('Transition “{step}”: “{state}” is not a state of {field}', { step, state: bad, field: status.name })
+    if (tr.from.some(s => upper(s) === upper(tr.to))) return t('Transition “{step}” moves from {state} to itself', { step, state: upper(tr.to) })
+    if ((tr.roles?.length ?? 0) > 0 && context.ldapAuth === false) return t('Transition “{step}” has roles, which need the ldap-auth or ldap-auth-rest dependency', { step })
     const seen = new Set<string>()
-    for (const r of t.requires ?? []) {
-      if (!requirable.includes(r.toLowerCase())) return `${at} asks for “${r}”, which it cannot set`
-      if (seen.has(r.toLowerCase())) return `${at} asks for “${r}” twice`
+    for (const r of tr.requires ?? []) {
+      if (!requirable.includes(r.toLowerCase())) return t('Transition “{step}” asks for “{field}”, which it cannot set', { step, field: r })
+      if (seen.has(r.toLowerCase())) return t('Transition “{step}” asks for “{field}” twice', { step, field: r })
       seen.add(r.toLowerCase())
     }
-    for (const n of t.notify ?? []) {
-      if (!(NOTIFY_RECIPIENTS as readonly string[]).includes(n)) return `${at} e-mails “${n}” (expected assignee, creator, ADMIN or USER)`
-      if (n === 'assignee' && !wf.assigneeField) return `${at} e-mails the assignee, but the workflow assigns nobody`
+    for (const n of tr.notify ?? []) {
+      if (!(NOTIFY_RECIPIENTS as readonly string[]).includes(n)) return t('Transition “{step}” e-mails “{recipient}” (expected assignee, creator, ADMIN or USER)', { step, recipient: n })
+      if (n === 'assignee' && !wf.assigneeField) return t('Transition “{step}” e-mails the assignee, but the workflow assigns nobody', { step })
       // Who created a row is the audit option's created-by column (undefined: not known here).
-      if (n === 'creator' && context.audited === false) return `${at} e-mails the creator, which needs the audit option on this entity`
+      if (n === 'creator' && context.audited === false) return t('Transition “{step}” e-mails the creator, which needs the audit option on this entity', { step })
     }
   }
   return undefined

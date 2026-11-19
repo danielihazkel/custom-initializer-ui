@@ -8,6 +8,7 @@ import { columnOf, joinColumnOf } from './naming'
 import { compositionProblem, linksBetween, resolveLink } from './childLists'
 import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
 import { isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
+import { t } from '../../i18n'
 
 /**
  * Client-side mirror of the backend `FullstackRequestValidator` so users see problems
@@ -62,29 +63,29 @@ export function validateMeta(
   if (catalog) {
     const boots = catalog.bootVersions.map(canonicalVersion)
     if (boots.length > 0 && meta.bootVersion && !boots.includes(canonicalVersion(meta.bootVersion))) {
-      errors.bootVersion = `Not in the catalog (${meta.bootVersion})`
+      errors.bootVersion = t('Not in the catalog ({version})', { version: meta.bootVersion })
     }
     if (catalog.javaVersions.length > 0 && meta.javaVersion && !catalog.javaVersions.includes(meta.javaVersion)) {
-      errors.javaVersion = `Not in the catalog (${meta.javaVersion})`
+      errors.javaVersion = t('Not in the catalog ({version})', { version: meta.javaVersion })
     }
   }
-  if (!meta.artifactId.trim()) errors.artifactId = 'Required'
-  else if (/\s/.test(meta.artifactId)) errors.artifactId = 'No spaces allowed'
-  if (!meta.groupId.trim()) errors.groupId = 'Required'
+  if (!meta.artifactId.trim()) errors.artifactId = t('Required')
+  else if (/\s/.test(meta.artifactId)) errors.artifactId = t('No spaces allowed')
+  if (!meta.groupId.trim()) errors.groupId = t('Required')
   // Both optional (blank = the server's default); when typed they must be usable in the pom.
-  if (meta.name !== undefined && meta.name !== '' && !meta.name.trim()) errors.name = 'Blank — leave empty to use the artifact id'
-  if (meta.version?.trim() && !MAVEN_VERSION_RE.test(meta.version.trim())) errors.version = 'Not a valid Maven version (e.g. 0.0.1-SNAPSHOT)'
-  if (!meta.packageName.trim()) errors.packageName = 'Required'
-  else if (!PACKAGE_NAME_RE.test(meta.packageName)) errors.packageName = 'Invalid Java package name'
+  if (meta.name !== undefined && meta.name !== '' && !meta.name.trim()) errors.name = t('Blank — leave empty to use the artifact id')
+  if (meta.version?.trim() && !MAVEN_VERSION_RE.test(meta.version.trim())) errors.version = t('Not a valid Maven version (e.g. 0.0.1-SNAPSHOT)')
+  if (!meta.packageName.trim()) errors.packageName = t('Required')
+  else if (!PACKAGE_NAME_RE.test(meta.packageName)) errors.packageName = t('Invalid Java package name')
 
   // Optional: blank means "same as Package Name". When set it must be valid and live at or
   // below the base package, mirroring the server's resolveDomainPackage check.
   const domain = meta.domainPackage?.trim()
   if (domain) {
     const base = meta.packageName.trim()
-    if (!PACKAGE_NAME_RE.test(domain)) errors.domainPackage = 'Invalid Java package name'
+    if (!PACKAGE_NAME_RE.test(domain)) errors.domainPackage = t('Invalid Java package name')
     else if (base && domain !== base && !domain.startsWith(base + '.')) {
-      errors.domainPackage = 'Must be the Package Name or a sub-package of it'
+      errors.domainPackage = t('Must be the Package Name or a sub-package of it')
     }
   }
   return errors
@@ -94,10 +95,11 @@ export function countMetaErrors(e: MetaErrors): number {
   return Object.values(e).filter(Boolean).length
 }
 
-function identifierError(value: string, label: string): string | undefined {
-  if (!value.trim()) return `${label} is required`
-  if (!IDENTIFIER_RE.test(value.trim())) return `Not a valid identifier`
-  if (RESERVED_JAVA_KEYWORDS.has(value.trim().toLowerCase())) return `Reserved keyword`
+/** `required` is the whole message for a blank name ("Entity name is required"). */
+function identifierError(value: string, required: string): string | undefined {
+  if (!value.trim()) return required
+  if (!IDENTIFIER_RE.test(value.trim())) return t('Not a valid identifier')
+  if (RESERVED_JAVA_KEYWORDS.has(value.trim().toLowerCase())) return t('Reserved keyword')
   return undefined
 }
 
@@ -122,7 +124,7 @@ export interface FieldErrors {
 /** Mirrors FullstackRequestValidator.SQL_NAME: column names are spliced into native SQL. A quoted
  *  name ("OrderDate", `OrderDate`, [OrderDate]) keeps its exact case in the generated entity. */
 const COLUMN_RE = NAME_RULES.sqlName
-const COLUMN_RULE = 'Letters, digits and _ $ # @, or a quoted name like "OrderDate"'
+const columnRule = () => t('Letters, digits and _ $ # @, or a quoted name like "OrderDate"')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -140,39 +142,39 @@ export function defaultValueError(field: {
 }): string | undefined {
   const raw = field.defaultValue
   if (raw == null || raw.trim() === '') return undefined
-  if (field.generated && field.primaryKey) return 'A generated key cannot have a default'
+  if (field.generated && field.primaryKey) return t('A generated key cannot have a default')
   const v = raw.trim()
   switch (field.type) {
     case 'LONG':
     case 'INTEGER':
-      return /^[+-]?\d+$/.test(v) ? undefined : 'Must be a whole number'
+      return /^[+-]?\d+$/.test(v) ? undefined : t('Must be a whole number')
     case 'BIG_DECIMAL':
-      return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(v) ? undefined : 'Must be a number'
+      return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(v) ? undefined : t('Must be a number')
     case 'FILE':
     case 'IMAGE':
-      return 'A file is uploaded, not typed — it cannot have a default'
+      return t('A file is uploaded, not typed — it cannot have a default')
     case 'MONEY':
       // Two decimals at most — what the column keeps.
-      return /^[+-]?(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(v) ? undefined : 'Must be an amount with at most two decimals'
+      return /^[+-]?(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(v) ? undefined : t('Must be an amount with at most two decimals')
     case 'LOCAL_TIME':
-      return /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(v) ? undefined : 'Must be a time (HH:MM or HH:MM:SS)'
+      return /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(v) ? undefined : t('Must be a time (HH:MM or HH:MM:SS)')
     case 'INSTANT':
       return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?Z$/.test(v) && !Number.isNaN(Date.parse(v))
-        ? undefined : 'Must be a UTC instant (YYYY-MM-DDTHH:MM:SSZ)'
+        ? undefined : t('Must be a UTC instant (YYYY-MM-DDTHH:MM:SSZ)')
     case 'BOOLEAN':
-      return /^(true|false)$/i.test(v) ? undefined : 'Must be true or false'
+      return /^(true|false)$/i.test(v) ? undefined : t('Must be true or false')
     case 'LOCAL_DATE':
-      return ISO_DATE_RE.test(v) && !Number.isNaN(Date.parse(v)) ? undefined : 'Must be an ISO date (YYYY-MM-DD)'
+      return ISO_DATE_RE.test(v) && !Number.isNaN(Date.parse(v)) ? undefined : t('Must be an ISO date (YYYY-MM-DD)')
     case 'LOCAL_DATE_TIME':
-      return ISO_DATE_TIME_RE.test(v) && !Number.isNaN(Date.parse(v)) ? undefined : 'Must be an ISO date-time (YYYY-MM-DDTHH:MM[:SS])'
+      return ISO_DATE_TIME_RE.test(v) && !Number.isNaN(Date.parse(v)) ? undefined : t('Must be an ISO date-time (YYYY-MM-DDTHH:MM[:SS])')
     case 'UUID':
-      return UUID_RE.test(v) ? undefined : 'Must be a UUID'
+      return UUID_RE.test(v) ? undefined : t('Must be a UUID')
     case 'ENUM': {
       const values = field.enumValues ?? []
-      return values.some(e => e.toUpperCase() === v.toUpperCase()) ? undefined : 'Must be one of the enum values'
+      return values.some(e => e.toUpperCase() === v.toUpperCase()) ? undefined : t('Must be one of the enum values')
     }
     case 'STRING':
-      return field.length != null && v.length > field.length ? `Longer than the max length (${field.length})` : undefined
+      return field.length != null && v.length > field.length ? t('Longer than the max length ({length})', { length: field.length }) : undefined
     default:
       return undefined
   }
@@ -274,14 +276,14 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
   entities.forEach((entity, eIdx) => {
     const eErr: EntityErrors = { fields: {} }
 
-    const nameErr = identifierError(entity.name, 'Entity name')
+    const nameErr = identifierError(entity.name, t('Entity name is required'))
     if (nameErr) eErr.name = nameErr
     // The generated code already names these (ReservedNames.java): a 400 on Generate otherwise.
     else if (isReservedEntityName(entity.name)) {
-      eErr.name = `'${entity.name.trim()}' is a name the generated code already uses — pick another (a label can still say it)`
+      eErr.name = t("'{name}' is a name the generated code already uses — pick another (a label can still say it)", { name: entity.name.trim() })
     } else {
       const owner = ownerOfGeneratedClass(entity.name, entities.filter(other => other !== entity).map(other => other.name))
-      if (owner) eErr.name = `'${owner}' already generates a class called ${entity.name.trim()} — pick another name`
+      if (owner) eErr.name = t("'{owner}' already generates a class called {name} — pick another name", { owner, name: entity.name.trim() })
       const lower = entity.name.trim().toLowerCase()
       const bucket = seenEntityNames.get(lower) ?? []
       bucket.push(eIdx)
@@ -293,7 +295,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
     const seenFieldNames = new Map<string, number[]>()
     entity.fields.forEach((field, fIdx) => {
       const fErr: FieldErrors = {}
-      const fNameErr = identifierError(field.name, 'Field name')
+      const fNameErr = identifierError(field.name, t('Field name is required'))
       if (fNameErr) fErr.name = fNameErr
       else {
         const lower = field.name.trim().toLowerCase()
@@ -307,11 +309,11 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       if (field.type === 'ENUM') {
         const values = field.enumValues ?? []
         if (values.length === 0) {
-          fErr.enumValues = 'At least one value required'
+          fErr.enumValues = t('At least one value required')
         } else {
           // Exact-case, like the server: Java keywords are lower-case, so NEW/DEFAULT are fine.
           const bad = values.find(v => !IDENTIFIER_RE.test(v) || RESERVED_JAVA_KEYWORDS.has(v))
-          if (bad) fErr.enumValues = `Invalid value '${bad}'`
+          if (bad) fErr.enumValues = t("Invalid value '{value}'", { value: bad })
         }
         // Labels are optional. Mirrors FullstackRequestValidator.canonicalEnumLabels: each key
         // must be one of the values (case-insensitively), and a label must be non-blank and at
@@ -320,44 +322,44 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
         const known = new Set(values.map(v => v.trim().toLowerCase()))
         for (const [key, label] of Object.entries(field.enumLabels ?? {})) {
           if (fErr.enumValues) break
-          if (!known.has(key.trim().toLowerCase())) fErr.enumValues = `Label for '${key}', which is not one of the values`
-          else if (!label.trim()) fErr.enumValues = `Label for '${key}' is blank`
-          else if (label.trim().length > LIMITS.maxEnumLabel) fErr.enumValues = `Label for '${key}' is too long (max ${LIMITS.maxEnumLabel} characters)`
+          if (!known.has(key.trim().toLowerCase())) fErr.enumValues = t("Label for '{key}', which is not one of the values", { key })
+          else if (!label.trim()) fErr.enumValues = t("Label for '{key}' is blank", { key })
+          else if (label.trim().length > LIMITS.maxEnumLabel) fErr.enumValues = t("Label for '{key}' is too long (max {max} characters)", { key, max: LIMITS.maxEnumLabel })
         }
       } else if ((field.enumValues?.length ?? 0) > 0 || Object.keys(field.enumLabels ?? {}).length > 0) {
         // Mirrors the backend rule that enumValues/enumLabels are only allowed when type=ENUM.
         // The editor clears these on type change; this guards stale persisted/imported state.
-        fErr.enumValues = 'Values apply to ENUM only'
+        fErr.enumValues = t('Values apply to ENUM only')
       }
 
       if (field.length != null) {
-        if (field.type !== 'STRING') fErr.length = 'Length applies to STRING only'
-        else if (field.length <= 0) fErr.length = 'Length must be positive'
+        if (field.type !== 'STRING') fErr.length = t('Length applies to STRING only')
+        else if (field.length <= 0) fErr.length = t('Length must be positive')
       }
 
       // 'generated' (auto-increment) only makes sense on an integral primary key. The editor
       // disables the checkbox otherwise, but guard stale persisted/imported state too.
       if (field.generated) {
-        if (!field.primaryKey) fErr.generated = 'Only the primary key can be auto-generated'
-        else if (field.type !== 'LONG' && field.type !== 'INTEGER' && field.type !== 'UUID') fErr.generated = 'Generated key must be LONG, INTEGER, or UUID'
+        if (!field.primaryKey) fErr.generated = t('Only the primary key can be auto-generated')
+        else if (field.type !== 'LONG' && field.type !== 'INTEGER' && field.type !== 'UUID') fErr.generated = t('Generated key must be LONG, INTEGER, or UUID')
       }
 
       // Numeric bounds: only on numeric types, min ≤ max. Regex/email: only on STRING.
       const isNumeric = isNumericType(field.type)
       if (field.min != null || field.max != null) {
         if (!isNumeric) {
-          if (field.min != null) fErr.min = 'Min applies to numeric fields only'
-          if (field.max != null) fErr.max = 'Max applies to numeric fields only'
+          if (field.min != null) fErr.min = t('Min applies to numeric fields only')
+          if (field.max != null) fErr.max = t('Max applies to numeric fields only')
         } else {
           // Integral bounds must be whole (the DTO renders them into @Min/@Max, which take longs);
           // decimals are only meaningful on BIG_DECIMAL (@DecimalMin/@DecimalMax).
           if (!isDecimalType(field.type)) {
             const whole = (v: number) => Number.isInteger(v) && (field.type === 'LONG' || (v >= -2147483648 && v <= 2147483647))
-            if (field.min != null && !whole(field.min)) fErr.min = field.type === 'INTEGER' && Number.isInteger(field.min) ? 'Out of the int range' : 'Must be a whole number'
-            if (field.max != null && !whole(field.max)) fErr.max = field.type === 'INTEGER' && Number.isInteger(field.max) ? 'Out of the int range' : 'Must be a whole number'
+            if (field.min != null && !whole(field.min)) fErr.min = field.type === 'INTEGER' && Number.isInteger(field.min) ? t('Out of the int range') : t('Must be a whole number')
+            if (field.max != null && !whole(field.max)) fErr.max = field.type === 'INTEGER' && Number.isInteger(field.max) ? t('Out of the int range') : t('Must be a whole number')
           }
           if (!fErr.min && field.min != null && field.max != null && field.min > field.max) {
-            fErr.min = 'Min must be ≤ Max'
+            fErr.min = t('Min must be ≤ Max')
           }
         }
       }
@@ -365,36 +367,36 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       // java.util.regex.Pattern, and JS rejects Java-only constructs (possessive quantifiers,
       // \p{Alpha} without the u flag), so a client-side RegExp check would block valid input.
       if (field.pattern != null && field.pattern !== '' && field.type !== 'STRING') {
-        fErr.pattern = 'Pattern applies to STRING only'
+        fErr.pattern = t('Pattern applies to STRING only')
       }
-      if (field.email && field.type !== 'STRING') fErr.email = 'Email applies to STRING only'
+      if (field.email && field.type !== 'STRING') fErr.email = t('Email applies to STRING only')
 
       const defErr = defaultValueError(field)
       if (defErr) fErr.defaultValue = defErr
 
-      if (field.help && field.help.trim().length > MAX_HELP) fErr.help = `At most ${MAX_HELP} characters`
+      if (field.help && field.help.trim().length > MAX_HELP) fErr.help = t('At most {max} characters', { max: MAX_HELP })
       // Several files in one field (FullstackRequestValidator's maxFiles rules).
       if (field.maxFiles != null) {
-        if (field.type !== 'FILE' && field.type !== 'IMAGE') fErr.maxFiles = 'Several files apply to FILE and IMAGE only'
+        if (field.type !== 'FILE' && field.type !== 'IMAGE') fErr.maxFiles = t('Several files apply to FILE and IMAGE only')
         else if (!Number.isInteger(field.maxFiles) || field.maxFiles < 1 || field.maxFiles > MAX_FILES) {
-          fErr.maxFiles = `Between 1 and ${MAX_FILES}`
-        } else if (field.showWhen?.trim()) fErr.maxFiles = 'A field with several files cannot be shown on a condition'
+          fErr.maxFiles = t('Between 1 and {max}', { max: MAX_FILES })
+        } else if (field.showWhen?.trim()) fErr.maxFiles = t('A field with several files cannot be shown on a condition')
       }
       const derived = derivationProblem(entity, field, entities)
       if (derived) fErr[derived.part] = derived.message
       // A currency is a MONEY field's, three letters (the backend upper-cases it; blank = ILS).
       if (field.currency?.trim()) {
-        if (field.type !== 'MONEY') fErr.currency = 'Currency applies to MONEY only'
-        else if (!/^[A-Za-z]{3}$/.test(field.currency.trim())) fErr.currency = 'A three-letter code such as ILS or USD'
+        if (field.type !== 'MONEY') fErr.currency = t('Currency applies to MONEY only')
+        else if (!/^[A-Za-z]{3}$/.test(field.currency.trim())) fErr.currency = t('A three-letter code such as ILS or USD')
       }
       // A key travels in URLs and relation ids, which these types are not fit for.
       if (field.primaryKey && !isKeyableType(field.type)) {
-        fErr.generated = `A ${field.type} field cannot be the key`
+        fErr.generated = t('A {type} field cannot be the key', { type: field.type })
       }
 
       if (field.column?.trim()) {
-        if (entity.viewQuery != null) fErr.column = 'A view maps fields by their names'
-        else if (!COLUMN_RE.test(field.column.trim())) fErr.column = COLUMN_RULE
+        if (entity.viewQuery != null) fErr.column = t('A view maps fields by their names')
+        else if (!COLUMN_RE.test(field.column.trim())) fErr.column = columnRule()
       }
 
       if (Object.keys(fErr).length > 0) {
@@ -411,7 +413,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
         const taken = field.name.trim().toLowerCase() === 'version' || field.column?.trim().toLowerCase() === 'version'
         const existing = eErr.fields[fIdx] ?? {}
         if (taken && !existing.name) {
-          existing.name = "'version' is taken by optimistic locking — rename it, or turn locking off for this entity"
+          existing.name = t("'version' is taken by optimistic locking — rename it, or turn locking off for this entity")
           eErr.fields[fIdx] = existing
           result.count += 1
         }
@@ -424,7 +426,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
         idxs.forEach(i => {
           const existing = eErr.fields[i] ?? {}
           if (!existing.name) {
-            existing.name = 'Duplicate field name'
+            existing.name = t('Duplicate field name')
             eErr.fields[i] = existing
             result.count += 1
           }
@@ -434,14 +436,14 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
 
     if (entity.fields.length === 0) {
       // Mirrors FullstackRequestValidator ("has no fields"); the PK rule would only confuse here.
-      eErr.noFields = 'Add at least one field'
+      eErr.noFields = t('Add at least one field')
       result.count += 1
     } else if (pkCount === 0) {
-      eErr.pk = 'Mark at least one field as the primary key (PK)'
+      eErr.pk = t('Mark at least one field as the primary key (PK)')
       result.count += 1
     } else if (pkCount > 1 && entity.fields.some(f => f.primaryKey && f.generated)) {
       // Composite keys are allowed, but a generated key requires a single PK (JPA IDENTITY).
-      eErr.pk = 'A generated key requires a single primary key'
+      eErr.pk = t('A generated key requires a single primary key')
       result.count += 1
     }
 
@@ -453,11 +455,11 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       // Both rules are independent (the backend raises each on its own), so report both.
       const viewErrors: string[] = []
       if (!entity.viewQuery!.trim()) {
-        eErr.viewQuery = 'Enter the SELECT query or untick "SELECT view"'
+        eErr.viewQuery = t('Enter the SELECT query or untick "SELECT view"')
         result.count += 1
       }
-      if (entity.fields.some(f => f.generated)) viewErrors.push('A view cannot have a generated primary key')
-      if ((entity.relations?.length ?? 0) > 0) viewErrors.push('A view cannot declare relations')
+      if (entity.fields.some(f => f.generated)) viewErrors.push(t('A view cannot have a generated primary key'))
+      if ((entity.relations?.length ?? 0) > 0) viewErrors.push(t('A view cannot declare relations'))
       if (viewErrors.length > 0) {
         eErr.view = viewErrors.join('; ')
         result.count += viewErrors.length
@@ -470,30 +472,30 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
     const listedLinks = new Set<string>()
     relations.forEach((rel, rIdx) => {
       const rErr: RelationErrors = {}
-      const nameErr = identifierError(rel.fieldName, 'Relation field name')
+      const nameErr = identifierError(rel.fieldName, t('Relation field name is required'))
       if (nameErr) {
         rErr.fieldName = nameErr
       } else {
         const lower = rel.fieldName.trim().toLowerCase()
         const clashesField = entity.fields.some(f => f.name.trim().toLowerCase() === lower)
         const clashesRel = relations.slice(0, rIdx).some(r => r.fieldName.trim().toLowerCase() === lower)
-        if (clashesField || clashesRel) rErr.fieldName = 'Name collides with a field or relation'
+        if (clashesField || clashesRel) rErr.fieldName = t('Name collides with a field or relation')
       }
       const target = rel.targetEntity?.trim()
       if (!target) {
-        rErr.targetEntity = 'Select a target entity'
+        rErr.targetEntity = t('Select a target entity')
       } else {
         const targetPkCount = pkCountByName.get(target.toLowerCase())
-        if (targetPkCount === undefined) rErr.targetEntity = `Unknown entity '${target}'`
+        if (targetPkCount === undefined) rErr.targetEntity = t("Unknown entity '{name}'", { name: target })
         // A one-to-many holds no key of its target, so its rows may be keyed any way.
-        else if (targetPkCount > 1 && rel.type !== 'ONE_TO_MANY') rErr.targetEntity = "Can't target a composite-PK entity"
-        else if (viewNames.has(target.toLowerCase())) rErr.targetEntity = "Can't target a view"
+        else if (targetPkCount > 1 && rel.type !== 'ONE_TO_MANY') rErr.targetEntity = t("Can't target a composite-PK entity")
+        else if (viewNames.has(target.toLowerCase())) rErr.targetEntity = t("Can't target a view")
       }
       if (rel.joinColumn?.trim() && !COLUMN_RE.test(rel.joinColumn.trim())) {
-        rErr.joinColumn = COLUMN_RULE
+        rErr.joinColumn = columnRule()
       }
       if ((rel.label?.trim().length ?? 0) > LIMITS.maxRelationLabel) {
-        rErr.label = `Label is too long (max ${LIMITS.maxRelationLabel} characters)`
+        rErr.label = t('Label is too long (max {max} characters)', { max: LIMITS.maxRelationLabel })
       }
       // A ONE_TO_MANY reads a link the target holds: which one must be settled, and no two
       // lists may read the same one.
@@ -504,7 +506,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
           rErr[link.problem.on] = link.problem.message
         } else {
           const key = `${target.toLowerCase()}>${link.mappedBy!.toLowerCase()}`
-          if (listedLinks.has(key)) rErr.mappedBy = 'Lists the same rows as another one-to-many of this entity'
+          if (listedLinks.has(key)) rErr.mappedBy = t('Lists the same rows as another one-to-many of this entity')
           listedLinks.add(key)
           if (rel.composition) {
             const problem = compositionProblem(entity, rel, link.mappedBy!, entities)
@@ -516,10 +518,10 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       // one, and an entity cannot be both ends of it.
       if (rel.type === 'MANY_TO_MANY') {
         if (target && !rErr.targetEntity && target.toLowerCase() === entity.name.trim().toLowerCase()) {
-          rErr.targetEntity = "Can't link an entity to itself this way — add a join entity"
+          rErr.targetEntity = t("Can't link an entity to itself this way — add a join entity")
         }
-        if (pkCount > 1) rErr.joinTable = 'A composite-key entity cannot own a many-to-many'
-        else if (rel.joinTable?.trim() && !COLUMN_RE.test(rel.joinTable.trim())) rErr.joinTable = COLUMN_RULE
+        if (pkCount > 1) rErr.joinTable = t('A composite-key entity cannot own a many-to-many')
+        else if (rel.joinTable?.trim() && !COLUMN_RE.test(rel.joinTable.trim())) rErr.joinTable = columnRule()
       }
       if (Object.keys(rErr).length > 0) {
         eErr.relations = eErr.relations ?? {}
@@ -541,7 +543,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       addMember(columnOf(field), Boolean(field.column?.trim()), () => {
         const existing = eErr.fields[fIdx] ?? {}
         if (!existing.column) {
-          existing.column = `Column ${columnOf(field)} is used twice`
+          existing.column = t('Column {column} is used twice', { column: columnOf(field) })
           eErr.fields[fIdx] = existing
           result.count += 1
         }
@@ -555,7 +557,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
         eErr.relations = eErr.relations ?? {}
         const existing = eErr.relations[rIdx] ?? {}
         if (!existing.joinColumn) {
-          existing.joinColumn = `Column ${joinColumnOf(rel)} is used twice`
+          existing.joinColumn = t('Column {column} is used twice', { column: joinColumnOf(rel) })
           eErr.relations[rIdx] = existing
           result.count += 1
         }
@@ -605,7 +607,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       idxs.forEach(i => {
         const existing = result.entities[i] ?? { fields: {} }
         if (!existing.name) {
-          existing.name = 'Duplicate entity name'
+          existing.name = t('Duplicate entity name')
           result.entities[i] = existing
           result.count += 1
         }

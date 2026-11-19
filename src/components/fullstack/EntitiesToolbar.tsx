@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { EditorDensity } from './EntitiesEditor'
 import type { ImportVariant } from './ImportFromDdlDrawer'
 import { SectionHeading } from './controls'
+import { t, tn } from '../../i18n'
 
 /**
  * The model workspace's command strip, pinned under the app header.
@@ -78,7 +79,7 @@ export function EntitiesToolbar({
     // The negative-margin/px pair lets the glass backdrop bleed to the column edges, the same
     // trick the old bottom bar used. `top-16` parks it directly under the fixed app header.
     <div className="sticky top-16 z-30 -mx-8 px-8 py-2 glass-header border-b border-outline-variant flex items-center gap-2 flex-wrap md:flex-nowrap">
-      <SectionHeading icon="table" title="Entities" primary />
+      <SectionHeading icon="table" title={t('Entities')} primary />
       <span className="inline-flex items-center h-6 px-2 rounded-full bg-primary/10 text-primary text-[11px] font-semibold tabular-nums shrink-0">
         {entityCount}
       </span>
@@ -88,17 +89,17 @@ export function EntitiesToolbar({
           id="fs-blocked-reason"
           onClick={onJumpToFirstError}
           className={`${TB_BTN} text-error hover:text-error hover:bg-error/10 shrink-0`}
-          title="Jump to the first problem"
+          title={t('Jump to the first problem')}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
-          {errorCount} issue{errorCount === 1 ? '' : 's'} to fix before generating
-          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>arrow_forward</span>
+          {tn(errorCount, '{n} issue to fix before generating', '{n} issues to fix before generating')}
+          <span className="material-symbols-outlined flip-rtl" style={{ fontSize: '14px' }}>arrow_forward</span>
         </button>
       )}
 
-      <div className="flex items-center gap-2 ml-auto">
+      <div className="flex items-center gap-2 ms-auto">
         {entityCount > 0 && (
-          <div className={TB_GROUP} role="group" aria-label="Workspace layout" title="Cards edit the model; Diagram shows the entities and their @ManyToOne relations">
+          <div className={TB_GROUP} role="group" aria-label={t('Workspace layout')} title={t('Cards edit the model; Diagram shows the entities and their @ManyToOne relations')}>
             {(['cards', 'diagram'] as const).map(l => (
               <button
                 key={l}
@@ -107,13 +108,13 @@ export function EntitiesToolbar({
                 onClick={() => onLayoutChange(l)}
                 className={`${TB_SEG} ${layout === l ? 'bg-primary text-on-primary' : 'bg-background text-secondary hover:text-on-surface'}`}
               >
-                {l === 'cards' ? 'Cards' : 'Diagram'}
+                {l === 'cards' ? t('Cards') : t('Diagram')}
               </button>
             ))}
           </div>
         )}
 
-        <div className={TB_GROUP} role="group" aria-label="Field table density" title="Compact hides the Label column (labels move into each field's More panel) and tightens the rows">
+        <div className={TB_GROUP} role="group" aria-label={t('Field table density')} title={t("Compact hides the Label column (labels move into each field's More panel) and tightens the rows")}>
           {(['comfortable', 'compact'] as const).map(d => (
             <button
               key={d}
@@ -122,7 +123,7 @@ export function EntitiesToolbar({
               onClick={() => onDensityChange(d)}
               className={`${TB_SEG} ${density === d ? 'bg-primary text-on-primary' : 'bg-background text-secondary hover:text-on-surface'}`}
             >
-              {d === 'compact' ? 'Compact' : 'Comfortable'}
+              {d === 'compact' ? t('Compact') : t('Comfortable')}
             </button>
           ))}
         </div>
@@ -132,8 +133,8 @@ export function EntitiesToolbar({
             type="button"
             onClick={onToggleCollapseAll}
             className={TB_BTN}
-            aria-label={allCollapsed ? 'Expand every entity card' : 'Collapse every entity card to its header'}
-            title={allCollapsed ? 'Expand every entity card' : 'Collapse every entity card to its header'}
+            aria-label={allCollapsed ? t('Expand every entity card') : t('Collapse every entity card to its header')}
+            title={allCollapsed ? t('Expand every entity card') : t('Collapse every entity card to its header')}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>{allCollapsed ? 'unfold_more' : 'unfold_less'}</span>
           </button>
@@ -146,20 +147,20 @@ export function EntitiesToolbar({
           onClick={onUndo}
           disabled={!canUndo}
           className={TB_BTN}
-          title={undoLabel ? `${undoLabel} (Ctrl+Z)` : 'Nothing to undo'}
-          aria-label={undoLabel ?? 'Undo (nothing to undo)'}
+          title={undoLabel ? `${undoLabel} (Ctrl+Z)` : t('Nothing to undo')}
+          aria-label={undoLabel ?? t('Undo (nothing to undo)')}
         >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>undo</span>
+          <span className="material-symbols-outlined flip-rtl" style={{ fontSize: '16px' }}>undo</span>
         </button>
         <button
           type="button"
           onClick={onRedo}
           disabled={!canRedo}
           className={TB_BTN}
-          title={redoLabel ? `${redoLabel} (Ctrl+Shift+Z / Ctrl+Y)` : 'Nothing to redo'}
-          aria-label={redoLabel ?? 'Redo (nothing to redo)'}
+          title={redoLabel ? `${redoLabel} (Ctrl+Shift+Z / Ctrl+Y)` : t('Nothing to redo')}
+          aria-label={redoLabel ?? t('Redo (nothing to redo)')}
         >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>redo</span>
+          <span className="material-symbols-outlined flip-rtl" style={{ fontSize: '16px' }}>redo</span>
         </button>
 
         <div className="relative" ref={importRef}>
@@ -169,36 +170,36 @@ export function EntitiesToolbar({
             aria-expanded={importOpen}
             aria-haspopup="menu"
             className={TB_BTN}
-            title="Build entities from existing SQL"
+            title={t('Build entities from existing SQL')}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>upload_file</span>
-            Import
+            {t('Import')}
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>expand_more</span>
           </button>
           {importOpen && (
-            <div role="menu" className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-outline-variant bg-surface-container shadow-lg py-1 z-40">
+            <div role="menu" className="absolute end-0 top-full mt-1 w-56 rounded-xl border border-outline-variant bg-surface-container shadow-lg py-1 z-40">
               <button
                 type="button"
                 role="menuitem"
                 onClick={() => runImport('ddl')}
-                className="flex items-start gap-2 w-full px-3 py-2 text-left text-xs text-on-surface hover:bg-primary/5"
+                className="flex items-start gap-2 w-full px-3 py-2 text-start text-xs text-on-surface hover:bg-primary/5"
               >
                 <span className="material-symbols-outlined text-secondary mt-0.5" style={{ fontSize: '16px' }}>database</span>
                 <span>
-                  From DDL
-                  <span className="block text-[11px] text-secondary">CREATE TABLE → entities</span>
+                  {t('From DDL')}
+                  <span className="block text-[11px] text-secondary">{t('CREATE TABLE → entities')}</span>
                 </span>
               </button>
               <button
                 type="button"
                 role="menuitem"
                 onClick={() => runImport('select')}
-                className="flex items-start gap-2 w-full px-3 py-2 text-left text-xs text-on-surface hover:bg-primary/5"
+                className="flex items-start gap-2 w-full px-3 py-2 text-start text-xs text-on-surface hover:bg-primary/5"
               >
                 <span className="material-symbols-outlined text-secondary mt-0.5" style={{ fontSize: '16px' }}>table_view</span>
                 <span>
-                  From SELECT
-                  <span className="block text-[11px] text-secondary">One query → a read-only view</span>
+                  {t('From SELECT')}
+                  <span className="block text-[11px] text-secondary">{t('One query → a read-only view')}</span>
                 </span>
               </button>
             </div>
@@ -211,26 +212,26 @@ export function EntitiesToolbar({
             onClick={onDatabase}
             className={TB_BTN}
             data-open-database
-            title="The model's tables: export the CREATE TABLE script, or create them on a database source"
+            title={t("The model's tables: export the CREATE TABLE script, or create them on a database source")}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>database_upload</span>
-            Tables
+            {t('Tables')}
           </button>
         )}
 
         <button
           type="button"
           onClick={onShortcuts}
-          aria-label="Keyboard shortcuts"
-          title="Keyboard shortcuts (?)"
+          aria-label={t('Keyboard shortcuts')}
+          title={t('Keyboard shortcuts (?)')}
           className={TB_BTN}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>keyboard</span>
         </button>
 
-        <button type="button" onClick={onAddEntity} className={TB_CTA} title="Add an entity (Ctrl+Shift+A)">
+        <button type="button" onClick={onAddEntity} className={TB_CTA} title={t('Add an entity (Ctrl+Shift+A)')}>
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
-          Add entity
+          {t('Add entity')}
         </button>
       </div>
     </div>

@@ -30,6 +30,18 @@
           if (off) document.documentElement.classList.add('motion-off');
         } catch (e) { /* leave animations enabled on failure */ }
       })();
+      // The site's language (src/i18n): Hebrew reads right to left from the first paint. Guide's
+      // and Training's own old choices count until the site has one of its own.
+      (function () {
+        try {
+          var l = localStorage.getItem('lang');
+          if (l == null) l = localStorage.getItem('guide-lang') === 'he' || localStorage.getItem('tutorial-lang') === 'he' ? 'he' : 'en';
+          if (l === 'he') {
+            document.documentElement.lang = 'he';
+            document.documentElement.dir = 'rtl';
+          }
+        } catch (e) { /* English */ }
+      })();
     </script>
   </head>
   <body>

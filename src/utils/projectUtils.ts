@@ -1,5 +1,6 @@
 import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlApiMode, SqlByDep, OpenApiByDep, SoapByDep, EventsByDep } from '../types'
 import { readErrorBody } from './previewErrors'
+import { t } from '../i18n'
 
 // Dependencies the SQL wizard's generated code needs for a given api mode:
 // data-jpa (entities + repositories, every mode), web (REST controllers, any
@@ -107,16 +108,16 @@ export function validateForm(form: ProjectFormValues): { valid: boolean; errors:
 
   for (const field of REQUIRED_FIELDS) {
     if (form[field].trim() === '') {
-      errors[field] = 'Required'
+      errors[field] = t('Required')
     }
   }
 
   if (!errors.artifactId && /\s/.test(form.artifactId)) {
-    errors.artifactId = 'No spaces allowed'
+    errors.artifactId = t('No spaces allowed')
   }
 
   if (!errors.packageName && !PACKAGE_NAME_RE.test(form.packageName)) {
-    errors.packageName = 'Invalid Java package name'
+    errors.packageName = t('Invalid Java package name')
   }
 
   return { valid: Object.keys(errors).length === 0, errors }

@@ -174,6 +174,31 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Hebrew (src/i18n) ──────────────────────────────────────────────────────
+   Geist has no Hebrew letters: in Hebrew the sans face is Assistant (bundled, src/fonts.css),
+   with Geist after it for anything Assistant lacks. Admin stays English (lang="en" on its root). */
+html[lang="he"] {
+  --font-sans: 'Assistant', 'Geist', 'Inter', sans-serif;
+}
+
+html[lang="he"] [lang="en"] {
+  --font-sans: 'Geist', 'Inter', sans-serif;
+}
+
+/* An icon that points along the reading direction (a chevron, an arrow) turns round in RTL. */
+[dir="rtl"] .flip-rtl {
+  transform: scaleX(-1);
+}
+
+/* Code, paths and commands read left to right whatever the page does. */
+.code-tokens,
+kbd,
+pre,
+code {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 /* ── Keyboard focus ─────────────────────────────────────────────
    One ring for everything focusable. `:where()` keeps the specificity at zero, so a control that
    styles its own focus (the text inputs' `outline-none focus:ring-*`) keeps doing so. */
@@ -266,12 +291,20 @@ html.dark .glass-card:hover {
   background: color-mix(in srgb, var(--color-surface) 95%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-left: 1px solid color-mix(in srgb, var(--color-outline-variant) 80%, transparent);
+  border-inline-start: 1px solid color-mix(in srgb, var(--color-outline-variant) 80%, transparent);
   box-shadow: -8px 0 40px rgba(0, 0, 0, 0.1);
 }
 
 html.dark .glass-drawer {
   box-shadow: -8px 0 40px rgba(0, 0, 0, 0.4);
+}
+
+[dir="rtl"] .glass-drawer {
+  box-shadow: 8px 0 40px rgba(0, 0, 0, 0.1);
+}
+
+html.dark[dir="rtl"] .glass-drawer {
+  box-shadow: 8px 0 40px rgba(0, 0, 0, 0.4);
 }
 
 /* ── Tooltips without script ────────────────────────────────────────────────
@@ -372,6 +405,16 @@ html.light {
 
 .dock-enter {
   animation: dock-enter 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* In RTL the dock is at the left edge, so it slides in from there. */
+@keyframes dock-enter-rtl {
+  from { opacity: 0; transform: translateX(-24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+[dir="rtl"] .dock-enter {
+  animation-name: dock-enter-rtl;
 }
 
 /* A file that has just appeared in the file dock's tree: one flash, then it settles. */

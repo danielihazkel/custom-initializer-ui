@@ -4,6 +4,7 @@ import type { FullstackEntityDef } from '../../types'
 import { pluralize } from './naming'
 import { linksBetween, resolveLink } from './childLists'
 import { isTextualType } from './fieldTypes'
+import { t, tn } from '../../i18n'
 
 interface Props {
   entities: FullstackEntityDef[]
@@ -71,7 +72,7 @@ export function EntityRelationGraph({ entities, showInverse, onSelect, onCreateR
       const pkFields = e.fields.filter(f => f.primaryKey)
       const labelField = e.fields.find(f => !f.primaryKey && (isTextualType(f.type)))
       const n: Node = {
-        id: e.uid ?? `i${i}`, uid: e.uid, label: e.name.trim() || '(unnamed)', fields: e.fields.length,
+        id: e.uid ?? `i${i}`, uid: e.uid, label: e.name.trim() || t('(unnamed)'), fields: e.fields.length,
         readOnly: Boolean(e.readOnly || e.viewQuery), isView: Boolean(e.viewQuery), inverse: [],
         pk: pkFields.map(f => f.name).join(' + ') || '—',
         compositePk: pkFields.length > 1,
@@ -142,9 +143,9 @@ export function EntityRelationGraph({ entities, showInverse, onSelect, onCreateR
    * a composite key. A self-reference is fine.
    */
   function refusal(source: Node, target: Node): string | null {
-    if (source.isView) return `${source.label} is a SELECT-backed view — a view cannot declare relations.`
-    if (target.isView) return `${target.label} is a SELECT-backed view — a relation cannot target one.`
-    if (target.compositePk) return `${target.label} has a composite primary key — a relation cannot target one.`
+    if (source.isView) return t('{entity} is a SELECT-backed view — a view cannot declare relations.', { entity: source.label })
+    if (target.isView) return t('{entity} is a SELECT-backed view — a relation cannot target one.', { entity: target.label })
+    if (target.compositePk) return t('{entity} has a composite primary key — a relation cannot target one.', { entity: target.label })
     return null
   }
 
@@ -210,6 +211,8 @@ export function EntityRelationGraph({ entities, showInverse, onSelect, onCreateR
 
   return (
     <div className="rounded-xl border border-outline-variant bg-surface-container-low overflow-x-auto" data-entity-graph>
+      {/* The diagram does not mirror: it is drawn left to right in either language. */}
+      <div dir="ltr">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
@@ -217,7 +220,7 @@ export function EntityRelationGraph({ entities, showInverse, onSelect, onCreateR
         preserveAspectRatio="xMinYMin meet"
         style={{ minWidth: Math.min(width, 520), maxHeight: 460, display: 'block', touchAction: drag ? 'none' : undefined }}
         role="img"
-        aria-label="Entity relation diagram"
+        aria-label={t('Entity relation diagram')}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={() => setDrag(null)}
@@ -286,7 +289,7 @@ export function EntityRelationGraph({ entities, showInverse, onSelect, onCreateR
                 }}
                 style={{ cursor: clickable ? 'pointer' : 'default' }}
                 role={clickable ? 'button' : undefined}
-                aria-label={clickable ? `Go to ${node.label}` : undefined}
+                aria-label={clickable ? t('Go to {entity}', { entity: node.label }) : undefined}
               >
                 <rect
                   width={NODE_W} height={NODE_H} rx={R}
@@ -309,7 +312,7 @@ export function EntityRelationGraph({ entities, showInverse, onSelect, onCreateR
                   {node.labelField ? `  ·  ${node.labelField.length > 12 ? node.labelField.slice(0, 11) + '…' : node.labelField}` : ''}
                 </text>
                 <text x={12} y={49} fontSize={9.5} fill="var(--color-secondary, #64748b)">
-                  {node.fields} field{node.fields === 1 ? '' : 's'}{node.readOnly ? ' · read-only' : ''}
+                  {tn(node.fields, '{n} field', '{n} fields')}{node.readOnly ? ` · ${t('read-only')}` : ''}
                   {node.inverse.length > 0 ? ` · ⇐ ${node.inverse.join(', ')}` : ''}
                 </text>
               </g>
@@ -324,17 +327,17 @@ export function EntityRelationGraph({ entities, showInverse, onSelect, onCreateR
                   style={{ cursor: 'crosshair' }}
                   onPointerDown={e => onHandleDown(e, node)}
                 >
-                  <title>Drag onto another entity to add a @ManyToOne from {node.label}</title>
+                  <title>{t('Drag onto another entity to add a @ManyToOne from {entity}', { entity: node.label })}</title>
                 </circle>
               )}
             </g>
           )
         })}
       </svg>
+      </div>
       <p className="px-3 py-1.5 text-[10px] text-secondary border-t border-outline-variant/60">
-        Arrow = @ManyToOne from the FK owner to its target (dashed = optional); dashed box = SELECT-backed view.
-        Click a box to jump to it.
-        {editable && ' Drag the dot on a box’s right edge onto another box to add a relation.'}
+        {t('Arrow = @ManyToOne from the FK owner to its target (dashed = optional); dashed box = SELECT-backed view. Click a box to jump to it.')}
+        {editable && ` ${t('Drag the dot on a box’s right edge onto another box to add a relation.')}`}
       </p>
     </div>
   )

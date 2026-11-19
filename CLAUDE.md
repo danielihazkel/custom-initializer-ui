@@ -701,6 +701,54 @@ Pinned by `liveSchema/LiveSchema.test.tsx`.
 
 Pinned by `fullstack/DatabaseDrawer.test.tsx`.
 
+## Hebrew (2026-11)
+
+The whole site has two languages, English and Hebrew. A button in the header switches them: **עב** / **EN** in the row from `xl`, *עברית* / *English* in the "more" menu below that, and a ⌘K command. Guide's and Training's own toggles switch the same setting. In Hebrew the page is `dir="rtl"`. **Config (Admin) is not translated**: `App` mounts it under `dir="ltr" lang="en"`. Parts it shares with the generator, such as the diff viewer and the examples form's page editor, follow the site's language.
+
+**The API** (`src/i18n/index.ts`, entry chunk, small):
+- The English text is the key, written where it is shown: `t('Generate')`, `t('Fix project metadata: {error}', { error })`.
+- `tn(n, '{n} file', '{n} files')` handles counts: the form is picked by `n === 1`, and both forms are keys.
+- `tc(context, text)` handles an English text that reads two ways in Hebrew.
+- In Hebrew, `t` wraps each filled-in value in Unicode isolates (U+2068…U+2069), so a name inside a sentence keeps its own direction. In English nothing is added.
+- `useLang()` / `useT()` subscribe a component. `App` subscribes, so everything under it re-renders on a switch, except `memo` components, which call `useLang()` themselves.
+- `setLang(next, wrap?)` loads the Hebrew chunk first, then sets `html[lang][dir]` and `localStorage.lang`.
+- `initLang()` (in `main.tsx`, before the first render) restores the choice. On a first visit it takes `guide-lang` / `tutorial-lang` if either was `he`.
+- The pre-paint script in `index.html` sets `lang`/`dir` early.
+- `localStorage.lang = 'pseudo'` (dev only) wraps every translated text in ⟦…⟧, which shows any text that never went through `t`.
+- `src/test/setup.ts` resets to English between tests.
+
+**The dictionary** (`src/i18n/he/`, one lazy chunk, fetched only in Hebrew):
+- One file per area, merged by `he/index.ts`: `shell`, `backend`, `explore`, `frontend`, `fullstack`, `designer`, `pages`.
+- The glossary at the top of `he/index.ts` fixes one Hebrew word per concept and the buttons' wording. Read it before adding text.
+
+**Rules**, checked by `scripts/i18n-extract.mjs` and `src/i18n/coverage.test.ts` (`npm run i18n:check`):
+- Pass literal text only, never a variable or a `${}` template.
+- Every key has a Hebrew entry, and every entry is used.
+- An entry keeps its key's `{placeholders}`.
+- One text has one Hebrew across the area files.
+
+The extractor reads only files that import `t`/`tn`/`tc` from `i18n`. `layoutPreviewModel.ts` has a `t` of its own for the generated app's words, and those stay outside the site's dictionary.
+
+**What is never translated:**
+- catalog data from the server: dependency names and descriptions, templates, examples, palettes;
+- server error text;
+- code, identifiers, paths and key names;
+- the generated app's own words in the layout preview and the entity UI mock. These follow the **model's** language and RTL setting, and the canvas sets its `dir` from the model in both directions.
+
+**RTL:**
+- Classes are logical only: `ms/me`, `ps/pe`, `start/end`, `text-start/end`, `border-s/e`, `rounded-s/e`. A new physical `ml-`/`left-`/`text-left` is a bug, unless it centres (`left-1/2 -translate-x-1/2`).
+- An icon that points along the reading direction gets `.flip-rtl`.
+- `pre`, `code`, `kbd` and `.code-tokens` are LTR in `index.css`. Code viewers, file paths, commands and identifier inputs carry `dir="ltr"`.
+- Keys that mean a side mirror in RTL: the file tree's ←/→, Alt+←/→ in the designer, and the tour's arrows.
+- The file dock sits at the end edge and slides in from it.
+- Hebrew text uses Assistant (bundled, `src/fonts.css`), with Geist after it. Mono stays Geist Mono.
+
+**Memo rule:** a `useMemo` whose result holds translated text, such as validation, lint or summary results, lists `lang` in its deps. ESLint's `exhaustive-deps` calls that an unnecessary dependency in a `useMemo`, because `lang` is not read in the callback. Such a line carries `// eslint-disable-next-line react-hooks/exhaustive-deps -- <why>`. A command registered in an effect re-registers on `lang`; an effect is not flagged.
+
+**Parameters named `t` hide the import.** A parameter named `t` (`templates.forEach(t => …)`) hides `t` from `i18n` in its body, so rename it. `AdminFormDrawer`, which the four wizard drawers reuse, takes `cancelLabel` / `closeLabel` / `dir`: Config's drawers keep its English defaults and LTR, and the wizards pass translated labels and `isRtl()`.
+
+Pinned by `src/i18n/i18n.test.ts` (the API, loading, `lang`/`dir`, migration), `src/i18n/coverage.test.ts` and `src/App.test.tsx` (the header in Hebrew and back, Config staying LTR/English, Guide following the site), plus one Hebrew case per area beside that area's tests.
+
 ## Performance rules
 
 - **The entry chunk has a budget** — `npm run build:check` (see *Round 11, phase 0*). What is not needed

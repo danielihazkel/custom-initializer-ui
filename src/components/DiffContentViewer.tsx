@@ -3,6 +3,7 @@ import type { FileStatus } from '../types'
 import { diffRows, foldUnchanged, hunkStarts, isFold, pairRows, type Block, type DiffRow } from '../utils/diffRows'
 import { tokenizeLines, type Token } from '../utils/highlightCode'
 import { useLanguage } from './lang-from-path'
+import { t, tn } from '../i18n'
 
 interface Props {
   status:     FileStatus
@@ -34,7 +35,7 @@ const ROW_BG: Record<DiffRow['type'], string> = {
 function Code({ tokens, wrap }: { tokens: Token[] | undefined; wrap: boolean }) {
   return (
     <span className={`px-3 min-w-0 flex-1 ${wrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}>
-      {tokens?.map((t, i) => (t.cls ? <span key={i} className={t.cls}>{t.text}</span> : <Fragment key={i}>{t.text}</Fragment>))}
+      {tokens?.map((tok, i) => (tok.cls ? <span key={i} className={tok.cls}>{tok.text}</span> : <Fragment key={i}>{tok.text}</Fragment>))}
     </span>
   )
 }
@@ -92,11 +93,11 @@ export function DiffContentViewer({ status, newContent, oldContent, path = '', w
       data-fold
     >
       <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">unfold_more</span>
-      {b.rows.length} unchanged lines
+      {tn(b.rows.length, '{n} unchanged line', '{n} unchanged lines')}
     </button>
   )
 
-  const whole = status === 'added' ? 'New file' : status === 'removed' ? 'Removed file' : null
+  const whole = status === 'added' ? t('New file') : status === 'removed' ? t('Removed file') : null
   const split = mode === 'split' && status === 'modified'
 
   // Runs of rows between folds, so the side-by-side view can pair lines within each run.
@@ -117,19 +118,19 @@ export function DiffContentViewer({ status, newContent, oldContent, path = '', w
           <span>{whole}</span>
         ) : (
           <>
-            <span data-diff-count>{hunks.length === 1 ? '1 change' : `${hunks.length} changes`}</span>
+            <span data-diff-count>{tn(hunks.length, '{n} change', '{n} changes')}</span>
             {hunks.length > 1 && (
               <span className="flex items-center gap-0.5">
-                <button type="button" onClick={() => goTo(at - 1)} aria-label="Previous change" title="Previous change" className="p-0.5 rounded hover:bg-surface-container-high hover:text-on-surface">
+                <button type="button" onClick={() => goTo(at - 1)} aria-label={t('Previous change')} title={t('Previous change')} className="p-0.5 rounded hover:bg-surface-container-high hover:text-on-surface">
                   <span className="material-symbols-outlined block" style={{ fontSize: '16px' }} aria-hidden="true">keyboard_arrow_up</span>
                 </button>
                 <span className="tabular-nums">{at + 1} / {hunks.length}</span>
-                <button type="button" onClick={() => goTo(at + 1)} aria-label="Next change" title="Next change" className="p-0.5 rounded hover:bg-surface-container-high hover:text-on-surface">
+                <button type="button" onClick={() => goTo(at + 1)} aria-label={t('Next change')} title={t('Next change')} className="p-0.5 rounded hover:bg-surface-container-high hover:text-on-surface">
                   <span className="material-symbols-outlined block" style={{ fontSize: '16px' }} aria-hidden="true">keyboard_arrow_down</span>
                 </button>
               </span>
             )}
-            <span className="ml-auto flex rounded overflow-hidden border border-outline-variant" role="group" aria-label="Diff layout">
+            <span className="ms-auto flex rounded overflow-hidden border border-outline-variant" role="group" aria-label={t('Diff layout')}>
               {(['unified', 'split'] as const).map(m => (
                 <button
                   key={m}
@@ -138,7 +139,7 @@ export function DiffContentViewer({ status, newContent, oldContent, path = '', w
                   aria-pressed={mode === m}
                   className={`px-2 py-0.5 transition-colors ${mode === m ? 'bg-primary/15 text-primary font-semibold' : 'hover:bg-surface-container-high'}`}
                 >
-                  {m === 'unified' ? 'Unified' : 'Side by side'}
+                  {m === 'unified' ? t('Unified') : t('Side by side')}
                 </button>
               ))}
             </span>
@@ -146,7 +147,7 @@ export function DiffContentViewer({ status, newContent, oldContent, path = '', w
         )}
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-auto relative code-tokens text-xs font-mono leading-5" data-diff-mode={split ? 'split' : 'unified'}>
+      <div ref={scrollRef} dir="ltr" className="flex-1 overflow-auto relative code-tokens text-xs font-mono leading-5" data-diff-mode={split ? 'split' : 'unified'}>
         {segments.map((segment, s) => {
           if (!Array.isArray(segment)) return foldRow(segment)
           if (!split) {

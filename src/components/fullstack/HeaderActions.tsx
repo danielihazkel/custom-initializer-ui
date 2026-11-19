@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PreviewError } from '../../types'
+import { t } from '../../i18n'
 
 /**
  * Explore / Generate / Cancel / Reset, rendered into the app header's slots.
@@ -49,9 +50,9 @@ export function HeaderActions({
               type="button"
               onClick={onCancel}
               className="px-3 py-1.5 rounded text-sm font-medium text-secondary hover:text-error transition-colors duration-200"
-              title={previewLoading ? 'Stop building the preview' : 'Stop generating the ZIP'}
+              title={previewLoading ? t('Stop building the preview') : t('Stop generating the ZIP')}
             >
-              Cancel
+              {t('Cancel')}
             </button>
           )}
           {/* Explore / Generate stay clickable with validation errors: the click toasts the count
@@ -62,24 +63,24 @@ export function HeaderActions({
             onClick={onExplore}
             disabled={previewLoading}
             aria-describedby={hasErrors ? 'fs-blocked-reason' : undefined}
-            title={hasErrors ? blockedReason : 'Preview the generated file tree before downloading'}
+            title={hasErrors ? blockedReason : t('Preview the generated file tree before downloading')}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${
               previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
           >
             {previewLoading
               ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }}>progress_activity</span>
-              : 'Explore'}
+              : t('Explore')}
           </button>
           <button
             type="button"
             onClick={onGenerate}
             disabled={generating}
             aria-describedby={hasErrors ? 'fs-blocked-reason' : undefined}
-            title={hasErrors ? blockedReason : 'Generate and download the backend + frontend ZIP'}
+            title={hasErrors ? blockedReason : t('Generate and download the backend + frontend ZIP')}
             className="px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn disabled:opacity-60 disabled:cursor-not-allowed"
             style={{ minWidth: '110px' }}
           >
-            {generating ? 'Generating…' : 'Generate Fullstack ZIP'}
+            {generating ? t('Generating…') : t('Generate Fullstack ZIP')}
           </button>
         </>,
         actionsSlot,
@@ -90,8 +91,8 @@ export function HeaderActions({
           type="button"
           onClick={onReset}
           className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
-          aria-label="Reset to defaults"
-          title="Reset the fullstack generator to defaults"
+          aria-label={t('Reset to defaults')}
+          title={t('Reset the fullstack generator to defaults')}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>restart_alt</span>
         </button>,

@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { EntityCodeFile } from './entityCode'
+import { t } from '../../i18n'
 
 const ReadOnlyCodeViewer = lazy(() => import('../ReadOnlyCodeViewer').then(m => ({ default: m.ReadOnlyCodeViewer })))
 
@@ -33,7 +34,7 @@ export function EntityCodePanel({ files, hasPreview, previewLoading, onExplore, 
     return (
       <div className="rounded-lg border border-outline-variant bg-background/50 px-3 py-4 text-center space-y-2" data-entity-code>
         <p className="text-[11px] text-secondary">
-          Run Explore to see the code this entity generates.
+          {t('Run Explore to see the code this entity generates.')}
         </p>
         <button
           type="button"
@@ -44,7 +45,7 @@ export function EntityCodePanel({ files, hasPreview, previewLoading, onExplore, 
           {previewLoading
             ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '14px' }}>progress_activity</span>
             : <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>travel_explore</span>}
-          Explore
+          {t('Explore')}
         </button>
       </div>
     )
@@ -53,7 +54,7 @@ export function EntityCodePanel({ files, hasPreview, previewLoading, onExplore, 
   if (files.length === 0) {
     return (
       <div className="rounded-lg border border-outline-variant bg-background/50 px-3 py-4 text-[11px] text-secondary text-center" data-entity-code>
-        The last preview generated no files for this entity — rename it or re-run Explore.
+        {t('The last preview generated no files for this entity — rename it or re-run Explore.')}
       </div>
     )
   }
@@ -63,10 +64,10 @@ export function EntityCodePanel({ files, hasPreview, previewLoading, onExplore, 
       {stale && (
         <p className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-warning border-b border-outline-variant" role="status">
           <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>update</span>
-          The model changed since this preview — re-run Explore to refresh.
+          {t('The model changed since this preview — re-run Explore to refresh.')}
         </p>
       )}
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-outline-variant overflow-x-auto custom-scrollbar" role="tablist" aria-label="Generated files">
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-outline-variant overflow-x-auto custom-scrollbar" role="tablist" aria-label={t('Generated files')}>
         {files.map(file => (
           <button
             key={file.path}
@@ -86,11 +87,11 @@ export function EntityCodePanel({ files, hasPreview, previewLoading, onExplore, 
       </div>
       {active && (
         <>
-          <p className="px-3 py-1 text-[10px] font-mono text-secondary truncate border-b border-outline-variant" title={active.path}>
+          <p className="px-3 py-1 text-[10px] font-mono text-secondary truncate border-b border-outline-variant" title={active.path} dir="ltr">
             {active.path}
           </p>
-          <div className="max-h-[26rem] overflow-auto custom-scrollbar">
-            <Suspense fallback={<div className="p-4 text-[11px] text-secondary">Loading viewer…</div>}>
+          <div className="max-h-[26rem] overflow-auto custom-scrollbar" dir="ltr">
+            <Suspense fallback={<div className="p-4 text-[11px] text-secondary">{t('Loading viewer…')}</div>}>
               <ReadOnlyCodeViewer code={active.content} targetPath={active.path} />
             </Suspense>
           </div>

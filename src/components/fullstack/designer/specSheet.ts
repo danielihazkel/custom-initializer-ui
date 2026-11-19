@@ -2,6 +2,7 @@ import type { FullstackEntityDef, FullstackPageDef, FullstackWidgetDef } from '.
 import { PAGE_TYPE_META, describePage, describePresetValue, pageLabel } from '../pageLayout'
 import { WIDGET_KINDS } from '../pages/constants'
 import type { PreviewNavSection } from '../layoutPreviewModel'
+import { getLang, t, tn } from '../../../i18n'
 
 /**
  * The layout as a spec sheet for the people who will review it: one self-contained HTML file
@@ -38,8 +39,9 @@ export function specFileName(project: string): string {
 
 function widgetLine(w: FullstackWidgetDef): string {
   const kind = WIDGET_KINDS.find(k => k.kind === w.kind)?.label ?? w.kind
-  const parts = [w.title ? `“${w.title}”` : '', w.entity, w.groupBy ? `by ${w.groupBy}` : '', w.agg && w.agg !== 'count' ? `${w.agg} of ${w.field ?? '?'}` : '',
-    w.trend ? `trend per ${w.trend}` : '']
+  const parts = [w.title ? `“${w.title}”` : '', w.entity, w.groupBy ? t('by {field}', { field: w.groupBy }) : '',
+    w.agg && w.agg !== 'count' ? t('{agg} of {field}', { agg: w.agg, field: w.field ?? '?' }) : '',
+    w.trend ? t('trend per {period}', { period: w.trend }) : '']
     .filter(Boolean)
   return parts.length ? `${kind} — ${parts.join(' · ')}` : kind
 }
@@ -47,59 +49,62 @@ function widgetLine(w: FullstackWidgetDef): string {
 /** What a page is set to, as label → value rows (only what is set). */
 export function pageSettings(page: FullstackPageDef, pages: FullstackPageDef[], entities: FullstackEntityDef[]): [string, string][] {
   const rows: [string, string][] = [
-    ['Type', PAGE_TYPE_META[page.type]?.label ?? page.type],
-    ['Route', `#/${page.id}`],
+    [t('Type'), PAGE_TYPE_META[page.type]?.label ?? page.type],
+    [t('Route'), `#/${page.id}`],
   ]
   const add = (label: string, value: string | undefined | false) => { if (value) rows.push([label, value]) }
-  add('In the menu', page.hidden ? 'No — opened from other pages' : page.group ? `Yes, under “${page.group}”` : 'Yes')
-  add('Entity', page.entity)
-  add('Parent', page.parent)
-  add('Child', page.child)
+  add(t('In the menu'), page.hidden ? t('No — opened from other pages') : page.group ? t('Yes, under “{group}”', { group: page.group }) : t('Yes'))
+  add(t('Entity'), page.entity)
+  add(t('Parent'), page.parent)
+  add(t('Child'), page.child)
   const entity = entities.find(x => x.name.trim().toLowerCase() === page.entity?.trim().toLowerCase())
-  add('Opens filtered on', page.presetFilter && Object.entries(page.presetFilter).map(([name, v]) => {
+  add(t('Opens filtered on'), page.presetFilter && Object.entries(page.presetFilter).map(([name, v]) => {
     const field = entity?.fields.find(f => f.name === name)
     return `${name} = ${field ? describePresetValue(field, v) : v}`
   }).join(', '))
-  add('Columns', page.columns?.join(', '))
-  add('Sorted by', page.sort && `${page.sort.field} ${page.sort.dir === 'desc' ? '(newest/largest first)' : '(ascending)'}`)
-  add('View', page.view)
-  add('Tabs', page.tabs?.map(t => t.title || pageLabel(pages.find(p => p.id === t.page) ?? { id: t.page, type: 'entity-list' })).join(', '))
-  add('Steps', page.steps?.map((s, i) => s.title || `Step ${i + 1}`).join(', '))
-  add('Who may open it', page.roles?.length ? page.roles.join(' or ') : false)
-  add('Summary', describePage(page, pages))
+  add(t('Columns'), page.columns?.join(', '))
+  add(t('Sorted by'), page.sort && `${page.sort.field} ${page.sort.dir === 'desc' ? t('(newest/largest first)') : t('(ascending)')}`)
+  add(t('View'), page.view)
+  add(t('Tabs'), page.tabs?.map(tab => tab.title || pageLabel(pages.find(p => p.id === tab.page) ?? { id: tab.page, type: 'entity-list' })).join(', '))
+  add(t('Steps'), page.steps?.map((s, i) => s.title || t('Step {n}', { n: i + 1 })).join(', '))
+  add(t('Who may open it'), page.roles?.length ? page.roles.join(` ${t('or')} `) : false)
+  add(t('Summary'), describePage(page, pages))
   return rows
 }
 
 export function buildSpecSheet(input: SpecSheetInput): string {
   const { pages } = input
   const e = escapeHtml
+  // The sheet is written in the site's language, and reads in its direction.
+  const lang = getLang()
+  const dir = lang === 'he' ? 'rtl' : 'ltr'
   const nav = input.sections.map(section => `
       <li>${section.group ? `<strong>${e(section.group)}</strong><ul>` : ''}${section.items.map(item =>
-        `<li><a href="#page-${item.index}">${e(item.label)}</a>${item.start ? ' <span class="tag">start page</span>' : ''}${item.roles.length ? ` <span class="tag">${e(item.roles.join(' / '))}</span>` : ''}</li>`).join('')}${section.group ? '</ul>' : ''}</li>`).join('')
+        `<li><a href="#page-${item.index}">${e(item.label)}</a>${item.start ? ` <span class="tag">${e(t('start page'))}</span>` : ''}${item.roles.length ? ` <span class="tag">${e(item.roles.join(' / '))}</span>` : ''}</li>`).join('')}${section.group ? '</ul>' : ''}</li>`).join('')
   const offNav = pages.map((p, i) => ({ p, i })).filter(({ i }) => !input.sections.some(s => s.items.some(item => item.index === i)))
   const pageSections = pages.map((page, i) => {
     const widgets = page.type === 'dashboard' && (page.widgets?.length ?? 0) > 0
-      ? `<h3>Widgets</h3><ol class="widgets">${(page.widgets ?? []).map(w => `<li>${e(widgetLine(w))}</li>`).join('')}</ol>` : ''
+      ? `<h3>${e(t('Widgets'))}</h3><ol class="widgets">${(page.widgets ?? []).map(w => `<li>${e(widgetLine(w))}</li>`).join('')}</ol>` : ''
     const canvas = input.canvasHtml[i]
     return `
   <section class="page" id="page-${i}">
-    <p class="eyebrow">Page ${i + 1} of ${pages.length}</p>
+    <p class="eyebrow">${e(t('Page {n} of {count}', { n: i + 1, count: pages.length }))}</p>
     <h2>${e(pageLabel(page))}</h2>
     ${page.description ? `<p class="lead">${e(page.description)}</p>` : ''}
     <div class="cols">
       <dl>${pageSettings(page, pages, input.entities).map(([k, v]) => `<dt>${e(k)}</dt><dd>${e(v)}</dd>`).join('')}</dl>
-      ${canvas ? `<figure class="canvas"><div class="snapshot">${canvas}</div><figcaption>As the designer previews it, with sample rows</figcaption></figure>` : ''}
+      ${canvas ? `<figure class="canvas"><div class="snapshot">${canvas}</div><figcaption>${e(t('As the designer previews it, with sample rows'))}</figcaption></figure>` : ''}
     </div>
     ${widgets}
   </section>`
   }).join('')
 
   return `<!doctype html>
-<html lang="en" class="light">
+<html lang="${lang}" dir="${dir}" class="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${e(input.project)} — page layout</title>
+<title>${e(t('{project} — page layout', { project: input.project }))}</title>
 <style>
 ${input.css}
 </style>
@@ -139,22 +144,22 @@ ${input.css}
 <body class="spec">
 <main>
   <header class="cover">
-    <p class="eyebrow">Page layout spec</p>
+    <p class="eyebrow">${e(t('Page layout spec'))}</p>
     <h1>${e(input.project)}</h1>
     <ul class="facts">
-      <li>${pages.length} page${pages.length === 1 ? '' : 's'}</li>
-      <li>${input.entities.filter(x => x.name.trim()).length} entities</li>
-      <li>Frontend: ${e(input.frontendSet)}</li>
-      <li>Language: ${input.locale === 'he' ? 'Hebrew' : 'English'}</li>
+      <li>${e(tn(pages.length, '{n} page', '{n} pages'))}</li>
+      <li>${e(tn(input.entities.filter(x => x.name.trim()).length, '{n} entity', '{n} entities'))}</li>
+      <li>${e(t('Frontend: {set}', { set: input.frontendSet }))}</li>
+      <li>${e(input.locale === 'he' ? t('Language: Hebrew') : t('Language: English'))}</li>
       <li>${e(input.date)}</li>
     </ul>
   </header>
   <section>
-    <h2>Navigation</h2>
+    <h2>${e(t('Navigation'))}</h2>
     <nav><ul>${nav}</ul></nav>
-    ${offNav.length ? `<p class="lead">Opened from other pages: ${offNav.map(({ p, i }) => `<a href="#page-${i}">${e(pageLabel(p))}</a>`).join(', ')}</p>` : ''}
+    ${offNav.length ? `<p class="lead">${e(t('Opened from other pages:'))} ${offNav.map(({ p, i }) => `<a href="#page-${i}">${e(pageLabel(p))}</a>`).join(', ')}</p>` : ''}
   </section>
-  ${input.flowHtml ? `<section><h2>How the pages connect</h2><div class="flow">${input.flowHtml}</div></section>` : ''}
+  ${input.flowHtml ? `<section><h2>${e(t('How the pages connect'))}</h2><div class="flow">${input.flowHtml}</div></section>` : ''}
   ${pageSections}
 </main>
 </body>

@@ -21,6 +21,7 @@ import { PageHeader } from './shared/PageHeader'
 import { NextSteps } from './shared/NextSteps'
 import { useBusy } from '../utils/busy'
 import { copyToClipboard } from '../utils/clipboard'
+import { t, tn, useLang } from '../i18n'
 
 /** What the last successful Generate made — in memory only. */
 interface FrontendRun {
@@ -50,6 +51,7 @@ interface Props {
 }
 
 export function FrontendView({ onGenerated, onError, onReset }: Props) {
+  const lang = useLang()
   const { metadata, loading, error, reload } = useFrontendMetadata()
   const fe = useFrontendState(metadata)
   const { templates } = useStarterTemplates('FRONTEND')
@@ -78,12 +80,13 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
     { key: 'e', ctrl: true, shift: true, run: () => actions.current.explore() },
     { key: '?', run: () => setShortcutsOpen(true) },
   ])
+  // Registered again when the language changes: the titles are in it.
   useEffect(() => registerCommands([
-    { id: 'fe-generate', title: 'Generate and download the frontend project', icon: 'download', group: 'Frontend', shortcut: 'Ctrl+Enter', run: () => actions.current.generate() },
-    { id: 'fe-explore', title: 'Explore the generated files', icon: 'folder_open', group: 'Frontend', shortcut: 'Ctrl+Shift+E', run: () => actions.current.explore() },
-    { id: 'fe-reset', title: 'Reset the frontend project to defaults', icon: 'restart_alt', group: 'Frontend', run: () => setResetConfirmOpen(true) },
-    { id: 'fe-shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', group: 'Frontend', shortcut: '?', run: () => setShortcutsOpen(true) },
-  ]), [])
+    { id: 'fe-generate', title: t('Generate and download the frontend project'), icon: 'download', group: t('Frontend'), shortcut: 'Ctrl+Enter', run: () => actions.current.generate() },
+    { id: 'fe-explore', title: t('Explore the generated files'), icon: 'folder_open', group: t('Frontend'), shortcut: 'Ctrl+Shift+E', run: () => actions.current.explore() },
+    { id: 'fe-reset', title: t('Reset the frontend project to defaults'), icon: 'restart_alt', group: t('Frontend'), run: () => setResetConfirmOpen(true) },
+    { id: 'fe-shortcuts', title: t('Keyboard shortcuts'), icon: 'keyboard', group: t('Frontend'), shortcut: '?', run: () => setShortcutsOpen(true) },
+  ]), [lang])
   useEffect(() => {
     setHeaderSlot(document.getElementById('header-frontend-actions'))
     setResetSlot(document.getElementById('header-frontend-reset'))
@@ -95,12 +98,12 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
     return (
       <div className="flex items-center justify-center p-16 relative z-10">
         <div className="bg-surface-container border border-error-container rounded-xl p-6 max-w-md text-center space-y-3">
-          <h2 className="text-base font-bold text-on-surface">Cannot load frontend catalog</h2>
+          <h2 className="text-base font-bold text-on-surface">{t('Cannot load frontend catalog')}</h2>
           <p className="text-sm text-secondary">
-            Make sure the backend exposes <code>/frontend/metadata</code> on port 8080.
+            {t('Make sure the backend exposes {path} on port 8080.', { path: '/frontend/metadata' })}
           </p>
           {error && (
-            <code className="block text-xs text-error bg-surface-container-lowest rounded p-2">
+            <code dir="ltr" className="block text-xs text-error bg-surface-container-lowest rounded p-2">
               {error}
             </code>
           )}
@@ -108,7 +111,7 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
             onClick={reload}
             className="px-4 py-1.5 rounded-lg text-xs font-semibold border border-outline-variant hover:bg-surface-container-high transition-colors"
           >
-            Retry
+            {t('Retry')}
           </button>
         </div>
       </div>
@@ -125,7 +128,7 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
       const res = await fetch(url)
       if (!res.ok) {
         const err = await readErrorBody(res)
-        onError?.(`Couldn't generate project: ${err.kind ? `${err.kind}: ${err.message}` : err.message}`)
+        onError?.(t("Couldn't generate project: {error}", { error: err.kind ? `${err.kind}: ${err.message}` : err.message }))
         return
       }
       downloadBlob(await res.blob(), `${fe.state.form.projectName || 'demo'}.zip`)
@@ -138,7 +141,7 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
       })
       onGenerated?.()
     } catch (err) {
-      onError?.(`Couldn't generate project: ${err instanceof Error ? err.message : String(err)}`)
+      onError?.(t("Couldn't generate project: {error}", { error: err instanceof Error ? err.message : String(err) }))
     } finally {
       setGenerating(false)
     }
@@ -146,7 +149,7 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
 
   async function copyShareLink(): Promise<void> {
     const ok = await copyToClipboard(window.location.href)
-    if (!ok) onError?.("Couldn't copy link — copy it from the address bar")
+    if (!ok) onError?.(t("Couldn't copy link — copy it from the address bar"))
   }
 
   actions.current = {
@@ -163,28 +166,28 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
   return (
     <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-8">
       <div className="mb-6">
-        <PageHeader icon="web" title="React Frontend Generator">
-          React + TypeScript + Vite, scaffolded as a Feature-Sliced Design project with the tooling you choose.
+        <PageHeader icon="web" title={t('React Frontend Generator')}>
+          {t('React + TypeScript + Vite, scaffolded as a Feature-Sliced Design project with the tooling you choose.')}
         </PageHeader>
       </div>
 
       {lastRun && (
         <div className="mb-6">
           <NextSteps
-            title={`${lastRun.projectName}.zip is downloaded — ${lastRun.dependencyCount} ${lastRun.dependencyCount === 1 ? 'dependency' : 'dependencies'}`}
-            hint={<>Install and start it, then open <a className="underline" href="http://localhost:5173" target="_blank" rel="noreferrer">http://localhost:5173</a>.</>}
+            title={tn(lastRun.dependencyCount, '{file} is downloaded — {n} dependency', '{file} is downloaded — {n} dependencies', { file: `${lastRun.projectName}.zip` })}
+            hint={<>{t('Install and start it, then open')} <a className="underline" dir="ltr" href="http://localhost:5173" target="_blank" rel="noreferrer">http://localhost:5173</a>.</>}
             stale={fe.downloadUrl !== lastRun.url}
             commands={[
-              { label: 'Unpack', cmd: `unzip ${lastRun.projectName}.zip -d ${lastRun.projectName} && cd ${lastRun.projectName}` },
-              { label: 'Run', cmd: runCommandFor(lastRun.packageManager) },
+              { label: t('Unpack'), cmd: `unzip ${lastRun.projectName}.zip -d ${lastRun.projectName} && cd ${lastRun.projectName}` },
+              { label: t('Run'), cmd: runCommandFor(lastRun.packageManager) },
             ]}
-            actionsLabel="Keep this setup:"
+            actionsLabel={t('Keep this setup:')}
             actions={[
-              { id: 'link', label: 'Copy share link', icon: 'link', onClick: () => { void copyShareLink() } },
-              { id: 'explore', label: 'Explore the files', icon: 'folder_open', onClick: () => { void fetchPreview(fe.state) } },
+              { id: 'link', label: t('Copy share link'), icon: 'link', onClick: () => { void copyShareLink() } },
+              { id: 'explore', label: t('Explore the files'), icon: 'folder_open', onClick: () => { void fetchPreview(fe.state) } },
             ]}
             onDismiss={() => setLastRun(null)}
-            onCopied={(ok, what) => { if (!ok) onError?.(`Couldn't copy the ${what.toLowerCase()}`) }}
+            onCopied={(ok, what) => { if (!ok) onError?.(t("Couldn't copy: {what}", { what })) }}
           />
         </div>
       )}
@@ -194,27 +197,27 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
           <button
             onClick={() => fetchPreview(fe.state)}
             disabled={previewLoading}
-            title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : 'Preview project files before downloading'}
+            title={previewError ? (previewError.kind ? `${previewError.kind}: ${previewError.message}` : previewError.message) : t('Preview project files before downloading')}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-60 ${previewError ? 'text-error' : 'text-secondary hover:text-on-surface'}`}
           >
             {previewLoading
               ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }}>progress_activity</span>
-              : 'Explore'}
+              : t('Explore')}
           </button>
           <button
             onClick={() => { void handleGenerate() }}
             disabled={generating}
             aria-busy={generating}
-            title="Generate and download the project (Ctrl+Enter)"
+            title={t('Generate and download the project (Ctrl+Enter)')}
             className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 active:scale-95 animated-gradient-btn ${generating ? 'cursor-progress' : ''}`}
             style={{ minWidth: '110px' }}
           >
             {generating ? (
               <span className="flex items-center justify-center gap-1.5">
                 <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }} aria-hidden="true">progress_activity</span>
-                Building…
+                {t('Building…')}
               </span>
-            ) : 'Generate'}
+            ) : t('Generate')}
           </button>
         </>,
         headerSlot
@@ -224,8 +227,8 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
         <button
           onClick={() => setResetConfirmOpen(true)}
           className="p-2 rounded text-secondary hover:text-on-surface transition-colors duration-200"
-          aria-label="Reset to defaults"
-          title="Reset project to defaults (clears form & dependencies)"
+          aria-label={t('Reset to defaults')}
+          title={t('Reset project to defaults (clears form & dependencies)')}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>restart_alt</span>
         </button>,
@@ -280,7 +283,7 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
           </div>
           <div className="flex items-center justify-end text-[11px] text-secondary px-1">
             <span>
-              FSD layers: <code className="text-on-surface">app · pages · widgets · features · entities · shared</code>
+              {t('FSD layers:')} <code className="text-on-surface">app · pages · widgets · features · entities · shared</code>
             </span>
           </div>
         </section>
@@ -311,9 +314,9 @@ export function FrontendView({ onGenerated, onError, onReset }: Props) {
 
       {resetConfirmOpen && (
         <ConfirmDialog
-          title="Reset project to defaults?"
-          message="Your current form values and selected dependencies will be lost."
-          confirmLabel="Reset"
+          title={t('Reset project to defaults?')}
+          message={t('Your current form values and selected dependencies will be lost.')}
+          confirmLabel={t('Reset')}
           tone="danger"
           onConfirm={confirmReset}
           onCancel={() => setResetConfirmOpen(false)}

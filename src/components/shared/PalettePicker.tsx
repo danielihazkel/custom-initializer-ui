@@ -1,4 +1,5 @@
 import type { FeColorPalette } from '../../hooks/useFrontendMetadata'
+import { t } from '../../i18n'
 
 /**
  * Swatch row for choosing a seeded colour palette — shared by the Frontend tab's options panel
@@ -9,7 +10,7 @@ export function PalettePicker({
   palettes,
   selectedId,
   onChange,
-  label = 'Color Palette',
+  label = t('Color Palette'),
   caption,
 }: {
   palettes: FeColorPalette[]
@@ -50,7 +51,7 @@ export function PalettePicker({
       </div>
       <p className="text-[11px] text-secondary mt-1.5 px-0.5">
         {selected.name}
-        {caption && <span className="ml-1.5 text-secondary/70">{caption}</span>}
+        {caption && <span className="ms-1.5 text-secondary/70">{caption}</span>}
       </p>
     </div>
   )

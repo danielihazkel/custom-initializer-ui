@@ -4,6 +4,7 @@ import type { FrontendMetadata, FeDependency } from '../../hooks/useFrontendMeta
 import type { CompatibilityRule } from '../../types'
 import { useDependencyCompatibility } from '../../hooks/useDependencyCompatibility'
 import { SuggestionStrip } from '../SuggestionStrip'
+import { t } from '../../i18n'
 
 interface Props {
   metadata: FrontendMetadata
@@ -45,7 +46,7 @@ export function SelectedDependenciesFE({
           <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>
             shopping_cart
           </span>
-          <h3 className="text-xs font-bold uppercase tracking-widest">Selected Dependencies</h3>
+          <h3 className="text-xs font-bold uppercase tracking-widest">{t('Selected Dependencies')}</h3>
         </div>
         <span className="text-xs font-bold py-1 px-3 bg-primary/10 text-primary rounded-full">
           {cards.length}
@@ -62,7 +63,7 @@ export function SelectedDependenciesFE({
             >
               <span className="material-symbols-outlined text-error mt-0.5" style={{ fontSize: '16px' }}>error</span>
               <span className="flex-1">
-                <span className="font-semibold">{depName(w.source)}</span> conflicts with{' '}
+                <span className="font-semibold">{depName(w.source)}</span> {t('conflicts with')}{' '}
                 <span className="font-semibold">{depName(w.target)}</span>
                 <span className="block text-on-surface-variant mt-0.5">{w.desc}</span>
               </span>
@@ -71,7 +72,7 @@ export function SelectedDependenciesFE({
                 onClick={() => onToggleDep(w.target)}
                 className="text-error font-semibold hover:underline shrink-0"
               >
-                Remove {depName(w.target)}
+                {t('Remove {name}', { name: depName(w.target) })}
               </button>
             </div>
           ))}
@@ -83,7 +84,7 @@ export function SelectedDependenciesFE({
             >
               <span className="material-symbols-outlined text-warning mt-0.5" style={{ fontSize: '16px' }}>info</span>
               <span className="flex-1">
-                <span className="font-semibold">{depName(w.source)}</span> requires{' '}
+                <span className="font-semibold">{depName(w.source)}</span> {t('requires')}{' '}
                 <span className="font-semibold">{depName(w.target)}</span>
                 <span className="block text-on-surface-variant mt-0.5">{w.desc}</span>
               </span>
@@ -92,7 +93,7 @@ export function SelectedDependenciesFE({
                 onClick={() => onToggleDep(w.target)}
                 className="text-warning font-semibold hover:underline shrink-0"
               >
-                Add {depName(w.target)}
+                {t('Add {name}', { name: depName(w.target) })}
               </button>
             </div>
           ))}
@@ -101,7 +102,7 @@ export function SelectedDependenciesFE({
 
       <SuggestionStrip suggestions={suggestions} onAdd={onToggleDep} />
 
-      <div className="flex flex-col gap-3 flex-grow overflow-y-auto pr-2 max-h-[60vh]">
+      <div className="flex flex-col gap-3 flex-grow overflow-y-auto pe-2 max-h-[60vh]">
         <AnimatePresence mode="popLayout">
           {cards.length > 0 ? cards.map(dep => {
             const opts = selectedOptions[dep.id] ?? []
@@ -116,18 +117,18 @@ export function SelectedDependenciesFE({
                 className="p-4 rounded-xl border bg-surface-container-highest border-outline-variant shadow-sm flex flex-col gap-1"
               >
                 <div className="flex justify-between items-start">
-                  <h4 className="text-sm font-bold text-on-surface">{dep.name}</h4>
+                  <h4 dir="auto" className="text-sm font-bold text-on-surface">{dep.name}</h4>
                   <button
                     type="button"
                     onClick={() => onToggleDep(dep.id)}
-                    className="text-secondary hover:text-error bg-surface-container hover:bg-error/10 p-1.5 rounded-lg transition-colors ml-2 flex-shrink-0"
-                    aria-label={`Remove ${dep.name}`}
+                    className="text-secondary hover:text-error bg-surface-container hover:bg-error/10 p-1.5 rounded-lg transition-colors ms-2 flex-shrink-0"
+                    aria-label={t('Remove {name}', { name: dep.name })}
                   >
                     <span className="material-symbols-outlined block" style={{ fontSize: '14px' }}>close</span>
                   </button>
                 </div>
                 {dep.description && (
-                  <p className="text-xs text-on-surface-variant leading-relaxed opacity-80">{dep.description}</p>
+                  <p dir="auto" className="text-xs text-on-surface-variant leading-relaxed opacity-80">{dep.description}</p>
                 )}
                 {dep.subOptions && dep.subOptions.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-outline-variant/60 space-y-2">
@@ -153,9 +154,9 @@ export function SelectedDependenciesFE({
                             className="sr-only"
                           />
                           <span className="text-on-surface-variant font-medium group-hover:text-on-surface transition-colors flex-1">
-                            <span className="block">{o.label}</span>
+                            <span dir="auto" className="block">{o.label}</span>
                             {o.description && (
-                              <span className="block text-[11px] text-secondary mt-0.5">{o.description}</span>
+                              <span dir="auto" className="block text-[11px] text-secondary mt-0.5">{o.description}</span>
                             )}
                           </span>
                         </label>
@@ -176,9 +177,9 @@ export function SelectedDependenciesFE({
               <span className="material-symbols-outlined text-secondary opacity-30 mb-3" style={{ fontSize: '40px' }}>
                 inventory_2
               </span>
-              <p className="text-sm font-medium text-on-surface">No dependencies selected</p>
+              <p className="text-sm font-medium text-on-surface">{t('No dependencies selected')}</p>
               <p className="text-xs text-secondary max-w-[200px] mt-1">
-                Search and add dependencies from the panel on the right.
+                {t('Search and add dependencies from the panel on the right.')}
               </p>
             </motion.div>
           )}

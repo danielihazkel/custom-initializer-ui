@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { CopyButton } from './CopyButton'
+import { t } from '../../i18n'
 
 export interface NextStepCommand {
   /** Short name of the step ("Unpack", "Run"); also names its Copy button. */
@@ -48,7 +49,7 @@ export function NextSteps({
   return (
     <section
       className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3 next-steps-enter"
-      aria-label="Next steps"
+      aria-label={t('Next steps')}
       data-next-steps
     >
       <div className="flex items-start justify-between gap-3">
@@ -60,12 +61,12 @@ export function NextSteps({
             {stale && (
               <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-warning" data-next-steps-stale>
                 <span className="material-symbols-outlined" style={{ fontSize: '13px' }} aria-hidden="true">history</span>
-                {staleText ?? 'The setup has changed since — generate again to get the current version.'}
+                {staleText ?? t('The setup has changed since — generate again to get the current version.')}
               </p>
             )}
           </div>
         </div>
-        <button type="button" onClick={onDismiss} aria-label="Dismiss next steps" className="p-1 rounded text-secondary hover:text-on-surface shrink-0">
+        <button type="button" onClick={onDismiss} aria-label={t('Dismiss next steps')} className="p-1 rounded text-secondary hover:text-on-surface shrink-0">
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">close</span>
         </button>
       </div>
@@ -74,8 +75,8 @@ export function NextSteps({
         {commands.map(c => (
           <li key={c.label} className="flex items-center gap-2 min-w-0">
             <span className="w-16 shrink-0 text-[10px] font-bold uppercase tracking-wider text-secondary">{c.label}</span>
-            <code className="flex-1 min-w-0 truncate px-2 py-1 rounded bg-surface-container-low border border-outline-variant font-mono text-[11px] text-on-surface">{c.cmd}</code>
-            <CopyButton text={c.cmd} label={`Copy ${c.label} command`} onCopied={ok => onCopied?.(ok, `${c.label} command`)} />
+            <code dir="ltr" className="flex-1 min-w-0 truncate px-2 py-1 rounded bg-surface-container-low border border-outline-variant font-mono text-[11px] text-on-surface">{c.cmd}</code>
+            <CopyButton text={c.cmd} label={t('Copy {label} command', { label: c.label })} onCopied={ok => onCopied?.(ok, t('{label} command', { label: c.label }))} />
           </li>
         ))}
       </ol>
@@ -84,7 +85,7 @@ export function NextSteps({
 
       {actions.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {actionsLabel && <span className="text-[11px] text-secondary mr-1">{actionsLabel}</span>}
+          {actionsLabel && <span className="text-[11px] text-secondary me-1">{actionsLabel}</span>}
           {actions.map(a => (
             <button key={a.id} type="button" onClick={a.onClick} className={action}>
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">{a.icon}</span>{a.label}

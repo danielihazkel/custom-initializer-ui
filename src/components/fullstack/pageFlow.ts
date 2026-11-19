@@ -2,20 +2,21 @@ import type { FullstackEntityDef, FullstackPageDef, FullstackWidgetDef } from '.
 import { contentLinks } from './contentMarkdown'
 import { inNav } from './pageLayout'
 import { buildPlayLinks } from './playLinks'
+import { t } from '../../i18n'
 
 /** How one page leads to another in the generated app. */
 export type FlowEdgeKind = 'nav' | 'search' | 'tab' | 'row' | 'create' | 'save' | 'drill' | 'link' | 'back'
 
-export const FLOW_EDGE_KINDS: { kind: FlowEdgeKind; label: string }[] = [
-  { kind: 'nav', label: 'Menu' },
-  { kind: 'search', label: 'Header search' },
-  { kind: 'tab', label: 'Tab' },
-  { kind: 'row', label: 'Opens a row' },
-  { kind: 'create', label: 'New' },
-  { kind: 'save', label: 'After save' },
-  { kind: 'drill', label: 'Drill-down / View all' },
-  { kind: 'link', label: 'Link' },
-  { kind: 'back', label: 'Back' },
+export const FLOW_EDGE_KINDS: { kind: FlowEdgeKind; readonly label: string }[] = [
+  { kind: 'nav', get label() { return t('Menu') } },
+  { kind: 'search', get label() { return t('Header search') } },
+  { kind: 'tab', get label() { return t('Tab') } },
+  { kind: 'row', get label() { return t('Opens a row') } },
+  { kind: 'create', get label() { return t('New') } },
+  { kind: 'save', get label() { return t('After save') } },
+  { kind: 'drill', get label() { return t('Drill-down / View all') } },
+  { kind: 'link', get label() { return t('Link') } },
+  { kind: 'back', get label() { return t('Back') } },
 ]
 
 /** The app's menu, where every walk starts. */

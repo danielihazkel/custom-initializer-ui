@@ -13,6 +13,7 @@ import type { FormProps } from './formTypes'
 import { COLLAPSE_WIDGETS_FROM, SMALL_BUTTON, WIDGET_KINDS } from './constants'
 import { EntitySelect, Field, MiniField } from './fields'
 import { WidgetCard } from './WidgetCard'
+import { t } from '../../../i18n'
 
 export function DashboardForm({ page, index, pages, projectOpts, entities, errors, update, dnd, lossy, removed, expandRequest, widgetsOnCanvas }: FormProps & {
   pages: FullstackPageDef[]
@@ -72,7 +73,7 @@ export function DashboardForm({ page, index, pages, projectOpts, entities, error
     const before = widgets[wi]
     if ((patch.kind ?? before.kind) === before.kind && (patch.entity ?? before.entity) === before.entity) return
     const { widget, dropped } = retargetWidget(before, patch, entities.find(e => e.name === (patch.entity ?? before.entity)))
-    lossy(`Changed widget ${wi + 1} of “${pageLabel(page)}”`, dropped)
+    lossy(t('Changed widget {n} of “{page}”', { n: wi + 1, page: pageLabel(page) }), dropped)
     setWidgets(widgets.map((w, i) => (i === wi ? widget : w)))
     // A card whose kind just changed shows different controls — open it.
     if (patch.kind) setOpen(keys[wi], true)
@@ -81,13 +82,13 @@ export function DashboardForm({ page, index, pages, projectOpts, entities, error
   return (
     <div className="space-y-2">
       <Field
-        label="Period picker"
+        label={t('Period picker')}
         error={errors.dateRange}
         control="dateRange"
-        hint={page.dateRange ? 'The dashboard opens on this period; widgets with a date follow the picker' : 'Off — every widget covers all rows'}
+        hint={page.dateRange ? t('The dashboard opens on this period; widgets with a date follow the picker') : t('Off — every widget covers all rows')}
       >
         <select
-          aria-label="Period picker"
+          aria-label={t('Period picker')}
           aria-invalid={Boolean(errors.dateRange)}
           value={page.dateRange ?? ''}
           onChange={e => {
@@ -97,48 +98,48 @@ export function DashboardForm({ page, index, pages, projectOpts, entities, error
             }
             // A widget's date field and comparison only mean something under a picker.
             const { patch, dropped } = stripDateRange(page)
-            lossy(`Switched the period picker off on “${pageLabel(page)}”`, dropped)
+            lossy(t('Switched the period picker off on “{page}”', { page: pageLabel(page) }), dropped)
             update(index, patch)
           }}
           className={`${inputClass(errors.dateRange)} max-w-[14rem]`}
         >
-          <option value="">Off</option>
-          {DATE_RANGES.map(r => <option key={r.value} value={r.value}>Opens on: {r.label}</option>)}
+          <option value="">{t('Off')}</option>
+          {DATE_RANGES.map(r => <option key={r.value} value={r.value}>{t('Opens on: {period}', { period: r.label })}</option>)}
         </select>
       </Field>
       <Field
-        label="Auto-refresh"
+        label={t('Auto-refresh')}
         error={errors.refreshSeconds}
         control="refreshSeconds"
         hint={(page.widgets ?? []).some(reloads)
-          ? page.refreshSeconds ? 'The widgets reload on this timer while the page is open; Refresh reloads them any time' : 'Off — the generated Refresh button reloads the widgets'
-          : 'Add a widget that shows data first'}
+          ? page.refreshSeconds ? t('The widgets reload on this timer while the page is open; Refresh reloads them any time') : t('Off — the generated Refresh button reloads the widgets')
+          : t('Add a widget that shows data first')}
       >
         <select
-          aria-label="Auto-refresh"
+          aria-label={t('Auto-refresh')}
           aria-invalid={Boolean(errors.refreshSeconds)}
           value={page.refreshSeconds ?? ''}
           disabled={!(page.widgets ?? []).some(reloads) && page.refreshSeconds == null}
           onChange={e => update(index, { refreshSeconds: e.target.value ? Number(e.target.value) : undefined })}
           className={`${inputClass(errors.refreshSeconds)} max-w-[14rem]`}
         >
-          <option value="">Off</option>
-          {REFRESH_CHOICES.map(r => <option key={r.value} value={r.value}>Reload {r.label}</option>)}
+          <option value="">{t('Off')}</option>
+          {REFRESH_CHOICES.map(r => <option key={r.value} value={r.value}>{t('Reload {every}', { every: r.label })}</option>)}
         </select>
       </Field>
       <DashboardFilters page={page} entities={entities} error={errors.filters} onChange={filters => update(index, { filters })} />
       {!widgetsOnCanvas && <div className="space-y-2" data-control="widgets">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
-            Widgets <span className="font-normal normal-case tracking-normal">· laid out left to right on a four-column grid</span>
+            {t('Widgets')} <span className="font-normal normal-case tracking-normal">{t('· laid out left to right on a four-column grid')}</span>
           </p>
           {widgets.length > 1 && (
             <span className="inline-flex items-center gap-2 text-[11px]">
               <button type="button" onClick={() => setCollapsed(new Set())} className="font-semibold text-primary hover:underline" disabled={collapsed.size === 0}>
-                Expand all
+                {t('Expand all')}
               </button>
               <button type="button" onClick={() => setCollapsed(new Set(keys))} className="font-semibold text-primary hover:underline" disabled={collapsed.size === widgets.length}>
-                Collapse all
+                {t('Collapse all')}
               </button>
             </span>
           )}
@@ -169,7 +170,7 @@ export function DashboardForm({ page, index, pages, projectOpts, entities, error
               setWidgets(next)
             }}
             onRemove={() => {
-              removed?.(`Removed widget ${wi + 1} (${WIDGET_KINDS.find(k => k.kind === widget.kind)?.label ?? widget.kind}) from “${pageLabel(page)}”`)
+              removed?.(t('Removed widget {n} ({kind}) from “{page}”', { n: wi + 1, kind: WIDGET_KINDS.find(k => k.kind === widget.kind)?.label ?? widget.kind, page: pageLabel(page) }))
               setWidgets(widgets.filter((_, i) => i !== wi))
             }}
           />
@@ -180,16 +181,16 @@ export function DashboardForm({ page, index, pages, projectOpts, entities, error
           aria-expanded={galleryOpen}
           disabled={atCap}
           className={SMALL_BUTTON}
-          title={atCap ? `A dashboard can have at most ${MAX_WIDGETS} widgets` : 'Pick a kind of widget and the entity it reads'}
+          title={atCap ? t('A dashboard can have at most {max} widgets', { max: MAX_WIDGETS }) : t('Pick a kind of widget and the entity it reads')}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
-          Add widget
+          {t('Add widget')}
         </button>
         {galleryOpen && !atCap && (
           <div className="space-y-2 rounded-lg border border-outline-variant p-2" data-widget-gallery>
-            <MiniField label="Entity the widget reads">
+            <MiniField label={t('Entity the widget reads')}>
               <EntitySelect
-                label="New widget entity"
+                label={t('New widget entity')}
                 value={galleryEntity}
                 options={entities.map(e => e.name)}
                 className="max-w-[12rem]"
@@ -205,7 +206,7 @@ export function DashboardForm({ page, index, pages, projectOpts, entities, error
                       type="button"
                       onClick={() => addWidget(k.kind)}
                       disabled={Boolean(reason)}
-                      aria-label={`Add ${k.label.toLowerCase()}`}
+                      aria-label={t('Add {kind}', { kind: k.label.toLowerCase() })}
                       title={reason ?? k.hint}
                       className="h-full w-full rounded-lg border border-outline-variant px-2.5 py-2 text-start transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-outline-variant disabled:hover:bg-transparent"
                     >
@@ -247,10 +248,10 @@ function DashboardFilters({ page, entities, error, onChange }: {
   }
   return (
     <Field
-      label="Filters"
+      label={t('Filters')}
       error={error}
       control="filters"
-      hint={`One control above the widgets for each, setting every widget whose entity has it (unless the widget fixes it itself) · up to ${MAX_DASHBOARD_FILTERS}`}
+      hint={t('One control above the widgets for each, setting every widget whose entity has it (unless the widget fixes it itself) · up to {max}', { max: MAX_DASHBOARD_FILTERS })}
     >
       <ul className="flex flex-wrap gap-1.5" data-dashboard-filters>
         {candidates.map(c => {
@@ -261,14 +262,14 @@ function DashboardFilters({ page, entities, error, onChange }: {
             <li key={c.name}>
               <label
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] ${on ? 'border-primary/50 bg-primary/10 text-primary' : 'border-outline-variant text-on-surface'} ${disabled ? 'opacity-50' : ''}`}
-                title={disabled ? `A dashboard takes at most ${MAX_DASHBOARD_FILTERS} filters` : `Filters ${c.entities.join(', ')}`}
+                title={disabled ? t('A dashboard takes at most {max} filters', { max: MAX_DASHBOARD_FILTERS }) : t('Filters {entities}', { entities: c.entities.join(', ') })}
               >
                 <input
                   type="checkbox"
                   className="accent-primary"
                   checked={on}
                   disabled={disabled}
-                  aria-label={`Filter by ${label}`}
+                  aria-label={t('Filter by {field}', { field: label })}
                   onChange={() => toggle(c.name, on)}
                 />
                 {label}
@@ -278,15 +279,15 @@ function DashboardFilters({ page, entities, error, onChange }: {
         })}
         {stale.map((name, i) => (
           <li key={`stale:${i}:${name}`}>
-            <label className="inline-flex items-center gap-1.5 rounded-full border border-error/50 px-2 py-0.5 text-[11px] text-error" title="None of the widgets can take this filter any more — untick to drop it">
+            <label className="inline-flex items-center gap-1.5 rounded-full border border-error/50 px-2 py-0.5 text-[11px] text-error" title={t('None of the widgets can take this filter any more — untick to drop it')}>
               <input
                 type="checkbox"
                 className="accent-primary"
                 checked
-                aria-label={`Filter by ${name}`}
+                aria-label={t('Filter by {field}', { field: name })}
                 onChange={() => toggle(name, true)}
               />
-              {name || '(blank)'}
+              {name || t('(blank)')}
             </label>
           </li>
         ))}

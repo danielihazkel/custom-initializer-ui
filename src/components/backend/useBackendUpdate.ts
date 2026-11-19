@@ -3,6 +3,7 @@ import type { ProjectSnapshot, Toast } from '../../types'
 // This hook is in the entry chunk: what an update does once asked is in ./backendUpdateActions,
 // fetched on the click, and nothing here imports from '../fullstack/' (the layout engine).
 import { readBackendBaseline, updateOffered, writeBackendBaseline, type BackendBaseline } from './backendBaseline'
+import { t } from '../../i18n'
 
 /**
  * The Backend tab's memory of the project it last generated or imported, and what it can do with
@@ -35,7 +36,7 @@ export function useBackendUpdate(
     const { parseBackendModel } = await import('./backendModel')
     const parsed = parseBackendModel(text)
     if ('error' in parsed) {
-      notify({ message: `Couldn't import the model: ${parsed.error}`, type: 'error' })
+      notify({ message: t("Couldn't import the model: {error}", { error: parsed.error }), type: 'error' })
       return false
     }
     apply(parsed.snapshot)
@@ -44,7 +45,7 @@ export function useBackendUpdate(
       source: 'imported', at: Date.now(),
     })
     notify({
-      message: `Opened ${parsed.snapshot.form.artifactId || 'the project'} — change it and choose Download update`,
+      message: t('Opened {name} — change it and choose Download update', { name: parsed.snapshot.form.artifactId || t('the project') }),
       type: 'success',
     })
     return true
@@ -58,7 +59,7 @@ export function useBackendUpdate(
       const { downloadBackendUpdate } = await import('./backendUpdateActions')
       return await downloadBackendUpdate(baseline, current, notify, remember)
     } catch (err) {
-      notify({ message: `Update failed: ${err instanceof Error ? err.message : String(err)}`, type: 'error' })
+      notify({ message: t('Update failed: {error}', { error: err instanceof Error ? err.message : String(err) }), type: 'error' })
       return false
     } finally {
       setBusy(false)

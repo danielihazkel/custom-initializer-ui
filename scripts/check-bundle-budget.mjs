@@ -19,10 +19,15 @@ import { fileURLToPath } from 'node:url'
  * first-paint code and used it up, so the budget was re-based once, here, to leave the later
  * phases room for their glue — every panel, sheet, dock and tour itself is a lazy chunk.
  *
+ * Hebrew (2026-11) raised it once, by its measured cost, from 120 000 to 120 500. The site's
+ * language (`src/i18n/index.ts`: the lookup, the store, `setLang`/`initLang`) and the `t()` calls
+ * in the Backend tab's first-paint code took the entry to 120 244 bytes. The dictionary itself is
+ * a lazy chunk, fetched only in Hebrew.
+ *
  * A jump of tens of KB usually means another import like the first: `vite build --sourcemap`
  * and look at which sources the entry chunk's map names.
  */
-const ENTRY_BUDGET = 120_000
+const ENTRY_BUDGET = 120_500
 
 const dist = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
 const assets = join(dist, 'assets')

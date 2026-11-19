@@ -20,6 +20,7 @@ import {
 } from '../pageLayout'
 import type { Lossy, Removed } from './formTypes'
 import { WIDGET_KINDS } from './constants'
+import { t, tn, useLang } from '../../../i18n'
 
 /** What the layout preview needs beyond the layout: the chrome language, the project-wide
  *  scaffold opts (list toolbars follow them) and which frontend set draws the shell. */
@@ -59,9 +60,9 @@ export interface PagesModelOptions {
 /** Why a page is not in the navigation, said where its preview is shown; undefined when it is. */
 export function offNavNoteFor(page: FullstackPageDef | undefined): string | undefined {
   if (!page) return undefined
-  if (page.type === 'record') return `Opens from a ${page.entity || 'record'} row — not in the navigation.`
-  if (page.hidden && (page.type === 'wizard' || page.type === 'form')) return 'Link only — opened from a Page links widget or a list’s New button, not from the navigation.'
-  if (page.hidden) return 'Tab only — reachable inside a tabs page, not from the navigation.'
+  if (page.type === 'record') return t('Opens from a {entity} row — not in the navigation.', { entity: page.entity || t('record') })
+  if (page.hidden && (page.type === 'wizard' || page.type === 'form')) return t('Link only — opened from a Page links widget or a list’s New button, not from the navigation.')
+  if (page.hidden) return t('Tab only — reachable inside a tabs page, not from the navigation.')
   return undefined
 }
 
@@ -96,6 +97,8 @@ export function useDrawnPages(pages: FullstackPageDef[]): FullstackPageDef[] {
 }
 
 export function usePagesModel({ pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, onOpenKey, onAdd, onRemovedKey, ldapAuth }: PagesModelOptions) {
+  // The suggestions and templates below carry the editor's words.
+  const lang = useLang()
   const keys = useStableKeys(pages, p => p.id)
   const named = entities.filter(e => e.name.trim())
   const settings = previewSettings ?? DEFAULT_PREVIEW_SETTINGS
@@ -110,7 +113,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   const lossy: Lossy = (label, dropped) => {
     if (dropped.length === 0) return
     pushUndo(label)
-    setNotice(`${label} — dropped the ${dropped.join(', ')} setting${dropped.length === 1 ? '' : 's'}, which no longer fit.`)
+    setNotice(tn(dropped.length, '{label} — dropped the {settings} setting, which no longer fit.', '{label} — dropped the {settings} settings, which no longer fit.', { label, settings: dropped.join(', ') }))
   }
   // A part of a page taken out (a widget, tab, chart, tile or step): its own undo entry, and a
   // notice with Undo — the button sits far from the part, so the removal should not go unseen.
@@ -179,14 +182,14 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   function noFitReason(type: FullstackPageType, others: FullstackPageDef[] = pages): string | undefined {
     const choices = newPageChoices(type, named, others)
     if (!choices || choices.length === 0 || choices.some(c => !c.reason)) return undefined
-    return `No entity fits: ${[...new Set(choices.map(c => c.reason!))].join('; ').toLowerCase()}`
+    return t('No entity fits: {reasons}', { reasons: [...new Set(choices.map(c => c.reason!))].join('; ').toLowerCase() })
   }
   const hasMdPair = masterDetailPairs(named).length > 0
   const tabsEligible = tabCandidates(pages)
   /** Why a new page of `type` cannot be added — the gallery card's reason, or undefined when it can. */
   function newTypeReason(type: FullstackPageType): string | undefined {
-    if (type === 'master-detail' && !hasMdPair) return 'Add a many-to-one relation between two entities first (the child’s Relations table)'
-    if (type === 'tabs' && tabsEligible.length < MIN_TABS) return 'Add two pages that can be tabs first — a list, dashboard, report or master–detail'
+    if (type === 'master-detail' && !hasMdPair) return t('Add a many-to-one relation between two entities first (the child’s Relations table)')
+    if (type === 'tabs' && tabsEligible.length < MIN_TABS) return t('Add two pages that can be tabs first — a list, dashboard, report or master–detail')
     return newPageTypeReason(type, named, pages) ?? noFitReason(type)
   }
   /** The entities a new page of `type` can be about (none needed: undefined). */
@@ -198,18 +201,18 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   function switchBlocked(page: FullstackPageDef, type: FullstackPageType): { short: string; reason: string } | undefined {
     if (type === page.type) return undefined
     if (type === 'master-detail' && !hasMdPair) {
-      return { short: 'needs a many-to-one relation', reason: 'Add a many-to-one relation between two entities first' }
+      return { short: t('needs a many-to-one relation'), reason: t('Add a many-to-one relation between two entities first') }
     }
     const others = pages.filter(p => p !== page)
     if (type === 'tabs') {
       return tabCandidates(others).length < MIN_TABS
-        ? { short: 'needs two other pages', reason: 'A tabs page holds two or more other pages — a list, dashboard, report or master–detail' }
+        ? { short: t('needs two other pages'), reason: t('A tabs page holds two or more other pages — a list, dashboard, report or master–detail') }
         : undefined
     }
     const own = newPageTypeReason(type, named, others)
-    if (own) return { short: 'not available', reason: own }
+    if (own) return { short: t('not available'), reason: own }
     const reason = noFitReason(type, others)
-    return reason ? { short: 'no entity fits', reason } : undefined
+    return reason ? { short: t('no entity fits'), reason } : undefined
   }
 
   /** A tabs page over the `picked` pages, at the end or at `at`; `hide` takes them out of the nav. */
@@ -220,7 +223,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
       title: title.trim() || 'Tabs',
       tabs: picked.map(page => ({ page })),
     }
-    pushUndo(`Added a tabs page over ${picked.length} pages`)
+    pushUndo(tn(picked.length, 'Added a tabs page over {n} page', 'Added a tabs page over {n} pages'))
     onAdd?.()
     const next = hide ? pages.map(p => (picked.includes(p.id) && !p.hidden ? { ...p, hidden: true, group: undefined, icon: undefined } : p)) : [...pages]
     const index = Math.max(0, Math.min(at, next.length))
@@ -232,11 +235,11 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   // The generated nav's sections, in order — the strip above the list renames and reorders them.
   const navGroupSections = navSections(pages)
   function renameGroup(from: string, to: string) {
-    pushUndo(`Renamed the “${from}” group to “${to}”`)
+    pushUndo(t('Renamed the “{from}” group to “{to}”', { from, to }))
     onChange(renameGroupInPages(pages, from, to))
   }
   function moveGroup(sectionIndex: number, delta: number) {
-    pushUndo('Reordered the navigation sections')
+    pushUndo(t('Reordered the navigation sections'))
     onChange(moveNavGroup(pages, sectionIndex, delta))
   }
 
@@ -273,7 +276,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     if (!page || !before) return
     if ((patch.kind ?? before.kind) === before.kind && (patch.entity ?? before.entity) === before.entity) return
     const { widget, dropped } = retargetWidget(before, patch, entities.find(e => e.name === (patch.entity ?? before.entity)))
-    lossy(`Changed widget ${wi + 1} of “${pageLabel(page)}”`, dropped)
+    lossy(t('Changed widget {n} of “{page}”', { n: wi + 1, page: pageLabel(page) }), dropped)
     update(pageIndex, { widgets: (page.widgets ?? []).map((w, i) => (i === wi ? widget : w)) })
   }
   /** A copy of widget `wi` right after it; returns where the copy landed (undefined at the cap). */
@@ -281,7 +284,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     const widgets = pages[pageIndex]?.widgets ?? []
     if (!widgets[wi]) return undefined
     if (widgets.length >= MAX_WIDGETS) {
-      setNotice(`A dashboard can have at most ${MAX_WIDGETS} widgets`)
+      setNotice(t('A dashboard can have at most {max} widgets', { max: MAX_WIDGETS }))
       return undefined
     }
     const next = [...widgets]
@@ -293,7 +296,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     const page = pages[pageIndex]
     const widget = page?.widgets?.[wi]
     if (!page || !widget) return
-    removed(`Removed widget ${wi + 1} (${WIDGET_KINDS.find(k => k.kind === widget.kind)?.label ?? widget.kind}) from “${pageLabel(page)}”`)
+    removed(t('Removed widget {n} ({kind}) from “{page}”', { n: wi + 1, kind: WIDGET_KINDS.find(k => k.kind === widget.kind)?.label ?? widget.kind, page: pageLabel(page) }))
     update(pageIndex, { widgets: (page.widgets ?? []).filter((_, i) => i !== wi) })
   }
 
@@ -307,7 +310,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     }
     pushUndo(pasted.label)
     update(pageIndex, { widgets: pasted.widgets })
-    setNotice(pasted.skipped.length ? `${pasted.label}. Left out — ${pasted.skipped.join('; ')}` : null)
+    setNotice(pasted.skipped.length ? t('{label}. Left out — {skipped}', { label: pasted.label, skipped: pasted.skipped.join('; ') }) : null)
     return { at: pasted.at, added: pasted.added }
   }
   /** Widget `wi` of one dashboard moved to the end of another, as one undo step. Returns its new
@@ -319,7 +322,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     if (!from || !widget || to?.type !== 'dashboard' || toIndex === pageIndex) return undefined
     const target = to.widgets ?? []
     if (target.length >= MAX_WIDGETS) {
-      setNotice(`“${pageLabel(to)}” already has the most widgets a dashboard can have (${MAX_WIDGETS})`)
+      setNotice(t('“{page}” already has the most widgets a dashboard can have ({max})', { page: pageLabel(to), max: MAX_WIDGETS }))
       return undefined
     }
     const fit = fitWidget(widget, pages, named)
@@ -327,7 +330,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
       setNotice(fit.reason)
       return undefined
     }
-    pushUndo(`Moved “${widgetName(widget)}” from “${pageLabel(from)}” to “${pageLabel(to)}”`)
+    pushUndo(t('Moved “{widget}” from “{from}” to “{to}”', { widget: widgetName(widget), from: pageLabel(from), to: pageLabel(to) }))
     onChange(pages.map((p, i) => (i === pageIndex ? { ...p, widgets: (p.widgets ?? []).filter((_, j) => j !== wi) }
       : i === toIndex ? { ...p, widgets: [...target, fit.widget] } : p)))
     return target.length
@@ -337,13 +340,15 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   const [widgetTemplates, setWidgetTemplates] = useState(readWidgetTemplates)
   function saveWidgetAsTemplate(widget: FullstackWidgetDef) {
     const name = widgetName(widget)
-    const replaced = widgetTemplates.some(t => t.name === name)
+    const replaced = widgetTemplates.some(w => w.name === name)
     if (!saveWidgetTemplate(name, widget)) {
-      setNotice('This browser refused to store the widget (storage full or blocked).')
+      setNotice(t('This browser refused to store the widget (storage full or blocked).'))
       return
     }
     setWidgetTemplates(readWidgetTemplates())
-    setNotice(`${replaced ? 'Updated' : 'Saved'} “${name}” — add it to any dashboard from the library's Widgets tab › My widgets.`)
+    setNotice(replaced
+      ? t("Updated “{name}” — add it to any dashboard from the library's Widgets tab › My widgets.", { name })
+      : t("Saved “{name}” — add it to any dashboard from the library's Widgets tab › My widgets.", { name }))
   }
   function forgetWidgetTemplate(name: string) {
     deleteWidgetTemplate(name)
@@ -354,7 +359,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   function changeType(index: number, type: FullstackPageType) {
     const page = pages[index]
     const { page: next, dropped } = retargetPage(page, type, named, pages)
-    const label = `Changed “${pageLabel(page)}” to a ${PAGE_TYPE_META[type].label.toLowerCase()} page`
+    const label = t('Changed “{page}” to a {type} page', { page: pageLabel(page), type: PAGE_TYPE_META[type].label.toLowerCase() })
     if (dropped.length) lossy(label, dropped)
     else pushUndo(label)
     onChange(pages.map((p, i) => (i === index ? next : p)))
@@ -363,7 +368,7 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   function removePage(index: number, dropTabs = false) {
     setConfirmRemove(null)
     const page = pages[index]
-    pushUndo(`Removed the “${pageLabel(page)}” page`)
+    pushUndo(t('Removed the “{page}” page', { page: pageLabel(page) }))
     onChange(removePageAt(pages, index, dropTabs))
     if (keys[index]) onRemovedKey?.(keys[index])
   }
@@ -393,12 +398,12 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     const moved = moveItem(pages, from, to)
     const group = adoptedGroup(moved, to)
     if (group == null) return onChange(moved)
-    pushUndo(`Moved “${pageLabel(moved[to])}” into the “${group}” group`)
+    pushUndo(t('Moved “{page}” into the “{group}” group', { page: pageLabel(moved[to]), group }))
     return onChange(moved.map((p, i) => (i === to ? { ...p, group } : p)))
   }
 
   function makeStart(index: number, startIndex: number) {
-    pushUndo(`Made “${pageLabel(pages[index])}” the start page`)
+    pushUndo(t('Made “{page}” the start page', { page: pageLabel(pages[index]) }))
     onChange(moveItem(pages, index, startIndex))
   }
 
@@ -408,17 +413,19 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   }
 
   function startFromEntities() {
-    pushUndo('Started a page layout from the entities')
+    pushUndo(t('Started a page layout from the entities'))
     onChange(seedLayout(entities, { title: previewSettings?.dashboardTitle, description: previewSettings?.dashboardOverview }))
   }
   // Building all the whole-layout templates is a few ms per model edit, and the gallery is rarely
   // on screen: built on first call (only a visible gallery calls it), then kept until the model changes.
   const layoutTemplates = useMemo(() => {
     let built: { template: (typeof LAYOUT_TEMPLATES)[number]; result: ReturnType<typeof buildLayoutTemplate> }[] | undefined
-    return () => (built ??= LAYOUT_TEMPLATES.map(t => ({ template: t, result: buildLayoutTemplate(t, entities) })))
-  }, [entities])
+    return () => (built ??= LAYOUT_TEMPLATES.map(template => ({ template, result: buildLayoutTemplate(template, entities) })))
+    // `lang`: a template's reason for not fitting is in the editor's words.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entities, lang])
   function startFromTemplate(label: string, built: FullstackPageDef[]) {
-    pushUndo(pages.length > 0 ? `Replaced the page layout with the “${label}” template` : `Started a page layout from the “${label}” template`)
+    pushUndo(pages.length > 0 ? t('Replaced the page layout with the “{template}” template', { template: label }) : t('Started a page layout from the “{template}” template', { template: label }))
     onChange(built)
   }
 
@@ -426,13 +433,15 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   const [myTemplates, setMyTemplates] = useState(readPageTemplates)
   function saveAsTemplate(page: FullstackPageDef) {
     const name = pageLabel(page)
-    const replaced = myTemplates.some(t => t.name === name)
+    const replaced = myTemplates.some(p => p.name === name)
     if (!savePageTemplate(name, page)) {
-      setNotice('This browser refused to store the template (storage full or blocked).')
+      setNotice(t('This browser refused to store the template (storage full or blocked).'))
       return
     }
     setMyTemplates(readPageTemplates())
-    setNotice(`${replaced ? 'Updated' : 'Saved'} “${name}” as a page template — add it again from Add page › My templates.`)
+    setNotice(replaced
+      ? t('Updated “{name}” as a page template — add it again from Add page › My templates.', { name })
+      : t('Saved “{name}” as a page template — add it again from Add page › My templates.', { name }))
   }
   function forgetTemplate(name: string) {
     deletePageTemplate(name)
@@ -488,10 +497,10 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     if (control === 'title') {
       const title = value.trim()
       if (!title && page.type === 'tabs') {
-        setNotice('A tabs page needs a title — it heads the tab strip')
+        setNotice(t('A tabs page needs a title — it heads the tab strip'))
         return
       }
-      pushUndo(title ? `Renamed “${pageLabel(page)}” to “${title}”` : `Cleared the title of “${pageLabel(page)}”`)
+      pushUndo(title ? t('Renamed “{page}” to “{title}”', { page: pageLabel(page), title }) : t('Cleared the title of “{page}”', { page: pageLabel(page) }))
       retitle(pageIndex, title)
       return
     }
@@ -513,9 +522,9 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   function fixAll() {
     const { pages: next, applied } = fixAllProblems(pages, entities, { scaffoldOpts: projectOpts, ldapAuth })
     if (applied.length === 0) return
-    pushUndo(applied.length === 1 ? applied[0] : `Applied ${applied.length} fixes`)
+    pushUndo(applied.length === 1 ? applied[0] : t('Applied {n} fixes', { n: applied.length }))
     onChange(next)
-    setNotice(`Applied ${applied.length} fix${applied.length === 1 ? '' : 'es'}: ${applied.join('; ')}.`)
+    setNotice(tn(applied.length, 'Applied {n} fix: {fixes}.', 'Applied {n} fixes: {fixes}.', { fixes: applied.join('; ') }))
   }
 
   const entityOptions = useMemo(() => new Map(entities.map(e => [e.name, entityOption(e)])), [entities])
@@ -525,10 +534,12 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
     () => buildLayoutPreview(drawnPages, entities, { locale: settings.locale, projectOpts: settings.projectOpts, warnPages }),
     [drawnPages, entities, settings.locale, settings.projectOpts, warnPages],
   )
-  const suggestions = useMemo(() => suggestPages(entities, drawnPages), [entities, drawnPages])
+  // `lang`: a suggestion's name and blurb are in the editor's words.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const suggestions = useMemo(() => suggestPages(entities, drawnPages), [entities, drawnPages, lang])
 
   const issues: LayoutIssue[] = serverIssue && pages[serverIssue.page]
-    ? [{ page: serverIssue.page, field: undefined, summary: `The server rejected “${pageLabel(pages[serverIssue.page])}”: ${serverIssue.message}`, fix: undefined }, ...validation.issues]
+    ? [{ page: serverIssue.page, field: undefined, summary: t('The server rejected “{page}”: {message}', { page: pageLabel(pages[serverIssue.page]), message: serverIssue.message }), fix: undefined }, ...validation.issues]
     : validation.issues
 
   return {

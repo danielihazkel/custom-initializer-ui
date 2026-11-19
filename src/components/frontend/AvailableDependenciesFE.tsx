@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { DESIGN_GROUP_NAME, type FrontendMetadata, type FeGroup } from '../../hooks/useFrontendMetadata'
 import { DependencyCard } from '../DependencyCard'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { t } from '../../i18n'
 
 /**
  * Renders a Spring Initializr-style version range as a short React-version label.
@@ -12,7 +13,7 @@ function formatReactRange(range: string): string {
   if (closed) {
     const lo = Number(closed[1])
     const hi = Number(closed[2])
-    return hi === lo + 1 ? `React ${lo} only` : `React ${lo}–${hi - 1}`
+    return hi === lo + 1 ? t('React {version} only', { version: lo }) : `React ${lo}–${hi - 1}`
   }
   const openUpper = /^\[(\d+)\.\d+\.\d+,\)$/.exec(range)
   if (openUpper) return `React ${openUpper[1]}+`
@@ -73,33 +74,33 @@ export function AvailableDependenciesFE({ metadata, selectedDeps, onToggleDep }:
         <span className="material-symbols-outlined text-tertiary" style={{ fontSize: '20px' }}>
           explore
         </span>
-        <h3 className="text-xs font-bold uppercase tracking-widest">Explore Dependencies</h3>
+        <h3 className="text-xs font-bold uppercase tracking-widest">{t('Explore Dependencies')}</h3>
       </div>
 
       <div className="relative mb-5 group">
         <span
-          className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-primary transition-transform group-focus-within:scale-110"
+          className="material-symbols-outlined absolute start-4 top-1/2 -translate-y-1/2 text-primary transition-transform group-focus-within:scale-110"
           style={{ fontSize: '20px' }}
         >
           search
         </span>
         <input
           ref={searchRef}
-          aria-label="Search dependencies"
+          aria-label={t('Search dependencies')}
           aria-keyshortcuts="/"
           onKeyDown={e => { if (e.key === 'Escape' && search) { e.preventDefault(); setSearch('') } }}
           type="search"
-          className="w-full bg-surface-container-highest border border-outline-variant rounded-xl pl-12 pr-12 py-3 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all placeholder-secondary/70 shadow-inner"
-          placeholder="Search router, state, query…"
+          className="w-full bg-surface-container-highest border border-outline-variant rounded-xl ps-12 pe-12 py-3 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all placeholder-secondary/70 shadow-inner"
+          placeholder={t('Search router, state, query…')}
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded border border-outline-variant text-[10px] font-bold text-secondary bg-surface-container">
+        <div className="absolute end-4 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded border border-outline-variant text-[10px] font-bold text-secondary bg-surface-container">
           /
         </div>
       </div>
 
-      <div className="flex-grow space-y-6 overflow-y-auto pr-2 pb-4 max-h-[60vh]">
+      <div className="flex-grow space-y-6 overflow-y-auto pe-2 pb-4 max-h-[60vh]">
         {/* Plain elements and CSS, like the Backend catalog — see DependencyCard. */}
         {filtered.map(group => {
           const collapsed = isCollapsed(group.name)
@@ -117,14 +118,14 @@ export function AvailableDependenciesFE({ metadata, selectedDeps, onToggleDep }:
                 <div className="h-px flex-1 bg-outline-variant/50"></div>
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-secondary px-2 py-1 bg-surface-container-lowest rounded-full border border-outline-variant/30 group-hover/header:border-primary/50 group-hover/header:text-on-surface transition-colors">
                   <span
-                    className={`material-symbols-outlined transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`}
+                    className={`material-symbols-outlined transition-transform ${collapsed ? '-rotate-90 rtl:rotate-90' : 'rotate-0'}`}
                     style={{ fontSize: '14px' }}
                   >
                     expand_more
                   </span>
                   {group.name}
                   {selectedCount > 0 && (
-                    <span className="ml-1 px-1.5 py-px rounded-full bg-primary/15 text-primary text-[9px] font-bold">
+                    <span className="ms-1 px-1.5 py-px rounded-full bg-primary/15 text-primary text-[9px] font-bold">
                       {selectedCount}
                     </span>
                   )}
@@ -157,9 +158,9 @@ export function AvailableDependenciesFE({ metadata, selectedDeps, onToggleDep }:
             <span className="material-symbols-outlined text-secondary opacity-30 mb-3" style={{ fontSize: '48px' }}>
               search_off
             </span>
-            <p className="text-sm font-medium text-on-surface">No results found</p>
+            <p className="text-sm font-medium text-on-surface">{t('No results found')}</p>
             <p className="text-xs text-secondary mt-1 max-w-[200px]">
-              We couldn&rsquo;t find any dependencies matching &ldquo;{search}&rdquo;
+              {t('We couldn’t find any dependencies matching “{search}”', { search })}
             </p>
           </div>
         )}

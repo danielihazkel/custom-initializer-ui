@@ -15,7 +15,7 @@ interface Props {
   label: string
   icon: string
   items: MenuItem[]
-  /** Which edge of the button the panel lines up with. */
+  /** Which edge of the button the panel lines up with, in reading order ('left' is the start). */
   align?: 'left' | 'right'
   className?: string
 }
@@ -79,7 +79,7 @@ export function PopoverMenu({ label, icon, items, align = 'right', className = '
         <div
           role="menu"
           aria-label={label}
-          className={`absolute top-full mt-2 ${align === 'right' ? 'right-0' : 'left-0'} min-w-48 py-1.5 rounded-xl border border-outline-variant bg-surface-container shadow-2xl animate-fade-in z-50`}
+          className={`absolute top-full mt-2 ${align === 'right' ? 'end-0' : 'start-0'} min-w-48 py-1.5 rounded-xl border border-outline-variant bg-surface-container shadow-2xl animate-fade-in z-50`}
         >
           {items.map(item => (
             <button
@@ -88,7 +88,7 @@ export function PopoverMenu({ label, icon, items, align = 'right', className = '
               role="menuitem"
               aria-current={item.current ? 'page' : undefined}
               onClick={() => { setOpen(false); item.onSelect() }}
-              className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left transition-colors hover:bg-surface-container-high ${
+              className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-start transition-colors hover:bg-surface-container-high ${
                 item.current ? 'text-on-surface font-semibold' : 'text-secondary hover:text-on-surface'
               }`}
             >

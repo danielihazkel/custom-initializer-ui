@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { FullstackEntityDef, FullstackPageDef } from '../../../types'
 import { FLOW_EDGE_KINDS, MENU, buildPageFlow, type FlowEdge, type FlowEdgeKind } from '../pageFlow'
 import { PAGE_TYPE_META, inNav, pageLabel } from '../pageLayout'
+import { isRtl, t, tn, useLang } from '../../../i18n'
 
 const NODE_W = 168
 const NODE_H = 42
@@ -36,7 +37,12 @@ export function PageFlowMap({ pages, entities, startIndex, onOpenPage }: {
   startIndex?: number
   onOpenPage: (index: number) => void
 }) {
-  const flow = useMemo(() => buildPageFlow(pages, entities), [pages, entities])
+  const lang = useLang()
+  // `lang`: the edge kinds' labels are in it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const flow = useMemo(() => buildPageFlow(pages, entities), [pages, entities, lang])
+  // The map is a diagram laid out left to right; the text on its boxes reads in the site's direction.
+  const textDir = isRtl() ? 'rtl' : 'ltr'
   const [focus, setFocus] = useState<number | null>(null)
   const [showMenu, setShowMenu] = useState(true)
 
@@ -52,28 +58,28 @@ export function PageFlowMap({ pages, entities, startIndex, onOpenPage }: {
   const between = flow.edges.filter(e => e.from !== MENU).length
   const touches = (e: FlowEdge) => focus == null || e.from === focus || e.to === focus
   const kindsShown = FLOW_EDGE_KINDS.filter(k => edges.some(e => e.kinds.includes(k.kind)))
-  const nameOf = (i: number) => (i === MENU ? 'the menu' : pageLabel(pages[i]))
+  const nameOf = (i: number) => (i === MENU ? t('the menu') : pageLabel(pages[i]))
   const describe = (i: number) => {
     const into = flow.edges.filter(e => e.to === i).map(e => `${nameOf(e.from)} (${e.kinds.map(kindLabel).join(', ')})`)
     const out = flow.edges.filter(e => e.from === i).map(e => `${nameOf(e.to)} (${e.kinds.map(kindLabel).join(', ')})`)
     return [
-      into.length ? `Reached from ${into.join('; ')}` : 'Nothing leads here',
-      out.length ? `leads to ${out.join('; ')}` : 'leads nowhere',
+      into.length ? t('Reached from {pages}', { pages: into.join('; ') }) : t('Nothing leads here'),
+      out.length ? t('leads to {pages}', { pages: out.join('; ') }) : t('leads nowhere'),
     ].join(' — ')
   }
 
   function path(e: FlowEdge): string {
     const s = boxes.get(e.from)!
-    const t = boxes.get(e.to)!
+    const d = boxes.get(e.to)!
     const sy = s.y + NODE_H / 2
-    const ty = t.y + NODE_H / 2
-    if (t.x > s.x) {
-      const [x1, x2] = [s.x + s.w, t.x]
+    const ty = d.y + NODE_H / 2
+    if (d.x > s.x) {
+      const [x1, x2] = [s.x + s.w, d.x]
       const bend = Math.max(24, (x2 - x1) / 2)
       return `M${x1},${sy} C${x1 + bend},${sy} ${x2 - bend},${ty} ${x2},${ty}`
     }
-    if (t.x < s.x) {
-      const [x1, x2] = [s.x, t.x + t.w]
+    if (d.x < s.x) {
+      const [x1, x2] = [s.x, d.x + d.w]
       const bend = Math.max(24, (x1 - x2) / 2)
       return `M${x1},${sy} C${x1 - bend},${sy} ${x2 + bend},${ty} ${x2},${ty}`
     }
@@ -83,25 +89,25 @@ export function PageFlowMap({ pages, entities, startIndex, onOpenPage }: {
     return `M${x},${sy} C${x + bend},${sy} ${x + bend},${ty} ${x},${ty}`
   }
 
-  if (pages.length === 0) return <p className="text-[11px] text-secondary">No pages yet.</p>
+  if (pages.length === 0) return <p className="text-[11px] text-secondary">{t('No pages yet.')}</p>
 
   return (
     <div className="space-y-3" data-page-flow>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-secondary">
         <span>
-          {pages.length} page{pages.length === 1 ? '' : 's'} · {between} link{between === 1 ? '' : 's'} between them
+          {tn(pages.length, '{n} page', '{n} pages')} · {tn(between, '{n} link between them', '{n} links between them')}
         </span>
         {flow.unreachable.length > 0 && (
           <span className="font-semibold text-error" data-flow-unreachable>
-            Nothing leads to {flow.unreachable.map(i => `“${pageLabel(pages[i])}”`).join(', ')}
+            {t('Nothing leads to {pages}', { pages: flow.unreachable.map(i => `“${pageLabel(pages[i])}”`).join(', ') })}
           </span>
         )}
         <label className="ms-auto inline-flex items-center gap-1.5">
           <input type="checkbox" className="accent-primary" checked={showMenu} onChange={e => setShowMenu(e.target.checked)} />
-          Menu links
+          {t('Menu links')}
         </label>
       </div>
-      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-secondary" aria-label="Kinds of link" data-flow-legend>
+      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-secondary" aria-label={t('Kinds of link')} data-flow-legend>
         {kindsShown.map(({ kind, label }) => (
           <li key={kind} className="inline-flex items-center gap-1">
             <svg width="22" height="6" aria-hidden="true">
@@ -111,7 +117,7 @@ export function PageFlowMap({ pages, entities, startIndex, onOpenPage }: {
           </li>
         ))}
       </ul>
-      <div className="overflow-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
+      <div className="overflow-auto rounded-xl border border-outline-variant bg-surface-container-lowest" dir="ltr">
         <div className="relative" style={{ width, height }}>
           {unreachableX != null && (
             <div
@@ -153,9 +159,10 @@ export function PageFlowMap({ pages, entities, startIndex, onOpenPage }: {
             onMouseEnter={() => setFocus(MENU)}
             onMouseLeave={() => setFocus(null)}
             data-flow-node="menu"
+            dir={textDir}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">menu</span>
-            Menu
+            {t('Menu')}
           </div>
           {pages.map((page, i) => {
             const box = boxes.get(i)
@@ -172,7 +179,7 @@ export function PageFlowMap({ pages, entities, startIndex, onOpenPage }: {
                 onMouseLeave={() => setFocus(null)}
                 onFocus={() => setFocus(i)}
                 onBlur={() => setFocus(null)}
-                aria-label={`${pageLabel(page)}, ${meta?.label ?? page.type} page. ${describe(i)}. Opens it in the design view.`}
+                aria-label={t('{page}, {type} page. {links}. Opens it in the design view.', { page: pageLabel(page), type: meta?.label ?? page.type, links: describe(i) })}
                 title={describe(i)}
                 className={`absolute flex items-center gap-1.5 rounded-lg border px-2 text-start transition-opacity ${
                   lost ? 'border-dashed border-error/60 bg-error/5' : inNav(page) ? 'border-outline-variant bg-surface-container' : 'border-dashed border-outline bg-surface-container'
@@ -180,11 +187,12 @@ export function PageFlowMap({ pages, entities, startIndex, onOpenPage }: {
                 style={{ left: box.x, top: box.y, width: box.w, height: NODE_H, opacity: dim ? 0.35 : 1 }}
                 data-flow-node={page.id}
                 data-flow-depth={flow.depth[i] ?? 'none'}
+                dir={textDir}
               >
                 <span className="material-symbols-outlined shrink-0 text-secondary" style={{ fontSize: '16px' }} aria-hidden="true">{meta?.icon ?? 'web_asset'}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[11px] font-semibold text-on-surface">{pageLabel(page)}</span>
-                  <span className="block truncate text-[10px] text-secondary">{meta?.label ?? page.type}{inNav(page) ? '' : ' · off the menu'}</span>
+                  <span className="block truncate text-[10px] text-secondary">{meta?.label ?? page.type}{inNav(page) ? '' : ` · ${t('off the menu')}`}</span>
                 </span>
                 {i === startIndex && <span className="material-symbols-outlined shrink-0 text-amber-500" style={{ fontSize: '14px' }} aria-hidden="true">home</span>}
               </button>

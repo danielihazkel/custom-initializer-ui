@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { PreviewDataState } from '../layoutPreviewModel'
+import { t } from '../../../i18n'
 
 export type PreviewDevice = 'desktop' | 'tablet' | 'mobile'
 
@@ -26,15 +27,15 @@ const DEVICE_WIDTH: Record<PreviewDevice, string> = {
 /** The Desktop / Tablet / Mobile switch over a designer canvas. */
 export function DeviceSwitch({ device, onChange }: { device: PreviewDevice; onChange: (device: PreviewDevice) => void }) {
   return (
-    <span role="radiogroup" aria-label="Preview width" className="inline-flex overflow-hidden rounded-md border border-outline-variant">
-      {([['desktop', 'Desktop', 'computer'], ['tablet', 'Tablet', 'tablet'], ['mobile', 'Mobile', 'smartphone']] as const).map(([value, label, icon]) => (
+    <span role="radiogroup" aria-label={t('Preview width')} className="inline-flex overflow-hidden rounded-md border border-outline-variant">
+      {([['desktop', t('Desktop'), 'computer', t('Desktop width')], ['tablet', t('Tablet'), 'tablet', t('Tablet width')], ['mobile', t('Mobile'), 'smartphone', t('Mobile width')]] as const).map(([value, label, icon, hint]) => (
         <button
           key={value}
           type="button"
           role="radio"
           aria-checked={device === value}
           aria-label={label}
-          title={`${label} width`}
+          title={hint}
           onClick={() => onChange(value)}
           className={`px-1.5 py-0.5 ${device === value ? 'bg-primary/15 text-on-surface' : 'text-secondary hover:text-on-surface'}`}
         >
@@ -51,13 +52,13 @@ export const DATA_STATES: readonly PreviewDataState[] = ['data', 'empty', 'loadi
  *  generated app draws its lists, charts and tiles with no rows, while they load, or on a failure. */
 export function DataStateSwitch({ state, onChange }: { state: PreviewDataState; onChange: (state: PreviewDataState) => void }) {
   const options = [
-    ['data', 'Data', 'table_rows', 'Sample rows'],
-    ['empty', 'Empty', 'inbox', 'No rows yet'],
-    ['loading', 'Loading', 'hourglass_empty', 'While the rows load'],
-    ['error', 'Error', 'error', 'When the rows fail to load'],
+    ['data', t('Data'), 'table_rows', t('Sample rows')],
+    ['empty', t('Empty'), 'inbox', t('No rows yet')],
+    ['loading', t('Loading'), 'hourglass_empty', t('While the rows load')],
+    ['error', t('Error'), 'error', t('When the rows fail to load')],
   ] as const
   return (
-    <span role="radiogroup" aria-label="Data state" className="inline-flex overflow-hidden rounded-md border border-outline-variant" data-canvas-data-state>
+    <span role="radiogroup" aria-label={t('Data state')} className="inline-flex overflow-hidden rounded-md border border-outline-variant" data-canvas-data-state>
       {options.map(([value, label, icon, hint]) => (
         <button
           key={value}
@@ -80,20 +81,20 @@ export function DataStateSwitch({ state, onChange }: { state: PreviewDataState; 
 export function ZoomControl({ zoom, onChange }: { zoom: number; onChange: (zoom: number) => void }) {
   const button = 'px-1.5 py-0.5 text-secondary hover:text-on-surface disabled:opacity-30'
   return (
-    <span role="group" aria-label="Zoom" className="inline-flex items-center overflow-hidden rounded-md border border-outline-variant" data-canvas-zoom>
-      <button type="button" className={button} onClick={() => onChange(nextZoom(zoom, -1))} disabled={zoom <= ZOOM_LEVELS[0]} aria-label="Zoom out" title="Zoom out">
+    <span role="group" aria-label={t('Zoom')} className="inline-flex items-center overflow-hidden rounded-md border border-outline-variant" data-canvas-zoom>
+      <button type="button" className={button} onClick={() => onChange(nextZoom(zoom, -1))} disabled={zoom <= ZOOM_LEVELS[0]} aria-label={t('Zoom out')} title={t('Zoom out')}>
         <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">remove</span>
       </button>
       <button
         type="button"
         className="min-w-[3rem] px-1 text-center font-mono text-[11px] text-on-surface hover:text-primary"
         onClick={() => onChange(CANVAS_ZOOM)}
-        title="Reset the zoom"
-        aria-label={`Zoom ${Math.round(zoom * 100)}% — reset`}
+        title={t('Reset the zoom')}
+        aria-label={t('Zoom {percent}% — reset', { percent: Math.round(zoom * 100) })}
       >
         {Math.round(zoom * 100)}%
       </button>
-      <button type="button" className={button} onClick={() => onChange(nextZoom(zoom, 1))} disabled={zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]} aria-label="Zoom in" title="Zoom in">
+      <button type="button" className={button} onClick={() => onChange(nextZoom(zoom, 1))} disabled={zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]} aria-label={t('Zoom in')} title={t('Zoom in')}>
         <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">add</span>
       </button>
     </span>

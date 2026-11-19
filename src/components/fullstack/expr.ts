@@ -1,5 +1,6 @@
 import type { FullstackEntityDef, FullstackFieldDef } from '../../types'
 import { LIMITS } from './schema'
+import { t } from '../../i18n'
 
 /**
  * The model's expression language, as the editor checks it while a rule is typed — a mirror of
@@ -27,7 +28,7 @@ export class ExprError extends Error {
   }
 
   describe(): string {
-    return this.message + (this.at >= 0 ? ` (at character ${this.at + 1})` : '')
+    return this.at >= 0 ? t('{message} (at character {n})', { message: this.message, n: this.at + 1 }) : this.message
   }
 }
 
@@ -44,7 +45,7 @@ export function lex(s: string): Token[] {
       const start = i
       while (i < s.length && /[\d.]/.test(s[i])) i++
       const text = s.slice(start, i)
-      if (!/^(\d+\.?\d*|\.\d+)$/.test(text)) throw new ExprError(`'${text}' is not a number`, start)
+      if (!/^(\d+\.?\d*|\.\d+)$/.test(text)) throw new ExprError(t("'{text}' is not a number", { text }), start)
       out.push({ kind: 'num', text, value: Number(text), at: start })
       continue
     }
@@ -52,7 +53,7 @@ export function lex(s: string): Token[] {
       const start = i++
       let value = ''
       for (;;) {
-        if (i >= s.length) throw new ExprError(`A text is not closed with ${c}`, start)
+        if (i >= s.length) throw new ExprError(t('A text is not closed with {quote}', { quote: c }), start)
         let d = s[i++]
         if (d === c) break
         if (d === '\\' && i < s.length) d = s[i++]
@@ -69,7 +70,7 @@ export function lex(s: string): Token[] {
       if (s[i] === '.' && /[A-Za-z_]/.test(s[i + 1] ?? '')) {
         i++
         name()
-        if (s[i] === '.' && /[A-Za-z_]/.test(s[i + 1] ?? '')) throw new ExprError('A link is followed one step only (like costCenter.budget)', i)
+        if (s[i] === '.' && /[A-Za-z_]/.test(s[i + 1] ?? '')) throw new ExprError(t('A link is followed one step only (like costCenter.budget)'), i)
       }
       out.push({ kind: 'name', text: s.slice(start, i), at: start })
       continue
@@ -85,76 +86,76 @@ export function lex(s: string): Token[] {
       i++
       continue
     }
-    throw new ExprError(`'${c}' is not part of the language`, i)
+    throw new ExprError(t("'{char}' is not part of the language", { char: c }), i)
   }
-  out.push({ kind: 'end', text: 'the end', at: s.length })
+  out.push({ kind: 'end', text: t('the end'), at: s.length })
   return out
 }
 
 export function parse(text: string): Node {
-  if (!text.trim()) throw new ExprError('The expression is empty', -1)
-  if (text.length > MAX_EXPRESSION) throw new ExprError(`The expression is over ${MAX_EXPRESSION} characters`, -1)
+  if (!text.trim()) throw new ExprError(t('The expression is empty'), -1)
+  if (text.length > MAX_EXPRESSION) throw new ExprError(t('The expression is over {max} characters', { max: MAX_EXPRESSION }), -1)
   const tokens = lex(text)
   let pos = 0
   const peek = () => tokens[pos]
   const isOp = (...ops: string[]) => {
-    const t = peek()
-    if (t.kind === 'op') return ops.includes(t.text)
-    if (t.kind === 'name') return ops.includes(t.text.toLowerCase())
+    const tok = peek()
+    if (tok.kind === 'op') return ops.includes(tok.text)
+    if (tok.kind === 'name') return ops.includes(tok.text.toLowerCase())
     return false
   }
   const expect = (op: string) => {
-    if (!isOp(op)) throw new ExprError(`Expected '${op}' but found '${peek().text}'`, peek().at)
+    if (!isOp(op)) throw new ExprError(t("Expected '{expected}' but found '{found}'", { expected: op, found: peek().text }), peek().at)
     pos++
   }
   const COMPARE = ['==', '=', '!=', '<', '<=', '>', '>=']
   function or(): Node {
     let left = and()
-    while (isOp('or', '||')) { const t = tokens[pos++]; left = { k: 'binary', op: 'or', left, right: and(), at: t.at } }
+    while (isOp('or', '||')) { const tok = tokens[pos++]; left = { k: 'binary', op: 'or', left, right: and(), at: tok.at } }
     return left
   }
   function and(): Node {
     let left = not()
-    while (isOp('and', '&&')) { const t = tokens[pos++]; left = { k: 'binary', op: 'and', left, right: not(), at: t.at } }
+    while (isOp('and', '&&')) { const tok = tokens[pos++]; left = { k: 'binary', op: 'and', left, right: not(), at: tok.at } }
     return left
   }
   function not(): Node {
-    if (isOp('not', '!')) { const t = tokens[pos++]; return { k: 'unary', op: 'not', operand: not(), at: t.at } }
+    if (isOp('not', '!')) { const tok = tokens[pos++]; return { k: 'unary', op: 'not', operand: not(), at: tok.at } }
     return compare()
   }
   function compare(): Node {
     const left = sum()
     if (isOp(...COMPARE)) {
-      const t = tokens[pos++]
+      const tok = tokens[pos++]
       const right = sum()
-      if (isOp(...COMPARE)) throw new ExprError("Comparisons do not chain: join them with 'and'", peek().at)
-      return { k: 'binary', op: t.text === '=' ? '==' : t.text, left, right, at: t.at }
+      if (isOp(...COMPARE)) throw new ExprError(t("Comparisons do not chain: join them with 'and'"), peek().at)
+      return { k: 'binary', op: tok.text === '=' ? '==' : tok.text, left, right, at: tok.at }
     }
     return left
   }
   function sum(): Node {
     let left = product()
-    while (isOp('+', '-')) { const t = tokens[pos++]; left = { k: 'binary', op: t.text, left, right: product(), at: t.at } }
+    while (isOp('+', '-')) { const tok = tokens[pos++]; left = { k: 'binary', op: tok.text, left, right: product(), at: tok.at } }
     return left
   }
   function product(): Node {
     let left = unary()
-    while (isOp('*', '/')) { const t = tokens[pos++]; left = { k: 'binary', op: t.text, left, right: unary(), at: t.at } }
+    while (isOp('*', '/')) { const tok = tokens[pos++]; left = { k: 'binary', op: tok.text, left, right: unary(), at: tok.at } }
     return left
   }
   function unary(): Node {
-    if (isOp('-')) { const t = tokens[pos++]; return { k: 'unary', op: '-', operand: unary(), at: t.at } }
+    if (isOp('-')) { const tok = tokens[pos++]; return { k: 'unary', op: '-', operand: unary(), at: tok.at } }
     return primary()
   }
   function primary(): Node {
-    const t = tokens[pos++]
-    if (t.kind === 'num' || t.kind === 'text') return { k: 'lit', value: t.value!, at: t.at }
-    if (t.kind === 'name') {
-      const word = t.text.toLowerCase()
-      if (word === 'true' || word === 'false') return { k: 'lit', value: word === 'true', at: t.at }
-      if (['and', 'or', 'not'].includes(word)) throw new ExprError(`Expected a value but found '${t.text}'`, t.at)
+    const tok = tokens[pos++]
+    if (tok.kind === 'num' || tok.kind === 'text') return { k: 'lit', value: tok.value!, at: tok.at }
+    if (tok.kind === 'name') {
+      const word = tok.text.toLowerCase()
+      if (word === 'true' || word === 'false') return { k: 'lit', value: word === 'true', at: tok.at }
+      if (['and', 'or', 'not'].includes(word)) throw new ExprError(t("Expected a value but found '{found}'", { found: tok.text }), tok.at)
       if (isOp('(')) {
-        if (t.text.includes('.')) throw new ExprError(`'${t.text}' is not a function`, t.at)
+        if (tok.text.includes('.')) throw new ExprError(t("'{name}' is not a function", { name: tok.text }), tok.at)
         pos++
         const args: Node[] = []
         if (!isOp(')')) {
@@ -162,20 +163,20 @@ export function parse(text: string): Node {
           while (isOp(',')) { pos++; args.push(or()) }
         }
         expect(')')
-        return { k: 'call', fn: t.text, args, at: t.at }
+        return { k: 'call', fn: tok.text, args, at: tok.at }
       }
-      return { k: 'ref', name: t.text, at: t.at }
+      return { k: 'ref', name: tok.text, at: tok.at }
     }
-    if (t.kind === 'op' && t.text === '(') {
+    if (tok.kind === 'op' && tok.text === '(') {
       const inner = or()
       expect(')')
       return inner
     }
-    if (t.kind === 'end') throw new ExprError('The expression ends too early', t.at)
-    throw new ExprError(`Expected a value but found '${t.text}'`, t.at)
+    if (tok.kind === 'end') throw new ExprError(t('The expression ends too early'), tok.at)
+    throw new ExprError(t("Expected a value but found '{found}'", { found: tok.text }), tok.at)
   }
   const node = or()
-  if (peek().kind !== 'end') throw new ExprError(`Unexpected '${peek().text}'`, peek().at)
+  if (peek().kind !== 'end') throw new ExprError(t("Unexpected '{found}'", { found: peek().text }), peek().at)
   return node
 }
 
@@ -194,9 +195,10 @@ export function typeOfField(f: FullstackFieldDef): ExprType | null {
   }
 }
 
-const DESCRIBE: Record<ExprType, string> = {
-  NUMBER: 'a number', TEXT: 'a text', BOOL: 'a yes/no condition', DATE: 'a date', DATETIME: 'a date and time',
-  INSTANT: 'an instant', TIME: 'a time of day', ENUM: 'an enum value', ANY: 'a value',
+const DESCRIBE: Record<ExprType, () => string> = {
+  NUMBER: () => t('a number'), TEXT: () => t('a text'), BOOL: () => t('a yes/no condition'), DATE: () => t('a date'),
+  DATETIME: () => t('a date and time'), INSTANT: () => t('an instant'), TIME: () => t('a time of day'),
+  ENUM: () => t('an enum value'), ANY: () => t('a value'),
 }
 
 /** What a MANY_TO_ONE leads to, by the relation's name, among `entities`. */
@@ -228,30 +230,35 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
     const target = links.get(relation)
     if (!target) {
       const loose = [...links.keys()].find(k => k.toLowerCase() === relation.toLowerCase())
-      throw new ExprError(`'${relation}' is not a link of this entity (a MANY_TO_ONE)${
-        loose ? ` (did you mean '${loose}'?)` : links.size ? ` \u2014 its links are ${[...links.keys()].join(', ')}` : ''}`, n.at)
+      throw new ExprError(loose
+        ? t("'{name}' is not a link of this entity (a MANY_TO_ONE) (did you mean '{suggestion}'?)", { name: relation, suggestion: loose })
+        : links.size
+          ? t("'{name}' is not a link of this entity (a MANY_TO_ONE) — its links are {links}", { name: relation, links: [...links.keys()].join(', ') })
+          : t("'{name}' is not a link of this entity (a MANY_TO_ONE)", { name: relation }), n.at)
     }
     const f = target.fields.find(x => x.name === name)
     if (!f) {
       const loose = target.fields.find(x => x.name.toLowerCase() === name.toLowerCase())
-      throw new ExprError(`'${name}' is not a field of ${target.name}${loose ? ` (did you mean '${loose.name}'?)` : ''}`, n.at)
+      throw new ExprError(loose
+        ? t("'{name}' is not a field of {entity} (did you mean '{suggestion}'?)", { name, entity: target.name, suggestion: loose.name })
+        : t("'{name}' is not a field of {entity}", { name, entity: target.name }), n.at)
     }
-    const t = typeOfField(f)
-    if (t == null || f.type === 'TEXT' || f.type === 'MARKDOWN') {
-      throw new ExprError(`'${n.name}' (${f.type}) cannot be read through a link: only a short value can`, n.at)
+    const ty = typeOfField(f)
+    if (ty == null || f.type === 'TEXT' || f.type === 'MARKDOWN') {
+      throw new ExprError(t("'{name}' ({type}) cannot be read through a link: only a short value can", { name: n.name, type: f.type }), n.at)
     }
     linked.set(n.name, f)
-    return t
+    return ty
   }
   const need = (actual: ExprType, wanted: ExprType, at: number, what: string) => {
-    if (actual !== wanted) throw new ExprError(`${what} takes ${DESCRIBE[wanted]}, not ${DESCRIBE[actual]}`, at)
+    if (actual !== wanted) throw new ExprError(t('{what} takes {wanted}, not {actual}', { what, wanted: DESCRIBE[wanted](), actual: DESCRIBE[actual]() }), at)
   }
   const enumLiteral = (enumSide: Node, textSide: Node) => {
     if (textSide.k !== 'lit' || enumSide.k !== 'ref') return
     const f = fieldOf(enumSide.name)
     const text = String(textSide.value)
     if (!(f.enumValues ?? []).some(v => v.toLowerCase() === text.toLowerCase())) {
-      throw new ExprError(`'${text}' is not one of ${f.name}'s values (${(f.enumValues ?? []).join(', ')})`, textSide.at)
+      throw new ExprError(t("'{text}' is not one of {field}'s values ({values})", { text, field: f.name, values: (f.enumValues ?? []).join(', ') }), textSide.at)
     }
   }
   function type(n: Node, emptiness = false): ExprType {
@@ -262,20 +269,22 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
         const f = fields.get(n.name)
         if (!f) {
           const loose = entity.fields.find(x => x.name.toLowerCase() === n.name.toLowerCase())
-          throw new ExprError(`'${n.name}' is not a field of this entity${loose ? ` (did you mean '${loose.name}'?)` : ''}`, n.at)
+          throw new ExprError(loose
+            ? t("'{name}' is not a field of this entity (did you mean '{suggestion}'?)", { name: n.name, suggestion: loose.name })
+            : t("'{name}' is not a field of this entity", { name: n.name }), n.at)
         }
         if (!refs.includes(f.name)) refs.push(f.name)
-        const t = typeOfField(f)
-        if (t == null) {
+        const ty = typeOfField(f)
+        if (ty == null) {
           if (emptiness) return 'ANY'
-          throw new ExprError(`'${f.name}' (${f.type}) can only be tested with isEmpty()`, n.at)
+          throw new ExprError(t("'{name}' ({type}) can only be tested with isEmpty()", { name: f.name, type: f.type }), n.at)
         }
-        return t
+        return ty
       }
       case 'unary': {
-        const t = type(n.operand)
-        if (n.op === '-') { need(t, 'NUMBER', n.operand.at, "'-'"); return 'NUMBER' }
-        need(t, 'BOOL', n.operand.at, "'not'")
+        const ty = type(n.operand)
+        if (n.op === '-') { need(ty, 'NUMBER', n.operand.at, "'-'"); return 'NUMBER' }
+        need(ty, 'BOOL', n.operand.at, "'not'")
         return 'BOOL'
       }
       case 'binary': {
@@ -289,22 +298,22 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
             const ordered = !['==', '!='].includes(n.op)
             if ((l === 'ENUM' && r === 'TEXT') || (l === 'TEXT' && r === 'ENUM')) {
               if (l === 'ENUM') enumLiteral(n.left, n.right); else enumLiteral(n.right, n.left)
-              if (ordered) throw new ExprError('Enum values are not ordered: compare with == or !=', n.at)
+              if (ordered) throw new ExprError(t('Enum values are not ordered: compare with == or !='), n.at)
               return 'BOOL'
             }
-            if (l !== r) throw new ExprError(`Cannot compare ${DESCRIBE[l]} with ${DESCRIBE[r]}`, n.at)
-            if (ordered && (l === 'BOOL' || l === 'ENUM')) throw new ExprError(`${DESCRIBE[l]} is not ordered: compare with == or !=`, n.at)
+            if (l !== r) throw new ExprError(t('Cannot compare {left} with {right}', { left: DESCRIBE[l](), right: DESCRIBE[r]() }), n.at)
+            if (ordered && (l === 'BOOL' || l === 'ENUM')) throw new ExprError(t('{kind} is not ordered: compare with == or !=', { kind: DESCRIBE[l]() }), n.at)
             return 'BOOL'
           }
           case '+':
             if (l === 'NUMBER' && r === 'NUMBER') return 'NUMBER'
             if (l === 'TEXT' && r === 'TEXT') return 'TEXT'
             if ((l === 'DATE' && r === 'NUMBER') || (l === 'NUMBER' && r === 'DATE')) return 'DATE'
-            throw new ExprError(`'+' adds two numbers, joins two texts, or adds days to a date — not ${DESCRIBE[l]} and ${DESCRIBE[r]}`, n.at)
+            throw new ExprError(t("'+' adds two numbers, joins two texts, or adds days to a date — not {left} and {right}", { left: DESCRIBE[l](), right: DESCRIBE[r]() }), n.at)
           case '-':
             if (l === 'NUMBER' && r === 'NUMBER') return 'NUMBER'
             if (l === 'DATE' && r === 'NUMBER') return 'DATE'
-            throw new ExprError(`'-' takes two numbers, or days from a date (daysBetween(a, b) is the days between two dates) — not ${DESCRIBE[l]} and ${DESCRIBE[r]}`, n.at)
+            throw new ExprError(t("'-' takes two numbers, or days from a date (daysBetween(a, b) is the days between two dates) — not {left} and {right}", { left: DESCRIBE[l](), right: DESCRIBE[r]() }), n.at)
           default:
             need(l, 'NUMBER', n.left.at, `'${n.op}'`); need(r, 'NUMBER', n.right.at, `'${n.op}'`)
             return 'NUMBER'
@@ -312,10 +321,10 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
       }
       case 'call': {
         const fn = EXPR_FUNCTIONS.find(x => x.toLowerCase() === n.fn.toLowerCase())
-        if (!fn) throw new ExprError(`'${n.fn}' is not a function (there are ${EXPR_FUNCTIONS.join(', ')})`, n.at)
+        if (!fn) throw new ExprError(t("'{name}' is not a function (there are {functions})", { name: n.fn, functions: EXPR_FUNCTIONS.join(', ') }), n.at)
         const arity = (count: number) => {
           if (n.args.length !== count) {
-            throw new ExprError(`${fn} takes ${count === 0 ? 'no arguments' : count === 1 ? 'one argument' : `${count} arguments`}`, n.at)
+            throw new ExprError(count === 0 ? t('{fn} takes no arguments', { fn }) : count === 1 ? t('{fn} takes one argument', { fn }) : t('{fn} takes {count} arguments', { fn, count }), n.at)
           }
         }
         switch (fn) {
@@ -327,7 +336,7 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
             const a = type(n.args[0])
             const b = type(n.args[1])
             if (a !== b || !['DATE', 'DATETIME', 'INSTANT'].includes(a)) {
-              throw new ExprError(`daysBetween takes two dates, or two dates and times — not ${DESCRIBE[a]} and ${DESCRIBE[b]}`, n.at)
+              throw new ExprError(t('daysBetween takes two dates, or two dates and times — not {left} and {right}', { left: DESCRIBE[a](), right: DESCRIBE[b]() }), n.at)
             }
             return 'NUMBER'
           }
@@ -343,18 +352,18 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
             need(type(n.args[0]), 'NUMBER', n.args[0].at, 'round')
             const places = n.args[1]
             if (places.k !== 'lit' || typeof places.value !== 'number' || !Number.isInteger(places.value) || places.value < 0 || places.value > 10) {
-              throw new ExprError("round's second argument is a whole number of decimal places, 0 to 10", places.at)
+              throw new ExprError(t("round's second argument is a whole number of decimal places, 0 to 10"), places.at)
             }
             return 'NUMBER'
           }
           default: {
             arity(1)
             const arg = n.args[0]
-            if (arg.k !== 'lit' || typeof arg.value !== 'string') throw new ExprError("date takes a date written out: date('2025-01-31')", n.at)
+            if (arg.k !== 'lit' || typeof arg.value !== 'string') throw new ExprError(t("date takes a date written out: date('2025-01-31')"), n.at)
             const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(arg.value)
             const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null
             if (!m || !d || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) {
-              throw new ExprError(`'${arg.value}' is not a date (year-month-day, like 2025-01-31)`, arg.at)
+              throw new ExprError(t("'{text}' is not a date (year-month-day, like 2025-01-31)", { text: arg.value }), arg.at)
             }
             return 'DATE'
           }
@@ -362,8 +371,8 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
       }
     }
   }
-  const t = type(root)
-  if (expected && t !== expected) throw new ExprError(`This must be ${DESCRIBE[expected]}, but it is ${DESCRIBE[t]}`, root.at)
+  const ty = type(root)
+  if (expected && ty !== expected) throw new ExprError(t('This must be {wanted}, but it is {actual}', { wanted: DESCRIBE[expected](), actual: DESCRIBE[ty]() }), root.at)
   return refs
 }
 
@@ -395,13 +404,13 @@ export function renameNamesInExpr(text: string, rename: (name: string) => string
   let out = ''
   let last = 0
   for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i]
+    const tok = tokens[i]
     const call = tokens[i + 1]?.kind === 'op' && tokens[i + 1].text === '('
-    if (t.kind !== 'name' || call) continue
-    const to = rename(t.text)
-    if (to !== t.text) {
-      out += text.slice(last, t.at) + to
-      last = t.at + t.text.length
+    if (tok.kind !== 'name' || call) continue
+    const to = rename(tok.text)
+    if (to !== tok.text) {
+      out += text.slice(last, tok.at) + to
+      last = tok.at + tok.text.length
     }
   }
   return out + text.slice(last)

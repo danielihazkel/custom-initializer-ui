@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { FullstackSnapshot } from './snapshot'
 import { NextSteps } from '../shared/NextSteps'
+import { t, tn } from '../../i18n'
 
 /** What the last successful Generate produced — kept in memory only, so a refresh clears it. */
 export interface GeneratedRun {
@@ -48,22 +49,26 @@ export function NextStepsPanel({ run, stale, onDismiss, onSavePreset, onSaveTeam
 
   return (
     <NextSteps
-      title={`${folder}.zip is downloaded — ${run.entityCount} entit${run.entityCount === 1 ? 'y' : 'ies'}, ${run.endpoints.length} endpoint${run.endpoints.length === 1 ? '' : 's'}`}
-      hint={<>Run it in two terminals, then open <a className="underline" href="http://localhost:5173" target="_blank" rel="noreferrer">http://localhost:5173</a> — or all of it in Docker, then <a className="underline" href="http://localhost:3000" target="_blank" rel="noreferrer">http://localhost:3000</a>.</>}
+      title={t('{file} is downloaded — {entities}, {endpoints}', {
+        file: `${folder}.zip`,
+        entities: tn(run.entityCount, '{n} entity', '{n} entities'),
+        endpoints: tn(run.endpoints.length, '{n} endpoint', '{n} endpoints'),
+      })}
+      hint={<>{t('Run it in two terminals, then open')} <a className="underline" dir="ltr" href="http://localhost:5173" target="_blank" rel="noreferrer">http://localhost:5173</a> {t('— or all of it in Docker, then')} <a className="underline" dir="ltr" href="http://localhost:3000" target="_blank" rel="noreferrer">http://localhost:3000</a>.</>}
       stale={stale}
-      staleText="The model has changed since — generate again to get the current version."
+      staleText={t('The model has changed since — generate again to get the current version.')}
       commands={[
-        { label: 'Unpack', cmd: `unzip ${folder}.zip -d ${folder} && cd ${folder}` },
-        { label: 'Backend', cmd: 'cd backend && mvn spring-boot:run' },
-        { label: 'Frontend', cmd: 'cd frontend && npm install && npm run dev' },
+        { label: t('Unpack'), cmd: `unzip ${folder}.zip -d ${folder} && cd ${folder}` },
+        { label: t('Backend'), cmd: 'cd backend && mvn spring-boot:run' },
+        { label: t('Frontend'), cmd: 'cd frontend && npm install && npm run dev' },
         { label: 'Docker', cmd: 'docker compose up --build' },
       ]}
-      actionsLabel="Keep this model:"
+      actionsLabel={t('Keep this model:')}
       actions={[
-        { id: 'preset', label: 'Save as preset', icon: 'bookmark_add', onClick: onSavePreset },
-        { id: 'team', label: 'Save to Team', icon: 'groups', onClick: onSaveTeam },
-        { id: 'curl', label: 'Copy as curl', icon: 'terminal', onClick: onCopyCurl },
-        { id: 'link', label: 'Copy share link', icon: 'link', onClick: onShareLink },
+        { id: 'preset', label: t('Save as preset'), icon: 'bookmark_add', onClick: onSavePreset },
+        { id: 'team', label: t('Save to Team'), icon: 'groups', onClick: onSaveTeam },
+        { id: 'curl', label: t('Copy as curl'), icon: 'terminal', onClick: onCopyCurl },
+        { id: 'link', label: t('Copy share link'), icon: 'link', onClick: onShareLink },
       ]}
       onDismiss={onDismiss}
       onCopied={onCopied}
@@ -71,13 +76,13 @@ export function NextStepsPanel({ run, stale, onDismiss, onSavePreset, onSaveTeam
       <details className="text-[11px]" open={byEntity.length <= ENDPOINTS_OPEN_MAX} data-next-steps-endpoints>
         <summary className="cursor-pointer select-none text-secondary hover:text-on-surface inline-flex items-center gap-1">
           <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>list_alt</span>
-          Endpoints ({run.endpoints.length})
+          {t('Endpoints ({n})', { n: run.endpoints.length })}
         </summary>
         <div className="mt-1.5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
           {byEntity.map(([entity, eps]) => (
             <div key={entity} className="min-w-0">
               <p className="font-semibold text-on-surface">{entity}</p>
-              <ul className="font-mono text-on-surface">
+              <ul className="font-mono text-on-surface" dir="ltr">
                 {eps.map(ep => (
                   <li key={`${ep.method} ${ep.path}`} className="flex items-baseline gap-2 min-w-0">
                     <span className="w-14 shrink-0 text-[10px] font-bold tracking-wide text-secondary">{ep.method}</span>

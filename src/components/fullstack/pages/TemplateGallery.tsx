@@ -1,6 +1,7 @@
 import type { FullstackPageDef } from '../../../types'
 import { buildLayoutTemplate, type LayoutTemplate } from '../layoutTemplates'
 import { pageLabel } from '../pageLayout'
+import { t, tn } from '../../../i18n'
 
 /** The whole-layout templates: what each builds (its pages, listed), or why the model cannot fill it. */
 export function TemplateGallery({ templates, onPick }: {
@@ -18,7 +19,7 @@ export function TemplateGallery({ templates, onPick }: {
             <button
               type="button"
               disabled={Boolean(reason)}
-              title={reason ?? `Builds: ${names}`}
+              title={reason ?? t('Builds: {pages}', { pages: names })}
               onClick={() => { if (!reason) onPick(template.label, built) }}
               className="h-full w-full rounded-lg border border-outline-variant px-3 py-2 text-start transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-outline-variant disabled:hover:bg-transparent"
               data-layout-template={template.key}
@@ -26,7 +27,7 @@ export function TemplateGallery({ templates, onPick }: {
               <span className="flex items-center gap-1.5 text-xs font-semibold text-on-surface">
                 <span className="material-symbols-outlined text-primary" style={{ fontSize: '16px' }} aria-hidden="true">{template.icon}</span>
                 {template.label}
-                {!reason && <span className="text-[10px] font-normal text-secondary">· {built.length} pages</span>}
+                {!reason && <span className="text-[10px] font-normal text-secondary">· {tn(built.length, '{n} page', '{n} pages')}</span>}
               </span>
               <span className="mt-0.5 block text-[11px] text-secondary">{reason ?? template.blurb}</span>
               {!reason && <span className="mt-1 block line-clamp-2 text-[10px] text-secondary/80" data-template-pages>{names}</span>}

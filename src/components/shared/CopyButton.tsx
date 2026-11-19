@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { copyToClipboard } from '../../utils/clipboard'
+import { t } from '../../i18n'
 
 interface Props {
   /** What to copy — read at click time, so a long text is not held in a prop for nothing. */
@@ -38,7 +39,7 @@ export function CopyButton({ text, label, icon = 'content_copy', size = 14, clas
       type="button"
       onClick={() => { void copy() }}
       aria-label={label}
-      title={copied ? 'Copied' : label}
+      title={copied ? t('Copied') : label}
       className={`p-1 rounded transition-colors ${copied ? 'text-tertiary' : 'text-secondary hover:text-primary hover:bg-primary/10'} ${className}`}
       data-copied={copied || undefined}
     >

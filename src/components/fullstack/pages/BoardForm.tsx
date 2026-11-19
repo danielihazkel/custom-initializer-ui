@@ -8,6 +8,7 @@ import { defaultOptionLabel, pageLabel } from '../pageLayout'
 import type { FormProps } from './formTypes'
 import { SMALL_BUTTON } from './constants'
 import { EntitySelect, Field, PresetFilters } from './fields'
+import { t } from '../../../i18n'
 
 export function BoardForm({ page, index, entities, errors, update, lossy }: FormProps) {
   const entity = entities.find(e => e.name === page.entity)
@@ -39,35 +40,35 @@ export function BoardForm({ page, index, entities, errors, update, lossy }: Form
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-1 gap-3 @sm:grid-cols-3">
-        <Field label="Entity" error={errors.entity} control="entity">
+        <Field label={t('Entity')} error={errors.entity} control="entity">
           <EntitySelect
-            label="Board entity"
+            label={t('Board entity')}
             value={page.entity ?? ''}
             options={entities.filter(e => laneFields(e).length > 0).map(e => e.name)}
             error={errors.entity}
             onChange={name => {
               const next = entities.find(e => e.name === name)
-              const dropped = [page.lanes && 'lanes', page.wipLimits && 'lane limits', page.cardFields && 'card fields', page.sort && 'sort',
-                Object.keys(page.presetFilter ?? {}).length > 0 && 'filter'].filter((d): d is string => Boolean(d))
-              lossy(`Showed ${name} in “${pageLabel(page)}”`, dropped)
+              const dropped = [page.lanes && t('lanes'), page.wipLimits && t('lane limits'), page.cardFields && t('card fields'), page.sort && t('sort'),
+                Object.keys(page.presetFilter ?? {}).length > 0 && t('filter')].filter((d): d is string => Boolean(d))
+              lossy(t('Showed {entity} in “{page}”', { entity: name, page: pageLabel(page) }), dropped)
               update(index, { entity: name, laneField: defaultLaneField(next), lanes: undefined, wipLimits: undefined, cardFields: undefined, sort: undefined, presetFilter: undefined })
             }}
           />
         </Field>
-        <Field label="Lanes by" error={errors.laneField} control="laneField" hint="Each lane is one value; moving a card sets it">
+        <Field label={t('Lanes by')} error={errors.laneField} control="laneField" hint={t('Each lane is one value; moving a card sets it')}>
           <select
-            aria-label="Lane field"
+            aria-label={t('Lane field')}
             value={page.laneField ?? ''}
             onChange={e => update(index, { laneField: e.target.value || undefined, lanes: undefined, wipLimits: undefined })}
             className={`${inputClass(errors.laneField)} w-full py-1 text-xs`}
           >
-            <option value="">{defaultOptionLabel(defaultLaneField(entity), 'enum or yes/no field', labelOf)}</option>
+            <option value="">{defaultOptionLabel(defaultLaneField(entity), t('enum or yes/no field'), labelOf)}</option>
             {laneFields(entity).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
           </select>
         </Field>
-        <Field label="Cards loaded per lane" error={errors.laneSize} control="laneSize" hint="“Load more” fetches the next ones">
+        <Field label={t('Cards loaded per lane')} error={errors.laneSize} control="laneSize" hint={t('“Load more” fetches the next ones')}>
           <select
-            aria-label="Cards per lane"
+            aria-label={t('Cards per lane')}
             value={page.laneSize ?? DEFAULT_LANE_SIZE}
             onChange={e => update(index, { laneSize: Number(e.target.value) === DEFAULT_LANE_SIZE ? undefined : Number(e.target.value) })}
             className={`${inputClass(errors.laneSize)} w-full py-1 text-xs`}
@@ -76,7 +77,7 @@ export function BoardForm({ page, index, entities, errors, update, lossy }: Form
           </select>
         </Field>
       </div>
-      <Field label="Lanes and limits" error={errors.lanes ?? errors.wipLimits} control="lanes" hint="A limit refuses cards past it and marks the lane when it is full">
+      <Field label={t('Lanes and limits')} error={errors.lanes ?? errors.wipLimits} control="lanes" hint={t('A limit refuses cards past it and marks the lane when it is full')}>
         <div className="space-y-1">
           {values.map(v => {
             const on = lanes.includes(v)
@@ -91,8 +92,8 @@ export function BoardForm({ page, index, entities, errors, update, lossy }: Form
                     type="number"
                     min={1}
                     max={MAX_WIP_LIMIT}
-                    aria-label={`Most cards in ${v}`}
-                    placeholder="No limit"
+                    aria-label={t('Most cards in {lane}', { lane: v })}
+                    placeholder={t('No limit')}
                     value={page.wipLimits?.[v] ?? ''}
                     onChange={e => setLimit(v, e.target.value)}
                     className={`${inputClass()} w-24 py-0.5 text-xs`}
@@ -103,7 +104,7 @@ export function BoardForm({ page, index, entities, errors, update, lossy }: Form
           })}
         </div>
       </Field>
-      <Field label="A card shows" error={errors.cardFields} control="cardFields" hint={`1–${MAX_CARD_FIELDS} fields, in the order picked; the first is its heading`}>
+      <Field label={t('A card shows')} error={errors.cardFields} control="cardFields" hint={t('1–{max} fields, in the order picked; the first is its heading', { max: MAX_CARD_FIELDS })}>
         <div className="flex flex-wrap gap-1.5">
           {options.map(name => {
             const at = cards.indexOf(name)
@@ -116,40 +117,40 @@ export function BoardForm({ page, index, entities, errors, update, lossy }: Form
                 disabled={at < 0 && cards.length >= MAX_CARD_FIELDS}
                 className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors disabled:opacity-40 ${at >= 0 ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant text-secondary hover:border-primary/50'}`}
               >
-                {at >= 0 && <span className="me-1 tabular-nums">{at + 1}</span>}{labelOf(name)}{at === 0 ? ' · heading' : ''}
+                {at >= 0 && <span className="me-1 tabular-nums">{at + 1}</span>}{labelOf(name)}{at === 0 ? ` · ${t('heading')}` : ''}
               </button>
             )
           })}
           {page.cardFields && (
-            <button type="button" onClick={() => update(index, { cardFields: undefined })} className={SMALL_BUTTON}>Reset to default</button>
+            <button type="button" onClick={() => update(index, { cardFields: undefined })} className={SMALL_BUTTON}>{t('Reset to default')}</button>
           )}
         </div>
       </Field>
-      <Field label="Cards sorted by" error={errors.sort} control="sort">
+      <Field label={t('Cards sorted by')} error={errors.sort} control="sort">
         <div className="flex flex-wrap items-center gap-2">
           <select
-            aria-label="Card sort"
+            aria-label={t('Card sort')}
             value={page.sort?.field ?? ''}
             onChange={e => update(index, { sort: e.target.value ? { field: e.target.value, dir: page.sort?.dir ?? 'asc' } : undefined })}
             className={`${inputClass(errors.sort)} max-w-[12rem] py-1 text-xs`}
           >
-            <option value="">The key (default)</option>
+            <option value="">{t('The key (default)')}</option>
             {(entity?.fields ?? []).map(f => <option key={f.name} value={f.name}>{fieldOption(f)}</option>)}
           </select>
           {page.sort?.field && (
             <select
-              aria-label="Card sort direction"
+              aria-label={t('Card sort direction')}
               value={page.sort.dir ?? 'asc'}
               onChange={e => update(index, { sort: { field: page.sort!.field, dir: e.target.value as 'asc' | 'desc' } })}
               className={`${inputClass()} max-w-[8rem] py-1 text-xs`}
             >
-              <option value="asc">Ascending</option>
-              <option value="desc">Descending</option>
+              <option value="asc">{t('Ascending')}</option>
+              <option value="desc">{t('Descending')}</option>
             </select>
           )}
         </div>
       </Field>
-      <PresetFilters filter={page.presetFilter} entity={entity} errors={errors} onChange={presetFilter => update(index, { presetFilter })} heading="Only cards with" />
+      <PresetFilters filter={page.presetFilter} entity={entity} errors={errors} onChange={presetFilter => update(index, { presetFilter })} heading={t('Only cards with')} />
     </div>
   )
 }

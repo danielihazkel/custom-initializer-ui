@@ -75,6 +75,7 @@ import { useFullstackExamples } from '../../hooks/useFullstackExamples'
 import type { ExampleSettings, FullstackPageDef, TeamModelSummary } from '../../types'
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
 import { canonicalVersion, validateEntities, validateMeta, countMetaErrors, type MetaErrors } from './validation'
+import { t, tn, useLang } from '../../i18n'
 
 const DEFAULT_META: ProjectMeta = DEFAULT_PROJECT_META
 
@@ -219,6 +220,9 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const [setsError, setSetsError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
+  // Validation, lint and the setup summary are in the site's language: they are worked out again
+  // when it changes (the language is in their memo deps).
+  const lang = useLang()
   const [importVariant, setImportVariant] = useState<ImportVariant | null>(null)
   // The model's tables drawer (export the DDL / create them on a source); null while closed.
   const [databaseMode, setDatabaseMode] = useState<DatabaseMode | null>(null)
@@ -347,15 +351,18 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // Validation — mirrors the backend FullstackRequestValidator so problems surface inline
   // before submit. The server stays the source of truth.
   const ldapAuth = selectedDeps.some(d => d === 'ldap-auth' || d === 'ldap-auth-rest')
-  const entityErrors = useMemo(() => validateEntities(entities, scaffoldOpts, { ldapAuth }), [entities, scaffoldOpts, ldapAuth])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the messages are in the site's language
+  const entityErrors = useMemo(() => validateEntities(entities, scaffoldOpts, { ldapAuth }), [entities, scaffoldOpts, ldapAuth, lang])
   const metaErrors: MetaErrors = useMemo(
     () => validateMeta(meta, { bootVersions, javaVersions }),
-    [meta, bootVersions, javaVersions],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the messages are in the site's language
+    [meta, bootVersions, javaVersions, lang],
   )
   // A layout outlives the entities it names (rename / delete) — flagged here, not as a 400 later.
   // Page roles are enforced by the generated backend's LDAP groups, so they need an LDAP auth variant (ldap-auth-rest, the sets' default, or ldap-auth).
   const pageValidation = useMemo(() => validatePages(pages, entities, { ldapAuth, scaffoldOpts, dismissed: dismissedWarnings }),
-    [pages, entities, ldapAuth, scaffoldOpts, dismissedWarnings])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the messages are in the site's language
+    [pages, entities, ldapAuth, scaffoldOpts, dismissedWarnings, lang])
   const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageValidation.count
   const hasErrors = errorCount > 0
 
@@ -695,7 +702,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     silentFromRef.current = snapshotRef.current
     setHistory(step.history)
     applySnapshot(step.restore.snapshot, true)
-    setToast({ message: `Undid: ${step.restore.label}`, type: 'success' })
+    setToast({ message: t('Undid: {change}', { change: step.restore.label }), type: 'success' })
   }, [applySnapshot, flushBurst])
 
   const redo = useCallback(() => {
@@ -705,7 +712,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     silentFromRef.current = snapshotRef.current
     setHistory(step.history)
     applySnapshot(step.restore.snapshot, true)
-    setToast({ message: `Redid: ${step.restore.label}`, type: 'success' })
+    setToast({ message: t('Redid: {change}', { change: step.restore.label }), type: 'success' })
   }, [applySnapshot, flushBurst])
 
   /** Several undos (negative) or redos (positive) at once — the layout designer's history list. */
@@ -716,30 +723,40 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     silentFromRef.current = snapshotRef.current
     setHistory(step.history)
     applySnapshot(step.restore.snapshot, true)
-    setToast({ message: `${steps < 0 ? 'Undid' : 'Redid'} ${step.labels.length} change${step.labels.length === 1 ? '' : 's'}`, type: 'success' })
+    setToast({
+      message: steps < 0
+        ? tn(step.labels.length, 'Undid {n} change', 'Undid {n} changes')
+        : tn(step.labels.length, 'Redid {n} change', 'Redid {n} changes'),
+      type: 'success',
+    })
   }, [applySnapshot, flushBurst])
 
   function handleImport(imported: FullstackEntityDef[], mode: ImportMode, note?: string) {
-    pushUndoEntry(mode === 'replace' ? 'Replaced entities from import' : 'Appended imported entities')
+    pushUndoEntry(mode === 'replace' ? t('Replaced entities from import') : t('Appended imported entities'))
     const stamped = withUids(imported)
     setEntities(prev => (mode === 'replace' ? stamped : [...prev, ...stamped]))
     if (stamped[0]?.uid) revealRow(stamped[0].uid)
-    const verb = mode === 'replace' ? 'Replaced with' : 'Appended'
     const n = imported.length
-    const base = `${verb} ${n} entit${n === 1 ? 'y' : 'ies'}`
+    const base = mode === 'replace'
+      ? tn(n, 'Replaced with {n} entity', 'Replaced with {n} entities')
+      : tn(n, 'Appended {n} entity', 'Appended {n} entities')
     setToast({ message: note ? `${base}. ${note}` : base, type: 'success' })
   }
 
   function loadExample(example: ExampleModel) {
-    pushUndoEntry(`Loaded the ${example.name} example`)
+    pushUndoEntry(t('Loaded the {example} example', { example: example.name }))
     setEntities(withUids(cloneExample(example)))
     // An example replaces the model, layout included: one without pages means the classic shell.
     setPages(cloneExamplePages(example))
     applyExampleSettings(example.settings)
     setCollapsed(new Set())
     baselineRef.current = null
-    const layout = example.pages?.length ? ` and ${example.pages.length} pages` : ''
-    setToast({ message: `Loaded the ${example.name} example (${example.entities.length} entities${layout})`, type: 'success' })
+    setToast({
+      message: example.pages?.length
+        ? t('Loaded the {example} example ({entities} entities and {pages} pages)', { example: example.name, entities: example.entities.length, pages: example.pages.length })
+        : t('Loaded the {example} example ({entities} entities)', { example: example.name, entities: example.entities.length }),
+      type: 'success',
+    })
   }
 
   /** The editor settings an example carries. Only the keys present change; a template set or
@@ -767,19 +784,19 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   }
 
   function clearPageLayout() {
-    pushUndoEntry('Switched to the classic page layout')
+    pushUndoEntry(t('Switched to the classic page layout'))
     setPages([])
   }
 
-  function loadPreset(snapshot: FullstackSnapshot, label = 'Loaded a preset') {
+  function loadPreset(snapshot: FullstackSnapshot, label = t('Loaded a preset')) {
     pushUndoEntry(label)
     applySnapshot(snapshot)
-    setToast({ message: `Loaded ${snapshot.meta.artifactId || 'preset'}`, type: 'success' })
+    setToast({ message: t('Loaded {name}', { name: snapshot.meta.artifactId || t('preset') }), type: 'success' })
   }
 
   function runLoad(load: PendingLoad) {
     if (load.kind === 'example') loadExample(load.example)
-    else if (load.kind === 'shared') loadPreset(load.snapshot, 'Opened the shared model')
+    else if (load.kind === 'shared') loadPreset(load.snapshot, t('Opened the shared model'))
     else loadPreset(load.snapshot)
   }
   /** "Keep mine" on a share link: the draft stays, the link leaves the URL. */
@@ -799,7 +816,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     try {
       await team.save(name, description, snapshot)
       baselineRef.current = snapshot // now captured somewhere — no "unsaved work" prompt for it
-      setToast({ message: `Saved "${name}" for the team`, type: 'success' })
+      setToast({ message: t('Saved "{name}" for the team', { name }), type: 'success' })
     } catch (err) {
       const existing = err instanceof TeamModelError && err.status === 409
         ? team.models.find(m => m.name.toLowerCase() === name.toLowerCase())
@@ -808,7 +825,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         setTeamConflict({ name, description, existing })
         return
       }
-      setToast({ message: `Couldn't save to the team: ${(err as Error).message}`, type: 'error' })
+      setToast({ message: t("Couldn't save to the team: {error}", { error: (err as Error).message }), type: 'error' })
     }
   }
   async function overwriteTeamModel() {
@@ -819,15 +836,15 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     try {
       await team.update(conflict.existing.id, conflict.name, conflict.description, snapshot)
       baselineRef.current = snapshot
-      setToast({ message: `Updated "${conflict.name}" for the team`, type: 'success' })
+      setToast({ message: t('Updated "{name}" for the team', { name: conflict.name }), type: 'success' })
     } catch (err) {
-      setToast({ message: `Couldn't update the team model: ${(err as Error).message}`, type: 'error' })
+      setToast({ message: t("Couldn't update the team model: {error}", { error: (err as Error).message }), type: 'error' })
     }
   }
   function loadTeamModel(model: TeamModelSummary) {
     team.load(model.id)
       .then(snapshot => requestLoad({ kind: 'preset', snapshot }))
-      .catch((err: Error) => setToast({ message: `Couldn't load "${model.name}": ${err.message}`, type: 'error' }))
+      .catch((err: Error) => setToast({ message: t('Couldn\'t load "{name}": {error}', { name: model.name, error: err.message }), type: 'error' }))
   }
   async function deleteTeamModel() {
     const model = confirmDeleteTeam
@@ -835,9 +852,9 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     setConfirmDeleteTeam(null)
     try {
       await team.remove(model.id)
-      setToast({ message: `Deleted "${model.name}" for everyone`, type: 'success' })
+      setToast({ message: t('Deleted "{name}" for everyone', { name: model.name }), type: 'success' })
     } catch (err) {
-      setToast({ message: `Couldn't delete "${model.name}": ${(err as Error).message}`, type: 'error' })
+      setToast({ message: t('Couldn\'t delete "{name}": {error}', { name: model.name, error: (err as Error).message }), type: 'error' })
     }
   }
 
@@ -845,14 +862,14 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   function exportJson() {
     const json = JSON.stringify(toExportedModel(currentSnapshot), null, 2)
     downloadBlob(new Blob([json], { type: 'application/json' }), `${meta.artifactId || 'model'}.fullstack.json`)
-    setToast({ message: 'Model exported', type: 'success' })
+    setToast({ message: t('Model exported'), type: 'success' })
   }
 
   function importJson(file: File) {
     file.text().then(text => {
       const result = parseExportedModel(text)
       if ('error' in result) {
-        setToast({ message: `Couldn't import ${file.name}: ${result.error}`, type: 'error' })
+        setToast({ message: t("Couldn't import {file}: {error}", { file: file.name, error: result.error }), type: 'error' })
         return
       }
       // A generated project's own model file: what its code was made from, so later changes to
@@ -867,7 +884,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       // the whole-model Replace — the same choice the DDL import gives.
       if (entities.length > 0 && result.snapshot.entities.length > 0) setPendingJsonImport(result.snapshot)
       else requestLoad({ kind: 'preset', snapshot: result.snapshot })
-    }).catch(() => setToast({ message: `Couldn't read ${file.name}`, type: 'error' }))
+    }).catch(() => setToast({ message: t("Couldn't read {file}", { file: file.name }), type: 'error' }))
   }
   function appendJsonImport() {
     const snapshot = pendingJsonImport
@@ -881,9 +898,9 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     const removed = deletePreset(id)
     if (!removed) return
     setToast({
-      message: `Deleted preset "${removed.preset.name}"`,
+      message: t('Deleted preset "{name}"', { name: removed.preset.name }),
       type: 'success',
-      action: { label: 'Undo', onClick: () => restorePreset(removed.preset, removed.index) },
+      action: { label: t('Undo'), onClick: () => restorePreset(removed.preset, removed.index) },
     })
   }
 
@@ -891,17 +908,17 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     const removed = deleteRecent(id)
     if (!removed) return
     setToast({
-      message: `Removed "${removed.preset.name}" from recents`,
+      message: t('Removed "{name}" from recents', { name: removed.preset.name }),
       type: 'success',
-      action: { label: 'Undo', onClick: () => restoreRecent(removed.preset, removed.index) },
+      action: { label: t('Undo'), onClick: () => restoreRecent(removed.preset, removed.index) },
     })
   }
 
   function savePresetAndReport(name: string, snapshot: FullstackSnapshot) {
     const { persisted } = savePreset(name, snapshot)
     setToast(persisted
-      ? { message: `Saved preset "${name}"`, type: 'success' }
-      : { message: `Saved preset "${name}" for this session only — browser storage is full, so it won't survive a refresh. Export JSON to keep it.`, type: 'error' })
+      ? { message: t('Saved preset "{name}"', { name }), type: 'success' }
+      : { message: t('Saved preset "{name}" for this session only — browser storage is full, so it won\'t survive a refresh. Export JSON to keep it.', { name }), type: 'error' })
   }
 
   async function copyCurl() {
@@ -917,27 +934,27 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     // The body rides inline; past the share-link limit it is a clipboard payload worth a warning.
     const large = body.length > MAX_ENCODED_LENGTH
     setToast(await copyToClipboard(cmd)
-      ? { message: large ? `curl command copied (${Math.round(body.length / 1024)} KB inline — Export JSON and -d @file may be handier)` : 'curl command copied to clipboard', type: 'success' }
-      : { message: "Couldn't copy — clipboard access was refused", type: 'error' })
+      ? { message: large ? t('curl command copied ({size} KB inline — Export JSON and -d @file may be handier)', { size: Math.round(body.length / 1024) }) : t('curl command copied to clipboard'), type: 'success' }
+      : { message: t("Couldn't copy — clipboard access was refused"), type: 'error' })
   }
 
   /** The header's Share button copies `location.href`; this does the same from the Next steps
    *  card, syncing the URL first so the link carries the model as it is now. */
   async function copyShareLink() {
     if (writeShareToLocation(currentSnapshot) === 'too-large') {
-      setToast({ message: 'This model is too large for a share link — Export JSON to hand it over', type: 'error' })
+      setToast({ message: t('This model is too large for a share link — Export JSON to hand it over'), type: 'error' })
       return
     }
     setToast(await copyToClipboard(window.location.href)
-      ? { message: 'Share link copied to clipboard', type: 'success' }
-      : { message: "Couldn't copy — clipboard access was refused", type: 'error' })
+      ? { message: t('Share link copied to clipboard'), type: 'success' }
+      : { message: t("Couldn't copy — clipboard access was refused"), type: 'error' })
   }
 
   /** Opens the presets strip's save prompt on the given target and brings it into view. A
    *  `draft` pre-fills it (the team-conflict "Rename…" path). */
   function requestSave(target: SaveTarget, draft?: { name: string; description: string }) {
     setSaveRequest({ target, key: Date.now(), draft })
-    scrollToElement(document.querySelector<HTMLElement>('[aria-label="Start from"]'), 'start')
+    scrollToElement(document.querySelector<HTMLElement>('[data-start-from]'), 'start')
   }
 
   // Load the template-set list. Extracted so the inline Retry can re-run it; on failure
@@ -1008,15 +1025,15 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         const where = sideOfPath(failure.path)
         if (where.side === 'base') {
           // Nothing in the editor to point at: it is the stored model that no longer generates.
-          setToast({ message: `The model the project was generated from is no longer accepted: ${failure.message}`, type: 'error' })
+          setToast({ message: t('The model the project was generated from is no longer accepted: {error}', { error: failure.message }), type: 'error' })
           return false
         }
         const issue: ServerIssue = { message: failure.message, path: where.path }
         const target = showServerIssue(issue)
         setToast({
           message: target && target.kind !== 'setting'
-            ? `Update failed — the server rejected ${describeServerTarget(target)}`
-            : `Update failed: ${issue.message}`,
+            ? t('Update failed — the server rejected {what}', { what: describeServerTarget(target) })
+            : t('Update failed: {error}', { error: issue.message }),
           type: 'error',
         })
         return false
@@ -1035,12 +1052,12 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         })
       }
       setToast({
-        message: `Update downloaded (${describeCounts(counts)}${describeUpdateBase(res.headers)}) — UPDATE.md inside says how to apply it`,
+        message: t('Update downloaded ({what}) — UPDATE.md inside says how to apply it', { what: describeCounts(counts) + describeUpdateBase(res.headers) }),
         type: 'success',
       })
       return true
     } catch (err) {
-      setToast({ message: `Update failed: ${err instanceof Error ? err.message : String(err)}`, type: 'error' })
+      setToast({ message: t('Update failed: {error}', { error: err instanceof Error ? err.message : String(err) }), type: 'error' })
       return false
     } finally {
       setUpdating(false)
@@ -1087,7 +1104,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
   function validateBeforeSubmit(): boolean {
     if (hasErrors) {
-      setToast({ message: `Fix ${errorCount} validation issue${errorCount === 1 ? '' : 's'} first`, type: 'error' })
+      setToast({ message: tn(errorCount, 'Fix {n} validation issue first', 'Fix {n} validation issues first'), type: 'error' })
       jumpToFirstError()
       return false
     }
@@ -1151,7 +1168,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         snapshotId: snapshotHeader(res.headers), schemaVersion: schemaVersionOf(res.headers.get('X-Schema-Version')),
         source: 'generated', at: Date.now(),
       })
-      setToast({ message: 'Fullstack project downloaded', type: 'success' })
+      setToast({ message: t('Fullstack project downloaded'), type: 'success' })
       setLastGenerated({
         at: Date.now(),
         artifactId: meta.artifactId || 'demo',
@@ -1163,15 +1180,15 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       return true
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        setToast({ message: 'Generation cancelled', type: 'success' })
+        setToast({ message: t('Generation cancelled'), type: 'success' })
         return false
       }
       const issue: ServerIssue = { message: (err as Error).message, path: (err as { path?: string }).path }
       const target = showServerIssue(issue)
       if (target && target.kind !== 'setting') {
-        setToast({ message: `Generation failed — the server rejected ${describeServerTarget(target)}`, type: 'error' })
+        setToast({ message: t('Generation failed — the server rejected {what}', { what: describeServerTarget(target) }), type: 'error' })
       } else {
-        setToast({ message: `Generation failed: ${issue.message}`, type: 'error' })
+        setToast({ message: t('Generation failed: {error}', { error: issue.message }), type: 'error' })
       }
       return false
     } finally {
@@ -1193,7 +1210,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // selectedDeps re-renders it — no remount needed. Confirmed in-app (ConfirmDialog) and undoable.
   function doReset() {
     setConfirmReset(false)
-    pushUndoEntry('Reset to defaults')
+    pushUndoEntry(t('Reset to defaults'))
     Object.values(LS).forEach(k => localStorage.removeItem(k))
     setMeta({ ...DEFAULT_META })
     setEntities(withUids(DEFAULT_ENTITIES.map(e => ({ ...e, fields: e.fields.map(f => ({ ...f })) }))))
@@ -1210,7 +1227,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     const target = availableSets.find(s => s.setKey === 'spring-jpa-crud')
     setSelectedDeps(target ? [...target.defaultDeps] : [])
     clearPreview()
-    setToast({ message: 'Fullstack generator reset to defaults', type: 'success' })
+    setToast({ message: t('Fullstack generator reset to defaults'), type: 'success' })
   }
 
   function toggleCollapsed(uid: string) {
@@ -1261,7 +1278,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   }
 
   // ── Suggestions (non-blocking lint) ────────────────────────────────────────
-  const lintIssues = useMemo(() => lintModel(entities, scaffoldOpts, selectedDeps), [entities, scaffoldOpts, selectedDeps])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the messages are in the site's language
+  const lintIssues = useMemo(() => lintModel(entities, scaffoldOpts, selectedDeps), [entities, scaffoldOpts, selectedDeps, lang])
   const lintCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const issue of lintIssues) if (issue.entityUid) counts.set(issue.entityUid, (counts.get(issue.entityUid) ?? 0) + 1)
@@ -1316,14 +1334,14 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     if (!source || !target) return
     const taken = [...source.fields.map(f => f.name), ...(source.relations ?? []).map(r => r.fieldName)]
     const fieldName = uniqueName(toCamelCase(target.name.trim() || 'related'), taken)
-    pushUndoEntry(`Linked ${source.name.trim()} to ${target.name.trim()}`)
+    pushUndoEntry(t('Linked {source} to {target}', { source: source.name.trim(), target: target.name.trim() }))
     setEntities(entities.map(e => (e.uid === sourceUid
       ? { ...e, relations: [...(e.relations ?? []), { uid: newUid(), type: 'MANY_TO_ONE' as const, fieldName, targetEntity: target.name.trim(), required: false }] }
       : e)))
     setToast({
-      message: `Added ${source.name.trim()}.${fieldName} → ${target.name.trim()}`,
+      message: t('Added {relation}', { relation: `${source.name.trim()}.${fieldName} → ${target.name.trim()}` }),
       type: 'success',
-      action: { label: 'Show', onClick: () => revealRow(sourceUid) },
+      action: { label: t('Show'), onClick: () => revealRow(sourceUid) },
     })
   }
 
@@ -1352,13 +1370,13 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   }
 
   const sections = [
-    { id: 'fs-meta', label: 'Project', errors: countMetaErrors(metaErrors) },
-    { id: 'fs-backend', label: 'Backend' },
-    { id: 'fs-frontend', label: 'Frontend' },
-    { id: 'fs-options', label: 'Options' },
-    { id: 'fs-deps', label: 'Dependencies' },
-    { id: 'fs-entities', label: 'Entities', errors: entityErrors.count },
-    { id: 'fs-pages', label: 'Pages', errors: pageValidation.count },
+    { id: 'fs-meta', label: t('Project'), errors: countMetaErrors(metaErrors) },
+    { id: 'fs-backend', label: t('Backend') },
+    { id: 'fs-frontend', label: t('Frontend') },
+    { id: 'fs-options', label: t('Options') },
+    { id: 'fs-deps', label: t('Dependencies') },
+    { id: 'fs-entities', label: t('Entities'), errors: entityErrors.count },
+    { id: 'fs-pages', label: t('Pages'), errors: pageValidation.count },
   ]
   // A metadata error must never hide inside a collapsed panel — same rule the entity cards use
   // for a blocked Settings panel, and it keeps `jumpToFirstError`'s `#fs-meta` query answerable.
@@ -1367,8 +1385,9 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const setupChips = useMemo(() => describeSetup({
     meta, backendSet, frontendSet, currentBackendSet, currentFrontendSet,
     palettes, effectivePalette, paletteIsExplicit: Boolean(colorPalette), selectedDeps, scaffoldOpts,
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the chips are in the site's language
   }), [meta, backendSet, frontendSet, currentBackendSet, currentFrontendSet,
-       palettes, effectivePalette, colorPalette, selectedDeps, scaffoldOpts])
+       palettes, effectivePalette, colorPalette, selectedDeps, scaffoldOpts, lang])
 
   /** Opens Setup and scrolls to one of its sections — every jump target lives inside it now. */
   function jumpToSection(id: string) {
@@ -1378,17 +1397,17 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
   function applyLintFix(issue: LintIssue) {
     if (!issue.fix) return
-    pushUndoEntry(`Fixed: ${issue.fix.label}`)
+    pushUndoEntry(t('Fixed: {fix}', { fix: issue.fix.label }))
     const next = issue.fix.apply({ entities, scaffoldOpts, selectedDeps })
     if (next.entities !== entities) setEntities(withUids(next.entities))
     if (next.scaffoldOpts !== scaffoldOpts) setScaffoldOpts(next.scaffoldOpts)
     if (next.selectedDeps !== selectedDeps) setSelectedDeps(next.selectedDeps)
-    setToast({ message: `Applied: ${issue.fix.label}`, type: 'success' })
+    setToast({ message: t('Applied: {fix}', { fix: issue.fix.label }), type: 'success' })
   }
 
   const lastUndo = history.past[history.past.length - 1]
   const nextRedo = history.future[history.future.length - 1]
-  const blockedReason = `Fix ${errorCount} issue${errorCount === 1 ? '' : 's'} first — click to jump to the first one`
+  const blockedReason = tn(errorCount, 'Fix {n} issue first — click to jump to the first one', 'Fix {n} issues first — click to jump to the first one')
 
   // ⌘K actions for this tab. Handlers are read through a ref so the registration effect runs
   // once per mount instead of on every render; the palette closes itself before `run`.
@@ -1403,7 +1422,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     importSelect: () => setImportVariant('select'),
     openTables: (mode: DatabaseMode) => {
       if (!entities.some(e => e.name.trim())) {
-        setToast({ message: 'Add an entity first — the tables are built from your entities', type: 'error' })
+        setToast({ message: t('Add an entity first — the tables are built from your entities'), type: 'error' })
         return
       }
       setDatabaseMode(mode)
@@ -1421,42 +1440,42 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     // The page layout — the same actions as the section's own buttons, reachable from ⌘K.
     findPage: () => {
       if (pages.length === 0) {
-        setToast({ message: 'No pages yet — the layout is the classic one', type: 'error' })
+        setToast({ message: t('No pages yet — the layout is the classic one'), type: 'error' })
         return
       }
       setPagesFind(n => n + 1)
     },
     addPage: () => {
       if (!entities.some(e => e.name.trim())) {
-        setToast({ message: 'Name an entity first — pages are built from your entities', type: 'error' })
+        setToast({ message: t('Name an entity first — pages are built from your entities'), type: 'error' })
         return
       }
       setPagesAdd(n => n + 1)
     },
     seedPages: () => {
       if (!entities.some(e => e.name.trim())) {
-        setToast({ message: 'Name an entity first — pages are built from your entities', type: 'error' })
+        setToast({ message: t('Name an entity first — pages are built from your entities'), type: 'error' })
         return
       }
       if (pages.length > 0) {
-        setToast({ message: 'There is already a page layout — switch to the classic layout first to start over', type: 'error' })
+        setToast({ message: t('There is already a page layout — switch to the classic layout first to start over'), type: 'error' })
         return
       }
-      pushUndoEntry('Started a page layout from the entities')
+      pushUndoEntry(t('Started a page layout from the entities'))
       setPages(seedLayout(entities, { title: meta.dashboardTitle, description: meta.dashboardOverview }))
       requestAnimationFrame(() => scrollToElement(document.getElementById('fs-pages'), 'start'))
     },
     classicLayout: () => {
       if (pages.length === 0) {
-        setToast({ message: 'The layout is already the classic one', type: 'success' })
+        setToast({ message: t('The layout is already the classic one'), type: 'success' })
         return
       }
       clearPageLayout()
-      setToast({ message: 'Switched to the classic layout — undo with Ctrl+Z', type: 'success' })
+      setToast({ message: t('Switched to the classic layout — undo with Ctrl+Z'), type: 'success' })
     },
     layoutPreview: () => {
       if (pages.length === 0) {
-        setToast({ message: 'Nothing to preview yet — add a page, or start a layout from your entities', type: 'error' })
+        setToast({ message: t('Nothing to preview yet — add a page, or start a layout from your entities'), type: 'error' })
         return
       }
       setPagesPreview(n => n + 1)
@@ -1488,36 +1507,36 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // Registered again when the language changes: the titles are in it.
   useEffect(() => registerCommands([
-    { id: 'fs-add-entity', title: 'Add entity', icon: 'add_box', group: 'Fullstack', run: () => commandRef.current.addEntity() },
-    { id: 'fs-import-ddl', title: 'Import entities from DDL', icon: 'database', group: 'Fullstack', run: () => commandRef.current.importDdl() },
-    { id: 'fs-import-select', title: 'Import a view from SELECT', icon: 'table_view', group: 'Fullstack', run: () => commandRef.current.importSelect() },
-    { id: 'fs-export-ddl', title: 'Export the model’s DDL (CREATE TABLE script)', description: 'For H2, PostgreSQL, Oracle, SQL Server or DB2', icon: 'description', group: 'Fullstack', run: () => commandRef.current.openTables('export') },
-    { id: 'fs-create-tables', title: 'Create the model’s tables in a database…', description: 'On a database source an admin allowed it for', icon: 'database_upload', group: 'Fullstack', run: () => commandRef.current.openTables('create') },
-    { id: 'fs-explore', title: 'Explore generated files', description: 'Preview the file tree before downloading', icon: 'travel_explore', group: 'Fullstack', shortcut: 'Ctrl+Shift+E', run: () => commandRef.current.explore() },
-    { id: 'fs-generate', title: 'Generate fullstack ZIP', icon: 'download', group: 'Fullstack', shortcut: 'Ctrl+Enter', run: () => { void commandRef.current.generate() } },
-    { id: 'fs-save-preset', title: 'Save this model (browser or team)…', icon: 'bookmark_add', group: 'Fullstack', shortcut: 'Ctrl+S', run: () => commandRef.current.savePreset() },
-    { id: 'fs-export', title: 'Export model as JSON', icon: 'file_download', group: 'Fullstack', run: () => commandRef.current.exportJson() },
-    { id: 'fs-curl', title: 'Copy as curl', icon: 'terminal', group: 'Fullstack', run: () => { void commandRef.current.copyCurl() } },
-    { id: 'fs-undo', title: 'Undo', icon: 'undo', group: 'Fullstack', shortcut: 'Ctrl+Z', run: () => commandRef.current.undo() },
-    { id: 'fs-redo', title: 'Redo', icon: 'redo', group: 'Fullstack', shortcut: 'Ctrl+Shift+Z', run: () => commandRef.current.redo() },
-    { id: 'fs-collapse', title: 'Collapse / expand all entities', icon: 'unfold_less', group: 'Fullstack', run: () => commandRef.current.toggleCollapse() },
-    { id: 'fs-find', title: 'Find entity…', description: 'Filter the entity list by name, label, table or field', icon: 'search', group: 'Fullstack', run: () => commandRef.current.findEntity() },
-    { id: 'fs-find-page', title: 'Find page…', description: 'Filter the frontend pages by title, route, entity or type', icon: 'find_in_page', group: 'Fullstack', shortcut: '/', run: () => commandRef.current.findPage() },
-    { id: 'fs-add-page', title: 'Add a page to the layout', description: 'Opens the page gallery of the frontend page layout', icon: 'web', group: 'Fullstack', run: () => commandRef.current.addPage() },
-    { id: 'fs-seed-pages', title: 'Start a page layout from my entities', description: 'A dashboard plus one list page per entity, ready to edit', icon: 'auto_awesome', group: 'Fullstack', run: () => commandRef.current.seedPages() },
-    { id: 'fs-classic-layout', title: 'Use the classic page layout', description: 'Drops the page layout (undoable)', icon: 'restart_alt', group: 'Fullstack', run: () => commandRef.current.classicLayout() },
-    { id: 'fs-layout-preview', title: 'Open the layout preview', description: 'A mock of the generated app with sample data', icon: 'preview', group: 'Fullstack', run: () => commandRef.current.layoutPreview() },
-    { id: 'fs-density', title: 'Toggle compact field tables', icon: 'density_small', group: 'Fullstack', run: () => commandRef.current.toggleDensity() },
-    { id: 'fs-reset', title: 'Reset the fullstack generator', icon: 'restart_alt', group: 'Fullstack', run: () => commandRef.current.reset() },
-    { id: 'fs-shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', group: 'Fullstack', shortcut: '?', run: () => commandRef.current.toggleShortcuts() },
-  ]), [])
+    { id: 'fs-add-entity', title: t('Add entity'), icon: 'add_box', group: t('Fullstack'), run: () => commandRef.current.addEntity() },
+    { id: 'fs-import-ddl', title: t('Import entities from DDL'), icon: 'database', group: t('Fullstack'), run: () => commandRef.current.importDdl() },
+    { id: 'fs-import-select', title: t('Import a view from SELECT'), icon: 'table_view', group: t('Fullstack'), run: () => commandRef.current.importSelect() },
+    { id: 'fs-export-ddl', title: t('Export the model’s DDL (CREATE TABLE script)'), description: t('For H2, PostgreSQL, Oracle, SQL Server or DB2'), icon: 'description', group: t('Fullstack'), run: () => commandRef.current.openTables('export') },
+    { id: 'fs-create-tables', title: t('Create the model’s tables in a database…'), description: t('On a database source an admin allowed it for'), icon: 'database_upload', group: t('Fullstack'), run: () => commandRef.current.openTables('create') },
+    { id: 'fs-explore', title: t('Explore generated files'), description: t('Preview the file tree before downloading'), icon: 'travel_explore', group: t('Fullstack'), shortcut: 'Ctrl+Shift+E', run: () => commandRef.current.explore() },
+    { id: 'fs-generate', title: t('Generate fullstack ZIP'), icon: 'download', group: t('Fullstack'), shortcut: 'Ctrl+Enter', run: () => { void commandRef.current.generate() } },
+    { id: 'fs-save-preset', title: t('Save this model (browser or team)…'), icon: 'bookmark_add', group: t('Fullstack'), shortcut: 'Ctrl+S', run: () => commandRef.current.savePreset() },
+    { id: 'fs-export', title: t('Export model as JSON'), icon: 'file_download', group: t('Fullstack'), run: () => commandRef.current.exportJson() },
+    { id: 'fs-curl', title: t('Copy as curl'), icon: 'terminal', group: t('Fullstack'), run: () => { void commandRef.current.copyCurl() } },
+    { id: 'fs-undo', title: t('Undo'), icon: 'undo', group: t('Fullstack'), shortcut: 'Ctrl+Z', run: () => commandRef.current.undo() },
+    { id: 'fs-redo', title: t('Redo'), icon: 'redo', group: t('Fullstack'), shortcut: 'Ctrl+Shift+Z', run: () => commandRef.current.redo() },
+    { id: 'fs-collapse', title: t('Collapse / expand all entities'), icon: 'unfold_less', group: t('Fullstack'), run: () => commandRef.current.toggleCollapse() },
+    { id: 'fs-find', title: t('Find entity…'), description: t('Filter the entity list by name, label, table or field'), icon: 'search', group: t('Fullstack'), run: () => commandRef.current.findEntity() },
+    { id: 'fs-find-page', title: t('Find page…'), description: t('Filter the frontend pages by title, route, entity or type'), icon: 'find_in_page', group: t('Fullstack'), shortcut: '/', run: () => commandRef.current.findPage() },
+    { id: 'fs-add-page', title: t('Add a page to the layout'), description: t('Opens the page gallery of the frontend page layout'), icon: 'web', group: t('Fullstack'), run: () => commandRef.current.addPage() },
+    { id: 'fs-seed-pages', title: t('Start a page layout from my entities'), description: t('A dashboard plus one list page per entity, ready to edit'), icon: 'auto_awesome', group: t('Fullstack'), run: () => commandRef.current.seedPages() },
+    { id: 'fs-classic-layout', title: t('Use the classic page layout'), description: t('Drops the page layout (undoable)'), icon: 'restart_alt', group: t('Fullstack'), run: () => commandRef.current.classicLayout() },
+    { id: 'fs-layout-preview', title: t('Open the layout preview'), description: t('A mock of the generated app with sample data'), icon: 'preview', group: t('Fullstack'), run: () => commandRef.current.layoutPreview() },
+    { id: 'fs-density', title: t('Toggle compact field tables'), icon: 'density_small', group: t('Fullstack'), run: () => commandRef.current.toggleDensity() },
+    { id: 'fs-reset', title: t('Reset the fullstack generator'), icon: 'restart_alt', group: t('Fullstack'), run: () => commandRef.current.reset() },
+    { id: 'fs-shortcuts', title: t('Keyboard shortcuts'), icon: 'keyboard', group: t('Fullstack'), shortcut: '?', run: () => commandRef.current.toggleShortcuts() },
+  ]), [lang])
 
   return (
     <div className="max-w-7xl mx-auto px-8 space-y-8">
-      <PageHeader icon="stacks" title="Fullstack CRUD Generator">
-        Define entities and their fields, and get one ZIP with a Spring Boot backend (JPA and REST per
-        entity) and a React frontend (Vite + Tailwind, a CRUD page per entity), already wired together.
+      <PageHeader icon="stacks" title={t('Fullstack CRUD Generator')}>
+        {t('Define entities and their fields, and get one ZIP with a Spring Boot backend (JPA and REST per entity) and a React frontend (Vite + Tailwind, a CRUD page per entity), already wired together.')}
       </PageHeader>
 
       <ModelNotices
@@ -1532,7 +1551,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
           const theirs = externalDraft
           if (!theirs) return
           setExternalDraft(null)
-          pushUndoEntry("Loaded the other tab's draft")
+          pushUndoEntry(t("Loaded the other tab's draft"))
           setMeta(theirs.meta)
           setEntities(withUids(theirs.entities))
         }}
@@ -1638,8 +1657,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
           onAddEntity={() => commandRef.current.addEntity()}
           canUndo={Boolean(lastUndo)}
           canRedo={Boolean(nextRedo)}
-          undoLabel={lastUndo ? `Undo: ${lastUndo.label}` : null}
-          redoLabel={nextRedo ? `Redo: ${nextRedo.label}` : null}
+          undoLabel={lastUndo ? t('Undo: {change}', { change: lastUndo.label }) : null}
+          redoLabel={nextRedo ? t('Redo: {change}', { change: nextRedo.label }) : null}
           onUndo={undo}
           onRedo={redo}
           onShortcuts={() => setShortcutsOpen(true)}
@@ -1734,8 +1753,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         dismissedWarnings={dismissedWarnings}
         onDismissedWarningsChange={setDismissedWarnings}
         history={{
-          undoLabel: lastUndo ? `Undo: ${lastUndo.label}` : null,
-          redoLabel: nextRedo ? `Redo: ${nextRedo.label}` : null,
+          undoLabel: lastUndo ? t('Undo: {change}', { change: lastUndo.label }) : null,
+          redoLabel: nextRedo ? t('Redo: {change}', { change: nextRedo.label }) : null,
           onUndo: undo,
           onRedo: redo,
           undoEntries: history.past.map(e => e.label),
@@ -1754,7 +1773,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
           onDownload={() => { void downloadUpdate() }}
           onMarkApplied={() => {
             setBaseline(appliedBaseline(baseline, currentSnapshot))
-            setToast({ message: 'Later updates will start from this model', type: 'success' })
+            setToast({ message: t('Later updates will start from this model'), type: 'success' })
           }}
           onForget={() => setBaseline(null)}
         />
@@ -1770,8 +1789,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
           onCopyCurl={() => { void copyCurl() }}
           onShareLink={() => { void copyShareLink() }}
           onCopied={(ok, what) => setToast(ok
-            ? { message: `${what} copied to clipboard`, type: 'success' }
-            : { message: "Couldn't copy — clipboard access was refused", type: 'error' })}
+            ? { message: t('{what} copied to clipboard', { what }), type: 'success' }
+            : { message: t("Couldn't copy — clipboard access was refused"), type: 'error' })}
         />
       )}
 
@@ -1791,9 +1810,9 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
       {confirmReset && (
         <ConfirmDialog
-          title="Reset the fullstack generator?"
-          message="This clears your entities, dependencies and options back to the defaults. You can undo it afterwards."
-          confirmLabel="Reset"
+          title={t('Reset the fullstack generator?')}
+          message={t('This clears your entities, dependencies and options back to the defaults. You can undo it afterwards.')}
+          confirmLabel={t('Reset')}
           tone="danger"
           onConfirm={doReset}
           onCancel={() => setConfirmReset(false)}
@@ -1802,11 +1821,13 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
       {teamConflict && (
         <ConfirmDialog
-          title={`Replace the team model "${teamConflict.existing.name}"?`}
-          message={`A team model with this name already exists${teamConflict.existing.createdBy ? ` (saved by ${teamConflict.existing.createdBy})` : ''}. Overwriting it changes what everyone else loads.`}
-          confirmLabel="Overwrite"
+          title={t('Replace the team model "{name}"?', { name: teamConflict.existing.name })}
+          message={teamConflict.existing.createdBy
+            ? t('A team model with this name already exists (saved by {user}). Overwriting it changes what everyone else loads.', { user: teamConflict.existing.createdBy })
+            : t('A team model with this name already exists. Overwriting it changes what everyone else loads.')}
+          confirmLabel={t('Overwrite')}
           tone="danger"
-          secondaryLabel="Rename…"
+          secondaryLabel={t('Rename…')}
           onSecondary={() => {
             const conflict = teamConflict
             setTeamConflict(null)
@@ -1819,9 +1840,9 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
       {confirmDeleteTeam && (
         <ConfirmDialog
-          title={`Delete "${confirmDeleteTeam.name}" for everyone?`}
-          message="This removes the model from the server. Colleagues who rely on it will no longer see it, and this cannot be undone."
-          confirmLabel="Delete"
+          title={t('Delete "{name}" for everyone?', { name: confirmDeleteTeam.name })}
+          message={t('This removes the model from the server. Colleagues who rely on it will no longer see it, and this cannot be undone.')}
+          confirmLabel={t('Delete')}
           tone="danger"
           onConfirm={() => { void deleteTeamModel() }}
           onCancel={() => setConfirmDeleteTeam(null)}
@@ -1830,11 +1851,14 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
 
       {pendingJsonImport && (
         <ConfirmDialog
-          title={`Import ${pendingJsonImport.meta.artifactId || 'this model'}?`}
-          message={`The file holds ${pendingJsonImport.entities.length} entit${pendingJsonImport.entities.length === 1 ? 'y' : 'ies'}. Replace loads the whole model (entities, dependencies and settings) in place of yours; Append adds only its entities to your current ${entities.length}. Either can be undone (Ctrl+Z).`}
-          confirmLabel="Replace"
+          title={t('Import {name}?', { name: pendingJsonImport.meta.artifactId || t('this model') })}
+          message={tn(pendingJsonImport.entities.length,
+            'The file holds {n} entity. Replace loads the whole model (entities, dependencies and settings) in place of yours; Append adds only its entities to your current {current}. Either can be undone (Ctrl+Z).',
+            'The file holds {n} entities. Replace loads the whole model (entities, dependencies and settings) in place of yours; Append adds only its entities to your current {current}. Either can be undone (Ctrl+Z).',
+            { current: entities.length })}
+          confirmLabel={t('Replace')}
           tone="danger"
-          secondaryLabel={`Append ${pendingJsonImport.entities.length}`}
+          secondaryLabel={t('Append {n}', { n: pendingJsonImport.entities.length })}
           onSecondary={appendJsonImport}
           onConfirm={() => { const s = pendingJsonImport; setPendingJsonImport(null); loadPreset(s) }}
           onCancel={() => setPendingJsonImport(null)}
@@ -1844,17 +1868,22 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       {pendingLoad && (
         <ConfirmDialog
           title={pendingLoad.kind === 'example'
-            ? `Load the ${pendingLoad.example.name} example?`
+            ? t('Load the {example} example?', { example: pendingLoad.example.name })
             : pendingLoad.kind === 'shared'
-              ? 'Open the shared model?'
-              : `Load ${pendingLoad.snapshot.meta.artifactId || 'this preset'}?`}
+              ? t('Open the shared model?')
+              : t('Load {name}?', { name: pendingLoad.snapshot.meta.artifactId || t('this preset') })}
           message={pendingLoad.kind === 'example'
-            ? `This replaces your current entities and page layout${pendingLoad.example.settings ? ' and applies the example\'s settings' : ''}, which aren't saved as a preset yet. You can undo it afterwards (Ctrl+Z).`
+            ? (pendingLoad.example.settings
+              ? t("This replaces your current entities and page layout and applies the example's settings, which aren't saved as a preset yet. You can undo it afterwards (Ctrl+Z).")
+              : t("This replaces your current entities and page layout, which aren't saved as a preset yet. You can undo it afterwards (Ctrl+Z)."))
             : pendingLoad.kind === 'shared'
-              ? `This link carries "${pendingLoad.snapshot.meta.artifactId || 'a model'}" (${pendingLoad.snapshot.entities.length} entit${pendingLoad.snapshot.entities.length === 1 ? 'y' : 'ies'}). Your draft here has edits that aren't saved as a preset — Replace loads the link over it (undoable with Ctrl+Z); Keep mine leaves your draft as it is.`
-              : 'This replaces your current entities, dependencies and settings, which aren\'t saved as a preset yet. You can undo it afterwards (Ctrl+Z).'}
-          confirmLabel={pendingLoad.kind === 'shared' ? 'Replace my draft' : 'Load'}
-          cancelLabel={pendingLoad.kind === 'shared' ? 'Keep mine' : 'Cancel'}
+              ? tn(pendingLoad.snapshot.entities.length,
+                'This link carries "{name}" ({n} entity). Your draft here has edits that aren\'t saved as a preset — Replace loads the link over it (undoable with Ctrl+Z); Keep mine leaves your draft as it is.',
+                'This link carries "{name}" ({n} entities). Your draft here has edits that aren\'t saved as a preset — Replace loads the link over it (undoable with Ctrl+Z); Keep mine leaves your draft as it is.',
+                { name: pendingLoad.snapshot.meta.artifactId || t('a model') })
+              : t('This replaces your current entities, dependencies and settings, which aren\'t saved as a preset yet. You can undo it afterwards (Ctrl+Z).')}
+          confirmLabel={pendingLoad.kind === 'shared' ? t('Replace my draft') : t('Load')}
+          cancelLabel={pendingLoad.kind === 'shared' ? t('Keep mine') : t('Cancel')}
           onConfirm={() => { const load = pendingLoad; setPendingLoad(null); runLoad(load) }}
           onCancel={dismissPendingLoad}
         />

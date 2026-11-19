@@ -4,6 +4,7 @@ import { CURRICULUM } from './tutorial-constants';
 import { UI_STRINGS, type Lang } from './tutorial-i18n';
 import { Module, Lesson, LessonLanguage } from './tutorial-types';
 import { escapeHtml } from './escape-html';
+import { setLang as setSiteLang, useLang } from '../../i18n';
 import ArchitectureVisualizer from './visualizers/ArchitectureVisualizer';
 import ProjectScaffolder from './visualizers/ProjectScaffolder';
 import MockApiPlayground from './visualizers/MockApiPlayground';
@@ -30,14 +31,9 @@ const CURRICULUM_LOADERS: Record<Exclude<CurriculumKey, 'backend-en'>, () => Pro
 };
 const curriculumCache = new Map<CurriculumKey, Module[]>([['backend-en', CURRICULUM]]);
 
-function readLang(key: string): Lang {
-  // Only 'he' is validated — any other persisted value (renamed locale, corrupt entry)
-  // would make `UI_STRINGS[lang]` undefined and crash the view.
-  return localStorage.getItem(key) === 'he' ? 'he' : 'en';
-}
-
 export function TutorialView(_props: TutorialViewProps) {
-  const [lang, setLang] = useState<Lang>(() => readLang('tutorial-lang'));
+  // The site's language: the toggle below switches the whole site, not the training alone.
+  const lang: Lang = useLang();
   const [track, setTrack] = useState<Track>(() => (localStorage.getItem('tutorial-track') === 'frontend' ? 'frontend' : 'backend'));
   const [activeModule, setActiveModule] = useState<Module>(CURRICULUM[0]);
   const [activeLesson, setActiveLesson] = useState<Lesson>(CURRICULUM[0].lessons[0]);
@@ -261,11 +257,7 @@ export function TutorialView(_props: TutorialViewProps) {
   };
 
   const handleLangToggle = () => {
-    setLang(l => {
-      const next: Lang = l === 'en' ? 'he' : 'en';
-      localStorage.setItem('tutorial-lang', next);
-      return next;
-    });
+    void setSiteLang(lang === 'en' ? 'he' : 'en');
     setSearchQuery('');
   };
 

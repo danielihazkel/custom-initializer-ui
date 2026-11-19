@@ -7,6 +7,7 @@ import { MAX_STEPS, askableFields, MAX_TITLE, defaultWizardSteps, pageLabel, ret
 import type { FormProps } from './formTypes'
 import { ICON_BUTTON, SMALL_BUTTON } from './constants'
 import { DragGrip, EntitySelect, Field, MoveButtons } from './fields'
+import { t, tn } from '../../../i18n'
 
 /** A wizard: its entity, and the form's fields dealt into steps (each field in exactly one). */
 export function WizardForm({ page, index, entities, errors, update, lossy, removed, dnd }: FormProps & { dnd: ReturnType<typeof useDragReorder> }) {
@@ -31,27 +32,27 @@ export function WizardForm({ page, index, entities, errors, update, lossy, remov
   return (
     <div className="space-y-2">
       <Field
-        label="Entity"
+        label={t('Entity')}
         error={errors.entity}
         control="entity"
-        hint="Creates rows — and edits them too (#/page/<id>); a record page's Edit opens the wizard"
+        hint={t("Creates rows — and edits them too (#/page/<id>); a record page's Edit opens the wizard")}
       >
         <EntitySelect
-          label="Wizard entity"
+          label={t('Wizard entity')}
           value={page.entity ?? ''}
           options={entities.filter(e => !e.readOnly).map(e => e.name)}
           error={errors.entity}
           // Steps keep the fields the new entity also has; the rest are dealt in after them.
           onChange={name => {
             const { steps: next, dropped } = retargetWizardSteps(page.steps, entities.find(e => e.name === name))
-            lossy(`Asked for ${name} in “${pageLabel(page)}”`, dropped)
+            lossy(t('Asked for {entity} in “{page}”', { entity: name, page: pageLabel(page) }), dropped)
             update(index, { entity: name, steps: next })
           }}
         />
       </Field>
       <div className="space-y-1" data-control="steps">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
-          Steps <span className="font-normal normal-case tracking-normal">· then a review before saving</span>
+          {t('Steps')} <span className="font-normal normal-case tracking-normal">{t('· then a review before saving')}</span>
         </p>
         {steps.map((step, si) => {
           const error = errors[`step.${si}`]
@@ -81,7 +82,7 @@ export function WizardForm({ page, index, entities, errors, update, lossy, remov
               <div className="flex items-center gap-1.5">
                 <DragGrip dnd={dnd} list={`steps:${index}`} index={si} />
                 <MoveButtons
-                  label={`step ${si + 1}`}
+                  label={t('step {n}', { n: si + 1 })}
                   canUp={si > 0}
                   canDown={si < steps.length - 1}
                   onMove={delta => setSteps(moveItem(steps, si, si + delta))}
@@ -89,10 +90,10 @@ export function WizardForm({ page, index, entities, errors, update, lossy, remov
                 <span className="text-xs font-semibold text-secondary">{si + 1}.</span>
                 <input
                   type="text"
-                  aria-label={`Step ${si + 1} title`}
+                  aria-label={t('Step {n} title', { n: si + 1 })}
                   value={step.title ?? ''}
                   maxLength={MAX_TITLE}
-                  placeholder={`Step ${si + 1}`}
+                  placeholder={t('Step {n}', { n: si + 1 })}
                   onChange={e => setSteps(steps.map((s, i) => (i === si ? { ...s, title: e.target.value || undefined } : s)))}
                   className={`${inputClass()} min-w-[8rem] flex-1 py-1 text-xs`}
                 />
@@ -100,13 +101,13 @@ export function WizardForm({ page, index, entities, errors, update, lossy, remov
                   type="button"
                   onClick={() => {
                     const fields = steps[si].fields
-                    removed?.(`Removed step ${si + 1} from “${pageLabel(page)}”`,
-                      fields.length ? `${fields.join(', ')} ${fields.length === 1 ? 'is' : 'are'} no longer asked — add ${fields.length === 1 ? 'it' : 'them'} to another step` : undefined)
+                    removed?.(t('Removed step {n} from “{page}”', { n: si + 1, page: pageLabel(page) }),
+                      fields.length ? tn(fields.length, '{fields} is no longer asked — add it to another step', '{fields} are no longer asked — add them to another step', { fields: fields.join(', ') }) : undefined)
                     setSteps(steps.filter((_, i) => i !== si))
                   }}
                   disabled={steps.length === 1}
                   className={ICON_BUTTON}
-                  aria-label={`Remove step ${si + 1}`}
+                  aria-label={t('Remove step {n}', { n: si + 1 })}
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
                 </button>
@@ -125,17 +126,17 @@ export function WizardForm({ page, index, entities, errors, update, lossy, remov
                         setDraggedField(name)
                       }}
                       onDragEnd={() => { setDraggedField(null); setDropStep(null) }}
-                      title="Drag to another step"
+                      title={t('Drag to another step')}
                       className={`inline-flex cursor-grab items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${a ? 'bg-primary/10 text-primary' : 'bg-error/10 text-error'} ${draggedField === name ? 'opacity-40' : ''}`}
                       data-step-field={name}
                     >
                       {a?.relation && <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">link</span>}
-                      {keyOption(entity, name)}{a?.required && <span aria-label="required">*</span>}
+                      {keyOption(entity, name)}{a?.required && <span aria-label={t('required')}>*</span>}
                       <button
                         type="button"
                         onClick={() => setSteps(steps.map((s, i) => (i === si ? { ...s, fields: s.fields.filter(f => f !== name) } : s)))}
                         className="leading-none hover:text-error"
-                        aria-label={`Take ${name} out of step ${si + 1}`}
+                        aria-label={t('Take {field} out of step {n}', { field: name, n: si + 1 })}
                       >
                         ×
                       </button>
@@ -144,15 +145,15 @@ export function WizardForm({ page, index, entities, errors, update, lossy, remov
                 })}
                 {askable.some(a => stepOf(a.name) !== si) && (
                   <select
-                    aria-label={`Add a field to step ${si + 1}`}
+                    aria-label={t('Add a field to step {n}', { n: si + 1 })}
                     value=""
                     onChange={e => e.target.value && place(e.target.value, si)}
                     className={`${inputClass()} max-w-[10rem] py-0.5 text-[11px]`}
                   >
-                    <option value="">+ field</option>
+                    <option value="">{t('+ field')}</option>
                     {askable.filter(a => stepOf(a.name) !== si).map(a => (
                       <option key={a.name} value={a.name}>
-                        {keyOption(entity, a.name)}{a.required ? ' *' : ''}{stepOf(a.name) >= 0 ? ` (from step ${stepOf(a.name) + 1})` : ''}
+                        {keyOption(entity, a.name)}{a.required ? ' *' : ''}{stepOf(a.name) >= 0 ? ` ${t('(from step {n})', { n: stepOf(a.name) + 1 })}` : ''}
                       </option>
                     ))}
                   </select>
@@ -164,35 +165,35 @@ export function WizardForm({ page, index, entities, errors, update, lossy, remov
         })}
         {unaskedRequired.length > 0 && (
           <p className="text-[11px] text-error" data-wizard-unasked-required>
-            Required but not asked: {unaskedRequired.map(a => a.name).join(', ')} — add each to a step, or the wizard cannot save.
+            {t('Required but not asked: {fields} — add each to a step, or the wizard cannot save.', { fields: unaskedRequired.map(a => a.name).join(', ') })}
           </p>
         )}
         {unasked.length > unaskedRequired.length && (
           <p className="text-[11px] text-secondary" data-wizard-unasked>
-            Not asked (optional): {unasked.filter(a => !a.required).map(a => a.name).join(', ')}
+            {t('Not asked (optional): {fields}', { fields: unasked.filter(a => !a.required).map(a => a.name).join(', ') })}
           </p>
         )}
-        <p className="text-[10px] text-secondary/80">Drag a field chip onto another step to move it.</p>
+        <p className="text-[10px] text-secondary/80">{t('Drag a field chip onto another step to move it.')}</p>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setSteps([...steps, { fields: [] }])}
             disabled={steps.length >= MAX_STEPS}
             className={SMALL_BUTTON}
-            title={steps.length >= MAX_STEPS ? `A wizard can have at most ${MAX_STEPS} steps` : undefined}
+            title={steps.length >= MAX_STEPS ? t('A wizard can have at most {max} steps', { max: MAX_STEPS }) : undefined}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
-            Add step
+            {t('Add step')}
           </button>
           {page.steps != null && (
             <button
               type="button"
               onClick={() => update(index, { steps: undefined })}
               className={SMALL_BUTTON}
-              title={`The generator's steps: ${askable.length} field${askable.length === 1 ? '' : 's'}, four to a step, relations last`}
+              title={tn(askable.length, "The generator's steps: {n} field, four to a step, relations last", "The generator's steps: {n} fields, four to a step, relations last")}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">restart_alt</span>
-              Reset to default steps
+              {t('Reset to default steps')}
             </button>
           )}
         </div>

@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom'
 import { dismissToast, holdToasts, releaseToasts, useIsPrimaryToaster, useToasts } from '../toast'
+import { t } from '../i18n'
 
 /**
  * Draws the app's toast stack (see `src/toast.ts`): bottom centre, newest at the bottom, each
@@ -26,7 +27,7 @@ export function Toaster() {
           key={toast.id}
           role="status"
           aria-live="polite"
-          className={`pointer-events-auto toast-enter pl-4 pr-2 py-2.5 rounded-xl text-sm font-medium shadow-lg flex items-center gap-2 max-w-full ${
+          className={`pointer-events-auto toast-enter ps-4 pe-2 py-2.5 rounded-xl text-sm font-medium shadow-lg flex items-center gap-2 max-w-full ${
             toast.type === 'success'
               ? 'bg-tertiary-container text-on-tertiary-container'
               : 'bg-error-container text-on-error-container'
@@ -40,7 +41,7 @@ export function Toaster() {
             <button
               type="button"
               onClick={() => { toast.action?.onClick(); dismissToast(toast.id) }}
-              className="ml-2 px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wide bg-background/30 hover:bg-background/50 transition-colors shrink-0"
+              className="ms-2 px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wide bg-background/30 hover:bg-background/50 transition-colors shrink-0"
             >
               {toast.action.label}
             </button>
@@ -48,7 +49,7 @@ export function Toaster() {
           <button
             type="button"
             onClick={() => dismissToast(toast.id)}
-            aria-label="Dismiss"
+            aria-label={t('Dismiss')}
             className="p-1 rounded-lg opacity-60 hover:opacity-100 hover:bg-background/30 transition-opacity shrink-0"
           >
             <span className="material-symbols-outlined block" style={{ fontSize: '14px' }} aria-hidden="true">close</span>

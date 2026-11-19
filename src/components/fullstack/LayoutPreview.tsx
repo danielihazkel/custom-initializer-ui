@@ -6,6 +6,7 @@ import type { PagePlayLinks } from './playLinks'
 import { MAX_STEPS, MAX_TITLE } from './pageLayout'
 import { cssEscape } from './focus'
 import type { PartSlot } from './pageParts'
+import { t, useLang } from '../../i18n'
 
 export type { EditTarget }
 
@@ -78,7 +79,7 @@ function StateNote({ states, empty, lines = 3 }: { states: PreviewStateStrings; 
   const state = useContext(DataState)
   if (state === 'loading') {
     return (
-      <div className="mt-0.5 space-y-1" role="status" aria-label="Loading" data-preview-state="loading">
+      <div className="mt-0.5 space-y-1" role="status" aria-label={t('Loading')} data-preview-state="loading">
         {Array.from({ length: lines }, (_, i) => (
           <div key={i} className="h-1.5 animate-pulse rounded bg-surface-container-high" style={{ width: `${[92, 74, 84, 64][i % 4]}%` }} />
         ))}
@@ -144,7 +145,7 @@ function RenameInput({ api, initial }: { api: RenameApi; initial: string }) {
       type="text"
       defaultValue={initial}
       maxLength={MAX_TITLE}
-      aria-label="Rename — Enter saves, Escape cancels, blank goes back to the default"
+      aria-label={t('Rename — Enter saves, Escape cancels, blank goes back to the default')}
       onKeyDown={e => {
         e.stopPropagation()
         if (e.key === 'Enter') { e.preventDefault(); finish(e.currentTarget.value, true) }
@@ -303,6 +304,7 @@ const WIDGET_LIST = 'preview-widgets:'
  * a click on a part of a screen asks the editor to open that page on the matching control.
  */
 export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, skin, offNavNote, onReorderWidget, onResizeWidget, widgetTools, navStyle, collapsibleGroups, palette, widgetDrop, partDrop, narrow, problems, play, onRename, dataState = 'data' }: Props) {
+  useLang()
   // The title being renamed in place, and the part to focus again once Enter or Escape ends it.
   const [renaming, setRenaming] = useState<RenameEdit | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -367,10 +369,10 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
           <span className="material-symbols-outlined ms-auto" style={{ fontSize: '10px', color: menora ? undefined : gold }} aria-label={preview.strings.startPage}>home</span>
         )}
         {item.roles.length > 0 && (
-          <span className="material-symbols-outlined shrink-0 opacity-70" style={{ fontSize: '10px' }} title={`Only ${item.roles.join(' or ')}`} aria-label={`Only ${item.roles.join(' or ')}`} data-preview-lock>lock</span>
+          <span className="material-symbols-outlined shrink-0 opacity-70" style={{ fontSize: '10px' }} title={t('Only {roles}', { roles: item.roles.join(` ${t('or')} `) })} aria-label={t('Only {roles}', { roles: item.roles.join(` ${t('or')} `) })} data-preview-lock>lock</span>
         )}
         {item.warning && (
-          <span className={`${item.start ? '' : 'ms-auto '}h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400`} aria-label="Has a warning" data-preview-warning />
+          <span className={`${item.start ? '' : 'ms-auto '}h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400`} aria-label={t('Has a warning')} data-preview-warning />
         )}
       </button>
     )
@@ -408,7 +410,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
       {screen ? (
         <Screen screen={screen} page={selected} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={onReorderWidget ? dnd : undefined} onResizeWidget={narrow ? undefined : onResizeWidget} widgetTools={widgetTools} widgetDrop={widgetDrop} partDrop={partDrop} narrow={narrow} />
       ) : (
-        <p className="text-[11px] text-secondary">Nothing to show.</p>
+        <p className="text-[11px] text-secondary">{t('Nothing to show.')}</p>
       )}
     </div>
   )
@@ -436,15 +438,15 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         <span className="ms-2 truncate font-mono text-[9px] text-secondary">localhost:5173</span>
         {guarded && (
           <label className="ms-auto flex items-center gap-1 text-[9px] text-secondary">
-            View as
+            {t('View as')}
             <select
               value={viewAs}
               onChange={e => setViewAs(e.target.value as '' | 'USER' | 'ADMIN')}
               className="rounded border border-outline-variant bg-surface-container-lowest px-0.5 text-[9px]"
-              aria-label="View the preview as"
+              aria-label={t('View the preview as')}
               data-preview-view-as
             >
-              <option value="">Everyone (all pages)</option>
+              <option value="">{t('Everyone (all pages)')}</option>
               <option value="USER">USER</option>
               <option value="ADMIN">ADMIN</option>
             </select>
@@ -455,7 +457,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         <div className="flex min-h-[18rem] flex-col">
           <div className="flex items-center gap-2 border-b border-outline-variant bg-white px-2.5 py-1.5">
             <span className="shrink-0 rounded px-1 text-[10px] font-black" style={{ color: MENORA.purple }}>menora</span>
-            <nav className="flex min-w-0 gap-1 overflow-x-auto" aria-label="Preview navigation">{navItems}</nav>
+            <nav className="flex min-w-0 gap-1 overflow-x-auto" aria-label={t('Preview navigation')}>{navItems}</nav>
           </div>
           {body}
           <div className="h-3" style={{ background: MENORA.ink }} />
@@ -464,7 +466,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
         <div className="flex min-h-[18rem] flex-col">
           <div className="flex items-center gap-2 px-2.5 py-1.5" style={{ background: shellBackground('to right') }} data-preview-shell>
             {!palette && <span className="h-1 w-6 shrink-0 rounded-full" style={{ background: 'linear-gradient(90deg,#9A83F7,#FEDB41)' }} />}
-            <nav className="flex min-w-0 gap-1 overflow-x-auto" aria-label="Preview navigation" data-preview-topbar>{navItems}</nav>
+            <nav className="flex min-w-0 gap-1 overflow-x-auto" aria-label={t('Preview navigation')} data-preview-topbar>{navItems}</nav>
           </div>
           {body}
         </div>
@@ -473,7 +475,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
           <nav
             className="w-28 shrink-0 space-y-0.5 p-1.5"
             style={{ background: shellBackground('to bottom') }}
-            aria-label="Preview navigation"
+            aria-label={t('Preview navigation')}
             data-preview-shell
           >
             {!palette && <div className="mb-1.5 h-1 rounded-full" style={{ background: 'linear-gradient(90deg,#9A83F7,#FEDB41)' }} />}
@@ -535,7 +537,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
     ? { slot: partDrop.slot, at: partAt, hover: setPartAt, drop: (at: number) => { setPartAt(null); partDrop.onDrop(page, at) } }
     : undefined
   const heading = !embedded && (
-    <Editable {...link} control="title" label="Edit the page title" className="block text-start">
+    <Editable {...link} control="title" label={t('Edit the page title')} className="block text-start">
       <h3 className="text-[13px] font-bold text-on-surface">
         <RenameSlot page={page} control="title" value={screen.title}>{screen.title}</RenameSlot>
         {menora && <span style={{ color: MENORA.yellow }}>.</span>}
@@ -561,7 +563,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
             {heading}
             <span className="flex shrink-0 items-center gap-1">
               {screen.period && (
-                <Editable {...link} control="dateRange" label="Edit the period picker" className="shrink-0">
+                <Editable {...link} control="dateRange" label={t('Edit the period picker')} className="shrink-0">
                   <span className="inline-flex items-center gap-0.5 rounded border border-outline-variant px-1 py-0.5 text-[9px] text-secondary" data-preview-period>
                     <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">date_range</span>
                     {screen.period}
@@ -569,7 +571,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                 </Editable>
               )}
               {screen.refresh && (
-                <Editable {...link} control="refreshSeconds" label="Edit the auto-refresh" className="shrink-0">
+                <Editable {...link} control="refreshSeconds" label={t('Edit the auto-refresh')} className="shrink-0">
                   <span className="inline-flex items-center gap-0.5 rounded border border-outline-variant px-1 py-0.5 text-[9px] text-secondary" data-preview-refresh>
                     <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">refresh</span>
                     {screen.refresh.label}{screen.refresh.every && ` · ${screen.refresh.every}`}
@@ -579,7 +581,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
             </span>
           </div>
           {screen.filters.length > 0 && (
-            <Editable {...link} control="filters" label="Edit the dashboard filters" className="block w-full">
+            <Editable {...link} control="filters" label={t('Edit the dashboard filters')} className="block w-full">
               <div className="flex flex-wrap items-center gap-1" data-preview-dashboard-filters>
                 <span className="inline-flex items-center gap-0.5 text-[9px] text-secondary">
                   <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">filter_alt</span>
@@ -635,8 +637,8 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
             )}
           </div>
           {screen.widgets.length === 0 && !newDrop && (
-            <Editable {...link} control="widgets" label="Add a widget" className="block w-full">
-              <p className="rounded border border-dashed border-outline-variant px-2 py-3 text-center text-[10px] text-secondary">No widgets yet — click to add one</p>
+            <Editable {...link} control="widgets" label={t('Add a widget')} className="block w-full">
+              <p className="rounded border border-dashed border-outline-variant px-2 py-3 text-center text-[10px] text-secondary">{t('No widgets yet — click to add one')}</p>
             </Editable>
           )}
         </div>
@@ -655,7 +657,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
         <div className="space-y-2">
           {heading}
           <div className="flex gap-1.5">
-            <Editable {...link} control="parent" label="Edit the parent entity" className="w-[34%] shrink-0">
+            <Editable {...link} control="parent" label={t('Edit the parent entity')} className="w-[34%] shrink-0">
               <div className="rounded border border-outline-variant p-1">
                 <div className="flex items-baseline justify-between gap-1 px-1 pb-0.5">
                   <p className="truncate text-[9px] font-semibold uppercase tracking-wide text-secondary">{screen.parentTitle}</p>
@@ -675,7 +677,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
             </Editable>
             <div className="min-w-0 flex-1 space-y-1">
               {screen.parentDetails && state === 'data' && (
-                <Editable {...link} control="showParent" label="Edit the parent card" className="block w-full">
+                <Editable {...link} control="showParent" label={t('Edit the parent card')} className="block w-full">
                   <div className="rounded border border-outline-variant px-1.5 py-1 text-[8px]" data-preview-parent-card>
                     <p className="mb-0.5 text-[9px] font-semibold text-on-surface">{screen.parentItems[0]}</p>
                     {screen.parentDetails.map(item => (
@@ -684,7 +686,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                   </div>
                 </Editable>
               )}
-              <Editable {...link} control="child" label="Edit the child entity" className="block w-full">
+              <Editable {...link} control="child" label={t('Edit the child entity')} className="block w-full">
                 <MiniTable table={screen.child} preview={preview} accent={accent} menora={menora} compact rowTo={here?.childRows[0]} newTo={here?.create} />
               </Editable>
             </div>
@@ -710,8 +712,8 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           </div>
           <FilterRow filters={screen.filters} chips={screen.presetChips} label={preview.strings.filters} />
           <div {...(charts ? partDropProps(charts, halfOf(0, 'y')) : {})} className={charts ? `rounded ${dropIndicatorClass(partIndicator(charts, 0, chartCount))}` : undefined}>
-            <Editable {...link} control="chart.groupBy" label="Edit the chart" className="block w-full">
-              <div {...playLink(play, here?.drill, `Open the ${screen.chartTitle} rows`).props} className={`rounded border border-outline-variant p-2 ${playLink(play, here?.drill, '').cls}`}>
+            <Editable {...link} control="chart.groupBy" label={t('Edit the chart')} className="block w-full">
+              <div {...playLink(play, here?.drill, t('Open the {chart} rows', { chart: screen.chartTitle })).props} className={`rounded border border-outline-variant p-2 ${playLink(play, here?.drill, '').cls}`}>
                 <p className="mb-1 text-[10px] font-semibold text-on-surface">{screen.chartTitle}</p>
                 {state === 'data'
                   ? <ReportChartShape kind={screen.chart.kind} line={screen.chart.line} bars={screen.chart.bars} accent={accent} />
@@ -737,7 +739,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               ))}
             </div>
           )}
-          {charts && <PartEndSlot target={charts} at={chartCount} label="Drop here to add a chart" className="min-h-10" />}
+          {charts && <PartEndSlot target={charts} at={chartCount} label={t('Drop here to add a chart')} className="min-h-10" />}
         </div>
       )
     }
@@ -747,7 +749,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
           <div className="flex items-start justify-between gap-2">
             {heading}
             {screen.modes.length > 1 && (
-              <Editable {...link} control="modes" label="Edit the calendar views" className="shrink-0">
+              <Editable {...link} control="modes" label={t('Edit the calendar views')} className="shrink-0">
                 <span className="inline-flex overflow-hidden rounded border border-outline-variant text-[9px]">
                   {screen.modes.map((m, i) => (
                     <span key={m} className="px-1.5 py-0.5" style={i === 0 ? { background: accent, color: 'white' } : undefined}>{m}</span>
@@ -756,13 +758,13 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
               </Editable>
             )}
           </div>
-          <Editable {...link} control="dateField" label="Edit the date rows are placed by" className="block w-full">
+          <Editable {...link} control="dateField" label={t('Edit the date rows are placed by')} className="block w-full">
             <div className="grid grid-cols-7 overflow-hidden rounded border border-outline-variant">
               {screen.days.map((d, i) => (
                 <div key={i} className="min-h-9 border-b border-e border-outline-variant/60 p-0.5">
                   <span className="block text-end text-[8px] text-secondary">{d.day}</span>
                   {state === 'data' && d.events.slice(0, 2).map((ev, j) => {
-                    const go = playLink(play, here?.row, `Open ${ev}`, here?.rowNote)
+                    const go = playLink(play, here?.row, t('Open {name}', { name: ev }), here?.rowNote)
                     return <span key={j} {...go.props} className={`mt-0.5 block truncate rounded px-0.5 text-[8px] ${go.cls}`} style={{ background: `color-mix(in srgb, ${accent} 13%, transparent)`, color: accent }}>{ev}</span>
                   })}
                 </div>
@@ -770,14 +772,14 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
             </div>
           </Editable>
           {state !== 'data' && <StateNote states={states} empty={states.nothingScheduled} lines={2} />}
-          {screen.creates && <p className="text-[9px] text-secondary">Click a day to add a row on it</p>}
+          {screen.creates && <p className="text-[9px] text-secondary">{t('Click a day to add a row on it')}</p>}
         </div>
       )
     case 'board':
       return (
         <div className="space-y-2" data-preview-board>
           {heading}
-          <Editable {...link} control="lanes" label="Edit the lanes" className="block w-full">
+          <Editable {...link} control="lanes" label={t('Edit the lanes')} className="block w-full">
             <div className="flex gap-1.5 overflow-x-auto">
               {screen.lanes.map((lane, i) => {
                 const over = lane.limit != null && lane.count > lane.limit
@@ -791,7 +793,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                     </div>
                     {state === 'empty' && <p className="px-0.5 text-[8px] text-secondary" data-preview-state="empty">{states.emptyLane}</p>}
                     {state === 'data' && lane.cards.map((card, j) => {
-                      const go = playLink(play, here?.row, `Open ${card.heading}`, here?.rowNote)
+                      const go = playLink(play, here?.row, t('Open {name}', { name: card.heading }), here?.rowNote)
                       return (
                         <div key={j} {...go.props} className={`rounded border border-outline-variant bg-surface p-1 ${go.cls}`}>
                           <p className="truncate text-[9px] font-semibold text-on-surface">{card.heading}</p>
@@ -811,9 +813,9 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
       return (
         <div className="space-y-2" data-preview-content>
           {heading}
-          <Editable {...link} control="body" label="Edit the text" className="block w-full text-start">
+          <Editable {...link} control="body" label={t('Edit the text')} className="block w-full text-start">
             <div className="space-y-1.5 rounded border border-outline-variant p-2">
-              {screen.blocks.length === 0 && <p className="text-[10px] text-secondary">No text yet</p>}
+              {screen.blocks.length === 0 && <p className="text-[10px] text-secondary">{t('No text yet')}</p>}
               {screen.blocks.map((b, i) => <ContentBlockView key={i} block={b} accent={accent} page={page} />)}
             </div>
           </Editable>
@@ -823,7 +825,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
       return (
         <div className="space-y-2" data-preview-tree>
           {heading}
-          <Editable {...link} control="entity" label="Edit the tree's entity" className="block w-full">
+          <Editable {...link} control="entity" label={t("Edit the tree's entity")} className="block w-full">
             <ul className="space-y-0.5 rounded border border-outline-variant p-2 text-[10px]">
               {screen.rows.map((row, i) => (
                 <li key={i} className="flex items-center gap-1" style={{ paddingInlineStart: `${row.depth * 12}px` }}>
@@ -840,7 +842,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
       return (
         <div className="space-y-2" data-preview-import>
           {heading}
-          <Editable {...link} control="entity" label="Edit the imported entity" className="block w-full">
+          <Editable {...link} control="entity" label={t('Edit the imported entity')} className="block w-full">
             <div className="space-y-1.5 rounded border border-outline-variant p-2">
               <div className="flex gap-1 text-[9px]">
                 {screen.steps.map((step, i) => `${i + 1} · ${step}`).map((s, i) => (
@@ -862,7 +864,7 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
         <div className="space-y-2" data-preview-search>
           {heading}
           <div className="rounded-full border border-outline-variant px-2 py-1 text-[10px] text-secondary">{screen.words}</div>
-          <Editable {...link} control="entities" label="Edit the searched entities" className="block w-full">
+          <Editable {...link} control="entities" label={t('Edit the searched entities')} className="block w-full">
             <div className="space-y-1">
               {state !== 'data' && <StateNote states={states} empty={states.nothingMatches.replace('{q}', screen.words)} />}
               {state === 'data' && screen.groups.map((g, i) => (
@@ -871,14 +873,14 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
                     {g.title} <span className="font-normal text-secondary">{g.total}</span>
                   </p>
                   {g.rows.map((r, j) => {
-                    const go = playLink(play, here?.groups[i], `Open ${r}`)
+                    const go = playLink(play, here?.groups[i], t('Open {name}', { name: r }))
                     return <p key={j} {...go.props} className={`truncate px-1.5 py-0.5 text-[9px] text-on-surface ${go.cls}`}>{r}</p>
                   })}
                 </div>
               ))}
             </div>
           </Editable>
-          {screen.header && <p className="text-[9px] text-secondary">Also opened from the search box in the app’s header</p>}
+          {screen.header && <p className="text-[9px] text-secondary">{t('Also opened from the search box in the app’s header')}</p>}
         </div>
       )
   }
@@ -893,7 +895,7 @@ function ContentBlockView({ block, accent, page }: { block: ContentBlock; accent
       case 'em': return <em key={i}>{r.text}</em>
       case 'code': return <code key={i} className="rounded bg-surface-container-high px-0.5">{r.text}</code>
       case 'page-link': {
-        const go = playLink(play, play?.links[page]?.pageIds.get(r.target ?? ''), `Open ${r.text}`)
+        const go = playLink(play, play?.links[page]?.pageIds.get(r.target ?? ''), t('Open {name}', { name: r.text }))
         return <span key={i} {...go.props} className={`font-semibold underline ${go.cls}`} style={{ color: accent }}>{r.text}</span>
       }
       case 'link': return <span key={i} className="font-semibold underline" style={{ color: accent }}>{r.text}</span>
@@ -927,9 +929,9 @@ function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent
     <div className="space-y-2">
       {heading}
       {screen.tabs.length === 0 ? (
-        parts ? <PartEndSlot target={parts} at={0} label="Drop a page here to make it a tab" className="py-3" /> : (
-          <Editable page={page} onEdit={onEdit} highlight={highlight} control="tabs" label="Add tabs" className="block w-full">
-            <p className="rounded border border-dashed border-outline-variant px-2 py-3 text-center text-[10px] text-secondary">No tabs yet</p>
+        parts ? <PartEndSlot target={parts} at={0} label={t('Drop a page here to make it a tab')} className="py-3" /> : (
+          <Editable page={page} onEdit={onEdit} highlight={highlight} control="tabs" label={t('Add tabs')} className="block w-full">
+            <p className="rounded border border-dashed border-outline-variant px-2 py-3 text-center text-[10px] text-secondary">{t('No tabs yet')}</p>
           </Editable>
         )
       ) : (
@@ -951,7 +953,7 @@ function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent
                 onClick={() => setActive(i)}
                 onDoubleClick={rename ? e => renameFrom(rename, owner, e.currentTarget) : undefined}
                 onKeyDown={rename ? e => { if (e.key === 'F2') { e.preventDefault(); renameFrom(rename, owner, e.currentTarget) } } : undefined}
-                title={rename ? 'Double-click to rename' : undefined}
+                title={rename ? t('Double-click to rename') : undefined}
                 data-rename-owner={rename ? owner : undefined}
                 {...(parts ? partDropProps(parts, halfOf(i)) : {})}
                 data-preview-highlight={lit ? '' : undefined}
@@ -963,14 +965,14 @@ function TabsScreen({ screen, page, preview, onEdit, highlight, onSelect, accent
             )
           })}
         </div>
-        {parts && <PartEndSlot target={parts} at={screen.tabs.length} label="Drop to add a tab" className="shrink-0" />}
+        {parts && <PartEndSlot target={parts} at={screen.tabs.length} label={t('Drop to add a tab')} className="shrink-0" />}
         </div>
       )}
       {embedded && target != null && embedded.type !== 'tabs' && (
         <Screen screen={embedded} page={target} preview={preview} onEdit={onEdit} highlight={highlight} onSelect={onSelect} accent={accent} menora={menora} dnd={dnd} onResizeWidget={onResizeWidget} widgetTools={widgetTools} embedded />
       )}
       {screen.tabs.length > 0 && target == null && (
-        <p className="text-[10px] text-error">This tab points at no page.</p>
+        <p className="text-[10px] text-error">{t('This tab points at no page.')}</p>
       )}
     </div>
   )
@@ -1016,7 +1018,7 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
   const tabTable = current > 0 ? screen.tabTables[current - 1] : undefined
   const play = useContext(Play)
   const here = play?.links[link.page]
-  const back = playLink(play, here?.back, 'Back')
+  const back = playLink(play, here?.back, t('Back'))
   // Loading or failed, the record is not there yet: only its heading shows above the state.
   const state = useContext(DataState)
   const held = state === 'loading' || state === 'error'
@@ -1027,13 +1029,13 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
   return (
     <div className="space-y-2">
       {screen.back && <p {...back.props} className={`w-fit text-[10px] text-secondary ${back.cls}`}>{preview.rtl ? '→' : '←'} {screen.back}</p>}
-      <Editable {...link} control="entity" label="Edit the record entity" className="block text-start">
+      <Editable {...link} control="entity" label={t('Edit the record entity')} className="block text-start">
         <h3 className="text-[13px] font-bold text-on-surface">{screen.heading}</h3>
       </Editable>
       {held ? <StateNote states={preview.strings.states} empty={null} lines={4} /> : (<>
       {screen.stats.length > 0 && (
         <div {...(statParts ? partDropProps(statParts, e => statSlot(e, screen.stats.length)) : {})}>
-        <Editable {...link} control="headerStats" label="Edit the header numbers" className="block w-full">
+        <Editable {...link} control="headerStats" label={t('Edit the header numbers')} className="block w-full">
           <div className="grid grid-cols-4 gap-1.5" data-preview-stats>
             {screen.stats.map((s, i) => (
               <div key={i} className={`min-w-0 rounded border border-outline-variant p-1 ${dropIndicatorClass(partIndicator(statParts, i, screen.stats.length), 'x')}`}>
@@ -1047,7 +1049,7 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
         </Editable>
         </div>
       )}
-      {statParts && <PartEndSlot target={statParts} at={screen.stats.length} label="Drop here to add a number above the tabs" />}
+      {statParts && <PartEndSlot target={statParts} at={screen.stats.length} label={t('Drop here to add a number above the tabs')} />}
       <div className="flex items-end gap-1">
         <div role="tablist" className="flex min-w-0 flex-1 gap-3 border-b border-outline-variant" data-preview-record-tabs>
           {screen.tabs.map((label, i) => {
@@ -1069,8 +1071,8 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
             )
           })}
         </div>
-        {tabParts && <PartEndSlot target={tabParts} at={childCount} label="Drop to add a tab" className="shrink-0" />}
-        <Editable {...link} control="childTabs" label="Edit the related tabs" className="shrink-0 px-1 text-secondary">
+        {tabParts && <PartEndSlot target={tabParts} at={childCount} label={t('Drop to add a tab')} className="shrink-0" />}
+        <Editable {...link} control="childTabs" label={t('Edit the related tabs')} className="shrink-0 px-1 text-secondary">
           <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">edit</span>
         </Editable>
       </div>
@@ -1091,7 +1093,7 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
           <MiniTable table={tabTable} preview={preview} accent={accent} menora={menora} rowTo={here?.childRows[current - 1]} />
         </div>
       ) : (
-        <p className="text-[10px] text-error">This tab lists no entity.</p>
+        <p className="text-[10px] text-error">{t('This tab lists no entity.')}</p>
       )}
       </>)}
     </div>
@@ -1132,7 +1134,7 @@ function InboxScreen({ screen, link, heading, accent, menora }: {
         <tbody>
           {screen.rows.map((r, i) => (
             <tr key={i} className="border-t border-outline-variant"
-                onClick={() => (rowTo != null ? play?.go(rowTo) : play?.note('A row opens in a quick look — add a record page to open a page'))}
+                onClick={() => (rowTo != null ? play?.go(rowTo) : play?.note(t('A row opens in a quick look — add a record page to open a page')))}
                 data-play-link={play ? rowTo ?? 'note' : undefined}>
               {r.cells.map((c, j) => <td key={j} className={`truncate px-1 py-0.5 ${j === 0 ? 'font-semibold text-on-surface' : 'text-secondary'}`}>{c}</td>)}
               <td className="px-1 py-0.5"><span className="rounded-full px-1" style={menora ? MENORA_CHIP : { background: `${accent}1a`, color: accent }}>{r.status}</span></td>
@@ -1182,7 +1184,7 @@ function FormScreen({ screen, link, heading, accent, menora }: {
           <FakeButton outline>{screen.cancel}</FakeButton>
           <button
             type="button"
-            onClick={() => (saveTo != null ? play?.go(saveTo) : play?.note('Save starts the form over — there is no record or list page to land on'))}
+            onClick={() => (saveTo != null ? play?.go(saveTo) : play?.note(t('Save starts the form over — there is no record or list page to land on')))}
             disabled={!play}
             aria-label={screen.save}
             data-play-link={play ? saveTo ?? 'note' : undefined}
@@ -1238,7 +1240,7 @@ function WizardScreen({ screen, link, heading, accent, menora, parts }: {
                   onClick={() => setActive(i)}
                   onDoubleClick={renames ? e => renameFrom(renames, owner, e.currentTarget) : undefined}
                   onKeyDown={renames ? e => { if (e.key === 'F2') { e.preventDefault(); renameFrom(renames, owner, e.currentTarget) } } : undefined}
-                  title={renames ? 'Double-click to rename' : undefined}
+                  title={renames ? t('Double-click to rename') : undefined}
                   data-rename-owner={renames ? owner : undefined}
                   {...(target ? partDropProps(target, () => i) : {})}
                   className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${target?.at === i ? 'border-primary bg-primary/10 ring-2 ring-primary/40' : ''}`}
@@ -1251,10 +1253,10 @@ function WizardScreen({ screen, link, heading, accent, menora, parts }: {
             )
           })}
           {into && last < MAX_STEPS && (
-            <li><PartEndSlot target={into} at={last} label="New step" className="rounded-full py-0.5" /></li>
+            <li><PartEndSlot target={into} at={last} label={t('New step')} className="rounded-full py-0.5" /></li>
           )}
         </ol>
-        <Editable {...link} control="steps" label="Edit the steps" className="shrink-0 px-1 text-secondary">
+        <Editable {...link} control="steps" label={t('Edit the steps')} className="shrink-0 px-1 text-secondary">
           <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">edit</span>
         </Editable>
       </div>
@@ -1275,14 +1277,14 @@ function WizardScreen({ screen, link, heading, accent, menora, parts }: {
           </div>
         ))}
         <div className="flex justify-between pt-1">
-          <button type="button" onClick={() => setActive(Math.max(0, step - 1))} disabled={step === 0} className="disabled:opacity-40" aria-label="Previous step">
+          <button type="button" onClick={() => setActive(Math.max(0, step - 1))} disabled={step === 0} className="disabled:opacity-40" aria-label={t('Previous step')}>
             <FakeButton outline>{screen.back}</FakeButton>
           </button>
           <button
             type="button"
-            onClick={() => (reviewing ? (saveTo != null ? play?.go(saveTo) : play?.note('Save starts a fresh wizard — there is no record or list page to land on')) : setActive(Math.min(last, step + 1)))}
+            onClick={() => (reviewing ? (saveTo != null ? play?.go(saveTo) : play?.note(t('Save starts a fresh wizard — there is no record or list page to land on'))) : setActive(Math.min(last, step + 1)))}
             disabled={reviewing && !play}
-            aria-label={reviewing ? screen.save : 'Next step'}
+            aria-label={reviewing ? screen.save : t('Next step')}
             data-play-link={reviewing && play ? saveTo ?? 'note' : undefined}
           >
             <FakeButton style={primary}>{reviewing ? screen.save : screen.next}</FakeButton>
@@ -1343,7 +1345,7 @@ function Editable({ page, control, onEdit, highlight, label, className, children
         } : undefined}
         data-rename-owner={owner}
         title={problem ? `${label} — ${problem}` : label}
-        aria-label={problem ? `${label} (problem: ${problem})` : label}
+        aria-label={problem ? t('{label} (problem: {problem})', { label, problem }) : label}
         className="absolute inset-0 h-full w-full cursor-pointer rounded outline-offset-2 hover:outline hover:outline-1 hover:outline-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
       />
     </div>
@@ -1404,7 +1406,7 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
   const play = useContext(Play)
   const goes = play?.links[link.page]?.widgets[widget.index]
   // A chart, number or ranked list drills into its rows; lists, notes and link tiles link part by part.
-  const card = DRILLS.has(widget.kind) ? playLink(play, goes?.open, `Open the rows behind ${widget.title}`) : { props: {}, cls: '' }
+  const card = DRILLS.has(widget.kind) ? playLink(play, goes?.open, t('Open the rows behind {widget}', { widget: widget.title })) : { props: {}, cls: '' }
   const span = liveSpan ?? widget.span
   const indicator = newDrop
     ? (newDrop.at === widget.index ? 'before' : last && newDrop.at === widget.index + 1 ? 'after' : null)
@@ -1542,19 +1544,19 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
                 <span className="shrink-0 text-[8px] text-secondary">{row.ago}</span>
               </li>
             ))}
-            {widget.rows.length === 0 && <li className="text-[9px] text-secondary">No audited entity</li>}
+            {widget.rows.length === 0 && <li className="text-[9px] text-secondary">{t('No audited entity')}</li>}
           </ul>
         )}
         {widget.kind === 'text' && (
           <div className="mt-0.5 space-y-0.5" data-preview-text>
             {widget.paragraphs.slice(0, 3).map((p, i) => <p key={i} className="line-clamp-2 text-[9px] text-on-surface">{p}</p>)}
-            {widget.paragraphs.length === 0 && <p className="text-[9px] text-secondary">Empty note</p>}
+            {widget.paragraphs.length === 0 && <p className="text-[9px] text-secondary">{t('Empty note')}</p>}
           </div>
         )}
         {widget.kind === 'links' && (
           <div className="mt-0.5 grid grid-cols-3 gap-1" data-preview-links>
             {widget.tiles.slice(0, 6).map((tile, i) => {
-              const go = playLink(play, goes?.tiles[i], `Open ${tile.label}`)
+              const go = playLink(play, goes?.tiles[i], t('Open {name}', { name: tile.label }))
               return menora ? (
                 <span key={i} {...go.props} className={`flex min-w-0 flex-col items-center gap-0.5 px-1 py-1 text-[8px] text-on-surface ${go.cls}`} data-preview-action-disc>
                   <span className="flex h-6 w-6 items-center justify-center rounded-full" style={{ background: MENORA.yellow, color: MENORA.ink }}>
@@ -1569,12 +1571,12 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
                 </span>
               )
             })}
-            {widget.tiles.length === 0 && <span className="col-span-3 text-[9px] text-secondary">No pages picked</span>}
+            {widget.tiles.length === 0 && <span className="col-span-3 text-[9px] text-secondary">{t('No pages picked')}</span>}
           </div>
         )}
         {widget.kind === 'list' && (
           <div className="mt-0.5" data-preview-list>
-            <MiniTable table={widget.table} preview={preview} accent={accent} menora={menora} compact rowTo={goes?.rows} rowNote="Rows open in a quick-look drawer" />
+            <MiniTable table={widget.table} preview={preview} accent={accent} menora={menora} compact rowTo={goes?.rows} rowNote={t('Rows open in a quick-look drawer')} />
           </div>
         )}
         {widget.kind === 'line' && <LineChart points={widget.points} accent={accent} />}
@@ -1582,7 +1584,7 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
           <ul className="mt-0.5 space-y-0.5">
             <li className="truncate text-[8px] text-secondary" data-preview-newest>{widget.by}</li>
             {widget.rows.slice(0, 4).map((r, i) => {
-              const go = playLink(play, goes?.rows, `Open ${r}`, 'Rows open in a quick-look drawer')
+              const go = playLink(play, goes?.rows, t('Open {name}', { name: r }), t('Rows open in a quick-look drawer'))
               return <li key={i} {...go.props} className={`truncate text-[10px] text-on-surface ${go.cls}`}>{r}</li>
             })}
             <li {...playLink(play, goes?.open, viewAll).props} className={`w-fit text-[9px] font-semibold ${playLink(play, goes?.open, viewAll).cls}`} style={{ color: accent }}>{viewAll}</li>
@@ -1607,8 +1609,8 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
             {...dnd.handleProps(list, widget.index)}
             role="button"
             tabIndex={-1}
-            aria-label={`Drag widget ${widget.index + 1}`}
-            title="Drag to reorder"
+            aria-label={t('Drag widget {n}', { n: widget.index + 1 })}
+            title={t('Drag to reorder')}
             className="cursor-grab text-secondary"
           >
             <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>drag_indicator</span>
@@ -1616,12 +1618,12 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
         )}
         {onResize && (
           <>
-            <button type="button" onClick={() => onResize(widget.span - 1)} disabled={widget.span <= 1} aria-label={`Narrower: widget ${widget.index + 1}`} title="Narrower" className={TOOL}>−</button>
-            <button type="button" onClick={() => onResize(widget.span + 1)} disabled={widget.span >= MAX_SPAN} aria-label={`Wider: widget ${widget.index + 1}`} title="Wider" className={TOOL}>+</button>
+            <button type="button" onClick={() => onResize(widget.span - 1)} disabled={widget.span <= 1} aria-label={t('Narrower: widget {n}', { n: widget.index + 1 })} title={t('Narrower')} className={TOOL}>−</button>
+            <button type="button" onClick={() => onResize(widget.span + 1)} disabled={widget.span >= MAX_SPAN} aria-label={t('Wider: widget {n}', { n: widget.index + 1 })} title={t('Wider')} className={TOOL}>+</button>
           </>
         )}
         {onDuplicate && (
-          <button type="button" onClick={onDuplicate} aria-label={`Duplicate widget ${widget.index + 1}`} title="Duplicate (Ctrl+D)" className={TOOL} data-preview-widget-duplicate>
+          <button type="button" onClick={onDuplicate} aria-label={t('Duplicate widget {n}', { n: widget.index + 1 })} title={t('Duplicate (Ctrl+D)')} className={TOOL} data-preview-widget-duplicate>
             <span className="material-symbols-outlined align-middle" style={{ fontSize: '11px' }}>content_copy</span>
           </button>
         )}
@@ -1630,8 +1632,8 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
             type="button"
             onClick={e => onKindMenu(e.currentTarget)}
             aria-haspopup="menu"
-            aria-label={`Change the kind of widget ${widget.index + 1}`}
-            title="Change the kind"
+            aria-label={t('Change the kind of widget {n}', { n: widget.index + 1 })}
+            title={t('Change the kind')}
             className={TOOL}
             data-preview-widget-kind
           >
@@ -1647,7 +1649,7 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
         onPointerUp={endResize}
         onPointerCancel={endResize}
         className="absolute inset-y-1 end-0 w-1.5 cursor-ew-resize rounded opacity-0 hover:bg-primary/40 group-hover:opacity-100"
-        title="Drag to resize"
+        title={t('Drag to resize')}
         aria-hidden="true"
         data-preview-widget-resize
       />
@@ -1820,8 +1822,8 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
   const part = (control: string, label: string, children: ReactNode, className = 'block w-full') =>
     link ? <Editable {...link} control={control} label={label} className={className}>{children}</Editable> : children
   const play = useContext(Play)
-  const rowLink = (row: string[]) => playLink(play, rowTo, `Open ${row[0] ?? 'the row'}`, rowNote)
-  const create = playLink(play, newTo, table.newLabel ?? 'New', 'New opens the form in a drawer')
+  const rowLink = (row: string[]) => playLink(play, rowTo, row[0] != null ? t('Open {name}', { name: row[0] }) : t('Open the row'), rowNote)
+  const create = playLink(play, newTo, table.newLabel ?? t('New'), t('New opens the form in a drawer'))
   const state = useContext(DataState)
   const sidePane = state === 'data' ? table.sidePane : null
   return (
@@ -1840,7 +1842,7 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
       {link ? (
         <div className="flex flex-wrap items-center gap-1">
           <FilterRow filters={table.filters} chips={table.presetChips} label={preview.strings.filters} />
-          {part('sort', 'Edit the sort', (
+          {part('sort', t('Edit the sort'), (
             <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary" data-preview-chip data-preview-sort>
               {table.sort ?? '⇅'}
             </span>
@@ -1851,7 +1853,7 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
       )}
       <div className={sidePane ? 'grid grid-cols-[minmax(0,1fr)_6rem] gap-1' : ''}>
       <div className="min-w-0 space-y-0.5">
-      {link && table.view !== 'cards' && table.view !== 'gallery' && table.view !== 'kanban' && table.view !== 'calendar' && part('columns', 'Edit the columns', (
+      {link && table.view !== 'cards' && table.view !== 'gallery' && table.view !== 'kanban' && table.view !== 'calendar' && part('columns', t('Edit the columns'), (
         <div
           className={`grid gap-x-1 text-start text-[9px] font-semibold text-secondary ${menora ? 'rounded-t px-0.5 py-0.5' : ''}`}
           style={{ gridTemplateColumns: `repeat(${Math.max(1, table.columns.length)}, minmax(0, 1fr))`, ...(menora ? { background: MENORA_HEAD } : {}) }}
@@ -1860,7 +1862,7 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
           {table.columns.map((c, j) => <span key={c} className={`truncate ${menora && table.kinds[j] === 'number' ? 'text-end' : ''}`}>{c}</span>)}
         </div>
       ))}
-      {part('entity', 'Edit the listed entity', (
+      {part('entity', t('Edit the listed entity'), (
       <>
       {state !== 'data' ? (
         <ListState table={table} states={preview.strings.states} primary={primary} menora={menora} compact={compact} />
@@ -1922,7 +1924,7 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
       </>
       ))}
       </div>
-      {sidePane && part('detail', 'Edit where rows open', (
+      {sidePane && part('detail', t('Edit where rows open'), (
         <aside className="rounded border border-outline-variant px-1.5 py-1 text-start text-[8px]" data-preview-side-pane>
           {sidePane.map(item => (
             <p key={item.label} className="truncate"><span className="text-secondary">{item.label}:</span> <span className="text-on-surface">{item.value}</span></p>
@@ -1930,7 +1932,7 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
         </aside>
       ))}
       </div>
-      {!compact && part('pageSize', 'Edit rows per page and where rows open', (
+      {!compact && part('pageSize', t('Edit rows per page and where rows open'), (
         <p className="truncate text-end text-[8px] text-secondary" data-preview-footer>{table.footer}</p>
       ))}
     </div>

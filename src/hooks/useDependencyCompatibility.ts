@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { CompatibilityRule } from '../types'
 import type { Suggestion } from '../components/SuggestionStrip'
+import { t, useLang } from '../i18n'
 
 export interface CompatibilityWarning {
   source: string
@@ -32,6 +33,8 @@ export function useDependencyCompatibility(
   selected: string[],
   allDeps: DependencyLike[],
 ): DependencyCompatibilityResult {
+  // The default sentences are in the site's language: worked out again when it changes.
+  const lang = useLang()
   return useMemo(() => {
     // O(1) lookups — the rule loops below run per rule, and the catalog has hundreds of deps.
     const nameById = new Map(allDeps.map(d => [d.id, d.name]))
@@ -46,14 +49,14 @@ export function useDependencyCompatibility(
         conflicts.push({
           source: rule.sourceDepId,
           target: rule.targetDepId,
-          desc: rule.description ?? `${depName(rule.sourceDepId)} conflicts with ${depName(rule.targetDepId)}`,
+          desc: rule.description ?? t('{source} conflicts with {target}', { source: depName(rule.sourceDepId), target: depName(rule.targetDepId) }),
         })
       }
       if (rule.relationType === 'REQUIRES' && !selectedSet.has(rule.targetDepId)) {
         requires.push({
           source: rule.sourceDepId,
           target: rule.targetDepId,
-          desc: rule.description ?? `${depName(rule.sourceDepId)} requires ${depName(rule.targetDepId)}`,
+          desc: rule.description ?? t('{source} requires {target}', { source: depName(rule.sourceDepId), target: depName(rule.targetDepId) }),
         })
       }
     }
@@ -65,7 +68,7 @@ export function useDependencyCompatibility(
       if (selectedSet.has(rule.targetDepId)) continue
       if (!nameById.has(rule.targetDepId)) continue
       const sourceName = depName(rule.sourceDepId)
-      const reason = rule.description ?? `${sourceName} recommends ${depName(rule.targetDepId)}`
+      const reason = rule.description ?? t('{source} recommends {target}', { source: sourceName, target: depName(rule.targetDepId) })
       const existing = byTarget.get(rule.targetDepId)
       if (existing) {
         if (!existing.sourceNames.includes(sourceName)) {
@@ -87,5 +90,7 @@ export function useDependencyCompatibility(
       .sort((a, b) => b.score - a.score || a.targetName.localeCompare(b.targetName))
 
     return { conflicts, requires, suggestions }
-  }, [rules, selected, allDeps])
+    // `lang`: the default sentences come from `t`, so they are worked out again in a new language.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rules, selected, allDeps, lang])
 }

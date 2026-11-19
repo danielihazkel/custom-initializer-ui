@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { getDesignSystemEntries, type FrontendMetadata } from '../../hooks/useFrontendMetadata'
 import { DESIGN_NONE } from '../../hooks/useFrontendState'
 import { PalettePicker } from '../shared/PalettePicker'
+import { t } from '../../i18n'
 
 interface Props {
   metadata: FrontendMetadata
@@ -123,7 +124,7 @@ export function OptionsPanelFE({
   const designEntries = getDesignSystemEntries(metadata)
   const designOptions = designEntries.length
     ? designEntries.map(e => ({ id: e.id, name: e.name }))
-    : [{ id: DESIGN_NONE, name: 'None / Plain CSS' }]
+    : [{ id: DESIGN_NONE, name: t('None / Plain CSS') }]
   const showPalettePicker = PALETTE_AWARE_DESIGN_SYSTEMS.has(designSystem)
   // The pair section follows the data (open whenever something is set — e.g. after loading a
   // preset) until the user toggles it by hand, after which their choice wins.
@@ -136,7 +137,7 @@ export function OptionsPanelFE({
           tune
         </span>
         <span className="text-xs font-bold uppercase tracking-widest text-on-surface">
-          Stack
+          {t('Stack')}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -154,13 +155,13 @@ export function OptionsPanelFE({
         />
       </div>
       <PillToggle
-        label="Package Manager"
+        label={t('Package Manager')}
         value={packageManager}
         options={metadata.packageManagers}
         onChange={onPackageManagerChange}
       />
       <Dropdown
-        label="Design System"
+        label={t('Design System')}
         value={designSystem}
         options={designOptions}
         onChange={onDesignSystemChange}
@@ -174,10 +175,11 @@ export function OptionsPanelFE({
       )}
       <label className="block">
         <span className="block text-[10px] uppercase font-bold tracking-widest text-primary mb-1.5">
-          Base Path
+          {t('Base Path')}
         </span>
         <input
           type="text"
+          dir="ltr"
           value={basePath}
           onChange={e => onBasePathChange(e.target.value)}
           placeholder="/"
@@ -192,12 +194,12 @@ export function OptionsPanelFE({
           className="mt-0.5 h-4 w-4 accent-primary"
         />
         <span className="flex flex-col">
-          <span className="text-sm text-on-surface">RTL layout</span>
-          <span className="text-[11px] text-secondary">dir="rtl" + Hebrew lang; mirrored right-to-left UI</span>
+          <span className="text-sm text-on-surface">{t('RTL layout')}</span>
+          <span className="text-[11px] text-secondary">{t('dir="rtl" + Hebrew lang; mirrored right-to-left UI')}</span>
         </span>
       </label>
       <p className="text-[11px] text-secondary px-1">
-        TypeScript {metadata.pinned.typescript} · Vite {metadata.pinned.vite} (pinned)
+        {t('TypeScript {typescript} · Vite {vite} (pinned)', { typescript: metadata.pinned.typescript, vite: metadata.pinned.vite })}
       </p>
 
       <div className="border-t border-outline-variant pt-4">
@@ -208,43 +210,45 @@ export function OptionsPanelFE({
           className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-widest text-primary hover:text-on-surface transition-colors"
         >
           <span
-            className="material-symbols-outlined transition-transform"
-            style={{ fontSize: '16px', transform: pairOpen ? 'rotate(90deg)' : 'none' }}
+            className="material-symbols-outlined transition-transform flip-rtl"
+            style={{ fontSize: '16px', transform: pairOpen ? 'rotate(90deg)' : undefined }}
           >
             chevron_right
           </span>
-          Paired Backend (optional)
+          {t('Paired Backend (optional)')}
         </button>
         {pairOpen && (
           <div className="mt-3 space-y-3">
             <label className="block">
               <span className="block text-[10px] uppercase font-bold tracking-widest text-primary mb-1.5">
-                API Base URL
+                {t('API Base URL')}
               </span>
               <input
                 type="text"
+                dir="ltr"
                 value={apiBaseUrl}
                 onChange={e => onApiBaseUrlChange(e.target.value)}
                 placeholder="http://localhost:8080"
                 className="w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
               />
               <span className="block text-[11px] text-secondary mt-1 px-0.5">
-                Writes <code>.env.development</code> and a <code>/api</code> proxy in <code>vite.config.ts</code>.
+                {t('Writes {env} and a {api} proxy in {config}.', { env: '.env.development', api: '/api', config: 'vite.config.ts' })}
               </span>
             </label>
             <label className="block">
               <span className="block text-[10px] uppercase font-bold tracking-widest text-primary mb-1.5">
-                Backend ArtifactId
+                {t('Backend ArtifactId')}
               </span>
               <input
                 type="text"
+                dir="ltr"
                 value={backendArtifactId}
                 onChange={e => onBackendArtifactIdChange(e.target.value)}
                 placeholder="demo-api"
                 className="w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
               />
               <span className="block text-[11px] text-secondary mt-1 px-0.5">
-                Mentioned in the generated README only.
+                {t('Mentioned in the generated README only.')}
               </span>
             </label>
           </div>

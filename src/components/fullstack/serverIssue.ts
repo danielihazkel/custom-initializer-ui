@@ -1,5 +1,6 @@
 import type { FullstackPageDef } from '../../types'
 import { pageOfServerError } from './pageLayout'
+import { t } from '../../i18n'
 
 /**
  * A 400 from `/starter-fullstack.zip` or `.preview`: the server's sentence, and — since the
@@ -100,13 +101,13 @@ export function locateServerIssue(issue: ServerIssue | null, pages: FullstackPag
 export function describeServerTarget(target: ServerTarget): string {
   switch (target.kind) {
     case 'entity':
-      if (target.field != null) return 'a field; it is marked in the entity list'
-      if (target.relation != null) return 'a relation; it is marked in the entity list'
-      if (target.panel === 'workflow') return 'a workflow; its entity is marked'
-      return 'an entity; it is marked in the entity list'
+      if (target.field != null) return t('a field; it is marked in the entity list')
+      if (target.relation != null) return t('a relation; it is marked in the entity list')
+      if (target.panel === 'workflow') return t('a workflow; its entity is marked')
+      return t('an entity; it is marked in the entity list')
     case 'page':
-      return 'a page; it is highlighted in the page layout'
+      return t('a page; it is highlighted in the page layout')
     case 'setting':
-      return 'a project setting'
+      return t('a project setting')
   }
 }

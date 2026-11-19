@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FeState } from './useFrontendState'
+import { t } from '../i18n'
 
 const PRESETS_KEY = 'frontendProjectPresets'
 const RECENTS_KEY = 'frontendRecentProjects'
@@ -49,7 +50,7 @@ export function useFrontendPresets() {
   const savePreset = useCallback((name: string, snapshot: FeState): FePreset => {
     const preset: FePreset = {
       id: makeId(),
-      name: name.trim() || 'Untitled preset',
+      name: name.trim() || t('Untitled preset'),
       createdAt: Date.now(),
       snapshot,
     }
@@ -71,7 +72,7 @@ export function useFrontendPresets() {
       if (last && snapshotsEqual(last.snapshot, snapshot)) return prev
       const entry: FePreset = {
         id: makeId(),
-        name: snapshot.form.projectName || 'untitled',
+        name: snapshot.form.projectName || t('untitled'),
         createdAt: Date.now(),
         snapshot,
       }

@@ -3,6 +3,7 @@ import {
   DIALECT_LABELS, LiveSchemaError, fetchSchemas, fetchTables, useLiveSchemaOptions,
   type LiveConnection, type LiveReadRequest, type LiveTableRef,
 } from './liveSchemaApi'
+import { t } from '../../i18n'
 
 const TYPED = '__typed__'
 
@@ -84,7 +85,7 @@ export function LiveSchemaPanel({ dialect: fixedDialect, readLabel, onRead }: Pr
     if (err instanceof DOMException && err.name === 'AbortError') return
     setError(err instanceof LiveSchemaError
       ? { title: err.title, detail: err.message }
-      : { title: 'Error', detail: err instanceof Error ? err.message : String(err) })
+      : { title: t('Error'), detail: err instanceof Error ? err.message : String(err) })
   }
 
   async function listTables(name: string, signal: AbortSignal) {
@@ -137,7 +138,7 @@ export function LiveSchemaPanel({ dialect: fixedDialect, readLabel, onRead }: Pr
     setError(null)
     setBusy('read')
     try {
-      const order = (tables ?? []).map(t => t.name).filter(n => picked.has(n))
+      const order = (tables ?? []).map(table => table.name).filter(n => picked.has(n))
       await onRead({ connection: connection(), schema, tables: order, qualify })
     } catch (err) {
       fail(err)
@@ -146,8 +147,8 @@ export function LiveSchemaPanel({ dialect: fixedDialect, readLabel, onRead }: Pr
     }
   }
 
-  const shown = (tables ?? []).filter(t => !filter.trim() || t.name.toLowerCase().includes(filter.trim().toLowerCase()))
-  const allShownPicked = shown.length > 0 && shown.every(t => picked.has(t.name))
+  const shown = (tables ?? []).filter(table => !filter.trim() || table.name.toLowerCase().includes(filter.trim().toLowerCase()))
+  const allShownPicked = shown.length > 0 && shown.every(table => picked.has(table.name))
   const overLimit = picked.size > options.maxTables
   const typedReady = !typed || (host.trim() !== '' && user.trim() !== '' && (dialect === 'DB2' || database.trim() !== ''))
   const canConnect = !loading && !driverMissing && effectiveChoice !== '' && typedReady && busy === null
@@ -158,7 +159,7 @@ export function LiveSchemaPanel({ dialect: fixedDialect, readLabel, onRead }: Pr
   function toggleShown() {
     setPicked(prev => {
       const next = new Set(prev)
-      for (const t of shown) { if (allShownPicked) next.delete(t.name); else next.add(t.name) }
+      for (const table of shown) { if (allShownPicked) next.delete(table.name); else next.add(table.name) }
       return next
     })
   }
@@ -166,7 +167,7 @@ export function LiveSchemaPanel({ dialect: fixedDialect, readLabel, onRead }: Pr
   if (unreadable) {
     return (
       <div data-live-schema className="text-xs text-on-surface-variant border border-outline-variant rounded-lg p-3">
-        {DIALECT_LABELS[fixedDialect] ?? fixedDialect} cannot be read from a live database — paste its DDL instead.
+        {t('{database} cannot be read from a live database — paste its DDL instead.', { database: DIALECT_LABELS[fixedDialect] ?? fixedDialect })}
       </div>
     )
   }
@@ -175,10 +176,10 @@ export function LiveSchemaPanel({ dialect: fixedDialect, readLabel, onRead }: Pr
     <div data-live-schema className="space-y-3 border border-outline-variant rounded-lg p-3 bg-surface-container-lowest">
       {fixedDialect === undefined && (
         <div>
-          <label htmlFor="live-dialect" className={label}>Database type</label>
+          <label htmlFor="live-dialect" className={label}>{t('Database type')}</label>
           <select id="live-dialect" className={input} value={dialect} onChange={e => { setPickedDialect(e.target.value); setChoice('') }}>
             {readable.map(d => (
-              <option key={d} value={d}>{DIALECT_LABELS[d] ?? d}{options.drivers[d] ? '' : ' (no driver on the server)'}</option>
+              <option key={d} value={d}>{options.drivers[d] ? DIALECT_LABELS[d] ?? d : t('{database} (no driver on the server)', { database: DIALECT_LABELS[d] ?? d })}</option>
             ))}
           </select>
         </div>
@@ -186,23 +187,23 @@ export function LiveSchemaPanel({ dialect: fixedDialect, readLabel, onRead }: Pr
 
       {driverMissing ? (
         <p role="status" className="text-xs text-warning">
-          The {DIALECT_LABELS[dialect] ?? dialect} driver is not installed on this server, so it cannot be read here.
+          {t('The {database} driver is not installed on this server, so it cannot be read here.', { database: DIALECT_LABELS[dialect] ?? dialect })}
         </p>
       ) : (
         <>
           <div>
-            <label htmlFor="live-source" className={label}>Connect to</label>
+            <label htmlFor="live-source" className={label}>{t('Connect to')}</label>
             <select id="live-source" className={input} value={effectiveChoice} onChange={e => setChoice(e.target.value)}>
               {sources.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-              {options.typedConnections && <option value={TYPED}>Another database…</option>}
-              {sources.length === 0 && !options.typedConnections && <option value="">No database set up</option>}
+              {options.typedConnections && <option value={TYPED}>{t('Another database…')}</option>}
+              {sources.length === 0 && !options.typedConnections && <option value="">{t('No database set up')}</option>}
             </select>
             {!typed && sources.find(s => s.name === effectiveChoice)?.description && (
               <p className="text-[10px] text-on-surface-variant mt-1">{sources.find(s => s.name === effectiveChoice)?.description}</p>
             )}
             {sources.length === 0 && !options.typedConnections && !loading && (
               <p className="text-[10px] text-on-surface-variant mt-1">
-                An admin can add {DIALECT_LABELS[dialect] ?? dialect} databases under Admin → Schema sources.
+                {t('An admin can add {database} databases under Admin → Schema sources.', { database: DIALECT_LABELS[dialect] ?? dialect })}
               </p>
             )}
           </div>
@@ -210,58 +211,58 @@ export function LiveSchemaPanel({ dialect: fixedDialect, readLabel, onRead }: Pr
           {typed && (
             <div data-live-typed className="grid grid-cols-6 gap-2">
               <div className="col-span-4">
-                <label htmlFor="live-host" className={label}>Host</label>
-                <input id="live-host" className={input} value={host} onChange={e => setHost(e.target.value)} placeholder="db01.menora.co.il" />
+                <label htmlFor="live-host" className={label}>{t('Host')}</label>
+                <input id="live-host" dir="ltr" className={input} value={host} onChange={e => setHost(e.target.value)} placeholder="db01.menora.co.il" />
               </div>
               <div className="col-span-2">
-                <label htmlFor="live-port" className={label}>Port</label>
-                <input id="live-port" className={input} inputMode="numeric" value={port}
+                <label htmlFor="live-port" className={label}>{t('Port')}</label>
+                <input id="live-port" dir="ltr" className={input} inputMode="numeric" value={port}
                        onChange={e => setPort(e.target.value.replace(/\D/g, ''))}
                        placeholder={options.defaultPorts[dialect] ? String(options.defaultPorts[dialect]) : '—'}
                        disabled={dialect === 'DB2'} />
               </div>
               {dialect === 'DB2' ? (
                 <div className="col-span-6">
-                  <label htmlFor="live-library" className={label}>Library (optional)</label>
-                  <input id="live-library" className={input} value={library} onChange={e => setLibrary(e.target.value)} />
+                  <label htmlFor="live-library" className={label}>{t('Library (optional)')}</label>
+                  <input id="live-library" dir="ltr" className={input} value={library} onChange={e => setLibrary(e.target.value)} />
                 </div>
               ) : (
                 <div className="col-span-6">
-                  <label htmlFor="live-database" className={label}>{dialect === 'ORACLE' ? 'Service name' : 'Database'}</label>
-                  <input id="live-database" className={input} value={database} onChange={e => setDatabase(e.target.value)} />
+                  <label htmlFor="live-database" className={label}>{dialect === 'ORACLE' ? t('Service name') : t('Database')}</label>
+                  <input id="live-database" dir="ltr" className={input} value={database} onChange={e => setDatabase(e.target.value)} />
                 </div>
               )}
               <div className="col-span-3">
-                <label htmlFor="live-user" className={label}>User</label>
-                <input id="live-user" className={input} value={user} onChange={e => setUser(e.target.value)} autoComplete="off" />
+                <label htmlFor="live-user" className={label}>{t('User')}</label>
+                <input id="live-user" dir="ltr" className={input} value={user} onChange={e => setUser(e.target.value)} autoComplete="off" />
               </div>
               <div className="col-span-3">
-                <label htmlFor="live-password" className={label}>Password</label>
-                <input id="live-password" className={input} type="password" value={password}
+                <label htmlFor="live-password" className={label}>{t('Password')}</label>
+                <input id="live-password" dir="ltr" className={input} type="password" value={password}
                        onChange={e => setPassword(e.target.value)} autoComplete="new-password" />
               </div>
               {dialect === 'MSSQL' && (
                 <label className="col-span-6 flex items-center gap-2 text-xs text-on-surface-variant">
                   <input type="checkbox" className="accent-primary" checked={trustCert} onChange={e => setTrustCert(e.target.checked)} />
-                  Trust the server's certificate (a self-signed one)
+                  {t("Trust the server's certificate (a self-signed one)")}
                 </label>
               )}
               <p className="col-span-6 text-[10px] text-on-surface-variant leading-relaxed">
-                Use a user that may only read. The password is sent for this read and kept nowhere.
+                {t('Use a user that may only read. The password is sent for this read and kept nowhere.')}
               </p>
             </div>
           )}
 
           <button type="button" onClick={connect} disabled={!canConnect}
                   className="w-full px-3 py-2 rounded-lg text-xs font-bold border border-primary/60 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50">
-            {busy === 'connect' ? 'Connecting…' : schemas ? 'Connect again' : 'Connect'}
+            {busy === 'connect' ? t('Connecting…') : schemas ? t('Connect again') : t('Connect')}
           </button>
         </>
       )}
 
       {schemas && (
         <div>
-          <label htmlFor="live-schema" className={label}>Schema</label>
+          <label htmlFor="live-schema" className={label}>{t('Schema')}</label>
           <select id="live-schema" className={input} value={schema} onChange={e => changeSchema(e.target.value)} disabled={busy !== null}>
             {schemas.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -271,44 +272,44 @@ export function LiveSchemaPanel({ dialect: fixedDialect, readLabel, onRead }: Pr
       {tables && (
         <div data-live-tables>
           <div className="flex items-center gap-2 mb-1.5">
-            <input aria-label="Filter tables" className={`${input} py-1 text-xs`} placeholder="Filter…" value={filter} onChange={e => setFilter(e.target.value)} />
+            <input aria-label={t('Filter tables')} className={`${input} py-1 text-xs`} placeholder={t('Filter…')} value={filter} onChange={e => setFilter(e.target.value)} />
             {shown.length > 0 && (
               <button type="button" onClick={toggleShown} className="text-[11px] text-secondary underline hover:no-underline whitespace-nowrap">
-                {allShownPicked ? 'Select none' : 'Select all'}
+                {allShownPicked ? t('Select none') : t('Select all')}
               </button>
             )}
           </div>
           {tables.length === 0 ? (
-            <p className="text-xs text-on-surface-variant">This schema has no tables or views you may read.</p>
+            <p className="text-xs text-on-surface-variant">{t('This schema has no tables or views you may read.')}</p>
           ) : (
-            <ul className="max-h-56 overflow-y-auto space-y-0.5 pr-1">
-              {shown.map(t => (
-                <li key={t.name}>
+            <ul className="max-h-56 overflow-y-auto space-y-0.5 pe-1">
+              {shown.map(table => (
+                <li key={table.name}>
                   <label className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
-                    <input type="checkbox" className="accent-primary" checked={picked.has(t.name)} onChange={() => toggle(t.name)} aria-label={`Read ${t.name}`} />
-                    <span className="font-mono text-on-surface">{t.name}</span>
-                    {t.kind === 'VIEW' && (
-                      <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-tertiary/10 text-tertiary font-bold">view</span>
+                    <input type="checkbox" className="accent-primary" checked={picked.has(table.name)} onChange={() => toggle(table.name)} aria-label={t('Read {table}', { table: table.name })} />
+                    <span className="font-mono text-on-surface" dir="ltr">{table.name}</span>
+                    {table.kind === 'VIEW' && (
+                      <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-tertiary/10 text-tertiary font-bold">{t('view')}</span>
                     )}
                   </label>
                 </li>
               ))}
             </ul>
           )}
-          {truncated && <p className="text-[10px] text-warning mt-1">Only the first tables are listed; filter to find one.</p>}
+          {truncated && <p className="text-[10px] text-warning mt-1">{t('Only the first tables are listed; filter to find one.')}</p>}
           <label className="flex items-center gap-2 text-xs text-on-surface-variant mt-2">
             <input type="checkbox" className="accent-primary" checked={qualify} onChange={e => setQualify(e.target.checked)} />
-            Keep the schema name ({schema || 'schema'}.table)
+            {t('Keep the schema name ({example})', { example: `${schema || 'schema'}.table` })}
           </label>
-          {overLimit && <p className="text-[11px] text-error mt-1">Pick at most {options.maxTables} at a time.</p>}
+          {overLimit && <p className="text-[11px] text-error mt-1">{t('Pick at most {n} at a time.', { n: options.maxTables })}</p>}
           <button type="button" onClick={read} disabled={picked.size === 0 || overLimit || busy !== null}
                   className="mt-2 w-full px-3 py-2 rounded-lg text-xs font-bold bg-primary text-on-primary hover:brightness-110 transition-all disabled:opacity-50">
-            {busy === 'read' ? 'Reading…' : readLabel(picked.size)}
+            {busy === 'read' ? t('Reading…') : readLabel(picked.size)}
           </button>
         </div>
       )}
 
-      {busy === 'tables' && <p className="text-[11px] text-secondary">Listing tables…</p>}
+      {busy === 'tables' && <p className="text-[11px] text-secondary">{t('Listing tables…')}</p>}
 
       {error && (
         <div role="alert" className="text-xs text-error bg-error/10 border border-error/30 rounded-lg p-2.5">

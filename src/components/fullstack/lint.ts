@@ -5,6 +5,7 @@ import { newUid } from './uid'
 import { ambiguousMoves, stateLabel, unreachableStates } from './workflow'
 import { isTextualType } from './fieldTypes'
 import { cleanAccess } from './access'
+import { t, tn } from '../../i18n'
 
 /**
  * Model lint: things that are *valid* (the server would accept them) but will produce a
@@ -74,7 +75,7 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
   const byName = new Map(entities.filter(e => e.name.trim()).map(e => [e.name.trim().toLowerCase(), e]))
 
   for (const entity of entities) {
-    const name = entity.name.trim() || '(unnamed)'
+    const name = entity.name.trim() || t('(unnamed)')
     const uid = entity.uid
     const isView = entity.viewQuery != null
 
@@ -91,9 +92,9 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
         rule: 'label-field',
         severity: 'warn',
         entityUid: target.uid,
-        message: `${name}.${rel.fieldName.trim() || '?'} points at ${targetName}, which has no text field — its dropdown and table column will show ids.`,
+        message: t('{field} points at {target}, which has no text field — its dropdown and table column will show ids.', { field: `${name}.${rel.fieldName.trim() || '?'}`, target: targetName }),
         fix: hasNameField || target.viewQuery != null ? undefined : {
-          label: `Add a required "name" field to ${targetName}`,
+          label: t('Add a required "name" field to {target}', { target: targetName }),
           apply: m => replaceEntity(m, target.uid, e => ({
             ...e,
             fields: [...e.fields, { uid: newUid(), name: 'name', type: 'STRING', required: true, length: 120 }],
@@ -110,9 +111,11 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
         rule: 'no-search',
         severity: 'info',
         entityUid: uid,
-        message: `${name}: every text field is excluded from search, so the page gets no search box.`,
+        message: t('{entity}: every text field is excluded from search, so the page gets no search box.', { entity: name }),
         fix: {
-          label: `Include ${textFields[0].name.trim() || 'the first text field'} in search`,
+          label: textFields[0].name.trim()
+            ? t('Include {field} in search', { field: textFields[0].name.trim() })
+            : t('Include the first text field in search'),
           apply: m => replaceEntity(m, uid, e => ({
             ...e, fields: e.fields.map(f => f.uid === textFields[0].uid ? { ...f, searchable: undefined } : f),
           })),
@@ -126,16 +129,16 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
     for (const view of requested) {
       if (rendered.has(view)) continue
       const why = view === 'kanban'
-        ? (isView || entity.readOnly ? 'it needs a writable entity' : 'it needs an enum or boolean field')
-        : view === 'gallery' ? 'it needs an image field' : 'it needs a date field'
+        ? (isView || entity.readOnly ? t('it needs a writable entity') : t('it needs an enum or boolean field'))
+        : view === 'gallery' ? t('it needs an image field') : t('it needs a date field')
       issues.push({
         id: `view-dropped:${uid}:${view}`,
         rule: 'view-dropped',
         severity: 'warn',
         entityUid: uid,
-        message: `${name}: the ${view} view will not be generated — ${why}.`,
+        message: t('{entity}: the {view} view will not be generated — {why}.', { entity: name, view, why }),
         fix: {
-          label: `Untick ${view} on ${name}`,
+          label: t('Untick {view} on {entity}', { view, entity: name }),
           apply: m => replaceEntity(m, uid, e => {
             const next = (e.listViews ?? (e.listView ? [e.listView] : [])).filter(v => v !== view)
             return { ...e, listViews: (next.length ? next : ['table']) as FullstackEntityDef['listViews'], listView: undefined }
@@ -152,7 +155,7 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
         rule: 'only-keys',
         severity: 'warn',
         entityUid: uid,
-        message: `${name} has only key fields — its form and table will carry no data.`,
+        message: t('{entity} has only key fields — its form and table will carry no data.', { entity: name }),
       })
     }
 
@@ -172,9 +175,9 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
         rule: 'join-entity-to-m2m',
         severity: 'info',
         entityUid: uid,
-        message: `${name} only links ${ownerName} and ${targetName} — a many-to-many relation on ${ownerName} does the same with a multi-pick control and no page of its own.`,
+        message: t('{entity} only links {owner} and {target} — a many-to-many relation on {owner} does the same with a multi-pick control and no page of its own.', { entity: name, owner: ownerName, target: targetName }),
         fix: {
-          label: `Replace ${name} with ${ownerName}.${fieldName} (many-to-many)`,
+          label: t('Replace {entity} with {relation} (many-to-many)', { entity: name, relation: `${ownerName}.${fieldName}` }),
           apply: m => ({
             ...m,
             entities: m.entities.filter(e => e.uid !== uid).map(e => e.uid !== owner.uid ? e : {
@@ -200,7 +203,7 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
           rule: 'workflow-unreachable',
           severity: 'info',
           entityUid: uid,
-          message: `${name}: no step of its workflow leads to ${stateLabel(state)}, and new rows start elsewhere — it is never reached.`,
+          message: t('{entity}: no step of its workflow leads to {state}, and new rows start elsewhere — it is never reached.', { entity: name, state: stateLabel(state) }),
         })
       }
       for (const move of ambiguousMoves(entity.workflow)) {
@@ -209,7 +212,9 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
           rule: 'workflow-ambiguous',
           severity: 'warn',
           entityUid: uid,
-          message: `${name}: ${move.names.join(' and ')} both move ${stateLabel(move.from)} to ${stateLabel(move.to)}, so dragging a card between those lanes asks the user to pick on the record.`,
+          message: t('{entity}: {steps} both move {from} to {to}, so dragging a card between those lanes asks the user to pick on the record.', {
+            entity: name, steps: move.names.join(t(' and ')), from: stateLabel(move.from), to: stateLabel(move.to),
+          }),
         })
       }
       if (entity.workflow.transitions.some(t => (t.roles?.length ?? 0) > 0) && !selectedDeps.some(d => LDAP_DEPS.includes(d))) {
@@ -218,8 +223,8 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
           rule: 'workflow-roles',
           severity: 'warn',
           entityUid: uid,
-          message: `${name}: its workflow limits steps to roles, which come from LDAP groups — the project has no ldap-auth dependency.`,
-          fix: { label: 'Add ldap-auth-rest', apply: m => ({ ...m, selectedDeps: [...m.selectedDeps, 'ldap-auth-rest'] }) },
+          message: t('{entity}: its workflow limits steps to roles, which come from LDAP groups — the project has no ldap-auth dependency.', { entity: name }),
+          fix: { label: t('Add ldap-auth-rest'), apply: m => ({ ...m, selectedDeps: [...m.selectedDeps, 'ldap-auth-rest'] }) },
         })
       }
     }
@@ -232,9 +237,9 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
         rule: 'unique-default',
         severity: 'warn',
         entityUid: uid,
-        message: `${name}.${f.name.trim() || '?'} is unique but has a default — the second row saved with the default answers 409.`,
+        message: t('{field} is unique but has a default — the second row saved with the default answers 409.', { field: `${name}.${f.name.trim() || '?'}` }),
         fix: {
-          label: `Clear the default on ${f.name.trim() || 'the field'}`,
+          label: f.name.trim() ? t('Clear the default on {field}', { field: f.name.trim() }) : t('Clear the default on the field'),
           apply: m => replaceEntity(m, uid, e => ({
             ...e, fields: e.fields.map(x => x.uid === f.uid ? { ...x, defaultValue: undefined } : x),
           })),
@@ -266,9 +271,9 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
           rule: 'fk-lookalike',
           severity: 'warn',
           entityUid: uid,
-          message: `${name}.${fieldName} looks like a reference to ${targetName} — as a relation it gets a dropdown, a filter and a label column instead of a bare number.`,
+          message: t('{field} looks like a reference to {target} — as a relation it gets a dropdown, a filter and a label column instead of a bare number.', { field: `${name}.${fieldName}`, target: targetName }),
           fix: collides ? undefined : {
-            label: `Convert ${fieldName} to a relation to ${targetName}`,
+            label: t('Convert {field} to a relation to {target}', { field: fieldName, target: targetName }),
             apply: m => replaceEntity(m, uid, e => ({
               ...e,
               fields: e.fields.filter(x => x.uid !== f.uid),
@@ -293,9 +298,9 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
         rule: 'override-no-effect',
         severity: 'info',
         entityUid: uid,
-        message: `${name}: the ${key} override has no effect (${a.reason}).`,
+        message: t('{entity}: the {option} override has no effect ({reason}).', { entity: name, option: key, reason: a.reason ?? '' }),
         fix: {
-          label: `Set ${key} back to inherit on ${name}`,
+          label: t('Set {option} back to inherit on {entity}', { option: key, entity: name }),
           apply: m => replaceEntity(m, uid, e => {
             const opts = { ...(e.opts ?? {}) }
             delete opts[key as keyof typeof opts]
@@ -315,9 +320,12 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
       id: 'access-needs-ldap',
       rule: 'access-needs-ldap',
       severity: 'warn',
-      message: `${withAccess.map(e => e.name).join(', ')} ${withAccess.length === 1 ? 'sets' : 'set'} access levels, which are checked against LDAP groups — the project has no ldap-auth dependency.`,
+      message: tn(withAccess.length,
+        '{entities} sets access levels, which are checked against LDAP groups — the project has no ldap-auth dependency.',
+        '{entities} set access levels, which are checked against LDAP groups — the project has no ldap-auth dependency.',
+        { entities: withAccess.map(e => e.name).join(', ') }),
       // ldap-auth-rest is the template sets' default variant (groups from the LDAP REST service).
-      fix: { label: 'Add ldap-auth-rest', apply: m => ({ ...m, selectedDeps: [...m.selectedDeps, 'ldap-auth-rest'] }) },
+      fix: { label: t('Add ldap-auth-rest'), apply: m => ({ ...m, selectedDeps: [...m.selectedDeps, 'ldap-auth-rest'] }) },
     })
   }
   if (scaffoldOpts.includes('openapi') && !selectedDeps.includes('openapi')) {
@@ -325,8 +333,8 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
       id: 'openapi-adds-dep',
       rule: 'openapi-adds-dep',
       severity: 'info',
-      message: 'OpenAPI annotations add the openapi starter to the build even though it is not in your dependency list.',
-      fix: { label: 'Add openapi to the dependencies', apply: m => ({ ...m, selectedDeps: [...m.selectedDeps, 'openapi'] }) },
+      message: t('OpenAPI annotations add the openapi starter to the build even though it is not in your dependency list.'),
+      fix: { label: t('Add openapi to the dependencies'), apply: m => ({ ...m, selectedDeps: [...m.selectedDeps, 'openapi'] }) },
     })
   }
 

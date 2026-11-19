@@ -1,6 +1,7 @@
 import type { FullstackPageDef, PreviewFile } from '../../types'
 import type { EntityCodeFile } from './entityCode'
 import { toKebabCase, toPascalCase } from './naming'
+import { t } from '../../i18n'
 
 /**
  * Picks the generated files that make up one page out of a whole-project preview — the designer
@@ -55,10 +56,11 @@ export function pageCodeFiles(page: FullstackPageDef, pages: FullstackPageDef[],
   return out[0]?.role === 'screen' ? out : []
 }
 
-export const PAGE_CODE_ROLE: Record<PageCodeFile['role'], string> = {
-  screen: 'This page',
-  tab: 'Embedded as a tab',
-  entity: 'The list it draws',
-  form: 'The entity form it shows',
-  shell: 'The app shell that routes to it',
+// Getters: read in the site's language when shown.
+export const PAGE_CODE_ROLE: Readonly<Record<PageCodeFile['role'], string>> = {
+  get screen() { return t('This page') },
+  get tab() { return t('Embedded as a tab') },
+  get entity() { return t('The list it draws') },
+  get form() { return t('The entity form it shows') },
+  get shell() { return t('The app shell that routes to it') },
 }

@@ -5,13 +5,17 @@ import type { SqlApiMode, SqlTableConfig, SqlWizardEntry } from '../types'
 import { requiredSqlDeps, isSqlDepSatisfied } from '../utils/projectUtils'
 import { LiveSchemaPanel } from './liveSchema/LiveSchemaPanel'
 import { fetchDdl, type LiveReadRequest } from './liveSchema/liveSchemaApi'
+import { isRtl, t, tn } from '../i18n'
+import { codeText } from '../utils/codeText'
 
-const API_MODES: { id: SqlApiMode; label: string; hint: string }[] = [
-  { id: 'NONE', label: 'Entities only', hint: 'JPA entities (+ optional repositories)' },
-  { id: 'ENTITY_DIRECT', label: 'REST API — entity', hint: 'Repository + Service + Controller, entity exposed directly' },
-  { id: 'INLINE_DTO', label: 'REST API — DTO', hint: 'Adds a record DTO with from()/toEntity() — no extra dependency' },
-  { id: 'MAPSTRUCT_DTO', label: 'REST API — MapStruct', hint: 'Adds a record DTO + @Mapper interface (auto-adds MapStruct)' },
-]
+function apiModes(): { id: SqlApiMode; label: string; hint: string }[] {
+  return [
+    { id: 'NONE', label: t('Entities only'), hint: t('JPA entities (+ optional repositories)') },
+    { id: 'ENTITY_DIRECT', label: t('REST API — entity'), hint: t('Repository + Service + Controller, entity exposed directly') },
+    { id: 'INLINE_DTO', label: t('REST API — DTO'), hint: t('Adds a record DTO with from()/toEntity() — no extra dependency') },
+    { id: 'MAPSTRUCT_DTO', label: t('REST API — MapStruct'), hint: t('Adds a record DTO + @Mapper interface (auto-adds MapStruct)') },
+  ]
+}
 
 interface Props {
   isOpen: boolean
@@ -70,6 +74,20 @@ function hasSelect(sql: string): boolean {
   return SELECT_REGEX.test(sql)
 }
 
+/** What a read from a live database put in the script. */
+function readSummary(tableCount: number, viewCount: number, schema: string, replaced: boolean): string {
+  const tables = tn(tableCount, '{n} table', '{n} tables')
+  if (viewCount) {
+    const views = tn(viewCount, '{n} view', '{n} views')
+    return replaced
+      ? t('Read {tables} and {views} from {schema} — the script was replaced.', { tables, views, schema })
+      : t('Read {tables} and {views} from {schema}.', { tables, views, schema })
+  }
+  return replaced
+    ? t('Read {tables} from {schema} — the script was replaced.', { tables, schema })
+    : t('Read {tables} from {schema}.', { tables, schema })
+}
+
 /** One on/off line of the "other dependencies" box. */
 function ExtraToggle({ checked, disabled, onChange, label, note }: {
   checked: boolean
@@ -112,7 +130,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
     setSql(r.sql)
     setLiveOpen(false)
     setLastRead({
-      summary: `Read ${r.tables} table${r.tables === 1 ? '' : 's'}${r.views ? ` and ${r.views} view${r.views === 1 ? '' : 's'}` : ''} from ${req.schema}${previous.trim() ? ' — the script was replaced' : ''}.`,
+      summary: readSummary(r.tables, r.views, req.schema, previous.trim() !== ''),
       warnings: r.warnings,
       previous,
     })
@@ -173,23 +191,27 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
 
   return (
     <AdminFormDrawer
-      title={`SQL Entities — ${depName}`}
+      title={t('SQL Entities — {dep}', { dep: depName })}
       isOpen={isOpen}
       onClose={onClose}
       onSave={handleSave}
       saving={false}
+      saveLabel={t('Save')}
+      cancelLabel={t('Cancel')}
+      closeLabel={t('Close')}
+      dir={isRtl() ? 'rtl' : 'ltr'}
     >
       <div className="space-y-4">
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/30 text-xs text-primary">
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>database</span>
           <span>
-            Dialect detected: <span className="font-bold">{dialectName}</span>
+            {t('Dialect detected:')} <span className="font-bold">{dialectName}</span>
           </span>
         </div>
 
         <div>
           <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
-            Sub-package (under your root package)
+            {t('Sub-package (under your root package)')}
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -197,24 +219,25 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
               value={subPackage}
               onChange={e => setSubPackage(e.target.value)}
               placeholder="entity"
+              dir="ltr"
               className="flex-1 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all"
             />
-            <span className="text-[10px] text-secondary font-mono">→ repositories go to <span className="text-on-surface-variant">repository/</span></span>
+            <span className="text-[10px] text-secondary font-mono">→ {t('repositories go to')} <span className="text-on-surface-variant" dir="ltr">repository/</span></span>
           </div>
         </div>
 
         <div>
           <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
-            Generate REST API
+            {t('Generate REST API')}
           </label>
           <div className="grid grid-cols-2 gap-2">
-            {API_MODES.map(m => (
+            {apiModes().map(m => (
               <button
                 key={m.id}
                 type="button"
                 onClick={() => setApiMode(m.id)}
                 title={m.hint}
-                className={`text-left px-3 py-2 rounded-lg border text-xs transition-all ${
+                className={`text-start px-3 py-2 rounded-lg border text-xs transition-all ${
                   apiMode === m.id
                     ? 'bg-primary/10 border-primary text-primary'
                     : 'bg-surface-container-highest border-outline-variant text-on-surface-variant hover:border-primary/50'
@@ -226,7 +249,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
             ))}
           </div>
           <div className="mt-2 space-y-1">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-secondary">Required dependencies</div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-secondary">{t('Required dependencies')}</div>
             {requiredSqlDeps(apiMode).map(dep => {
               const ok = isSqlDepSatisfied(dep, selected)
               return (
@@ -235,40 +258,39 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
                     {ok ? 'check_circle' : 'add_circle'}
                   </span>
                   <code className="text-primary">{dep}</code>
-                  <span className="text-on-surface-variant">{ok ? 'already selected' : 'added automatically on save'}</span>
+                  <span className="text-on-surface-variant">{ok ? t('already selected') : t('added automatically on save')}</span>
                 </div>
               )
             })}
           </div>
           {apiMode !== 'NONE' && (
             <p className="text-[10px] text-on-surface-variant mt-1.5 leading-relaxed">
-              A Service + Controller (REST CRUD under <code className="text-primary">/api/&lt;table&gt;</code>) is generated per
-              table with a primary key. Tables without a primary key still produce an entity only.
+              {codeText(t('A Service + Controller (REST CRUD under `/api/<table>`) is generated per table with a primary key. Tables without a primary key still produce an entity only.'))}
             </p>
           )}
         </div>
 
         <div data-sql-extras>
           <label className="block text-xs font-bold uppercase tracking-widest text-secondary mb-2">
-            With the project's other dependencies
+            {t("With the project's other dependencies")}
           </label>
           <div className="space-y-2 border border-outline-variant rounded-lg p-3 bg-surface-container-lowest">
             <ExtraToggle
               checked={flywayBaseline}
               onChange={setFlywayBaseline}
-              label="Use this script as the Flyway baseline"
+              label={t('Use this script as the Flyway baseline')}
               note={selected.includes('flyway')
-                ? <>Written to <code className="text-primary">db/migration/V1__init.sql</code>, in place of the placeholder migration.</>
-                : <>Takes effect when <code className="text-primary">flyway</code> is selected — it is not, so no migration is written.</>}
+                ? codeText(t('Written to `db/migration/V1__init.sql`, in place of the placeholder migration.'))
+                : codeText(t('Takes effect when `flyway` is selected — it is not, so no migration is written.'))}
             />
             <ExtraToggle
               checked={generateTests && apiMode !== 'NONE'}
               disabled={apiMode === 'NONE'}
               onChange={setGenerateTests}
-              label="Generate controller tests"
+              label={t('Generate controller tests')}
               note={apiMode === 'NONE'
-                ? <>Needs a REST API mode: a test is written per controller.</>
-                : <>A <code className="text-primary">@WebMvcTest</code> per controller, the service mocked.</>}
+                ? t('Needs a REST API mode: a test is written per controller.')
+                : codeText(t('A `@WebMvcTest` per controller, the service mocked.'))}
             />
             <div className="flex items-start gap-2 text-[10px] text-on-surface-variant leading-relaxed">
               <span className={`material-symbols-outlined ${selected.includes('validation') ? 'text-primary' : 'text-secondary'}`} style={{ fontSize: '13px' }}>
@@ -276,8 +298,8 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
               </span>
               <span>
                 {selected.includes('validation')
-                  ? <><code className="text-primary">validation</code> is selected: <code className="text-primary">NOT NULL</code> and column lengths become <code className="text-primary">@NotNull</code> / <code className="text-primary">@Size</code>, and request bodies are <code className="text-primary">@Valid</code>.</>
-                  : <>Select <code className="text-primary">validation</code> to turn <code className="text-primary">NOT NULL</code> and column lengths into Bean Validation on the request bodies.</>}
+                  ? codeText(t('`validation` is selected: `NOT NULL` and column lengths become `@NotNull` / `@Size`, and request bodies are `@Valid`.'))
+                  : codeText(t('Select `validation` to turn `NOT NULL` and column lengths into Bean Validation on the request bodies.'))}
               </span>
             </div>
           </div>
@@ -286,7 +308,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-bold uppercase tracking-widest text-secondary">
-              SQL Scripts
+              {t('SQL Scripts')}
             </label>
             <div className="flex items-center gap-3">
               <button
@@ -297,7 +319,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
                 className="inline-flex items-center gap-1 text-[10px] font-medium text-secondary hover:text-on-surface transition-colors"
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>database</span>
-                {liveOpen ? 'Close' : 'Read from a database…'}
+                {liveOpen ? t('Close') : t('Read from a database…')}
               </button>
               {sql.length > 0 && (
                 <button
@@ -305,7 +327,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
                   onClick={handleClear}
                   className="text-[10px] text-secondary hover:text-error transition-colors"
                 >
-                  Clear
+                  {t('Clear')}
                 </button>
               )}
             </div>
@@ -314,7 +336,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
             <div className="mb-3">
               <LiveSchemaPanel
                 dialect={dialectName}
-                readLabel={n => n === 0 ? 'Pick tables to read' : `Read ${n} into the script${sql.trim() ? ' (replaces it)' : ''}`}
+                readLabel={n => n === 0 ? t('Pick tables to read') : sql.trim() ? t('Read {n} into the script (replaces it)', { n }) : t('Read {n} into the script', { n })}
                 onRead={readFromDatabase}
               />
             </div>
@@ -328,34 +350,28 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
               </span>
               <button type="button" className="underline hover:no-underline"
                       onClick={() => { setSql(lastRead.previous); setLastRead(null) }}>
-                Undo
+                {t('Undo')}
               </button>
             </div>
           )}
-          <CodeEditor
-            value={sql}
-            onChange={setSql}
-            targetPath="init.sql"
-          />
+          <div dir="ltr">
+            <CodeEditor
+              value={sql}
+              onChange={setSql}
+              targetPath="init.sql"
+            />
+          </div>
           <p className="text-[10px] text-on-surface-variant mt-1.5 leading-relaxed">
-            Paste one or more <code className="text-primary">CREATE TABLE</code> statements, or read them from a database
-            (a view comes in as a <code className="text-primary">SELECT</code> of its columns) — keys, foreign keys and unique
-            constraints added by <code className="text-primary">ALTER TABLE</code> are read too, and a{' '}
-            <code className="text-primary">CHECK (col IN (…))</code> becomes an enum. Entities + optional
-            JPA repositories are generated into your project when downloaded. A <code className="text-primary">SELECT</code>{' '}
-            becomes a read-only <code className="text-primary">@Subselect</code> view (GET-only; fields are generated as
-            {' '}<code className="text-primary">String</code> with a TODO to set the real type in source).{' '}
-            <code className="text-primary">COMMENT ON</code>, <code className="text-primary">CREATE INDEX</code>, and{' '}
-            <code className="text-primary">GRANT</code> statements are accepted and silently ignored.
+            {codeText(t('Paste one or more `CREATE TABLE` statements, or read them from a database (a view comes in as a `SELECT` of its columns) — keys, foreign keys and unique constraints added by `ALTER TABLE` are read too, and a `CHECK (col IN (…))` becomes an enum. Entities + optional JPA repositories are generated into your project when downloaded. A `SELECT` becomes a read-only `@Subselect` view (GET-only; fields are generated as `String` with a TODO to set the real type in source). `COMMENT ON`, `CREATE INDEX`, and `GRANT` statements are accepted and silently ignored.'))}
           </p>
         </div>
 
         {parseError && (
           <div className="text-xs text-error bg-error/10 border border-error/30 rounded-lg p-3 space-y-1.5">
-            <div className="font-bold uppercase tracking-widest text-[10px]">SQL parse error</div>
+            <div className="font-bold uppercase tracking-widest text-[10px]">{t('SQL parse error')}</div>
             <div className="text-on-surface">
               {parseError.statementIndex != null
-                ? `Statement #${parseError.statementIndex}: ${parseError.message}`
+                ? t('Statement #{n}: {message}', { n: parseError.statementIndex, message: parseError.message })
                 : parseError.message}
             </div>
             {parseError.snippet && (
@@ -368,40 +384,40 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold uppercase tracking-widest text-secondary">
-                Detected Entities
+                {t('Detected Entities')}
               </label>
               <span className="text-[10px] font-bold py-0.5 px-2 bg-primary/10 text-primary rounded-full">
                 {tables.length + detectedViews.length}
               </span>
             </div>
             <div className="space-y-2 border border-outline-variant rounded-lg p-3 bg-surface-container-lowest">
-              {tables.map(t => (
-                <label key={t.name} className="flex items-center justify-between gap-3 text-xs cursor-pointer group">
-                  <span className="font-mono text-on-surface font-semibold">{t.name}</span>
+              {tables.map(table => (
+                <label key={table.name} className="flex items-center justify-between gap-3 text-xs cursor-pointer group">
+                  <span className="font-mono text-on-surface font-semibold" dir="ltr">{table.name}</span>
                   <div className="flex items-center gap-2 text-secondary group-hover:text-on-surface transition-colors">
                     <div className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-all ${
-                      t.generateRepository
+                      table.generateRepository
                         ? 'bg-secondary border-secondary text-on-surface'
                         : 'bg-surface-container-lowest border-secondary/40 group-hover:border-secondary'
                     }`}>
-                      {t.generateRepository && <span className="material-symbols-outlined font-bold text-background" style={{ fontSize: '12px' }}>check</span>}
+                      {table.generateRepository && <span className="material-symbols-outlined font-bold text-background" style={{ fontSize: '12px' }}>check</span>}
                     </div>
                     <input
                       type="checkbox"
-                      checked={t.generateRepository}
-                      onChange={() => toggleRepo(t.name)}
+                      checked={table.generateRepository}
+                      onChange={() => toggleRepo(table.name)}
                       className="sr-only"
                     />
-                    <span className="text-[10px] font-medium">Generate repository</span>
+                    <span className="text-[10px] font-medium">{t('Generate repository')}</span>
                   </div>
                 </label>
               ))}
               {detectedViews.map((name, i) => (
                 <div key={`view-${i}-${name}`} className="flex items-center justify-between gap-3 text-xs">
-                  <span className="font-mono text-on-surface font-semibold">{name}</span>
+                  <span className="font-mono text-on-surface font-semibold" dir="ltr">{name}</span>
                   <span className="flex items-center gap-1 text-[10px] font-medium py-0.5 px-2 bg-tertiary/10 text-tertiary rounded-full">
                     <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>visibility</span>
-                    read-only view
+                    {t('read-only view')}
                   </span>
                 </div>
               ))}
@@ -411,8 +427,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
 
         {sql.trim().length > 0 && tables.length === 0 && !selectPresent && (
           <div className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg p-3">
-            No <code className="font-mono">CREATE TABLE</code> or <code className="font-mono">SELECT</code> statements
-            detected. Check your SQL syntax.
+            {codeText(t('No `CREATE TABLE` or `SELECT` statements detected. Check your SQL syntax.'), 'font-mono')}
           </div>
         )}
       </div>

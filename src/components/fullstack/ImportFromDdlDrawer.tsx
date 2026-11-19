@@ -5,6 +5,7 @@ import { newUid } from './uid'
 import { useSqlDialects } from '../../hooks/useSqlDialects'
 import { LiveSchemaPanel } from '../liveSchema/LiveSchemaPanel'
 import { postLive, type LiveReadRequest } from '../liveSchema/liveSchemaApi'
+import { t, tn } from '../../i18n'
 
 interface Props {
   isOpen: boolean
@@ -22,36 +23,38 @@ interface Props {
 export type ImportMode = 'replace' | 'append'
 export type ImportVariant = 'ddl' | 'select'
 
-const COPY: Record<ImportVariant, {
+/** The words of each variant, in the site's language at the moment the drawer renders. */
+function copyOf(variant: ImportVariant): {
   title: string; endpoint: string; emptyHint: string; emptyResult: string; placeholder: string; blurb: ReactNode
-}> = {
-  ddl: {
-    title: 'Import Entities from SQL DDL',
-    endpoint: '/metadata/fullstack/import-ddl',
-    emptyHint: 'Paste at least one CREATE TABLE statement',
-    emptyResult: 'No CREATE TABLE statements were detected',
-    placeholder: 'CREATE TABLE products (\n  id BIGINT PRIMARY KEY AUTO_INCREMENT,\n  sku VARCHAR(64) NOT NULL,\n  price NUMERIC(10,2)\n);',
-    blurb: (
-      <>Paste <code className="font-mono text-on-surface">CREATE TABLE</code> statements
-      and a starter entity list will be generated. Column types map to fullstack field
-      types — review the result in the editor before generating.</>
-    ),
-  },
-  select: {
-    title: 'Import a Read-only View from SELECT',
+} {
+  if (variant === 'ddl') {
+    return {
+      title: t('Import Entities from SQL DDL'),
+      endpoint: '/metadata/fullstack/import-ddl',
+      emptyHint: t('Paste at least one CREATE TABLE statement'),
+      emptyResult: t('No CREATE TABLE statements were detected'),
+      placeholder: 'CREATE TABLE products (\n  id BIGINT PRIMARY KEY AUTO_INCREMENT,\n  sku VARCHAR(64) NOT NULL,\n  price NUMERIC(10,2)\n);',
+      blurb: (
+        <>{t('Paste')} <code className="font-mono text-on-surface">CREATE TABLE</code>{' '}
+        {t('statements and a starter entity list will be generated. Column types map to fullstack field types — review the result in the editor before generating.')}</>
+      ),
+    }
+  }
+  return {
+    title: t('Import a Read-only View from SELECT'),
     endpoint: '/metadata/fullstack/import-select',
-    emptyHint: 'Paste a SELECT query',
-    emptyResult: 'No columns were detected in the SELECT',
+    emptyHint: t('Paste a SELECT query'),
+    emptyResult: t('No columns were detected in the SELECT'),
     placeholder: 'SELECT u.id AS id,\n       u.full_name AS fullName,\n       o.total AS lastOrderTotal\nFROM users u\nJOIN orders o ON o.user_id = u.id;',
     blurb: (
-      <>Paste a <code className="font-mono text-on-surface">SELECT</code> query. Its columns
-      become a single <strong>read-only view</strong> entity (mapped via Hibernate
-      <code className="font-mono text-on-surface"> @Subselect</code>, GET-only). A query has no
-      column types, so every field defaults to <code className="font-mono text-on-surface">STRING</code> —
-      set the right types and pick the primary key in the editor. Alias each column
-      (<code className="font-mono text-on-surface">AS name</code>) to control field names.</>
+      <>{t('Paste a')} <code className="font-mono text-on-surface">SELECT</code>{' '}
+      {t('query. Its columns become a single read-only view entity (mapped via Hibernate')}
+      <code className="font-mono text-on-surface"> @Subselect</code>{t(', GET-only). A query has no column types, so every field defaults to')}{' '}
+      <code className="font-mono text-on-surface">STRING</code>{' '}
+      {t('— set the right types and pick the primary key in the editor. Alias each column')}{' '}
+      (<code className="font-mono text-on-surface">AS name</code>) {t('to control field names.')}</>
     ),
-  },
+  }
 }
 
 // Display names for the dialect enum ids the server reports (`/metadata/sql-dialects`, the same
@@ -170,7 +173,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [source, setSource] = useState<DdlSource>('paste')
   const fromDatabase = variant === 'ddl' && source === 'database'
-  const copy = COPY[variant]
+  const copy = copyOf(variant)
 
   /** The live panel's read: the entities come back ready, so they go straight to the preview. */
   async function readFromDatabase(req: LiveReadRequest) {
@@ -188,7 +191,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
     if (!file) return
     file.text()
       .then(text => { setSql(text); setError(null); if (parsed) setStale(true) })
-      .catch(() => setError({ error: 'Read failed', detail: `Couldn't read ${file.name}` }))
+      .catch(() => setError({ error: t('Read failed'), detail: t("Couldn't read {file}", { file: file.name }) }))
   }
   function onDrop(e: DragEvent<HTMLTextAreaElement>) {
     const file = e.dataTransfer.files?.[0]
@@ -225,7 +228,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
     if (parsed && !stale) {
       const chosen = parsed.entities.filter(e => e.uid && selected.has(e.uid))
       if (chosen.length === 0) {
-        setError({ detail: 'Tick at least one entity to import' })
+        setError({ detail: t('Tick at least one entity to import') })
         throw new Error('nothing selected')
       }
       // A relation to a table that was left out would point at nothing — drop it (the note
@@ -247,7 +250,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
     }
     setError(null)
     if (fromDatabase) {
-      setError({ detail: 'Connect, pick the tables and read them first' })
+      setError({ detail: t('Connect, pick the tables and read them first') })
       throw new Error('nothing read')
     }
     const trimmed = sql.trim()
@@ -305,9 +308,9 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       onSave={handleSave}
       saving={parsing}
       saveLabel={parsed && !stale
-        ? (nSelected === n ? `Import ${n} entit${n === 1 ? 'y' : 'ies'}` : `Import ${nSelected} of ${n}`)
-        : fromDatabase ? 'Import' : stale ? 'Parse again' : 'Parse'}
-      savingLabel="Parsing…"
+        ? (nSelected === n ? tn(n, 'Import {n} entity', 'Import {n} entities') : t('Import {count} of {n}', { count: nSelected, n }))
+        : fromDatabase ? t('Import') : stale ? t('Parse again') : t('Parse')}
+      savingLabel={t('Parsing…')}
     >
       <div className="space-y-4">
         <p className="text-[12px] text-secondary leading-relaxed">
@@ -315,8 +318,8 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
         </p>
 
         {variant === 'ddl' && (
-          <div role="radiogroup" aria-label="Where the tables come from" data-ddl-source className="flex gap-1 p-1 rounded-lg bg-surface-container-low border border-outline-variant">
-            {([['paste', 'Paste SQL', 'content_paste'], ['database', 'From a database', 'database']] as const).map(([id, text, icon]) => (
+          <div role="radiogroup" aria-label={t('Where the tables come from')} data-ddl-source className="flex gap-1 p-1 rounded-lg bg-surface-container-low border border-outline-variant">
+            {([['paste', t('Paste SQL'), 'content_paste'], ['database', t('From a database'), 'database']] as const).map(([id, text, icon]) => (
               <button key={id} type="button" role="radio" aria-checked={source === id}
                       onClick={() => { if (source !== id) { setSource(id); setParsed(null); setStale(false); setError(null) } }}
                       className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
@@ -330,7 +333,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
 
         {fromDatabase && (
           <LiveSchemaPanel
-            readLabel={n => n === 0 ? 'Pick tables to read' : `Read ${n} into the preview`}
+            readLabel={count => count === 0 ? t('Pick tables to read') : t('Read {n} into the preview', { n: count })}
             onRead={readFromDatabase}
           />
         )}
@@ -338,7 +341,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
         {!fromDatabase && (<>
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
-            SQL Dialect
+            {t('SQL Dialect')}
           </label>
           <select
             className="w-full bg-background border border-outline-variant rounded px-3 py-2 text-sm text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
@@ -352,28 +355,29 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-[11px] font-bold uppercase tracking-widest text-secondary">
-              {variant === 'select' ? 'SELECT query' : 'DDL'}
+              {variant === 'select' ? t('SELECT query') : 'DDL'}
             </label>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="inline-flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
-              title="Load a .sql file (or drop one onto the text area)"
+              title={t('Load a .sql file (or drop one onto the text area)')}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>upload_file</span>
-              Load .sql file…
+              {t('Load .sql file…')}
             </button>
             <input
               ref={fileInputRef}
               type="file"
               accept=".sql,.ddl,.txt,text/plain,application/sql"
               className="hidden"
-              aria-label="Load SQL file"
+              aria-label={t('Load SQL file')}
               onChange={e => { loadFile(e.target.files?.[0]); e.target.value = '' }}
             />
           </div>
           <textarea
-            aria-label={variant === 'select' ? 'SELECT query' : 'DDL'}
+            dir="ltr"
+            aria-label={variant === 'select' ? t('SELECT query') : 'DDL'}
             className="w-full font-mono text-xs bg-background border border-outline-variant rounded p-3 min-h-[260px] focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
             placeholder={copy.placeholder}
             value={sql}
@@ -390,21 +394,21 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
             {stale && (
               <p className="flex items-center gap-1.5 text-[11px] text-warning rounded-lg border border-warning/40 bg-warning/5 px-3 py-2" role="status">
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>sync_problem</span>
-                The SQL changed since this preview — click Parse again to refresh it. Your ticks are kept.
+                {t('The SQL changed since this preview — click Parse again to refresh it. Your ticks are kept.')}
               </p>
             )}
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase tracking-widest text-secondary">
-                Preview — {n} entit{n === 1 ? 'y' : 'ies'}
+                {tn(n, 'Preview — {n} entity', 'Preview — {n} entities')}
               </span>
               <span className="flex items-center gap-3 text-[11px] text-secondary">
                 {n > 1 && (
                   <button type="button" className="underline hover:no-underline"
                           onClick={() => setSelected(nSelected === n ? new Set() : new Set(parsed.entities.map(e => e.uid!)))}>
-                    {nSelected === n ? 'Select none' : 'Select all'}
+                    {nSelected === n ? t('Select none') : t('Select all')}
                   </button>
                 )}
-                <span>Tick what to import</span>
+                <span>{t('Tick what to import')}</span>
               </span>
             </div>
             {parsed.note && (
@@ -413,28 +417,28 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
                 {parsed.note}
               </p>
             )}
-            <ul className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+            <ul className="space-y-2 max-h-[40vh] overflow-y-auto pe-1">
               {parsed.entities.map(e => (
                 <li key={e.uid} className={`rounded-lg border bg-surface-container-low px-3 py-2 ${selected.has(e.uid!) ? 'border-outline-variant' : 'border-outline-variant/40 opacity-60'}`}>
                   <div className="flex items-center gap-2 flex-wrap">
                     <input
                       type="checkbox"
                       className="h-4 w-4 accent-primary"
-                      aria-label={`Import ${e.name}`}
+                      aria-label={t('Import {entity}', { entity: e.name })}
                       checked={selected.has(e.uid!)}
                       onChange={() => toggleSelected(e.uid!)}
                     />
                     <span className="font-mono text-sm font-semibold text-on-surface">{e.name}</span>
-                    {e.tableName && <span className="text-[10px] font-mono text-secondary">{e.schema ? `${e.schema}.` : ''}{e.tableName}</span>}
+                    {e.tableName && <span className="text-[10px] font-mono text-secondary" dir="ltr">{e.schema ? `${e.schema}.` : ''}{e.tableName}</span>}
                     {(e.readOnly || e.viewQuery) && (
-                      <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary/10 text-secondary font-bold">read-only</span>
+                      <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary/10 text-secondary font-bold">{t('read-only')}</span>
                     )}
-                    <span className="ml-auto text-[11px] text-secondary">{e.fields.length} field{e.fields.length === 1 ? '' : 's'}</span>
+                    <span className="ms-auto text-[11px] text-secondary">{tn(e.fields.length, '{n} field', '{n} fields')}</span>
                   </div>
-                  <div className="mt-1.5 flex flex-wrap gap-1">
+                  <div className="mt-1.5 flex flex-wrap gap-1" dir="ltr">
                     {e.fields.map(f => (
                       <span key={f.uid} className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${f.primaryKey ? 'border-primary/40 bg-primary/10 text-primary' : 'border-outline-variant/60 text-secondary'}`}
-                            title={[f.primaryKey && 'primary key', f.generated && 'generated', f.required && 'required', f.unique && 'unique'].filter(Boolean).join(', ') || undefined}>
+                            title={[f.primaryKey && t('primary key'), f.generated && t('generated'), f.required && t('required'), f.unique && t('unique')].filter(Boolean).join(', ') || undefined}>
                         {f.primaryKey ? '🔑 ' : ''}{f.name}: {f.type}{f.length ? `(${f.length})` : ''}
                       </span>
                     ))}
@@ -444,8 +448,10 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
                         <span key={r.uid} data-relation-chip
                               className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${targetKept ? 'border-tertiary/40 bg-tertiary/10 text-tertiary' : 'border-outline-variant/60 text-secondary line-through'}`}
                               title={targetKept
-                                ? `@ManyToOne ${r.fieldName} → ${r.targetEntity}${r.required ? ' (required)' : ''} — from the table's foreign key`
-                                : `${r.targetEntity} is not being imported, so this relation is dropped`}>
+                                ? (r.required
+                                  ? t("@ManyToOne {relation} (required) — from the table's foreign key", { relation: `${r.fieldName} → ${r.targetEntity}` })
+                                  : t("@ManyToOne {relation} — from the table's foreign key", { relation: `${r.fieldName} → ${r.targetEntity}` }))
+                                : t('{entity} is not being imported, so this relation is dropped', { entity: r.targetEntity })}>
                           <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>link</span>
                           {r.fieldName} → {r.targetEntity}
                         </span>
@@ -461,7 +467,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
         {hasExisting && parsed && (
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
-              Mode
+              {t('Mode')}
             </label>
             <div className="flex gap-4 text-sm">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -472,7 +478,7 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
                   checked={mode === 'append'}
                   onChange={() => setMode('append')}
                 />
-                <span>Append to existing</span>
+                <span>{t('Append to existing')}</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -482,13 +488,13 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
                   checked={mode === 'replace'}
                   onChange={() => setMode('replace')}
                 />
-                <span>Replace all</span>
+                <span>{t('Replace all')}</span>
               </label>
             </div>
             {mode === 'replace' && (
               <p className="mt-2 flex items-center gap-1.5 text-[11px] text-error">
                 <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>warning</span>
-                Discards your current {existingCount} entit{existingCount === 1 ? 'y' : 'ies'}.
+                {tn(existingCount, 'Discards your current {n} entity.', 'Discards your current {n} entities.')}
               </p>
             )}
           </div>
@@ -496,10 +502,10 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
 
         {error && (
           <div className="px-3 py-2 rounded-lg bg-error/10 border border-error/30 text-xs text-error space-y-1">
-            <div className="font-bold">{error.error ?? 'Parse error'}</div>
+            <div className="font-bold">{error.error ?? t('Parse error')}</div>
             {error.detail && <div className="font-mono break-all">{error.detail}</div>}
             {error.statementIndex != null && (
-              <div className="text-[11px] opacity-80">Statement #{error.statementIndex}</div>
+              <div className="text-[11px] opacity-80">{t('Statement #{n}', { n: error.statementIndex })}</div>
             )}
             {error.snippet && (
               <pre className="text-[11px] font-mono bg-background/50 rounded p-2 overflow-x-auto">{error.snippet}</pre>

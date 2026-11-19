@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FullstackEntityDef } from '../../types'
+import { t, tn } from '../../i18n'
 
 interface Props {
   entities: FullstackEntityDef[]
@@ -47,9 +48,9 @@ export function EntityNavigator({ entities, errorCounts, lintCounts, filter, onF
   }
 
   return (
-    <nav aria-label="Entities outline" className="space-y-2" data-entity-navigator>
+    <nav aria-label={t('Entities outline')} className="space-y-2" data-entity-navigator>
       <div className="relative">
-        <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-secondary" style={{ fontSize: '16px' }}>search</span>
+        <span className="material-symbols-outlined absolute start-2 top-1/2 -translate-y-1/2 text-secondary" style={{ fontSize: '16px' }}>search</span>
         <input
           ref={inputRef}
           id="fs-entity-filter"
@@ -57,15 +58,15 @@ export function EntityNavigator({ entities, errorCounts, lintCounts, filter, onF
           value={filter}
           onChange={e => onFilterChange(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Find entity or field…"
-          aria-label="Find entity"
-          className="w-full bg-background border border-outline-variant rounded-lg pl-8 pr-2 py-1.5 text-xs text-on-surface placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+          placeholder={t('Find entity or field…')}
+          aria-label={t('Find entity')}
+          className="w-full bg-background border border-outline-variant rounded-lg ps-8 pe-2 py-1.5 text-xs text-on-surface placeholder:text-secondary/60 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
         />
       </div>
       {visible.length === 0 ? (
-        <p className="text-[11px] text-secondary px-1">No entity matches “{filter.trim()}”.</p>
+        <p className="text-[11px] text-secondary px-1">{t('No entity matches “{query}”.', { query: filter.trim() })}</p>
       ) : (
-        <ul className="space-y-0.5 max-h-[60vh] overflow-y-auto pr-1" onKeyDown={onKeyDown} tabIndex={-1}>
+        <ul className="space-y-0.5 max-h-[60vh] overflow-y-auto pe-1" onKeyDown={onKeyDown} tabIndex={-1}>
           {visible.map(({ entity, index }, i) => {
             const uid = entity.uid ?? `i${index}`
             const errs = errorCounts[index] ?? 0
@@ -78,19 +79,19 @@ export function EntityNavigator({ entities, errorCounts, lintCounts, filter, onF
                   type="button"
                   onClick={() => { setCursor(i); if (entity.uid) onSelect(entity.uid) }}
                   aria-current={active ? 'true' : undefined}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs transition-colors ${
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-start text-xs transition-colors ${
                     active ? 'bg-primary/10 text-primary' : i === cursor ? 'bg-surface-container-high text-on-surface' : 'text-on-surface hover:bg-surface-container-high'}`}
                 >
                   <span className="material-symbols-outlined text-secondary shrink-0" style={{ fontSize: '14px' }}>
                     {isView ? 'table_view' : entity.readOnly ? 'visibility' : 'table'}
                   </span>
-                  <span className="flex-1 min-w-0 truncate font-mono">{entity.name.trim() || '(unnamed)'}</span>
+                  <span className="flex-1 min-w-0 truncate font-mono">{entity.name.trim() || t('(unnamed)')}</span>
                   <span className="text-[10px] text-secondary shrink-0">{entity.fields.length}</span>
                   {errs > 0 && (
-                    <span className="shrink-0 inline-flex items-center px-1.5 rounded-full bg-error/10 text-error text-[10px] font-semibold" title={`${errs} issue${errs === 1 ? '' : 's'}`}>{errs}</span>
+                    <span className="shrink-0 inline-flex items-center px-1.5 rounded-full bg-error/10 text-error text-[10px] font-semibold" title={tn(errs, '{n} issue', '{n} issues')}>{errs}</span>
                   )}
                   {lints > 0 && (
-                    <span className="shrink-0 inline-flex items-center px-1.5 rounded-full bg-warning/15 text-warning text-[10px] font-semibold" title={`${lints} suggestion${lints === 1 ? '' : 's'}`}>{lints}</span>
+                    <span className="shrink-0 inline-flex items-center px-1.5 rounded-full bg-warning/15 text-warning text-[10px] font-semibold" title={tn(lints, '{n} suggestion', '{n} suggestions')}>{lints}</span>
                   )}
                 </button>
               </li>

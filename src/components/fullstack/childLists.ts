@@ -1,4 +1,5 @@
 import type { FullstackEntityDef, FullstackRelationDef } from '../../types'
+import { t } from '../../i18n'
 
 /**
  * A ONE_TO_MANY reads a link the other side holds: `Order.lines` is the rows of `OrderLine` whose
@@ -62,13 +63,13 @@ export function resolveLink(rel: FullstackRelationDef, owner: string, links: rea
   if (named) {
     const found = links.find(l => lower(l) === lower(named))
     if (found) return { mappedBy: found }
-    return { problem: { on: 'mappedBy', message: `${target} has no many-to-one '${named}' to ${owner.trim() || 'this entity'}` } }
+    return { problem: { on: 'mappedBy', message: t("{target} has no many-to-one '{link}' to {owner}", { target, link: named, owner: owner.trim() || t('this entity') }) } }
   }
   if (links.length === 1) return { mappedBy: links[0] }
   if (links.length === 0) {
-    return { problem: { on: 'targetEntity', message: `${target} has no many-to-one to ${owner.trim() || 'this entity'} — add that relation to ${target} first` } }
+    return { problem: { on: 'targetEntity', message: t('{target} has no many-to-one to {owner} — add that relation to {target} first', { target, owner: owner.trim() || t('this entity') }) } }
   }
-  return { problem: { on: 'mappedBy', message: `${target} links here more than once — pick one: ${links.join(', ')}` } }
+  return { problem: { on: 'mappedBy', message: t('{target} links here more than once — pick one: {links}', { target, links: links.join(', ') }) } }
 }
 
 /**
@@ -83,23 +84,23 @@ export function compositionProblem(
   const child = entities.find(e => lower(e.name) === lower(rel.targetEntity))
   if (!child) return undefined
   const childName = child.name.trim()
-  if (lower(childName) === lower(parent.name)) return 'An entity cannot be composed of its own rows'
-  if (parent.readOnly || parent.viewQuery !== undefined) return `${parent.name.trim()} is read-only, so it has no form to edit the rows in`
-  if (child.readOnly || child.viewQuery !== undefined) return `${childName} is read-only: its rows cannot be saved`
+  if (lower(childName) === lower(parent.name)) return t('An entity cannot be composed of its own rows')
+  if (parent.readOnly || parent.viewQuery !== undefined) return t('{parent} is read-only, so it has no form to edit the rows in', { parent: parent.name.trim() })
+  if (child.readOnly || child.viewQuery !== undefined) return t('{child} is read-only: its rows cannot be saved', { child: childName })
   const keys = child.fields.filter(f => f.primaryKey)
-  if (keys.length !== 1 || !keys[0].generated) return `${childName} needs a single generated key (a new row gets its id from the database)`
+  if (keys.length !== 1 || !keys[0].generated) return t('{child} needs a single generated key (a new row gets its id from the database)', { child: childName })
   const link = (child.relations ?? []).find(r => r.type === 'MANY_TO_ONE' && lower(r.fieldName) === lower(mappedBy))
-  if (link && !link.required) return `'${link.fieldName.trim()}' on ${childName} must be required (a composed row always belongs to its ${parent.name.trim()})`
-  if (child.workflow) return `${childName} has a workflow: its rows change by their own moves, not with a parent's save`
+  if (link && !link.required) return t("'{link}' on {child} must be required (a composed row always belongs to its {parent})", { link: link.fieldName.trim(), child: childName, parent: parent.name.trim() })
+  if (child.workflow) return t("{child} has a workflow: its rows change by their own moves, not with a parent's save", { child: childName })
   const attachment = child.fields.find(f => f.type === 'FILE' || f.type === 'IMAGE')
-  if (attachment) return `${childName} has an attachment field ('${attachment.name}'), which a row of a parent's form cannot upload`
-  if ((child.relations ?? []).some(r => r.type !== 'MANY_TO_ONE')) return `${childName} has lists of its own, which a row of a parent's form cannot edit`
+  if (attachment) return t("{child} has an attachment field ('{field}'), which a row of a parent's form cannot upload", { child: childName, field: attachment.name })
+  if ((child.relations ?? []).some(r => r.type !== 'MANY_TO_ONE')) return t("{child} has lists of its own, which a row of a parent's form cannot edit", { child: childName })
   // A row has one owner: the first composition of the child, in the model's order, is it.
   for (const other of entities) {
     for (const r of other.relations ?? []) {
       if (r.type !== 'ONE_TO_MANY' || !r.composition || lower(r.targetEntity) !== lower(childName)) continue
       if (other === parent && r === rel) return undefined
-      return `${childName} is already composed by ${other.name.trim()}.${r.fieldName.trim()}: a row has one owner`
+      return t('{child} is already composed by {owner}: a row has one owner', { child: childName, owner: `${other.name.trim()}.${r.fieldName.trim()}` })
     }
   }
   return undefined

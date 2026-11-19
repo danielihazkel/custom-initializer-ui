@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react'
 import type { StarterTemplate } from '../types'
 import type { ComparisonResult } from '../hooks/useTemplateComparison'
+import { t } from '../i18n'
 
 type Filter = 'all' | 'shared' | 'differences'
 
@@ -59,24 +60,24 @@ export function TemplateCompareTable({ templates, comparison }: Props) {
                   : 'text-secondary hover:text-on-surface'
               }`}
             >
-              {f === 'all' && `All (${comparison.dependencies.length})`}
-              {f === 'shared' && `Shared (${comparison.sharedCount})`}
-              {f === 'differences' && `Differences (${comparison.differenceCount})`}
+              {f === 'all' && t('All ({n})', { n: comparison.dependencies.length })}
+              {f === 'shared' && t('Shared ({n})', { n: comparison.sharedCount })}
+              {f === 'differences' && t('Differences ({n})', { n: comparison.differenceCount })}
             </button>
           ))}
         </div>
         <div className="flex items-center gap-4 text-[11px] text-secondary">
           <span className="flex items-center gap-1.5">
             <span className="material-symbols-outlined text-tertiary" style={{ fontSize: '14px' }}>check_circle</span>
-            Shared by all
+            {t('Shared by all')}
           </span>
           <span className="flex items-center gap-1.5">
             <span className="material-symbols-outlined text-primary" style={{ fontSize: '14px' }}>check_circle</span>
-            Template-specific
+            {t('Template-specific')}
           </span>
           <span className="flex items-center gap-1.5">
             <span className="material-symbols-outlined text-secondary/30" style={{ fontSize: '14px' }}>horizontal_rule</span>
-            Not included
+            {t('Not included')}
           </span>
         </div>
       </div>
@@ -87,27 +88,27 @@ export function TemplateCompareTable({ templates, comparison }: Props) {
           {/* Template header columns */}
           <thead className="sticky top-0 z-10">
             <tr className="bg-surface-container-high border-b border-outline-variant">
-              <th className="sticky left-0 z-20 bg-surface-container-high w-48 min-w-[160px] px-4 py-3 text-left text-xs font-bold uppercase tracking-widest text-secondary border-r border-outline-variant">
-                Dependency
+              <th className="sticky start-0 z-20 bg-surface-container-high w-48 min-w-[160px] px-4 py-3 text-start text-xs font-bold uppercase tracking-widest text-secondary border-e border-outline-variant">
+                {t('Dependency')}
               </th>
-              {templates.map(t => (
+              {templates.map(tpl => (
                 <th
-                  key={t.id}
-                  className="px-4 py-3 text-left border-l border-outline-variant"
-                  style={{ borderTopColor: t.color ?? undefined, borderTopWidth: '3px' }}
+                  key={tpl.id}
+                  className="px-4 py-3 text-start border-s border-outline-variant"
+                  style={{ borderTopColor: tpl.color ?? undefined, borderTopWidth: '3px' }}
                 >
                   <div className="flex items-center gap-2">
-                    {t.icon && (
+                    {tpl.icon && (
                       <span
                         className="material-symbols-outlined flex-shrink-0"
-                        style={{ fontSize: '18px', color: t.color ?? undefined }}
+                        style={{ fontSize: '18px', color: tpl.color ?? undefined }}
                       >
-                        {t.icon}
+                        {tpl.icon}
                       </span>
                     )}
                     <div>
-                      <div className="font-bold text-on-surface text-sm leading-tight">{t.name}</div>
-                      <div className="text-[11px] text-secondary font-normal mt-0.5 line-clamp-1">{t.description}</div>
+                      <div dir="auto" className="font-bold text-on-surface text-sm leading-tight">{tpl.name}</div>
+                      <div dir="auto" className="text-[11px] text-secondary font-normal mt-0.5 line-clamp-1">{tpl.description}</div>
                     </div>
                   </div>
                 </th>
@@ -120,20 +121,20 @@ export function TemplateCompareTable({ templates, comparison }: Props) {
             <tr className="bg-surface-container/50">
               <td
                 colSpan={colCount + 1}
-                className="sticky left-0 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-secondary border-b border-outline-variant"
+                className="sticky start-0 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-secondary border-b border-outline-variant"
               >
-                Settings
+                {t('Settings')}
               </td>
             </tr>
             {comparison.settings.map(s => (
               <tr key={s.field} className="border-b border-outline-variant/50 hover:bg-surface-container/30 transition-colors">
-                <td className="sticky left-0 z-10 bg-surface-container px-4 py-2.5 text-xs font-medium text-on-surface-variant border-r border-outline-variant">
+                <td className="sticky start-0 z-10 bg-surface-container px-4 py-2.5 text-xs font-medium text-on-surface-variant border-e border-outline-variant">
                   {s.field}
                 </td>
                 {s.values.map((val, i) => (
                   <td
                     key={i}
-                    className={`px-4 py-2.5 text-xs border-l border-outline-variant/50 ${
+                    className={`px-4 py-2.5 text-xs border-s border-outline-variant/50 ${
                       !s.allSame ? 'font-semibold text-on-surface' : 'text-secondary'
                     }`}
                   >
@@ -157,7 +158,7 @@ export function TemplateCompareTable({ templates, comparison }: Props) {
             {groups.length === 0 ? (
               <tr>
                 <td colSpan={colCount + 1} className="px-4 py-8 text-center text-sm text-secondary">
-                  No dependencies match the current filter.
+                  {t('No dependencies match the current filter.')}
                 </td>
               </tr>
             ) : (
@@ -173,11 +174,11 @@ export function TemplateCompareTable({ templates, comparison }: Props) {
                       className="px-4 py-2 border-b border-outline-variant"
                     >
                       <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-secondary">
-                        <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>
+                        <span className={`material-symbols-outlined ${collapsedGroups.has(group.name) ? 'flip-rtl' : ''}`} style={{ fontSize: '13px' }}>
                           {collapsedGroups.has(group.name) ? 'chevron_right' : 'expand_more'}
                         </span>
                         {group.name}
-                        <span className="ml-1 text-secondary/60 normal-case font-normal tracking-normal">
+                        <span className="ms-1 text-secondary/60 normal-case font-normal tracking-normal">
                           ({group.deps.length})
                         </span>
                       </div>
@@ -191,7 +192,7 @@ export function TemplateCompareTable({ templates, comparison }: Props) {
                           dep.shared ? 'bg-tertiary/5' : ''
                         }`}
                       >
-                        <td className="sticky left-0 z-10 bg-inherit px-4 py-2.5 border-r border-outline-variant">
+                        <td className="sticky start-0 z-10 bg-inherit px-4 py-2.5 border-e border-outline-variant">
                           <div className="text-xs font-semibold text-on-surface">{dep.depName}</div>
                           {dep.depDescription && (
                             <div className="text-[11px] text-secondary leading-tight mt-0.5 line-clamp-1 max-w-[140px]">
@@ -202,7 +203,7 @@ export function TemplateCompareTable({ templates, comparison }: Props) {
                         {dep.presence.map((present, i) => (
                           <td
                             key={i}
-                            className="px-4 py-2.5 border-l border-outline-variant/50 text-center"
+                            className="px-4 py-2.5 border-s border-outline-variant/50 text-center"
                           >
                             {present ? (
                               <span
@@ -229,16 +230,16 @@ export function TemplateCompareTable({ templates, comparison }: Props) {
                           key={`${dep.depId}-${opt.optId}`}
                           className={`border-b border-outline-variant/30 text-[11px] ${dep.shared ? 'bg-tertiary/5' : ''}`}
                         >
-                          <td className="sticky left-0 z-10 bg-inherit pl-8 pr-4 py-1.5 border-r border-outline-variant">
+                          <td className="sticky start-0 z-10 bg-inherit ps-8 pe-4 py-1.5 border-e border-outline-variant">
                             <div className="flex items-center gap-1 text-secondary">
-                              <span className="material-symbols-outlined text-secondary/40" style={{ fontSize: '11px' }}>subdirectory_arrow_right</span>
+                              <span className="material-symbols-outlined text-secondary/40 flip-rtl" style={{ fontSize: '11px' }}>subdirectory_arrow_right</span>
                               {opt.optLabel}
                             </div>
                           </td>
                           {opt.presence.map((present, i) => (
                             <td
                               key={i}
-                              className="px-4 py-1.5 border-l border-outline-variant/30 text-center"
+                              className="px-4 py-1.5 border-s border-outline-variant/30 text-center"
                             >
                               {present ? (
                                 <span className="material-symbols-outlined text-primary/60" style={{ fontSize: '14px' }}>check</span>

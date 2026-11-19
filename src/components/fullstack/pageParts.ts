@@ -5,6 +5,7 @@ import {
   askableFields, childTabEntity, dateFields, defaultWizardSteps, pageLabel, relationKeys,
   relationsTo, reportCharts, reportGroupKeys,
 } from './pageLayout'
+import { t } from '../../i18n'
 
 /**
  * A part of a page that the layout designer drags onto the canvas, besides a dashboard widget:
@@ -66,7 +67,7 @@ function childTabsOf(page: FullstackPageDef, entities: FullstackEntityDef[]): Fu
 
 /** A record page's header numbers as drawn: named, else a count per related tab (four at most). */
 function headerStatsOf(page: FullstackPageDef, entities: FullstackEntityDef[]): NonNullable<FullstackPageDef['headerStats']> {
-  return page.headerStats ?? childTabsOf(page, entities).slice(0, MAX_HEADER_STATS).map(t => ({ child: childTabEntity(t) }))
+  return page.headerStats ?? childTabsOf(page, entities).slice(0, MAX_HEADER_STATS).map(tab => ({ child: childTabEntity(tab) }))
 }
 
 /** A wizard's steps as the generator deals them: named, else four fields to a step. */
@@ -82,38 +83,39 @@ export function pageParts(pages: FullstackPageDef[], index: number, entities: Fu
   switch (page.type) {
     case 'tabs': {
       const tabs = page.tabs ?? []
-      const full = tabs.length >= MAX_TABS ? `A tabs page holds at most ${MAX_TABS} pages` : undefined
+      const full = tabs.length >= MAX_TABS ? t('A tabs page holds at most {max} pages', { max: MAX_TABS }) : undefined
       return [{
         slot: 'tab',
-        label: 'Pages to embed',
-        hint: 'Drop on the tab strip — or drag a page from the strip above',
+        label: t('Pages to embed'),
+        hint: t('Drop on the tab strip — or drag a page from the strip above'),
         cards: tabTargets(pages, page).map(p => ({
           key: `tab:${p.id}`,
           part: { kind: 'tab', page: p.id },
           label: pageLabel(p),
           blurb: `${PAGE_TYPE_META[p.type]?.label ?? p.type} · #/${p.id}`,
           icon: PAGE_TYPE_META[p.type]?.icon ?? 'web_asset',
-          reason: tabs.some(t => t.page === p.id) ? 'Already a tab here' : full,
+          reason: tabs.some(tab => tab.page === p.id) ? t('Already a tab here') : full,
         })),
       }]
     }
     case 'report': {
       const charts = reportCharts(page)
-      const full = charts.length >= MAX_CHARTS ? `A report has at most ${MAX_CHARTS} charts` : undefined
+      const full = charts.length >= MAX_CHARTS ? t('A report has at most {max} charts', { max: MAX_CHARTS }) : undefined
       const dates = new Set(dateFields(entity).map(f => f.name))
       const relations = new Set(relationKeys(entity))
       return [{
         slot: 'chart',
-        label: entity ? `Charts of ${entityLabel(entity)}` : 'Charts',
-        hint: 'Drop beside a chart on the report',
+        label: entity ? t('Charts of {entity}', { entity: entityLabel(entity) }) : t('Charts'),
+        hint: t('Drop beside a chart on the report'),
         cards: reportGroupKeys(entity).map(key => {
           const shown = charts.some(c => c.groupBy === key)
-          const how = dates.has(key) ? 'A trend over' : relations.has(key) ? 'Totals per' : 'Bars by'
+          const field = keyText(entity, key).toLowerCase()
+          const how = dates.has(key) ? t('A trend over {field}', { field }) : relations.has(key) ? t('Totals per {field}', { field }) : t('Bars by {field}', { field })
           return {
             key: `chart:${key}`,
             part: { kind: 'chart', groupBy: key },
-            label: `By ${keyText(entity, key)}`,
-            blurb: `${how} ${keyText(entity, key).toLowerCase()}${shown ? ' · already charted' : ''}`,
+            label: t('By {field}', { field: keyText(entity, key) }),
+            blurb: `${how}${shown ? ` · ${t('already charted')}` : ''}`,
             icon: dates.has(key) ? 'show_chart' : relations.has(key) ? 'account_tree' : 'bar_chart',
             reason: full,
           }
@@ -124,33 +126,33 @@ export function pageParts(pages: FullstackPageDef[], index: number, entities: Fu
       const related = entities.filter(e => relationsTo(e, page.entity).length > 0)
       const tabs = childTabsOf(page, entities).map(childTabEntity)
       const stats = headerStatsOf(page, entities)
-      const tabsFull = tabs.length >= MAX_CHILD_TABS ? `A record page has at most ${MAX_CHILD_TABS} related tabs` : undefined
-      const statsFull = stats.length >= MAX_HEADER_STATS ? `A record page has at most ${MAX_HEADER_STATS} header numbers` : undefined
+      const tabsFull = tabs.length >= MAX_CHILD_TABS ? t('A record page has at most {max} related tabs', { max: MAX_CHILD_TABS }) : undefined
+      const statsFull = stats.length >= MAX_HEADER_STATS ? t('A record page has at most {max} header numbers', { max: MAX_HEADER_STATS }) : undefined
       return [
         {
           slot: 'child-tab',
-          label: 'Related lists',
-          hint: 'Drop on the tabs under the record',
+          label: t('Related lists'),
+          hint: t('Drop on the tabs under the record'),
           cards: related.map(e => ({
             key: `child-tab:${e.name}`,
             part: { kind: 'child-tab', entity: e.name },
             label: entityLabel(e),
-            blurb: `A tab of the ${entityLabel(e).toLowerCase()} rows linked to it`,
+            blurb: t('A tab of the {entity} rows linked to it', { entity: entityLabel(e).toLowerCase() }),
             icon: 'tab',
-            reason: tabs.includes(e.name) ? 'Already a tab here' : tabsFull,
+            reason: tabs.includes(e.name) ? t('Already a tab here') : tabsFull,
           })),
         },
         {
           slot: 'header-stat',
-          label: 'Header numbers',
-          hint: 'Drop on the numbers above the tabs',
+          label: t('Header numbers'),
+          hint: t('Drop on the numbers above the tabs'),
           cards: related.map(e => ({
             key: `header-stat:${e.name}`,
             part: { kind: 'header-stat', entity: e.name },
-            label: `Count of ${entityLabel(e)}`,
-            blurb: `How many ${entityLabel(e).toLowerCase()} rows link to it`,
+            label: t('Count of {entity}', { entity: entityLabel(e) }),
+            blurb: t('How many {entity} rows link to it', { entity: entityLabel(e).toLowerCase() }),
             icon: 'tag',
-            reason: stats.some(s => s.child === e.name && !s.agg && !s.via) ? 'Already counted' : statsFull,
+            reason: stats.some(s => s.child === e.name && !s.agg && !s.via) ? t('Already counted') : statsFull,
           })),
         },
       ]
@@ -159,15 +161,15 @@ export function pageParts(pages: FullstackPageDef[], index: number, entities: Fu
       const steps = wizardStepsOf(page, entities)
       return [{
         slot: 'step-field',
-        label: entity ? `Fields of ${entityLabel(entity)}` : 'Fields',
-        hint: 'Drop on a step to ask for it there',
+        label: entity ? t('Fields of {entity}', { entity: entityLabel(entity) }) : t('Fields'),
+        hint: t('Drop on a step to ask for it there'),
         cards: askableFields(entity).map(a => {
           const step = steps.findIndex(s => s.fields.includes(a.name))
           return {
             key: `step-field:${a.name}`,
             part: { kind: 'step-field', field: a.name },
             label: keyText(entity, a.name),
-            blurb: `${step < 0 ? 'Not asked yet' : `Step ${step + 1}`}${a.required ? ' · required' : ''}${a.relation ? ' · picker' : ''}`,
+            blurb: `${step < 0 ? t('Not asked yet') : t('Step {n}', { n: step + 1 })}${a.required ? ` · ${t('required')}` : ''}${a.relation ? ` · ${t('picker')}` : ''}`,
             icon: a.relation ? 'link' : 'text_fields',
           }
         }),
@@ -192,54 +194,58 @@ const insert = <T,>(list: T[], item: T, at: number | undefined): T[] => {
  */
 export function placePart(pages: FullstackPageDef[], index: number, entities: FullstackEntityDef[], part: PagePart, at?: number): PlacedPart {
   const page = pages[index]
-  if (!page) return { reason: 'No page to drop on' }
+  if (!page) return { reason: t('No page to drop on') }
   const where = `“${pageLabel(page)}”`
-  if (!(PAGE_SLOTS[page.type] ?? []).includes(part.kind)) return { reason: `That does not go on ${where}` }
+  if (!(PAGE_SLOTS[page.type] ?? []).includes(part.kind)) return { reason: t('That does not go on {where}', { where }) }
   const entity = entities.find(e => e.name === page.entity)
   switch (part.kind) {
     case 'tab': {
       const tabs = page.tabs ?? []
       const target = tabTargets(pages, page).find(p => p.id === part.page)
-      if (!target) return { reason: part.page === page.id ? 'A tabs page cannot be one of its own tabs' : 'A tabs page embeds lists, dashboards, reports and the like — not a tabs or record page' }
-      if (tabs.some(t => t.page === part.page)) return { reason: `${pageLabel(target)} is already a tab of ${where}` }
-      if (tabs.length >= MAX_TABS) return { reason: `A tabs page holds at most ${MAX_TABS} pages` }
-      return { patch: { tabs: insert(tabs, { page: part.page }, at) }, label: `Added “${pageLabel(target)}” as a tab of ${where}` }
+      if (!target) return { reason: part.page === page.id ? t('A tabs page cannot be one of its own tabs') : t('A tabs page embeds lists, dashboards, reports and the like — not a tabs or record page') }
+      if (tabs.some(tab => tab.page === part.page)) return { reason: t('{page} is already a tab of {where}', { page: pageLabel(target), where }) }
+      if (tabs.length >= MAX_TABS) return { reason: t('A tabs page holds at most {max} pages', { max: MAX_TABS }) }
+      return { patch: { tabs: insert(tabs, { page: part.page }, at) }, label: t('Added “{page}” as a tab of {where}', { page: pageLabel(target), where }) }
     }
     case 'chart': {
-      if (!reportGroupKeys(entity).includes(part.groupBy)) return { reason: `${entity ? entityLabel(entity) : 'The report'} has no ${part.groupBy} to chart` }
+      if (!reportGroupKeys(entity).includes(part.groupBy)) return { reason: t('{entity} has no {field} to chart', { entity: entity ? entityLabel(entity) : t('The report'), field: part.groupBy }) }
       const charts = reportCharts(page)
-      if (charts.length >= MAX_CHARTS) return { reason: `A report has at most ${MAX_CHARTS} charts` }
+      if (charts.length >= MAX_CHARTS) return { reason: t('A report has at most {max} charts', { max: MAX_CHARTS }) }
       const next: FullstackChartDef[] = insert(charts, { groupBy: part.groupBy }, at)
-      return { patch: { charts: next, chart: undefined }, label: `Added a chart by ${keyText(entity, part.groupBy).toLowerCase()} to ${where}` }
+      return { patch: { charts: next, chart: undefined }, label: t('Added a chart by {field} to {where}', { field: keyText(entity, part.groupBy).toLowerCase(), where }) }
     }
     case 'child-tab': {
       const child = entities.find(e => e.name === part.entity)
-      if (!child || relationsTo(child, page.entity).length === 0) return { reason: `${part.entity} has no link to ${page.entity ?? 'this record'}` }
+      if (!child || relationsTo(child, page.entity).length === 0) return { reason: t('{entity} has no link to {record}', { entity: part.entity, record: page.entity ?? t('this record') }) }
       const tabs = childTabsOf(page, entities)
-      if (tabs.some(t => childTabEntity(t) === part.entity)) return { reason: `${entityLabel(child)} is already a tab of ${where}` }
-      if (tabs.length >= MAX_CHILD_TABS) return { reason: `A record page has at most ${MAX_CHILD_TABS} related tabs` }
-      return { patch: { childTabs: insert(tabs, part.entity, at) }, label: `Added the ${entityLabel(child)} tab to ${where}` }
+      if (tabs.some(tab => childTabEntity(tab) === part.entity)) return { reason: t('{entity} is already a tab of {where}', { entity: entityLabel(child), where }) }
+      if (tabs.length >= MAX_CHILD_TABS) return { reason: t('A record page has at most {max} related tabs', { max: MAX_CHILD_TABS }) }
+      return { patch: { childTabs: insert(tabs, part.entity, at) }, label: t('Added the {entity} tab to {where}', { entity: entityLabel(child), where }) }
     }
     case 'header-stat': {
       const child = entities.find(e => e.name === part.entity)
-      if (!child || relationsTo(child, page.entity).length === 0) return { reason: `${part.entity} has no link to ${page.entity ?? 'this record'}` }
+      if (!child || relationsTo(child, page.entity).length === 0) return { reason: t('{entity} has no link to {record}', { entity: part.entity, record: page.entity ?? t('this record') }) }
       const stats = headerStatsOf(page, entities)
-      if (stats.length >= MAX_HEADER_STATS) return { reason: `A record page has at most ${MAX_HEADER_STATS} header numbers` }
-      return { patch: { headerStats: insert(stats, { child: part.entity }, at) }, label: `Added a count of ${entityLabel(child)} to ${where}` }
+      if (stats.length >= MAX_HEADER_STATS) return { reason: t('A record page has at most {max} header numbers', { max: MAX_HEADER_STATS }) }
+      return { patch: { headerStats: insert(stats, { child: part.entity }, at) }, label: t('Added a count of {entity} to {where}', { entity: entityLabel(child), where }) }
     }
     case 'step-field': {
-      if (!askableFields(entity).some(a => a.name === part.field)) return { reason: `The wizard does not ask for ${part.field}` }
+      if (!askableFields(entity).some(a => a.name === part.field)) return { reason: t('The wizard does not ask for {field}', { field: part.field }) }
       const steps = wizardStepsOf(page, entities)
       const to = at == null ? steps.length - 1 : at
-      if (to < 0 || to > steps.length) return { reason: 'No such step' }
-      if (to === steps.length && steps.length >= MAX_STEPS) return { reason: `A wizard has at most ${MAX_STEPS} steps` }
+      if (to < 0 || to > steps.length) return { reason: t('No such step') }
+      if (to === steps.length && steps.length >= MAX_STEPS) return { reason: t('A wizard has at most {max} steps', { max: MAX_STEPS }) }
       const from = steps.findIndex(s => s.fields.includes(part.field))
-      if (from === to) return { reason: `${keyText(entity, part.field)} is already asked for in step ${to + 1}` }
+      if (from === to) return { reason: t('{field} is already asked for in step {n}', { field: keyText(entity, part.field), n: to + 1 }) }
       const grown = to === steps.length ? [...steps, { fields: [] }] : steps
       const moved = grown.map((s, i) => ({ ...s, fields: i === to ? [...s.fields, part.field] : s.fields.filter(f => f !== part.field) }))
       // A step the field leaves empty would ask for nothing (a validation error): it goes.
       const next = moved.filter((s, i) => s.fields.length > 0 || i === to)
-      const label = `${from < 0 ? 'Asked for' : 'Moved'} ${keyText(entity, part.field)} ${to === steps.length ? 'into a new step' : `to step ${next.indexOf(moved[to]) + 1}`} of ${where}`
+      const field = keyText(entity, part.field)
+      const n = next.indexOf(moved[to]) + 1
+      const label = from < 0
+        ? (to === steps.length ? t('Asked for {field} into a new step of {where}', { field, where }) : t('Asked for {field} to step {n} of {where}', { field, n, where }))
+        : (to === steps.length ? t('Moved {field} into a new step of {where}', { field, where }) : t('Moved {field} to step {n} of {where}', { field, n, where }))
       return { patch: { steps: next }, label }
     }
   }
@@ -254,34 +260,34 @@ export function placePart(pages: FullstackPageDef[], index: number, entities: Fu
  */
 export function renamePart(pages: FullstackPageDef[], index: number, entities: FullstackEntityDef[], control: string, value: string): PlacedPart {
   const page = pages[index]
-  if (!page) return { reason: 'No page to rename on' }
+  if (!page) return { reason: t('No page to rename on') }
   const m = /^(widget|tabs|steps|headerStats)\.(\d+)\.title$/.exec(control)
-  if (!m) return { reason: 'That cannot be renamed here' }
+  if (!m) return { reason: t('That cannot be renamed here') }
   const at = Number(m[2])
   const title = value.trim().slice(0, MAX_TITLE) || undefined
   const where = `“${pageLabel(page)}”`
-  const said = title ? `“${title}”` : 'its default'
+  const said = title ? `“${title}”` : t('its default')
   const retitled = <T extends { title?: string }>(list: T[]): T[] => list.map((item, i) => (i === at ? { ...item, title } : item))
   switch (m[1]) {
     case 'widget': {
       const widgets = page.widgets ?? []
-      if (!widgets[at]) return { reason: 'No such widget' }
-      return { patch: { widgets: retitled(widgets) }, label: `Renamed widget ${at + 1} of ${where} to ${said}` }
+      if (!widgets[at]) return { reason: t('No such widget') }
+      return { patch: { widgets: retitled(widgets) }, label: t('Renamed widget {n} of {where} to {title}', { n: at + 1, where, title: said }) }
     }
     case 'tabs': {
       const tabs = page.tabs ?? []
-      if (!tabs[at]) return { reason: 'No such tab' }
-      return { patch: { tabs: retitled(tabs) }, label: `Renamed tab ${at + 1} of ${where} to ${said}` }
+      if (!tabs[at]) return { reason: t('No such tab') }
+      return { patch: { tabs: retitled(tabs) }, label: t('Renamed tab {n} of {where} to {title}', { n: at + 1, where, title: said }) }
     }
     case 'steps': {
       const steps = wizardStepsOf(page, entities)
-      if (!steps[at]) return { reason: 'No such step' }
-      return { patch: { steps: retitled(steps) }, label: `Renamed step ${at + 1} of ${where} to ${said}` }
+      if (!steps[at]) return { reason: t('No such step') }
+      return { patch: { steps: retitled(steps) }, label: t('Renamed step {n} of {where} to {title}', { n: at + 1, where, title: said }) }
     }
     default: {
       const stats = headerStatsOf(page, entities)
-      if (!stats[at]) return { reason: 'No such number' }
-      return { patch: { headerStats: retitled(stats) }, label: `Renamed header number ${at + 1} of ${where} to ${said}` }
+      if (!stats[at]) return { reason: t('No such number') }
+      return { patch: { headerStats: retitled(stats) }, label: t('Renamed header number {n} of {where} to {title}', { n: at + 1, where, title: said }) }
     }
   }
 }

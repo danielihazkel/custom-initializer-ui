@@ -1,8 +1,20 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FullstackPageDef, FullstackStarterRequest, PreviewFile } from '../../../types'
 import { readErrorBody } from '../../../utils/previewErrors'
-import { PAGE_CODE_ROLE, pageCodeFiles } from '../pageCode'
+import { pageCodeFiles, type PageCodeFile } from '../pageCode'
 import { SMALL_BUTTON } from '../pages/constants'
+import { t, tn } from '../../../i18n'
+
+/** What a file is to the page, in the site's language. */
+function roleLabel(role: PageCodeFile['role']): string {
+  switch (role) {
+    case 'screen': return t('This page')
+    case 'tab': return t('Embedded as a tab')
+    case 'entity': return t('The list it draws')
+    case 'form': return t('The entity form it shows')
+    case 'shell': return t('The app shell that routes to it')
+  }
+}
 
 const ReadOnlyCodeViewer = lazy(() => import('../../ReadOnlyCodeViewer').then(m => ({ default: m.ReadOnlyCodeViewer })))
 
@@ -89,42 +101,42 @@ export function PageCode({ page, pages, request, problems }: {
         {problems > 0 ? (
           <>
             <span className="material-symbols-outlined text-error" style={{ fontSize: '14px' }} aria-hidden="true">error</span>
-            Fix the {problems} problem{problems === 1 ? '' : 's'} first — the generator turns down a layout with problems.
+            {tn(problems, 'Fix the {n} problem first — the generator turns down a layout with problems.', 'Fix the {n} problems first — the generator turns down a layout with problems.')}
           </>
         ) : loading ? (
           <>
             <span className="material-symbols-outlined animate-spin" style={{ fontSize: '14px' }} aria-hidden="true">progress_activity</span>
-            {fetched ? 'Updating…' : 'Generating…'}
+            {fetched ? t('Updating…') : t('Generating…')}
           </>
         ) : stale ? (
           <>
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">update</span>
-            Updating after your edit…
+            {t('Updating after your edit…')}
           </>
         ) : (
           <>
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">code</span>
-            What Generate writes for this page, read-only.
+            {t('What Generate writes for this page, read-only.')}
           </>
         )}
       </p>
 
       {fetched?.error && fetched.key === key && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-error/40 bg-error/5 px-3 py-2 text-[11px] text-error" role="alert" data-page-code-error>
-          <span className="min-w-0 flex-1">The generator said: {fetched.error}</span>
-          <button type="button" onClick={() => setRetry(n => n + 1)} className="font-semibold underline">Try again</button>
+          <span className="min-w-0 flex-1">{t('The generator said: {error}', { error: fetched.error })}</span>
+          <button type="button" onClick={() => setRetry(n => n + 1)} className="font-semibold underline">{t('Try again')}</button>
         </div>
       )}
 
       {fetched?.files && files.length === 0 && !stale && !fetched.error && (
         <p className="rounded-lg border border-outline-variant bg-background/50 px-3 py-3 text-[11px] text-secondary" data-page-code-empty>
-          The preview has no screen for this page. A page needs an id to become a route.
+          {t('The preview has no screen for this page. A page needs an id to become a route.')}
         </p>
       )}
 
       {active && (
         <div className={`overflow-hidden rounded-lg border border-outline-variant bg-background/50 transition-opacity ${stale ? 'opacity-60' : ''}`}>
-          <div className="flex flex-wrap gap-1 border-b border-outline-variant px-2 py-1.5" role="tablist" aria-label="Generated files">
+          <div className="flex flex-wrap gap-1 border-b border-outline-variant px-2 py-1.5" role="tablist" aria-label={t('Generated files')}>
             {files.map(file => (
               <button
                 key={file.path}
@@ -132,7 +144,7 @@ export function PageCode({ page, pages, request, problems }: {
                 role="tab"
                 aria-selected={file.path === active.path}
                 onClick={() => setPicked({ page: page.id, path: file.path })}
-                title={`${PAGE_CODE_ROLE[file.role]} — ${file.path}`}
+                title={`${roleLabel(file.role)} — ${file.path}`}
                 className={`rounded px-2 py-1 font-mono text-[11px] transition-colors ${
                   file.path === active.path ? 'bg-primary/10 font-semibold text-primary' : 'text-secondary hover:bg-primary/5 hover:text-on-surface'}`}
                 data-page-code-file={file.role}
@@ -143,15 +155,15 @@ export function PageCode({ page, pages, request, problems }: {
           </div>
           <div className="flex items-center gap-2 border-b border-outline-variant px-3 py-1">
             <p className="min-w-0 flex-1 truncate text-[10px] text-secondary" title={active.path}>
-              <span className="font-semibold">{PAGE_CODE_ROLE[active.role]}</span> · <span className="font-mono">{active.path.replace(/^frontend\//, '')}</span>
+              <span className="font-semibold">{roleLabel(active.role)}</span> · <span className="font-mono" dir="ltr">{active.path.replace(/^frontend\//, '')}</span>
             </p>
-            <button type="button" onClick={copy} className={SMALL_BUTTON} aria-label={`Copy ${active.name}`}>
+            <button type="button" onClick={copy} className={SMALL_BUTTON} aria-label={t('Copy {name}', { name: active.name })}>
               <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">{copied ? 'check' : 'content_copy'}</span>
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? t('Copied') : t('Copy')}
             </button>
           </div>
-          <div className="max-h-[60vh] overflow-auto custom-scrollbar" data-page-code-path={active.path}>
-            <Suspense fallback={<div className="p-4 text-[11px] text-secondary">Loading viewer…</div>}>
+          <div className="max-h-[60vh] overflow-auto custom-scrollbar" dir="ltr" data-page-code-path={active.path}>
+            <Suspense fallback={<div className="p-4 text-[11px] text-secondary">{t('Loading viewer…')}</div>}>
               <ReadOnlyCodeViewer code={active.content} targetPath={active.path} />
             </Suspense>
           </div>

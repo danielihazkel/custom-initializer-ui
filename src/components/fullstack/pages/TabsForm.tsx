@@ -6,16 +6,17 @@ import { MAX_TABS, MAX_TITLE, pageLabel } from '../pageLayout'
 import type { FormProps } from './formTypes'
 import { ICON_BUTTON, SMALL_BUTTON } from './constants'
 import { DragGrip, MoveButtons } from './fields'
+import { t } from '../../../i18n'
 
 export function TabsForm({ page, index, pages, errors, update, dnd, removed }: Omit<FormProps, 'entities' | 'lossy'> & { pages: FullstackPageDef[]; dnd: ReturnType<typeof useDragReorder> }) {
   const tabs = page.tabs ?? []
   const targets = pages.filter(p => p.id !== page.id && p.type !== 'tabs' && p.type !== 'record')
-  const nextTarget = targets.find(t => !tabs.some(x => x.page === t.id))
+  const nextTarget = targets.find(target => !tabs.some(x => x.page === target.id))
   const setTabs = (next: { title?: string; page: string }[]) => update(index, { tabs: next })
 
   return (
     <div className="space-y-1" data-control="tabs">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">Tabs</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">{t('Tabs')}</p>
       {errors.tabs && <p className="text-[11px] text-error">{errors.tabs}</p>}
       {tabs.map((tab, ti) => {
         const error = errors[`tab.${ti}`]
@@ -29,41 +30,41 @@ export function TabsForm({ page, index, pages, errors, update, dnd, removed }: O
           >
             <DragGrip dnd={dnd} list={`tabs:${index}`} index={ti} />
             <MoveButtons
-              label={`tab ${ti + 1}`}
+              label={t('tab {n}', { n: ti + 1 })}
               canUp={ti > 0}
               canDown={ti < tabs.length - 1}
               onMove={delta => setTabs(moveItem(tabs, ti, ti + delta))}
             />
             <select
-              aria-label={`Tab ${ti + 1} page`}
+              aria-label={t('Tab {n} page', { n: ti + 1 })}
               aria-invalid={Boolean(error)}
               value={tab.page}
-              onChange={e => setTabs(tabs.map((t, i) => (i === ti ? { ...t, page: e.target.value } : t)))}
+              onChange={e => setTabs(tabs.map((x, i) => (i === ti ? { ...x, page: e.target.value } : x)))}
               className={`${inputClass(error)} max-w-[14rem] py-1 text-xs`}
             >
-              <option value="">— pick a page —</option>
-              {targets.map(t => <option key={t.id} value={t.id}>{pageLabel(t)} ({t.id})</option>)}
-              {tab.page && !targets.some(t => t.id === tab.page) && <option value={tab.page}>{tab.page}</option>}
+              <option value="">{t('— pick a page —')}</option>
+              {targets.map(target => <option key={target.id} value={target.id}>{pageLabel(target)} ({target.id})</option>)}
+              {tab.page && !targets.some(target => target.id === tab.page) && <option value={tab.page}>{tab.page}</option>}
             </select>
             <input
               type="text"
-              aria-label={`Tab ${ti + 1} title`}
+              aria-label={t('Tab {n} title', { n: ti + 1 })}
               value={tab.title ?? ''}
               maxLength={MAX_TITLE}
-              placeholder="Tab label (optional)"
-              onChange={e => setTabs(tabs.map((t, i) => (i === ti ? { ...t, title: e.target.value || undefined } : t)))}
+              placeholder={t('Tab label (optional)')}
+              onChange={e => setTabs(tabs.map((x, i) => (i === ti ? { ...x, title: e.target.value || undefined } : x)))}
               className={`${inputClass()} max-w-[12rem] py-1 text-xs`}
             />
             <button
               type="button"
               onClick={() => {
                 const target = pages.find(p => p.id === tab.page)
-                removed?.(`Removed the “${tab.title || (target ? pageLabel(target) : tab.page)}” tab from “${pageLabel(page)}”`,
-                  target?.hidden ? 'its page stays in the layout, hidden' : undefined)
+                removed?.(t('Removed the “{tab}” tab from “{page}”', { tab: tab.title || (target ? pageLabel(target) : tab.page), page: pageLabel(page) }),
+                  target?.hidden ? t('its page stays in the layout, hidden') : undefined)
                 setTabs(tabs.filter((_, i) => i !== ti))
               }}
               className={ICON_BUTTON}
-              aria-label={`Remove tab ${ti + 1}`}
+              aria-label={t('Remove tab {n}', { n: ti + 1 })}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
             </button>
@@ -77,15 +78,15 @@ export function TabsForm({ page, index, pages, errors, update, dnd, removed }: O
           onClick={() => nextTarget && setTabs([...tabs, { page: nextTarget.id }])}
           disabled={!nextTarget}
           className={SMALL_BUTTON}
-          title={nextTarget ? undefined : 'Every page that can be a tab is already one — add a list, dashboard, report or master-detail page first'}
+          title={nextTarget ? undefined : t('Every page that can be a tab is already one — add a list, dashboard, report or master-detail page first')}
         >
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
-          Add tab
+          {t('Add tab')}
         </button>
       )}
-      {targets.some(t => !t.hidden) && (
+      {targets.some(target => !target.hidden) && (
         <p className="text-[11px] text-secondary">
-          Tip: hide the embedded pages (eye button) so they appear only here, not also in the navigation.
+          {t('Tip: hide the embedded pages (eye button) so they appear only here, not also in the navigation.')}
         </p>
       )}
     </div>

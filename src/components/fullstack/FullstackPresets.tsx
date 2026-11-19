@@ -4,6 +4,7 @@ import type { FullstackPreset } from '../../hooks/useFullstackPresets'
 import type { TeamModelSummary } from '../../types'
 import type { FullstackSnapshot } from './snapshot'
 import type { ExampleModel } from './examples'
+import { t, tn } from '../../i18n'
 
 interface Props {
   presets: FullstackPreset[]
@@ -41,12 +42,12 @@ interface Props {
 export function relativeTime(ts: number): string {
   const diff = Date.now() - ts
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) return t('just now')
+  if (mins < 60) return t('{n}m ago', { n: mins })
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return t('{n}h ago', { n: hours })
   const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d ago`
+  if (days < 7) return t('{n}d ago', { n: days })
   return new Date(ts).toLocaleDateString()
 }
 
@@ -113,7 +114,7 @@ export function FullstackPresets({
     >
       {label}
       {count > 0 && (
-        <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${tone === 'primary' ? 'bg-primary/15 text-primary' : 'bg-tertiary/15 text-tertiary'}`}>
+        <span className={`ms-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${tone === 'primary' ? 'bg-primary/15 text-primary' : 'bg-tertiary/15 text-tertiary'}`}>
           {count}
         </span>
       )}
@@ -121,13 +122,13 @@ export function FullstackPresets({
   )
 
   return (
-    <section className="space-y-3" aria-label="Start from" data-tour="fs-start">
+    <section className="space-y-3" aria-label={t('Start from')} data-tour="fs-start" data-start-from>
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4">
-          {tabButton('examples', 'Examples', examples.length, 'primary')}
-          {tabButton('presets', 'My Presets', presets.length, 'primary')}
-          {tabButton('team', 'Team', teamModels.length, 'primary')}
-          {tabButton('recents', 'Recent', recents.length, 'tertiary')}
+          {tabButton('examples', t('Examples'), examples.length, 'primary')}
+          {tabButton('presets', t('My Presets'), presets.length, 'primary')}
+          {tabButton('team', t('Team'), teamModels.length, 'primary')}
+          {tabButton('recents', t('Recent'), recents.length, 'tertiary')}
         </div>
         <div className="flex items-center gap-4 flex-wrap">
           <button
@@ -136,33 +137,33 @@ export function FullstackPresets({
             className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>bookmark_add</span>
-            Save this model…
+            {t('Save this model…')}
           </button>
           <span className="h-3 w-px bg-outline-variant" aria-hidden="true" />
           <button
             type="button"
             onClick={onExportJson}
             className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
-            title="Download the whole model (entities, settings, dependencies) as a JSON file you can commit or send"
+            title={t('Download the whole model (entities, settings, dependencies) as a JSON file you can commit or send')}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>download</span>
-            Export JSON
+            {t('Export JSON')}
           </button>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
-            title="Load a model exported from this tab"
+            title={t('Load a model exported from this tab')}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>upload</span>
-            Import JSON
+            {t('Import JSON')}
           </button>
           <input
             ref={fileInputRef}
             type="file"
             accept=".json,application/json"
             className="hidden"
-            aria-label="Import model JSON"
+            aria-label={t('Import model JSON')}
             onChange={e => {
               const file = e.target.files?.[0]
               if (file) onImportJson(file)
@@ -173,10 +174,10 @@ export function FullstackPresets({
             type="button"
             onClick={onCopyCurl}
             className="flex items-center gap-1 text-[11px] font-medium text-secondary hover:text-on-surface transition-colors"
-            title="Copy a curl command that generates this exact project — handy for CI scripts"
+            title={t('Copy a curl command that generates this exact project — handy for CI scripts')}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>terminal</span>
-            Copy as curl
+            {t('Copy as curl')}
           </button>
         </div>
       </div>
@@ -194,24 +195,24 @@ export function FullstackPresets({
                 <input
                   autoFocus
                   type="text"
-                  aria-label="Preset name"
+                  aria-label={t('Preset name')}
                   value={draftName}
                   onChange={e => setDraftName(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter') commitSave()
                     if (e.key === 'Escape') closeSavePrompt()
                   }}
-                  placeholder="Preset name (e.g. Billing domain v2)"
+                  placeholder={t('Preset name (e.g. Billing domain v2)')}
                   className="flex-1 bg-surface-container-lowest border border-outline-variant rounded-md px-3 py-1.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
                 />
-                <div className="inline-flex rounded-md border border-outline-variant overflow-hidden text-xs" role="group" aria-label="Save to">
-                  {([['browser', 'This browser', 'bookmark'], ['team', 'Team', 'groups']] as const).map(([key, label, icon]) => (
+                <div className="inline-flex rounded-md border border-outline-variant overflow-hidden text-xs" role="group" aria-label={t('Save to')}>
+                  {([['browser', t('This browser'), 'bookmark'], ['team', t('Team'), 'groups']] as const).map(([key, label, icon]) => (
                     <button
                       key={key}
                       type="button"
                       aria-pressed={saveTarget === key}
                       onClick={() => setSaveTarget(key)}
-                      title={key === 'team' ? 'Saved on the server — everyone who opens the generator sees it' : 'Saved in this browser only'}
+                      title={key === 'team' ? t('Saved on the server — everyone who opens the generator sees it') : t('Saved in this browser only')}
                       className={`inline-flex items-center gap-1 px-2.5 py-1.5 transition-colors ${saveTarget === key ? 'bg-primary/15 text-primary font-semibold' : 'text-secondary hover:text-on-surface'}`}
                     >
                       <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{icon}</span>
@@ -225,27 +226,27 @@ export function FullstackPresets({
                   disabled={!draftName.trim()}
                   className="px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-on-primary disabled:opacity-40 active:scale-95 transition-transform"
                 >
-                  Save
+                  {t('Save')}
                 </button>
                 <button
                   type="button"
                   onClick={closeSavePrompt}
                   className="px-3 py-1.5 rounded-md text-xs font-medium text-secondary hover:text-on-surface transition-colors"
                 >
-                  Cancel
+                  {t('Cancel')}
                 </button>
               </div>
               {saveTarget === 'team' && (
                 <input
                   type="text"
-                  aria-label="Team model description"
+                  aria-label={t('Team model description')}
                   value={draftDescription}
                   onChange={e => setDraftDescription(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter') commitSave()
                     if (e.key === 'Escape') closeSavePrompt()
                   }}
-                  placeholder="Description for your colleagues (optional)"
+                  placeholder={t('Description for your colleagues (optional)')}
                   className="w-full bg-surface-container-lowest border border-outline-variant rounded-md px-3 py-1.5 text-sm text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
                 />
               )}
@@ -256,7 +257,7 @@ export function FullstackPresets({
 
       {tab === 'examples' && examplesError && (
         <div className="text-[11px] text-error border border-error/30 bg-error/10 rounded px-3 py-2">
-          Couldn't load the examples ({examplesError}).
+          {t("Couldn't load the examples ({error}).", { error: examplesError })}
         </div>
       )}
       {tab === 'examples' && !examplesError && examplesLoading && examples.length === 0 && (
@@ -264,7 +265,7 @@ export function FullstackPresets({
       )}
       {tab === 'examples' && !examplesError && !examplesLoading && examples.length === 0 && (
         <div className="text-xs text-secondary py-4 px-4 rounded-lg border border-dashed border-outline-variant/50 bg-surface-container-low/30">
-          No examples are published. An admin can add them under Admin → Fullstack Examples.
+          {t('No examples are published. An admin can add them under Admin → Fullstack Examples.')}
         </div>
       )}
       {tab === 'examples' && examples.length > 0 && (
@@ -274,24 +275,24 @@ export function FullstackPresets({
               key={ex.id}
               type="button"
               onClick={() => onLoadExample(ex)}
-              className="flex-shrink-0 w-56 rounded-lg border-2 border-outline-variant bg-surface-container hover:border-primary/60 hover:bg-primary/[0.03] p-4 text-left transition-all group"
-              title={`Replace the current entities with the ${ex.name} example`}
+              className="flex-shrink-0 w-56 rounded-lg border-2 border-outline-variant bg-surface-container hover:border-primary/60 hover:bg-primary/[0.03] p-4 text-start transition-all group"
+              title={t('Replace the current entities with the {example} example', { example: ex.name })}
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>{ex.icon || 'category'}</span>
-                <span className="font-semibold text-sm text-on-surface">{ex.name}</span>
+                <span dir="auto" className="font-semibold text-sm text-on-surface">{ex.name}</span>
                 {ex.pages && ex.pages.length > 0 && (
                   <span
-                    className="ml-auto inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded"
-                    title={`Comes with a page layout: ${ex.pages.filter(p => !p.hidden).map(p => p.title || p.entity || p.id).join(', ')}`}
+                    className="ms-auto inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded"
+                    title={t('Comes with a page layout: {pages}', { pages: ex.pages.filter(p => !p.hidden).map(p => p.title || p.entity || p.id).join(', ') })}
                     data-example-layout
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>web</span>
-                    {ex.pages.filter(p => !p.hidden).length} pages
+                    {tn(ex.pages.filter(p => !p.hidden).length, '{n} page', '{n} pages')}
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-secondary leading-relaxed line-clamp-3">{ex.description}</p>
+              <p dir="auto" className="text-[11px] text-secondary leading-relaxed line-clamp-3">{ex.description}</p>
               <div className="mt-2 flex flex-wrap gap-1">
                 {ex.entities.map(e => (
                   <span key={e.name} className="text-[10px] font-mono text-secondary bg-surface-container-high px-1.5 py-0.5 rounded">{e.name}</span>
@@ -306,10 +307,10 @@ export function FullstackPresets({
         <div data-team-models>
           {teamError && (
             <div className="flex items-center justify-between gap-3 text-[11px] text-error border border-error/30 bg-error/10 rounded px-3 py-2 mb-2">
-              <span>Couldn't load the team models ({teamError}).</span>
+              <span>{t("Couldn't load the team models ({error}).", { error: teamError })}</span>
               <button type="button" onClick={onRefreshTeam} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-error/40 text-error hover:bg-error/10 transition-colors">
                 <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>refresh</span>
-                Retry
+                {t('Retry')}
               </button>
             </div>
           )}
@@ -318,7 +319,7 @@ export function FullstackPresets({
           ) : teamModels.length === 0 ? (
             !teamError && (
               <div className="text-xs text-secondary py-4 px-4 rounded-lg border border-dashed border-outline-variant/50 bg-surface-container-low/30">
-                Nothing shared yet. Save the current model with "Save this model…" → Team and everyone who opens the generator will see it here.
+                {t('Nothing shared yet. Save the current model with "Save this model…" → Team and everyone who opens the generator will see it here.')}
               </div>
             )
           ) : (
@@ -328,23 +329,23 @@ export function FullstackPresets({
                   key={model.id}
                   className="relative flex-shrink-0 w-56 rounded-lg border-2 border-outline-variant bg-surface-container hover:border-outline group transition-all"
                 >
-                  <button type="button" onClick={() => onLoadTeam(model)} className="w-full p-4 text-left" title={model.description ?? undefined}>
+                  <button type="button" onClick={() => onLoadTeam(model)} className="w-full p-4 text-start" title={model.description ?? undefined}>
                     <div className="flex items-center gap-2 mb-2">
                       <span className="material-symbols-outlined text-secondary" style={{ fontSize: '20px' }}>groups</span>
                       <span className="font-semibold text-sm text-on-surface truncate">{model.name}</span>
                     </div>
                     <p className="text-[11px] text-secondary truncate">
-                      {model.description || (model.createdBy ? `by ${model.createdBy}` : 'No description')}
+                      {model.description || (model.createdBy ? t('by {user}', { user: model.createdBy }) : t('No description'))}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1.5 items-center">
                       <span className="inline-flex items-center gap-1 text-[10px] font-medium text-secondary bg-surface-container-high px-1.5 py-0.5 rounded">
                         <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>table</span>
-                        {model.entityCount} entit{model.entityCount === 1 ? 'y' : 'ies'}
+                        {tn(model.entityCount, '{n} entity', '{n} entities')}
                       </span>
                       {model.description && model.createdBy && (
-                        <span className="text-[10px] text-secondary truncate max-w-[6rem]" title={`Saved by ${model.createdBy}`}>{model.createdBy}</span>
+                        <span className="text-[10px] text-secondary truncate max-w-[6rem]" title={t('Saved by {user}', { user: model.createdBy })}>{model.createdBy}</span>
                       )}
-                      <span className="text-[10px] text-secondary ml-auto" title={new Date(model.updatedAt).toLocaleString()}>
+                      <span className="text-[10px] text-secondary ms-auto" title={new Date(model.updatedAt).toLocaleString()}>
                         {relativeTime(Date.parse(model.updatedAt))}
                       </span>
                     </div>
@@ -352,9 +353,9 @@ export function FullstackPresets({
                   <button
                     type="button"
                     onClick={() => onDeleteTeam(model)}
-                    aria-label={`Delete ${model.name} for everyone`}
-                    title="Delete for everyone"
-                    className="absolute top-1.5 right-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error/10 hover:text-error transition-all"
+                    aria-label={t('Delete {name} for everyone', { name: model.name })}
+                    title={t('Delete for everyone')}
+                    className="absolute top-1.5 end-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error/10 hover:text-error transition-all"
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
                   </button>
@@ -372,8 +373,8 @@ export function FullstackPresets({
           return (
             <div className="text-xs text-secondary py-4 px-4 rounded-lg border border-dashed border-outline-variant/50 bg-surface-container-low/30">
               {tab === 'presets'
-                ? 'No presets yet. Model your entities and click "Save this model…" above.'
-                : 'No recent models yet. Explore or generate a project to see it here.'}
+                ? t('No presets yet. Model your entities and click "Save this model…" above.')
+                : t('No recent models yet. Explore or generate a project to see it here.')}
             </div>
           )
         }
@@ -384,33 +385,33 @@ export function FullstackPresets({
                 key={item.id}
                 className="relative flex-shrink-0 w-52 rounded-lg border-2 border-outline-variant bg-surface-container hover:border-outline group transition-all"
               >
-                <button type="button" onClick={() => onLoad(item.snapshot)} className="w-full p-4 text-left">
+                <button type="button" onClick={() => onLoad(item.snapshot)} className="w-full p-4 text-start">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="material-symbols-outlined text-secondary" style={{ fontSize: '20px' }}>
                       {tab === 'presets' ? 'bookmark' : 'history'}
                     </span>
-                    <span className="font-semibold text-sm text-on-surface truncate">{item.name}</span>
+                    <span dir="auto" className="font-semibold text-sm text-on-surface truncate">{item.name}</span>
                   </div>
-                  <p className="text-[11px] text-secondary font-mono truncate">
+                  <p className="text-[11px] text-secondary font-mono truncate" dir="ltr">
                     {item.snapshot.meta.groupId}:{item.snapshot.meta.artifactId}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5 items-center">
                     <span className="inline-flex items-center gap-1 text-[10px] font-medium text-secondary bg-surface-container-high px-1.5 py-0.5 rounded">
                       <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>table</span>
-                      {item.snapshot.entities.length} entit{item.snapshot.entities.length === 1 ? 'y' : 'ies'}
+                      {tn(item.snapshot.entities.length, '{n} entity', '{n} entities')}
                     </span>
                     <span className="inline-flex items-center gap-1 text-[10px] font-medium text-secondary bg-surface-container-high px-1.5 py-0.5 rounded">
                       <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>widgets</span>
-                      {item.snapshot.selectedDeps.length} deps
+                      {t('{n} deps', { n: item.snapshot.selectedDeps.length })}
                     </span>
-                    <span className="text-[10px] text-secondary ml-auto">{relativeTime(item.createdAt)}</span>
+                    <span className="text-[10px] text-secondary ms-auto">{relativeTime(item.createdAt)}</span>
                   </div>
                 </button>
                 <button
                   type="button"
                   onClick={() => onDelete(item.id)}
-                  aria-label={`Delete ${item.name}`}
-                  className="absolute top-1.5 right-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error/10 hover:text-error transition-all"
+                  aria-label={t('Delete {name}', { name: item.name })}
+                  className="absolute top-1.5 end-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error/10 hover:text-error transition-all"
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
                 </button>

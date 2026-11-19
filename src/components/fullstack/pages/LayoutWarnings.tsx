@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FullstackPageDef } from '../../../types'
 import type { EditTarget } from '../LayoutPreview'
 import type { LayoutWarning, PageLayoutValidation } from '../pageLayout'
+import { t, tc, tn } from '../../../i18n'
 
 /** Advice about the layout (never blocks Generate): each line jumps to its page, and a fix applies in one undo step. */
 export function LayoutWarnings({ warnings, dismissed = [], pages, reveal, pushUndo, onChange, onDismiss, onRestore }: {
@@ -27,7 +28,7 @@ export function LayoutWarnings({ warnings, dismissed = [], pages, reveal, pushUn
     <ul
       className="rounded-lg border border-amber-400/50 bg-amber-400/10 px-3 py-2 space-y-1"
       role="status"
-      aria-label="Layout warnings"
+      aria-label={t('Layout warnings')}
       data-page-layout-warnings
     >
       {warnings.map((warning, i) => (
@@ -37,7 +38,7 @@ export function LayoutWarnings({ warnings, dismissed = [], pages, reveal, pushUn
               type="button"
               onClick={() => reveal({ page: warning.page!, control: warning.field })}
               className="flex items-start gap-1.5 text-start hover:underline"
-              title="Open this page at the warning"
+              title={t('Open this page at the warning')}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '13px' }} aria-hidden="true">warning</span>
               {warning.summary}
@@ -56,11 +57,11 @@ export function LayoutWarnings({ warnings, dismissed = [], pages, reveal, pushUn
                 onChange(warning.fix!.apply(pages))
               }}
               className="inline-flex items-center gap-1 rounded border border-amber-500/50 px-1.5 py-0.5 text-[10px] font-semibold hover:bg-amber-400/20"
-              title="Apply this fix (undoable)"
+              title={t('Apply this fix (undoable)')}
               data-page-fix
             >
               <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">auto_fix_high</span>
-              Fix: {warning.fix.label}
+              {t('Fix: {fix}', { fix: warning.fix.label })}
             </button>
           )}
           {onDismiss && (
@@ -68,12 +69,12 @@ export function LayoutWarnings({ warnings, dismissed = [], pages, reveal, pushUn
               type="button"
               onClick={() => onDismiss(warning.key)}
               className="ms-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold hover:bg-amber-400/20"
-              title="Dismiss this warning (undoable; Show dismissed brings it back)"
-              aria-label={`Dismiss: ${warning.summary}`}
+              title={t('Dismiss this warning (undoable; Show dismissed brings it back)')}
+              aria-label={t('Dismiss: {warning}', { warning: warning.summary })}
               data-warning-dismiss
             >
               <span className="material-symbols-outlined" style={{ fontSize: '12px' }} aria-hidden="true">close</span>
-              Dismiss
+              {tc('warning', 'Dismiss')}
             </button>
           )}
         </li>
@@ -95,7 +96,9 @@ function DismissedList({ dismissed, open, onToggle, onRestore }: {
   return (
     <div className="text-[11px] text-secondary" data-dismissed-warnings>
       <button type="button" onClick={onToggle} aria-expanded={open} className="hover:underline">
-        {open ? 'Hide' : 'Show'} {dismissed.length} dismissed warning{dismissed.length === 1 ? '' : 's'}
+        {open
+          ? tn(dismissed.length, 'Hide {n} dismissed warning', 'Hide {n} dismissed warnings')
+          : tn(dismissed.length, 'Show {n} dismissed warning', 'Show {n} dismissed warnings')}
       </button>
       {open && (
         <ul className="mt-1 space-y-1 ps-3">
@@ -103,14 +106,14 @@ function DismissedList({ dismissed, open, onToggle, onRestore }: {
             <li key={w.key} className="flex flex-wrap items-start gap-x-3">
               <span className="line-through decoration-secondary/50">{w.summary}</span>
               <button type="button" onClick={() => onRestore([w.key])} className="font-semibold hover:underline" data-warning-restore>
-                Restore
+                {t('Restore')}
               </button>
             </li>
           ))}
           {dismissed.length > 1 && (
             <li>
               <button type="button" onClick={() => onRestore(dismissed.map(w => w.key))} className="font-semibold hover:underline">
-                Restore all
+                {t('Restore all')}
               </button>
             </li>
           )}

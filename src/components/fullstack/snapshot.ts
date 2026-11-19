@@ -2,6 +2,7 @@ import type { FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackStart
 import { describePagesChange, requestPages } from './pageLayout'
 import { hasNavSettings, requestNav } from './navTools'
 import { stripUids } from './uid'
+import { t } from '../../i18n'
 
 export interface ProjectMeta {
   groupId: string
@@ -109,31 +110,31 @@ export function snapshotsEqual(a: FullstackSnapshot, b: FullstackSnapshot): bool
  *  names for edits recorded automatically (typing, toggles) rather than through an explicit,
  *  already-labelled action. Names the first thing that differs. */
 export function describeSnapshotChange(prev: FullstackSnapshot, next: FullstackSnapshot): string {
-  if (prev.entities.length < next.entities.length) return 'Added an entity'
-  if (prev.entities.length > next.entities.length) return 'Removed an entity'
-  if (isReordered(prev.entities, next.entities)) return 'Reordered entities'
+  if (prev.entities.length < next.entities.length) return t('Added an entity')
+  if (prev.entities.length > next.entities.length) return t('Removed an entity')
+  if (isReordered(prev.entities, next.entities)) return t('Reordered entities')
   for (let i = 0; i < next.entities.length; i++) {
     const a = prev.entities[i]; const b = next.entities[i]
     if (JSON.stringify(a) === JSON.stringify(b)) continue
-    const name = (b.name || a.name).trim() || 'an entity'
-    if (a.name !== b.name && a.fields === b.fields) return `Renamed ${name}`
-    if (a.fields.length < b.fields.length) return `Added a field to ${name}`
-    if (a.fields.length > b.fields.length) return `Removed a field from ${name}`
-    if (isReordered(a.fields, b.fields)) return `Reordered fields of ${name}`
-    if (isReordered(a.relations ?? [], b.relations ?? [])) return `Reordered relations of ${name}`
-    return `Edited ${name}`
+    const name = (b.name || a.name).trim() || t('an entity')
+    if (a.name !== b.name && a.fields === b.fields) return t('Renamed {entity}', { entity: name })
+    if (a.fields.length < b.fields.length) return t('Added a field to {entity}', { entity: name })
+    if (a.fields.length > b.fields.length) return t('Removed a field from {entity}', { entity: name })
+    if (isReordered(a.fields, b.fields)) return t('Reordered fields of {entity}', { entity: name })
+    if (isReordered(a.relations ?? [], b.relations ?? [])) return t('Reordered relations of {entity}', { entity: name })
+    return t('Edited {entity}', { entity: name })
   }
-  if (JSON.stringify(prev.meta) !== JSON.stringify(next.meta)) return 'Edited project settings'
-  if (JSON.stringify(prev.selectedDeps) !== JSON.stringify(next.selectedDeps)) return 'Changed dependencies'
-  if (JSON.stringify(prev.scaffoldOpts) !== JSON.stringify(next.scaffoldOpts)) return 'Changed options'
-  if (prev.backendSet !== next.backendSet || prev.frontendSet !== next.frontendSet) return 'Changed template set'
-  if (prev.colorPalette !== next.colorPalette) return 'Changed colour palette'
-  if (JSON.stringify(prev.nav ?? {}) !== JSON.stringify(next.nav ?? {})) return 'Changed the navigation'
+  if (JSON.stringify(prev.meta) !== JSON.stringify(next.meta)) return t('Edited project settings')
+  if (JSON.stringify(prev.selectedDeps) !== JSON.stringify(next.selectedDeps)) return t('Changed dependencies')
+  if (JSON.stringify(prev.scaffoldOpts) !== JSON.stringify(next.scaffoldOpts)) return t('Changed options')
+  if (prev.backendSet !== next.backendSet || prev.frontendSet !== next.frontendSet) return t('Changed template set')
+  if (prev.colorPalette !== next.colorPalette) return t('Changed colour palette')
+  if (JSON.stringify(prev.nav ?? {}) !== JSON.stringify(next.nav ?? {})) return t('Changed the navigation')
   if (JSON.stringify(prev.pages ?? []) !== JSON.stringify(next.pages ?? [])) return describePagesChange(prev.pages ?? [], next.pages ?? [])
   const da = prev.dismissedWarnings ?? []; const db = next.dismissedWarnings ?? []
-  if (db.length > da.length) return db.length - da.length === 1 ? 'Dismissed a warning' : 'Dismissed warnings'
-  if (db.length < da.length) return da.length - db.length === 1 ? 'Restored a warning' : 'Restored warnings'
-  return 'Edit'
+  if (db.length > da.length) return db.length - da.length === 1 ? t('Dismissed a warning') : t('Dismissed warnings')
+  if (db.length < da.length) return da.length - db.length === 1 ? t('Restored a warning') : t('Restored warnings')
+  return t('Edit')
 }
 
 /** Which *thing* differs between two snapshots, as a stable string — the undo recorder only
@@ -254,7 +255,7 @@ export function parseExportedModel(text: string): ParsedModel | { error: string 
   try {
     parsed = JSON.parse(text)
   } catch {
-    return { error: 'Not valid JSON' }
+    return { error: t('Not valid JSON') }
   }
   // A generated project's model file says what it was rendered with; an export does not.
   const generator = parsed && typeof parsed === 'object' ? (parsed as { generator?: unknown }).generator : undefined
@@ -271,12 +272,12 @@ export function parseExportedModel(text: string): ParsedModel | { error: string 
   if (parsed && typeof parsed === 'object' && (parsed as { format?: unknown }).format === REQUEST_MODEL_FORMAT) {
     const request = (parsed as { request?: unknown }).request
     if (!request || typeof request !== 'object' || !Array.isArray((request as { entities?: unknown }).entities)) {
-      return { error: 'Not a fullstack model file (the request in it has no entities)' }
+      return { error: t('Not a fullstack model file (the request in it has no entities)') }
     }
     return { snapshot: snapshotFromRequest(request as Record<string, unknown>), ...origin }
   }
   if (!isSnapshot(parsed)) {
-    return { error: 'Not a fullstack model file (expected meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet)' }
+    return { error: t('Not a fullstack model file (expected meta, entities, selectedDeps, scaffoldOpts, backendSet, frontendSet)') }
   }
   const { format: _format, exportedAt: _at, ...rest } = parsed as Partial<ExportedModel> & FullstackSnapshot
   return { snapshot: makeSnapshot(rest), ...origin }

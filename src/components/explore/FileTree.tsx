@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FileStatus, TreeNode } from '../../types'
 import { fuzzyMatch } from '../../utils/fuzzy'
 import { Highlight } from '../shared/Highlight'
+import { isRtl, t } from '../../i18n'
 
 /**
  * The file tree of a generated project: used by the Explore modal and by the Backend tab's file
@@ -25,6 +26,11 @@ export const STATUS_COLORS: Record<FileStatus, string> = {
   removed:   'text-red-400',
   modified:  'text-amber-400',
   unchanged: '',
+}
+
+/** A file's diff status, in words (for its icon's label). */
+function statusWord(status: FileStatus): string {
+  return status === 'added' ? t('added') : status === 'removed' ? t('removed') : status === 'modified' ? t('modified') : ''
 }
 
 const STATUS_ICONS: Record<FileStatus, string> = {
@@ -139,7 +145,7 @@ interface Props {
   label?: string
 }
 
-export function FileTree({ tree, selected, onSelect, fileStatuses, changedDirs, filter = '', flash, label = 'Project files' }: Props) {
+export function FileTree({ tree, selected, onSelect, fileStatuses, changedDirs, filter = '', flash, label = t('Project files') }: Props) {
   // Tracked as "collapsed" rather than "expanded": the tree is fully open by default, and
   // directories that appear later (ghost dirs of removed files, new dependencies) inherit that.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
@@ -186,7 +192,11 @@ export function FileTree({ tree, selected, onSelect, fileStatuses, changedDirs, 
     const row = rows[at]
     const isDir = row.node.type === 'directory'
     const open = isDir && (filter.trim() !== '' || !collapsed.has(row.node.path))
-    switch (e.key) {
+    // In Hebrew the tree reads right to left: ← steps in and → steps out, as WAI-ARIA has it.
+    const key = isRtl() && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      ? (e.key === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft')
+      : e.key
+    switch (key) {
       case 'ArrowDown': moveTo(rows[Math.min(at + 1, rows.length - 1)].node.path); break
       case 'ArrowUp': moveTo(rows[Math.max(at - 1, 0)].node.path); break
       case 'Home': moveTo(rows[0].node.path); break
@@ -210,7 +220,7 @@ export function FileTree({ tree, selected, onSelect, fileStatuses, changedDirs, 
   }
 
   if (rows.length === 0) {
-    return <p className="px-2 py-3 text-[11px] text-secondary" data-tree-empty>No file matches “{filter.trim()}”.</p>
+    return <p className="px-2 py-3 text-[11px] text-secondary" data-tree-empty>{t('No file matches “{filter}”.', { filter: filter.trim() })}</p>
   }
 
   return (
@@ -232,27 +242,27 @@ export function FileTree({ tree, selected, onSelect, fileStatuses, changedDirs, 
             tabIndex={node.path === active ? 0 : -1}
             data-tree-path={node.path}
             onClick={() => { setCursor(node.path); activate(row) }}
-            className={`flex items-center gap-1.5 py-0.5 pr-2 text-xs rounded cursor-pointer select-none outline-none transition-colors focus-visible:ring-1 focus-visible:ring-primary ${
+            className={`flex items-center gap-1.5 py-0.5 pe-2 text-xs rounded cursor-pointer select-none outline-none transition-colors focus-visible:ring-1 focus-visible:ring-primary ${
               isSelected
                 ? 'bg-primary/10 text-primary'
                 : `hover:bg-surface-container-high ${changed ? STATUS_COLORS[changed] : 'text-on-surface-variant hover:text-on-surface'}`
             } ${flash?.has(node.path) ? 'tree-flash' : ''}`}
-            style={{ paddingLeft: `${8 + depth * 14}px` }}
+            style={{ paddingInlineStart: `${8 + depth * 14}px` }}
           >
             <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: '14px' }} aria-hidden="true">
               {isDir ? (isOpen ? 'folder_open' : 'folder') : fileIcon(node.name)}
             </span>
-            <span className={`truncate ${isDir ? 'font-medium' : ''} ${changed === 'removed' ? 'line-through opacity-60' : ''}`}>
+            <span dir="ltr" className={`truncate ${isDir ? 'font-medium' : ''} ${changed === 'removed' ? 'line-through opacity-60' : ''}`}>
               <Highlight text={node.name} ranges={row.ranges} />
             </span>
             {isDir && changedDirs?.has(node.path) && (
-              <span className="ml-1 w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" aria-label="Has changes" />
+              <span className="ms-1 w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" aria-label={t('Has changes')} />
             )}
             {changed && (
               <span
-                className={`material-symbols-outlined ml-auto flex-shrink-0 ${STATUS_COLORS[changed]}`}
+                className={`material-symbols-outlined ms-auto flex-shrink-0 ${STATUS_COLORS[changed]}`}
                 style={{ fontSize: '12px' }}
-                aria-label={changed}
+                aria-label={statusWord(changed)}
               >
                 {STATUS_ICONS[changed]}
               </span>

@@ -1,53 +1,55 @@
 import { useRef } from 'react'
 import { useModal } from '../../hooks/useModal'
+import { t, useLang } from '../../i18n'
 
 /** Every keyboard shortcut the fullstack tab answers to — the cheat sheet renders this list and
- *  the tests pin it, so a new binding in `FullstackView` must be added here too. */
+ *  the tests pin it, so a new binding in `FullstackView` must be added here too. Each `action` is
+ *  a getter, so it reads in the site's language at the moment the sheet draws it. */
 export const FULLSTACK_SHORTCUTS: { keys: string; action: string }[] = [
-  { keys: 'Ctrl+Enter', action: 'Generate the fullstack ZIP' },
-  { keys: 'Ctrl+Shift+E', action: 'Explore the generated files' },
-  { keys: 'Ctrl+S', action: 'Save the current model as a preset' },
-  { keys: 'Ctrl+Z', action: 'Undo' },
-  { keys: 'Ctrl+Shift+Z / Ctrl+Y', action: 'Redo' },
-  { keys: 'Ctrl+K', action: 'Command palette — every action on this tab' },
-  { keys: '↑ / ↓ / Enter', action: 'Move through the entity outline and open a card' },
-  { keys: '/', action: 'Search the library (in the layout designer)' },
-  { keys: 'Delete', action: 'Remove the selected widget (layout designer)' },
-  { keys: 'Alt+← / Alt+→', action: 'Move the selected widget (layout designer)' },
-  { keys: 'Alt+Shift+← / →', action: 'Make the selected widget narrower or wider' },
-  { keys: 'Ctrl+C / Ctrl+X', action: 'Copy or cut the selected widget — or, with none selected, copy every widget of the dashboard' },
-  { keys: 'Double-click / F2', action: 'Rename a title on the canvas in place — Enter saves, Esc cancels (layout designer)' },
-  { keys: 'Ctrl+D', action: 'Duplicate the selected widget (layout designer)' },
-  { keys: 'Ctrl+V', action: 'Paste copied widgets onto the dashboard on the canvas (after the selected one)' },
-  { keys: 'Delete / Alt+← / →', action: 'On a focused page chip: remove the page, or move it (layout designer)' },
-  { keys: 'P', action: 'Play the layout: click through it as the app would (layout designer)' },
-  { keys: 'Shift+F10', action: 'Open a focused page chip’s menu; Ctrl/Shift-click picks several pages (layout designer)' },
-  { keys: 'Esc', action: 'Close a dialog, panel or the import drawer; in the designer, deselect first' },
-  { keys: '?', action: 'Show this list' },
+  { keys: 'Ctrl+Enter', get action() { return t('Generate the fullstack ZIP') } },
+  { keys: 'Ctrl+Shift+E', get action() { return t('Explore the generated files') } },
+  { keys: 'Ctrl+S', get action() { return t('Save the current model as a preset') } },
+  { keys: 'Ctrl+Z', get action() { return t('Undo') } },
+  { keys: 'Ctrl+Shift+Z / Ctrl+Y', get action() { return t('Redo') } },
+  { keys: 'Ctrl+K', get action() { return t('Command palette — every action on this tab') } },
+  { keys: '↑ / ↓ / Enter', get action() { return t('Move through the entity outline and open a card') } },
+  { keys: '/', get action() { return t('Search the library (in the layout designer)') } },
+  { keys: 'Delete', get action() { return t('Remove the selected widget (layout designer)') } },
+  { keys: 'Alt+← / Alt+→', get action() { return t('Move the selected widget (layout designer)') } },
+  { keys: 'Alt+Shift+← / →', get action() { return t('Make the selected widget narrower or wider') } },
+  { keys: 'Ctrl+C / Ctrl+X', get action() { return t('Copy or cut the selected widget — or, with none selected, copy every widget of the dashboard') } },
+  { keys: 'Double-click / F2', get action() { return t('Rename a title on the canvas in place — Enter saves, Esc cancels (layout designer)') } },
+  { keys: 'Ctrl+D', get action() { return t('Duplicate the selected widget (layout designer)') } },
+  { keys: 'Ctrl+V', get action() { return t('Paste copied widgets onto the dashboard on the canvas (after the selected one)') } },
+  { keys: 'Delete / Alt+← / →', get action() { return t('On a focused page chip: remove the page, or move it (layout designer)') } },
+  { keys: 'P', get action() { return t('Play the layout: click through it as the app would (layout designer)') } },
+  { keys: 'Shift+F10', get action() { return t('Open a focused page chip’s menu; Ctrl/Shift-click picks several pages (layout designer)') } },
+  { keys: 'Esc', get action() { return t('Close a dialog, panel or the import drawer; in the designer, deselect first') } },
+  { keys: '?', get action() { return t('Show this list') } },
 ]
 
 /** The Backend tab's shortcuts — bound in `App.tsx`, `DependencySelector` and `PresetPicker`. */
 export const BACKEND_SHORTCUTS: { keys: string; action: string }[] = [
-  { keys: 'Ctrl+K', action: 'Command palette — every action, dependency and setting' },
-  { keys: 'Ctrl+Enter', action: 'Generate and download the project' },
-  { keys: 'Ctrl+Shift+E', action: 'Explore the generated files' },
-  { keys: 'Ctrl+S', action: 'Save the current setup as a preset' },
-  { keys: '/', action: 'Search dependencies' },
-  { keys: '↓ / ↑', action: 'From the search box, move through the results' },
-  { keys: 'Enter', action: 'In the search box: add (or remove) the first result' },
-  { keys: 'Space', action: 'On a dependency: select it' },
-  { keys: 'Esc', action: 'Clear the search; close a dialog, drawer or menu' },
-  { keys: '?', action: 'Show this list' },
+  { keys: 'Ctrl+K', get action() { return t('Command palette — every action, dependency and setting') } },
+  { keys: 'Ctrl+Enter', get action() { return t('Generate and download the project') } },
+  { keys: 'Ctrl+Shift+E', get action() { return t('Explore the generated files') } },
+  { keys: 'Ctrl+S', get action() { return t('Save the current setup as a preset') } },
+  { keys: '/', get action() { return t('Search dependencies') } },
+  { keys: '↓ / ↑', get action() { return t('From the search box, move through the results') } },
+  { keys: 'Enter', get action() { return t('In the search box: add (or remove) the first result') } },
+  { keys: 'Space', get action() { return t('On a dependency: select it') } },
+  { keys: 'Esc', get action() { return t('Clear the search; close a dialog, drawer or menu') } },
+  { keys: '?', get action() { return t('Show this list') } },
 ]
 
 /** The Frontend tab's shortcuts — bound in `FrontendView` and `AvailableDependenciesFE`. */
 export const FRONTEND_SHORTCUTS: { keys: string; action: string }[] = [
-  { keys: 'Ctrl+K', action: 'Command palette' },
-  { keys: 'Ctrl+Enter', action: 'Generate and download the project' },
-  { keys: 'Ctrl+Shift+E', action: 'Explore the generated files' },
-  { keys: '/', action: 'Search dependencies' },
-  { keys: 'Esc', action: 'Close a dialog or menu' },
-  { keys: '?', action: 'Show this list' },
+  { keys: 'Ctrl+K', get action() { return t('Command palette') } },
+  { keys: 'Ctrl+Enter', get action() { return t('Generate and download the project') } },
+  { keys: 'Ctrl+Shift+E', get action() { return t('Explore the generated files') } },
+  { keys: '/', get action() { return t('Search dependencies') } },
+  { keys: 'Esc', get action() { return t('Close a dialog or menu') } },
+  { keys: '?', get action() { return t('Show this list') } },
 ]
 
 /**
@@ -60,6 +62,7 @@ export function ShortcutsOverlay({ onClose, shortcuts = FULLSTACK_SHORTCUTS }: {
   onClose: () => void
   shortcuts?: { keys: string; action: string }[]
 }) {
+  useLang()
   const sheetRef = useRef<HTMLDivElement>(null)
   useModal(sheetRef, { onClose, lockScroll: false })
 
@@ -69,7 +72,7 @@ export function ShortcutsOverlay({ onClose, shortcuts = FULLSTACK_SHORTCUTS }: {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Keyboard shortcuts"
+        aria-label={t('Keyboard shortcuts')}
         data-shortcuts
         ref={sheetRef}
         tabIndex={-1}
@@ -79,11 +82,11 @@ export function ShortcutsOverlay({ onClose, shortcuts = FULLSTACK_SHORTCUTS }: {
           <div className="flex items-start gap-3">
             <span className="material-symbols-outlined text-primary mt-0.5" style={{ fontSize: '22px' }}>keyboard</span>
             <div>
-              <h3 className="text-sm font-bold text-on-surface">Keyboard shortcuts</h3>
-              <p className="text-[11px] text-secondary mt-0.5">Ctrl is ⌘ on a Mac. Chords work while typing; the bare keys wait until you leave the field.</p>
+              <h3 className="text-sm font-bold text-on-surface">{t('Keyboard shortcuts')}</h3>
+              <p className="text-[11px] text-secondary mt-0.5">{t('Ctrl is ⌘ on a Mac. Chords work while typing; the bare keys wait until you leave the field.')}</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="p-1 rounded text-secondary hover:text-on-surface">
+          <button type="button" onClick={onClose} aria-label={t('Close')} className="p-1 rounded text-secondary hover:text-on-surface">
             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>close</span>
           </button>
         </div>

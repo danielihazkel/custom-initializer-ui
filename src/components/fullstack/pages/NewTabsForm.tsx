@@ -2,6 +2,7 @@ import type { FullstackPageDef } from '../../../types'
 import { inputClass } from '../controls'
 import { MAX_TABS, MIN_TABS, PAGE_TYPE_META, pageLabel } from '../pageLayout'
 import { SMALL_BUTTON } from './constants'
+import { t } from '../../../i18n'
 
 /** The "new tabs page" step: which pages it embeds, its title, and whether they leave the nav. */
 export interface TabsFormState {
@@ -31,19 +32,19 @@ export function NewTabsForm({ eligible, form, onChange, onAdd, onCancel, classNa
   const count = form.picked.length
   return (
     <div className={`space-y-2 ${className}`} data-tabs-form>
-      <p className="text-xs font-semibold text-on-surface">New tabs page</p>
+      <p className="text-xs font-semibold text-on-surface">{t('New tabs page')}</p>
       <div className="flex flex-wrap items-center gap-2">
-        <label className="text-[11px] font-semibold uppercase tracking-wider text-secondary" htmlFor="new-tabs-title">Title</label>
+        <label className="text-[11px] font-semibold uppercase tracking-wider text-secondary" htmlFor="new-tabs-title">{t('Title')}</label>
         <input
           id="new-tabs-title"
           type="text"
-          aria-label="Tabs page title"
+          aria-label={t('Tabs page title')}
           value={form.title}
           onChange={e => onChange({ ...form, title: e.target.value })}
           className={`${inputClass()} max-w-[14rem] py-1 text-xs`}
         />
       </div>
-      <p className="text-[11px] text-secondary">Pages to show as tabs, {MIN_TABS} to {MAX_TABS}, in this order:</p>
+      <p className="text-[11px] text-secondary">{t('Pages to show as tabs, {min} to {max}, in this order:', { min: MIN_TABS, max: MAX_TABS })}</p>
       <ul className="flex flex-wrap gap-2">
         {eligible.map(p => {
           const on = form.picked.includes(p.id)
@@ -54,7 +55,7 @@ export function NewTabsForm({ eligible, form, onChange, onAdd, onCancel, classNa
                   type="checkbox"
                   className="accent-primary"
                   checked={on}
-                  aria-label={`Tab: ${pageLabel(p)}`}
+                  aria-label={t('Tab: {page}', { page: pageLabel(p) })}
                   onChange={() => onChange({ ...form, picked: on ? form.picked.filter(id => id !== p.id) : [...form.picked, p.id] })}
                 />
                 {pageLabel(p)}
@@ -69,10 +70,10 @@ export function NewTabsForm({ eligible, form, onChange, onAdd, onCancel, classNa
           type="checkbox"
           className="accent-primary"
           checked={form.hide}
-          aria-label="Hide these pages from the navigation"
+          aria-label={t('Hide these pages from the navigation')}
           onChange={e => onChange({ ...form, hide: e.target.checked })}
         />
-        Hide these pages from the navigation — they open only as tabs
+        {t('Hide these pages from the navigation — they open only as tabs')}
       </label>
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -80,12 +81,12 @@ export function NewTabsForm({ eligible, form, onChange, onAdd, onCancel, classNa
           onClick={onAdd}
           disabled={count < MIN_TABS || count > MAX_TABS}
           className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-on-primary disabled:opacity-50"
-          title={count < MIN_TABS ? `Pick at least ${MIN_TABS} pages` : count > MAX_TABS ? `At most ${MAX_TABS} tabs` : undefined}
+          title={count < MIN_TABS ? t('Pick at least {min} pages', { min: MIN_TABS }) : count > MAX_TABS ? t('At most {max} tabs', { max: MAX_TABS }) : undefined}
         >
-          Add tabs page
+          {t('Add tabs page')}
         </button>
-        <button type="button" onClick={onCancel} className={SMALL_BUTTON}>Cancel</button>
-        <span className="text-[10px] text-secondary">{count} of {MAX_TABS} picked</span>
+        <button type="button" onClick={onCancel} className={SMALL_BUTTON}>{t('Cancel')}</button>
+        <span className="text-[10px] text-secondary">{t('{n} of {max} picked', { n: count, max: MAX_TABS })}</span>
       </div>
     </div>
   )
