@@ -700,6 +700,8 @@ export interface AdminSchemaSource {
   sortOrder: number
   /** Read-only: whether the reference names a value set on the server. */
   passwordAvailable?: boolean
+  /** The Fullstack tab may create a model's tables on this database (`/starter-fullstack.create-tables`). */
+  allowCreateTables?: boolean
 }
 
 /** One row of `/admin/fullstack-examples` — a "Start from → Examples" model. */

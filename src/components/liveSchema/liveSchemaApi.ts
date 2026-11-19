@@ -11,6 +11,8 @@ export interface LiveSource {
   dialect: string
   description?: string | null
   defaultSchema?: string | null
+  /** An admin allowed creating a fullstack model's tables on this source. */
+  createTables?: boolean
 }
 
 export interface LiveSchemaOptions {

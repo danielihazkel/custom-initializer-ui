@@ -694,6 +694,13 @@ scheme, `Page.captureScreenshot`. Unlike `--screenshot`, it can click, type and 
 
 Pinned by `liveSchema/LiveSchema.test.tsx`.
 
+**Fullstack DDL and creating tables (2026-11)** — the editor side of the backend section of that name. The entities toolbar has **Tables** (`data-open-database`, shown once there is an entity), and ⌘K has *Export the model’s DDL* and *Create the model’s tables in a database…*; both open `fullstack/DatabaseDrawer.tsx`, a lazy chunk mounted only while open (`FullstackView` `databaseMode`). The request is `buildBody()`, read once when it opens.
+- *Export DDL*: a database select (`data-ddl-dialect`) that starts on the project's own — `databaseApi.ts` `projectDialect`, the backend's `SchemaDialect.of` (first of postgresql, oracle, mssql, db2, else H2) — the script in a `<pre>` (`data-ddl-sql`), Copy, and **Download .sql** (`<artifactId>-schema-<dialect>.sql`). A refused model shows the server's words and path (`data-database-error`).
+- *Create in database*: the sources whose `createTables` is set (`useLiveSchemaOptions`; none → a line pointing at Admin → Schema sources and back to Export), the schema from `fetchSchemas({source})`, **Check** (`check: true`: the SQL, a dialect-mismatch warning, the Flyway note when the model has `flyway`, the "each CREATE commits" note on Oracle/DB2/H2), then **Create N tables** behind a danger `ConfirmDialog`; success toasts and closes. A 409 lists the tables in the way (`data-existing-tables`) and stays on Check.
+- `databaseApi.ts` holds the two calls and `DatabaseError` (`status`, `title`, `path`, `existing`). Admin → Schema sources has *Allow creating a fullstack model's tables* (`data-allow-create-tables`) and a *Writes* column; `AdminSchemaSource.allowCreateTables`, `LiveSource.createTables`. `vite.config.ts` proxies `/starter-fullstack.ddl` and `/starter-fullstack.create-tables`.
+
+Pinned by `fullstack/DatabaseDrawer.test.tsx`.
+
 ## Performance rules
 
 - **The entry chunk has a budget** — `npm run build:check` (see *Round 11, phase 0*). What is not needed

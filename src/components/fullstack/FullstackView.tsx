@@ -11,6 +11,7 @@ import { focusWithoutClipping, scrollToElement } from './scroll'
 import { cssEscape, focusRowWhenRendered } from './focus'
 import { FullstackPresets, type SaveTarget } from './FullstackPresets'
 import { ImportFromDdlDrawer, type ImportMode, type ImportVariant } from './ImportFromDdlDrawer'
+import type { DatabaseMode } from './DatabaseDrawer'
 import { ViewSkeleton } from '../Skeletons'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { PageHeader } from '../shared/PageHeader'
@@ -65,6 +66,7 @@ import { useStableCallback } from '../../hooks/useStableCallback'
 // The preview modal drags in CodeMirror + every language grammar; load it on first Explore.
 const ProjectPreview = lazy(() => import('../ProjectPreview').then(m => ({ default: m.ProjectPreview })))
 // The relation graph (d3-force, drag, zoom) is shown only when it is switched on.
+const DatabaseDrawer = lazy(() => import('./DatabaseDrawer').then(m => ({ default: m.DatabaseDrawer })))
 const EntityRelationGraph = lazy(() => import('./EntityRelationGraph').then(m => ({ default: m.EntityRelationGraph })))
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
 import { readStoredPresetSnapshots, useFullstackPresets } from '../../hooks/useFullstackPresets'
@@ -218,6 +220,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const [generating, setGenerating] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
   const [importVariant, setImportVariant] = useState<ImportVariant | null>(null)
+  // The model's tables drawer (export the DDL / create them on a source); null while closed.
+  const [databaseMode, setDatabaseMode] = useState<DatabaseMode | null>(null)
   const [selectedDeps, setSelectedDeps] = useState<string[]>(() => shared?.selectedDeps ?? loadJson<string[]>(LS.deps, []))
   const [scaffoldOpts, setScaffoldOpts] = useState<string[]>(() => shared?.scaffoldOpts ?? loadJson<string[]>(LS.opts, DEFAULT_SCAFFOLD_OPTS))
   // '' = follow the frontend set's default palette (the backend resolves it; nothing is sent).
@@ -1397,6 +1401,13 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     },
     importDdl: () => setImportVariant('ddl'),
     importSelect: () => setImportVariant('select'),
+    openTables: (mode: DatabaseMode) => {
+      if (!entities.some(e => e.name.trim())) {
+        setToast({ message: 'Add an entity first — the tables are built from your entities', type: 'error' })
+        return
+      }
+      setDatabaseMode(mode)
+    },
     explore, generate, exportJson, copyCurl, undo, redo,
     toggleCollapse: () => setCollapsed(allCollapsed ? new Set() : new Set(entities.map(e => e.uid).filter((u): u is string => Boolean(u)))),
     reset: () => setConfirmReset(true),
@@ -1481,6 +1492,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     { id: 'fs-add-entity', title: 'Add entity', icon: 'add_box', group: 'Fullstack', run: () => commandRef.current.addEntity() },
     { id: 'fs-import-ddl', title: 'Import entities from DDL', icon: 'database', group: 'Fullstack', run: () => commandRef.current.importDdl() },
     { id: 'fs-import-select', title: 'Import a view from SELECT', icon: 'table_view', group: 'Fullstack', run: () => commandRef.current.importSelect() },
+    { id: 'fs-export-ddl', title: 'Export the model’s DDL (CREATE TABLE script)', description: 'For H2, PostgreSQL, Oracle, SQL Server or DB2', icon: 'description', group: 'Fullstack', run: () => commandRef.current.openTables('export') },
+    { id: 'fs-create-tables', title: 'Create the model’s tables in a database…', description: 'On a database source an admin allowed it for', icon: 'database_upload', group: 'Fullstack', run: () => commandRef.current.openTables('create') },
     { id: 'fs-explore', title: 'Explore generated files', description: 'Preview the file tree before downloading', icon: 'travel_explore', group: 'Fullstack', shortcut: 'Ctrl+Shift+E', run: () => commandRef.current.explore() },
     { id: 'fs-generate', title: 'Generate fullstack ZIP', icon: 'download', group: 'Fullstack', shortcut: 'Ctrl+Enter', run: () => { void commandRef.current.generate() } },
     { id: 'fs-save-preset', title: 'Save this model (browser or team)…', icon: 'bookmark_add', group: 'Fullstack', shortcut: 'Ctrl+S', run: () => commandRef.current.savePreset() },
@@ -1621,6 +1634,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
           allCollapsed={allCollapsed}
           onToggleCollapseAll={() => setCollapsed(allCollapsed ? new Set() : new Set(entities.map(e => e.uid).filter((u): u is string => Boolean(u))))}
           onImport={setImportVariant}
+          onDatabase={() => commandRef.current.openTables('export')}
           onAddEntity={() => commandRef.current.addEntity()}
           canUndo={Boolean(lastUndo)}
           canRedo={Boolean(nextRedo)}
@@ -1856,6 +1870,19 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         existingCount={entities.length}
         onImport={handleImport}
       />
+
+      {databaseMode !== null && (
+        <Suspense fallback={null}>
+          <DatabaseDrawer
+            isOpen
+            initialMode={databaseMode}
+            onClose={() => setDatabaseMode(null)}
+            buildRequest={buildBody}
+            selectedDeps={selectedDeps}
+            artifactId={meta.artifactId}
+          />
+        </Suspense>
+      )}
 
       {preview && createPortal(
         <Suspense fallback={<ViewSkeleton />}>

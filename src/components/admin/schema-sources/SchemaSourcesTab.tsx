@@ -19,7 +19,7 @@ export const PASSWORD_REF = /^(SCHEMA_SOURCE_[A-Z0-9_]{1,200}|menora\.live-schem
 
 const EMPTY: Partial<AdminSchemaSource> = {
   name: '', dialect: 'POSTGRESQL', host: '', username: '', passwordRef: '', trustServerCertificate: false,
-  enabled: true, sortOrder: 0,
+  enabled: true, sortOrder: 0, allowCreateTables: false,
 }
 
 export function validateSchemaSource(d: Partial<AdminSchemaSource>): Record<string, string> {
@@ -142,6 +142,13 @@ export function SchemaSourcesTab() {
             width: '90px',
           },
           { label: 'On', render: r => r.enabled ? '✓' : '—', width: '50px' },
+          {
+            label: 'Writes',
+            render: r => r.allowCreateTables
+              ? <span className="text-xs text-warning" title="The Fullstack tab may create tables here">tables</span>
+              : <span className="text-xs text-on-surface-variant">read only</span>,
+            width: '80px',
+          },
         ]}
         rows={items}
         loading={loading}
@@ -214,6 +221,14 @@ export function SchemaSourcesTab() {
               <label className="inline-flex items-center gap-2 text-sm text-on-surface">
                 <input type="checkbox" checked={editing.enabled ?? true} onChange={e => change({ enabled: e.target.checked })} />
                 <span>Offer it to users</span>
+              </label>
+            </FieldRow>
+            <FieldRow label="Create tables"
+                      hint="Lets the Fullstack tab create a model's tables here, as this source's user. It never drops or changes a table, and refuses when one is already there — but the user needs CREATE rights, and the connection is no longer read-only for that call.">
+              <label className="inline-flex items-center gap-2 text-sm text-on-surface">
+                <input type="checkbox" checked={editing.allowCreateTables ?? false} data-allow-create-tables
+                       onChange={e => change({ allowCreateTables: e.target.checked })} />
+                <span>Allow creating a fullstack model's tables</span>
               </label>
             </FieldRow>
             <FieldRow label="Sort Order">

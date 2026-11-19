@@ -39,6 +39,8 @@ export default defineConfig({
       '/starter-fullstack.zip': 'http://localhost:8080',
       '/starter-fullstack.preview': 'http://localhost:8080',
       '/starter-fullstack.patch': 'http://localhost:8080',
+      '/starter-fullstack.ddl': 'http://localhost:8080',
+      '/starter-fullstack.create-tables': 'http://localhost:8080',
       '/starter.patch': 'http://localhost:8080'
     }
   }

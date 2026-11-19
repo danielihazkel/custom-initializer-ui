@@ -28,6 +28,8 @@ export interface EntitiesToolbarProps {
   allCollapsed: boolean
   onToggleCollapseAll: () => void
   onImport: (variant: ImportVariant) => void
+  /** Opens the model's tables: export the DDL, or create them on a database source. */
+  onDatabase?: () => void
   onAddEntity: () => void
   canUndo: boolean
   canRedo: boolean
@@ -43,7 +45,7 @@ export interface EntitiesToolbarProps {
 
 export function EntitiesToolbar({
   entityCount, density, onDensityChange, layout, onLayoutChange,
-  allCollapsed, onToggleCollapseAll, onImport, onAddEntity,
+  allCollapsed, onToggleCollapseAll, onImport, onDatabase, onAddEntity,
   canUndo, canRedo, undoLabel, redoLabel, onUndo, onRedo, onShortcuts,
   errorCount, onJumpToFirstError,
 }: EntitiesToolbarProps) {
@@ -202,6 +204,19 @@ export function EntitiesToolbar({
             </div>
           )}
         </div>
+
+        {onDatabase && entityCount > 0 && (
+          <button
+            type="button"
+            onClick={onDatabase}
+            className={TB_BTN}
+            data-open-database
+            title="The model's tables: export the CREATE TABLE script, or create them on a database source"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>database_upload</span>
+            Tables
+          </button>
+        )}
 
         <button
           type="button"
