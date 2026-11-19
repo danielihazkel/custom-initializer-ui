@@ -72,11 +72,11 @@ describe('lintModel', () => {
   })
 
   it('checks project options against the dependency list', () => {
-    const withOpenApi = rules([{ name: 'A', fields: [pk, { name: 'n', type: 'STRING' }] }], ['secured', 'openapi'], ['web'])
+    const withOpenApi = rules([{ name: 'Note', fields: [pk, { name: 'n', type: 'STRING' }] }], ['secured', 'openapi'], ['web'])
     expect(withOpenApi.find(i => i.rule === 'openapi-adds-dep')?.severity).toBe('info')
     // The retired `secured` option is nobody's problem: it does nothing with or without LDAP.
     expect(withOpenApi.map(i => i.rule)).toEqual(['openapi-adds-dep'])
-    expect(rules([{ name: 'A', fields: [pk, { name: 'n', type: 'STRING' }] }], ['secured', 'openapi'], ['ldap-auth-rest', 'openapi'])).toEqual([])
+    expect(rules([{ name: 'Note', fields: [pk, { name: 'n', type: 'STRING' }] }], ['secured', 'openapi'], ['ldap-auth-rest', 'openapi'])).toEqual([])
   })
 
   it('says when access levels have nothing to check them', () => {

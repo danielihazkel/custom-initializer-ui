@@ -352,7 +352,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // before submit. The server stays the source of truth.
   const ldapAuth = selectedDeps.some(d => d === 'ldap-auth' || d === 'ldap-auth-rest')
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the messages are in the site's language
-  const entityErrors = useMemo(() => validateEntities(entities, scaffoldOpts, { ldapAuth }), [entities, scaffoldOpts, ldapAuth, lang])
+  const entityErrors = useMemo(() => validateEntities(entities, scaffoldOpts, { ldapAuth, deps: selectedDeps }), [entities, scaffoldOpts, ldapAuth, selectedDeps, lang])
   const metaErrors: MetaErrors = useMemo(
     () => validateMeta(meta, { bootVersions, javaVersions }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the messages are in the site's language

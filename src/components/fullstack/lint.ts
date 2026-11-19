@@ -1,10 +1,11 @@
 import type { FullstackEntityDef } from '../../types'
 import { entityOptApplicability, summarizeEntity } from './summary'
-import { joinColumnOf, pluralize, toCamelCase, toSnakeCase, uniqueName } from './naming'
+import { columnOf, joinColumnOf, pluralize, toCamelCase, toSnakeCase, uniqueName } from './naming'
 import { newUid } from './uid'
 import { ambiguousMoves, stateLabel, unreachableStates } from './workflow'
 import { isTextualType } from './fieldTypes'
 import { cleanAccess } from './access'
+import { DATABASE_LABELS, databaseOf, isKeywordOn, needsQuotes, tableOf } from './sqlNames'
 import { t, tn } from '../../i18n'
 
 /**
@@ -307,6 +308,62 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
             return { ...e, opts: Object.keys(opts).length ? opts : undefined }
           }),
         },
+      })
+    }
+  }
+
+  // Names the generator writes in quotes for the project's database, and what follows from it.
+  const database = databaseOf(selectedDeps)
+  const databaseLabel = DATABASE_LABELS[database]
+  for (const entity of entities) {
+    if (entity.viewQuery != null || !entity.name.trim()) continue
+    const name = entity.name.trim()
+    const quoted = [
+      ...(isKeywordOn(tableOf(entity), database) ? [tableOf(entity)] : []),
+      ...entity.fields.filter(f => f.name.trim() && isKeywordOn(columnOf(f), database)).map(columnOf),
+    ]
+    if (quoted.length > 0) {
+      issues.push({
+        id: `sql-keyword:${entity.uid}`,
+        rule: 'sql-keyword',
+        severity: 'info',
+        entityUid: entity.uid,
+        message: tn(quoted.length,
+          '{entity}: {names} is a keyword on {database}, so it is written in quotes in the database and the generated SQL.',
+          '{entity}: {names} are keywords on {database}, so they are written in quotes in the database and the generated SQL.',
+          { entity: name, names: quoted.join(', '), database: databaseLabel }),
+      })
+    }
+    // A link's label is read by SQL written into the mapping, which cannot name a quoted table.
+    if (needsQuotes(tableOf(entity), database)) {
+      const pointing = entities.flatMap(e => (e.relations ?? [])
+        .filter(r => r.type === 'MANY_TO_ONE' && r.targetEntity.trim().toLowerCase() === name.toLowerCase())
+        .map(r => `${e.name.trim()}.${r.fieldName.trim()}`))
+      if (pointing.length > 0) {
+        issues.push({
+          id: `quoted-table-label:${entity.uid}`,
+          rule: 'quoted-table-label',
+          severity: 'warn',
+          entityUid: entity.uid,
+          message: t('{entity}’s table ({table}) has to be quoted on {database}, so {links} will show its id, not its name. Give {entity} another table name.',
+            { entity: name, table: tableOf(entity), database: databaseLabel, links: pointing.join(', ') }),
+        })
+      }
+    }
+    // A formula over today() or now(): shown as it stands, sorted and filtered as last saved.
+    for (const field of entity.fields) {
+      if (!field.formula || !/\b(today|now)\s*\(/.test(field.formula)) continue
+      const readsLink = /[A-Za-z_]\w*\.[A-Za-z_]/.test(field.formula)
+      issues.push({
+        id: `computed-clock:${entity.uid}:${field.uid ?? field.name}`,
+        rule: 'computed-clock',
+        severity: 'info',
+        entityUid: entity.uid,
+        message: readsLink
+          ? t('{field} is computed from today’s date and a linked row: it is worked out when the row is saved and stays that way until the next save.',
+            { field: `${name}.${field.name.trim()}` })
+          : t('{field} is computed from today’s date: the app shows it as it stands now, but lists sort and filter by the value of the last save.',
+            { field: `${name}.${field.name.trim()}` }),
       })
     }
   }

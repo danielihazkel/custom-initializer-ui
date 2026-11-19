@@ -648,7 +648,7 @@ const EntityCard = memo(function EntityCard({
     const cardDrop = dnd.indicatorFor('entities', eIdx)
     const settingsChips = settingsSummary(entity)
     // A problem inside Settings (blank query, generated PK / relations on a view) forces it open.
-    const settingsForced = Boolean(eErr?.viewQuery || eErr?.formSections || eErr?.access || eErr?.uniqueKeys || eErr?.rules)
+    const settingsForced = Boolean(eErr?.viewQuery || eErr?.formSections || eErr?.access || eErr?.uniqueKeys || eErr?.rules || eErr?.tableName)
     const settingsOpen = settingsForced || panelKind === 'settings'
     const overridesOpen = panelKind === 'overrides'
     // A workflow problem forces its panel open, like Settings.

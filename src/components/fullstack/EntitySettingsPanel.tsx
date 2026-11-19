@@ -67,7 +67,9 @@ export function EntitySettingsPanel({ entity, errors, onUpdate, onTickView }: Pr
         <Labeled label={t('Table name')} hint={isView ? t('A SELECT-backed view maps to its query, not a table') : t('Blank = snake_case of the entity name.')}>
           <input type="text" dir="ltr" aria-label={t('Table name (optional)')} className={inputClass()} placeholder={t('e.g. customers')}
                  value={entity.tableName ?? ''} disabled={isView}
+                 aria-invalid={errors?.tableName ? true : undefined}
                  onChange={e => onUpdate({ tableName: e.target.value || undefined })} />
+          {errors?.tableName && <p className="mt-1 text-xs text-error" data-error>{errors.tableName}</p>}
         </Labeled>
       </div>
 

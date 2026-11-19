@@ -787,7 +787,17 @@ const dict: Dict = {
     '{entities} מגדירה רמות גישה, שנבדקות מול קבוצות LDAP — אבל אין בפרויקט תלות ldap-auth.',
   '{entities} set access levels, which are checked against LDAP groups — the project has no ldap-auth dependency.':
     '{entities} מגדירות רמות גישה, שנבדקות מול קבוצות LDAP — אבל אין בפרויקט תלות ldap-auth.',
-  'OpenAPI annotations add the openapi starter to the build even though it is not in your dependency list.': 'הערות OpenAPI מוסיפות את ה-starter של openapi ל-build גם אם הוא לא ברשימת התלויות שלכם.',
+  '{entity}: {names} is a keyword on {database}, so it is written in quotes in the database and the generated SQL.':
+    '{entity}: {names} היא מילה שמורה ב-{database}, ולכן היא נכתבת במירכאות במסד הנתונים וב-SQL שנוצר.',
+  '{entity}: {names} are keywords on {database}, so they are written in quotes in the database and the generated SQL.':
+    '{entity}: {names} הן מילים שמורות ב-{database}, ולכן הן נכתבות במירכאות במסד הנתונים וב-SQL שנוצר.',
+  '{entity}’s table ({table}) has to be quoted on {database}, so {links} will show its id, not its name. Give {entity} another table name.':
+    'הטבלה של {entity} ‏({table}) חייבת להיכתב במירכאות ב-{database}, ולכן {links} יציגו את המזהה שלה ולא את שמה. תנו ל-{entity} שם טבלה אחר.',
+  '{field} is computed from today’s date and a linked row: it is worked out when the row is saved and stays that way until the next save.':
+    '{field} מחושב מהתאריך של היום ומשורה מקושרת: הוא מחושב בשמירת השורה ונשאר כך עד השמירה הבאה.',
+  '{field} is computed from today’s date: the app shows it as it stands now, but lists sort and filter by the value of the last save.':
+    '{field} מחושב מהתאריך של היום: האפליקציה מציגה אותו כפי שהוא עכשיו, אבל הרשימות ממיינות ומסננות לפי הערך מהשמירה האחרונה.',
+  'OpenAPI annotations add the openapi starter to the build even though it is not in your dependency list.':'הערות OpenAPI מוסיפות את ה-starter של openapi ל-build גם אם הוא לא ברשימת התלויות שלכם.',
   'Add openapi to the dependencies': 'הוסף את openapi לתלויות',
 
   // ── ModelLintPanel.tsx ──
@@ -1072,6 +1082,10 @@ const dict: Dict = {
     'הפסקת המעקב אחרי פרויקט: הלוח הזה ייעלם עד היצירה הבאה או ייבוא ה-JSON הבא של menora-model.json של פרויקט',
 
   // ── validation.ts ──
+  '{column} is a column every table on {database} already has — give the field another name or a column of its own':
+    '{column} היא עמודה שכבר קיימת בכל טבלה ב-{database} — תנו לשדה שם אחר או עמודה משלו',
+  '{child}’s table ({table}) has to be quoted on {database}, which the SQL that counts a {parent}’s {child} rows cannot do — give {child} a table name that needs no quotes':
+    'הטבלה של {child} ‏({table}) חייבת להיכתב במירכאות ב-{database}, וה-SQL שסופר את שורות {child} של {parent} לא יכול לעשות זאת — תנו ל-{child} שם טבלה שלא דורש מירכאות',
   'Not in the catalog ({version})': 'לא בקטלוג ({version})',
   'Blank — leave empty to use the artifact id': 'ריק — השאירו ריק כדי להשתמש ב-artifact id',
   'Not a valid Maven version (e.g. 0.0.1-SNAPSHOT)': 'לא גרסת Maven תקינה (למשל 0.0.1-SNAPSHOT)',

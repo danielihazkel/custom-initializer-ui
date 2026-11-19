@@ -5,6 +5,7 @@ import { accessProblem } from './access'
 import { MAX_FILES, MAX_HELP, uniqueKeysProblem } from './uniqueKeys'
 import { derivationProblem, rulesProblem } from './rules'
 import { columnOf, joinColumnOf } from './naming'
+import { DATABASE_LABELS, databaseOf, isSystemColumnOn, needsQuotes, tableOf } from './sqlNames'
 import { compositionProblem, linksBetween, resolveLink } from './childLists'
 import { LIMITS, NAME_RULES, RESERVED_KEYWORDS, isReservedEntityName, ownerOfGeneratedClass } from './schema'
 import { isDecimalType, isKeyableType, isNumericType, isTextualType } from './fieldTypes'
@@ -237,6 +238,8 @@ export interface EntityErrors {
   uniqueKeys?: string
   /** A rule would be rejected (see `rules.ts`). */
   rules?: string
+  /** The table's name cannot be written where the generator needs it (see `sqlNames.ts`). */
+  tableName?: string
 }
 
 export interface FullstackErrors {
@@ -250,8 +253,10 @@ export interface FullstackErrors {
 /** `projectOpts` (the project's `opts.scaffold`) is needed for the one rule that depends on an
  *  option: optimistic locking takes the name `version` for itself. */
 export function validateEntities(entities: FullstackEntityDef[], projectOpts: string[] = [],
-                                 context: { ldapAuth?: boolean } = {}): FullstackErrors {
+                                 context: { ldapAuth?: boolean; deps?: readonly string[] } = {}): FullstackErrors {
   const result: FullstackErrors = { entities: {}, count: 0 }
+  // The database the names are written for; unknown (no dependency list given) checks nothing about it.
+  const database = context.deps ? databaseOf(context.deps) : undefined
 
   // The backend requires at least one entity (FullstackRequestValidator.java).
   if (entities.length === 0) {
@@ -397,6 +402,12 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       if (field.column?.trim()) {
         if (entity.viewQuery != null) fErr.column = t('A view maps fields by their names')
         else if (!COLUMN_RE.test(field.column.trim())) fErr.column = columnRule()
+      }
+
+      // A column every table of the project's database already has cannot be a model's column.
+      if (database && entity.viewQuery == null && field.name.trim() && !fErr.name && isSystemColumnOn(columnOf(field), database)) {
+        fErr.name = t('{column} is a column every table on {database} already has — give the field another name or a column of its own',
+          { column: columnOf(field), database: DATABASE_LABELS[database] })
       }
 
       if (Object.keys(fErr).length > 0) {
@@ -595,8 +606,22 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       eErr.rules = rulesErr
       result.count += 1
     }
+    // A parent counts its child rows in SQL written into its mapping, which cannot name a table
+    // that has to be quoted (FullstackProjectAssembler.checkCountedTables).
+    if (database && entity.viewQuery == null && needsQuotes(tableOf(entity), database)) {
+      const self = entity.name.trim().toLowerCase()
+      const parent = (entity.relations ?? []).filter(r => r.type === 'MANY_TO_ONE')
+        .map(r => entities.find(e => e.name.trim().toLowerCase() === r.targetEntity.trim().toLowerCase()))
+        .find(p => p && (projectOpts.includes('inverseCollections')
+          || (p.relations ?? []).some(r => r.type === 'ONE_TO_MANY' && r.targetEntity.trim().toLowerCase() === self)))
+      if (parent) {
+        eErr.tableName = t('{child}’s table ({table}) has to be quoted on {database}, which the SQL that counts a {parent}’s {child} rows cannot do — give {child} a table name that needs no quotes',
+          { child: entity.name.trim(), table: tableOf(entity), database: DATABASE_LABELS[database], parent: parent.name.trim() })
+        result.count += 1
+      }
+    }
     const hasRelErrs = eErr.relations && Object.keys(eErr.relations).length > 0
-    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || eErr.access || eErr.workflow || eErr.uniqueKeys || eErr.rules || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
+    if (eErr.name || eErr.noFields || eErr.pk || eErr.view || eErr.viewQuery || eErr.formSections || eErr.access || eErr.workflow || eErr.uniqueKeys || eErr.rules || eErr.tableName || Object.keys(eErr.fields).length > 0 || hasRelErrs) {
       result.entities[eIdx] = eErr
     }
   })
