@@ -1219,6 +1219,18 @@ Each column becomes a field. The Java type is chosen from the SQL type, its prec
 - \`CHECK (col IN ('A','B'))\` → a Java enum (\`<Table><Column>\`) stored with \`@Enumerated(EnumType.STRING)\` — only when every value is already a valid Java name, since the database holds the values as they are; otherwise the column stays a \`String\`.
 - With the \`validation\` starter: \`@NotNull\` (never on a generated key), \`@Size(max)\` from a text column's length, required foreign keys — on the DTO, or on the entity when it is exposed directly.
 
+### Indexes
+- \`CREATE INDEX idx ON books (title, published_on DESC)\` → \`@Table(indexes = @Index(name = "idx", columnList = "title, published_on DESC"))\`.
+- A unique index over plain columns is a unique constraint, as above.
+- An index JPA cannot describe — partial (\`WHERE …\`), over an expression (\`lower(email)\`), or of another kind (\`USING gin\`, bitmap) — is written as a comment above the entity, so the class says the database has it.
+
+### Views
+- \`CREATE VIEW v AS SELECT …\` (also \`OR REPLACE\`, \`MATERIALIZED\`, a column list) → a read-only entity over the view by its name: \`@Immutable\` and \`@Subselect("SELECT * FROM v")\`, with GET-only endpoints in the API modes. The statement stays in the Flyway baseline.
+- A bare \`SELECT\` → the same kind of entity over the query itself, named after its first table. It is not part of the baseline.
+- A field takes the type of what it selects: a column of a table (or of an earlier view) of the same script, a \`CAST(x AS type)\`, \`count(…)\` (a \`Long\`), \`min\` / \`max\` of a column. \`SELECT *\` stands for the table's columns. Anything else is a \`String\` with a TODO to set the type.
+- The first column is the \`@Id\` — a view has no key of its own. Change it in source when another column identifies a row.
+- A view whose columns cannot be named — \`SELECT *\` from a table the script does not create, an expression without an alias — is a 400 that says so; a column list (\`CREATE VIEW v (a, b) AS …\`) settles it.
+
 ### Lombok
 Entities use \`@Data\`, \`@NoArgsConstructor\` and \`@AllArgsConstructor\`. Lombok is a \`__common__\` build row, so every project has it. Associations are marked \`@EqualsAndHashCode.Exclude\` and \`@ToString.Exclude\`, so \`equals\`, \`hashCode\` and \`toString\` never load the row they point at.`,
         codeExamples: [
@@ -1285,7 +1297,7 @@ With a REST API mode, a \`@WebMvcTest\` per controller.
         title: 'Reading From a Live Database',
         description: 'Read tables and views from PostgreSQL, SQL Server, Oracle or DB2 instead of pasting DDL — and the Schema sources admins set up for it.',
         content: `### For the Developer
-**Read from a database…** beside the SQL box (and **From a database** in the Fullstack tab's DDL import) connects to a database, lists its schemas and then its tables and views (views marked), and reads the ticked ones. What was read becomes the script a person would have pasted — a \`CREATE TABLE\` per table with its key, NOT NULL, UNIQUE and CHECK-list constraints, the foreign keys between the tables read as \`ALTER TABLE … ADD FOREIGN KEY\`, and a \`SELECT\` per view — and replaces the SQL box, with **Undo**. The developer can read and edit it before generating; the wizard then generates exactly what that script pasted would.
+**Read from a database…** beside the SQL box (and **From a database** in the Fullstack tab's DDL import) connects to a database, lists its schemas and then its tables and views (views marked), and reads the ticked ones. What was read becomes the script a person would have pasted — a \`CREATE TABLE\` per table with its key, NOT NULL, UNIQUE and CHECK-list constraints, the foreign keys between the tables read as \`ALTER TABLE … ADD FOREIGN KEY\`, the indexes as \`CREATE INDEX\`, column defaults, comments as \`COMMENT ON\`, and a \`SELECT\` per view that casts each column to its type (how the wizard types the view's fields) — and replaces the SQL box, with **Undo**. The developer can read and edit it before generating; the wizard then generates exactly what that script pasted would.
 
 The database is either a **source** an admin set up, picked by name, or — while the server allows it — one typed in by hand (host, port, database / service name / DB2 library, user, password). A typed password is sent with each call and kept nowhere, not on the server and not in the browser.
 
@@ -1299,6 +1311,7 @@ A source holds where a database is (type, host, port, database or service name, 
 | \`menora.live-schema.allowed-hosts\` | empty (any) | Comma-separated host patterns a typed connection may name (\`*.menora.co.il\`, \`10.20.*\`). Worth setting per environment: with typed connections on, the server connects wherever it is told. Sources are not limited by it. |
 | \`menora.live-schema.max-tables\` | \`300\` | Tables and views one read may take. |
 | \`menora.live-schema.max-concurrent-reads\` | \`4\` | Reads at once; the rest wait 5 s, then get a 429. |
+| \`menora.live-schema.catalog-queries\` | \`true\` | Keys and indexes are read with one catalog query per schema. \`false\` asks the JDBC driver table by table instead — slower on a large schema, and what a read falls back to by itself when a database refuses a query. |
 
 A connection is read-only, opened for one call, with a 10 s login and 30 s statement timeout. Each read is logged with the source or host, the schema, the count and the user — never the password.
 
@@ -1306,7 +1319,7 @@ A connection is read-only, opened for one call, with a 10 s login and 30 s state
 The PostgreSQL, SQL Server, Oracle and DB2 for IBM i (jt400) drivers ship with the application. A database type whose driver a build leaves out is shown as "no driver on this server".
 
 ### Limits
-Indexes, defaults, comments, sequences and triggers are not read. In the SQL wizard a view's fields are \`String\` (the fullstack import types them). A PostgreSQL enum column becomes a CHECK-limited text column. DB2 for IBM i has not been read from a real server.`
+Sequences and triggers are not read. A default that is an expression (a function call, a sequence) is not copied into the script: a comment beside the column says what the database has. A partial index, one over an expression and one of another kind (hash, GIN, bitmap) are a comment too. SQL Server has no \`COMMENT ON\`, so its descriptions are comments of the script. A view's binary columns, and columns of a type the reader does not know, are not cast: the SQL wizard writes those as \`String\` with a TODO. A PostgreSQL enum column becomes a CHECK-limited text column. DB2 for IBM i has not been read from a real server.`
       },
       {
         id: 'sql-wizard-api',
@@ -2270,7 +2283,7 @@ Red problems block Generate: a stale entity or field, a missing tab target, an i
 You already have a schema and don't want to type each field. The drawer reads it and lists the entities it found; tick the ones to import (a relation to an unticked entity is shown struck through), then **Import N of M**. If the editor already has entities, choose Replace or Append.
 
 ### Three Sources
-- **Paste SQL** (or drop a \`.sql\` file) — \`CREATE TABLE\` statements, with a dialect. \`POST /metadata/fullstack/import-ddl\`.
+- **Paste SQL** (or drop a \`.sql\` file) — \`CREATE TABLE\` statements, with a dialect. A \`CREATE VIEW\` (or a \`SELECT\` among the statements) becomes a read-only view entity, its fields typed by the tables it reads. \`POST /metadata/fullstack/import-ddl\`.
 - **From a database** — the live-schema panel (see the SQL wizard's **Reading From a Live Database**): a source or a typed connection, a schema, the tables and views. \`POST /metadata/fullstack/import-live\`. Views come back read-only, with their columns typed.
 - **A SELECT** — one query becomes a read-only view entity (\`@Subselect\`). \`POST /metadata/fullstack/import-select\`.
 

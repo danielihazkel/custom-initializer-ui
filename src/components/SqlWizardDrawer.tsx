@@ -56,13 +56,28 @@ function detectTableNames(sql: string): string[] {
   return names
 }
 
-// One display name per SELECT statement — derived from its FROM table (matching the
-// backend's view-naming), or "view" when there's no resolvable FROM.
+// CREATE [OR REPLACE] [MATERIALIZED …] VIEW [IF NOT EXISTS] name — a read-only entity over the view.
+const VIEW_REGEX = /^CREATE\s+(?:OR\s+(?:REPLACE|ALTER)\s+)?(?:(?:NO\s+FORCE|FORCE|NOFORCE|EDITIONABLE|NONEDITIONABLE|MATERIALIZED|TEMPORARY|TEMP|RECURSIVE|SECURE)\s+)*VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|`([^`]+)`|(\[[^\]]+\](?:\s*\.\s*\[[^\]]+\])*)|([a-zA-Z_][\w$]*(?:\.[a-zA-Z_][\w$]*)?))/i
+
+// Comments out of the way: a script read from a database says what each view is in one,
+// right above its SELECT.
+function withoutComments(sql: string): string {
+  return sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--.*$/gm, '')
+}
+
+// One display name per view: a CREATE VIEW's own name, or — for a bare SELECT — its FROM
+// table (matching the backend's view-naming), "view" when there's no resolvable FROM.
 function detectViewNames(sql: string): string[] {
   const views: string[] = []
-  for (const stmt of sql.split(';')) {
+  for (const stmt of withoutComments(sql).split(';')) {
     const s = stmt.trim()
-    if (!s || !/^(?:WITH\b|SELECT\b)/i.test(s)) continue
+    if (!s) continue
+    const created = s.match(VIEW_REGEX)
+    if (created) {
+      views.push(bareName(created[1] ?? created[2] ?? created[3] ?? created[4]))
+      continue
+    }
+    if (!/^(?:WITH\b|SELECT\b)/i.test(s)) continue
     const m = s.match(FROM_REGEX)
     const raw = m ? (m[1] ?? m[2] ?? m[3] ?? m[4]) : null
     views.push(raw ? bareName(raw) : 'view')
@@ -362,7 +377,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
             />
           </div>
           <p className="text-[10px] text-on-surface-variant mt-1.5 leading-relaxed">
-            {codeText(t('Paste one or more `CREATE TABLE` statements, or read them from a database (a view comes in as a `SELECT` of its columns) — keys, foreign keys and unique constraints added by `ALTER TABLE` are read too, and a `CHECK (col IN (…))` becomes an enum. Entities + optional JPA repositories are generated into your project when downloaded. A `SELECT` becomes a read-only `@Subselect` view (GET-only; fields are generated as `String` with a TODO to set the real type in source). `COMMENT ON`, `CREATE INDEX`, and `GRANT` statements are accepted and silently ignored.'))}
+            {codeText(t('Paste one or more `CREATE TABLE` statements, or read them from a database (a view comes in as a `SELECT` that casts each column to its type) — keys, foreign keys and unique constraints added by `ALTER TABLE` are read too, a `CHECK (col IN (…))` becomes an enum, and a plain `CREATE INDEX` an `@Index` on the entity (a partial index, or one over an expression, is a comment there instead). Entities + optional JPA repositories are generated into your project when downloaded. A `CREATE VIEW` or a `SELECT` becomes a read-only `@Subselect` view (GET-only): a field takes the type of the table column it selects or of a `CAST`, and is a `String` with a TODO where the script does not say. `COMMENT ON` and `GRANT` statements are accepted and ignored.'))}
           </p>
         </div>
 
@@ -425,7 +440,7 @@ export function SqlWizardDrawer({ isOpen, onClose, depId, depName, dialectName, 
           </div>
         )}
 
-        {sql.trim().length > 0 && tables.length === 0 && !selectPresent && (
+        {sql.trim().length > 0 && tables.length === 0 && !selectPresent && detectedViews.length === 0 && (
           <div className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg p-3">
             {codeText(t('No `CREATE TABLE` or `SELECT` statements detected. Check your SQL syntax.'), 'font-mono')}
           </div>

@@ -883,3 +883,12 @@ Pinned by `sqlNames.test.ts`.
 - Not drawn: the canvas and the form mock show neither the second side's picker nor a parent's live total. The Overrides panel still words a composition parent's *Optimistic locking* as following the project's option, although the generator turns it on.
 
 Pinned by `relationsDepth.test.tsx`.
+
+### Phase 5: the SQL drawer follows the wizard
+
+No new control. `SqlWizardDrawer.tsx`:
+- **Views in the detected list.** `detectViewNames` lists a `CREATE [OR REPLACE] [MATERIALIZED …] VIEW` by its own name (`VIEW_REGEX`), beside a bare SELECT by its FROM table. Comments are taken out first (`withoutComments`): a script read from a database says what each view is in a comment right above its SELECT, which used to hide the view from the list. A script of views only no longer shows the "No `CREATE TABLE` or `SELECT`" hint.
+- **The help text** says what is read now: a plain `CREATE INDEX` is an `@Index` (a partial or expression one a comment), a `CREATE VIEW` or a `SELECT` a read-only view whose fields are typed by the table columns it selects or a `CAST`, and a view read from a database comes in as a `SELECT` with casts. One changed entry in `i18n/he/backend.ts`.
+- The Guide (both languages): *Indexes* and *Views* under the SQL wizard's *What Is Read, and What It Becomes*; the live-database topic's script contents, the `menora.live-schema.catalog-queries` setting and its limits; the fullstack DDL import's note on views.
+
+Pinned by two cases in `SqlWizardDrawer.test.tsx`.

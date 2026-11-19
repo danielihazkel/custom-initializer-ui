@@ -57,6 +57,31 @@ describe('SqlWizardDrawer extras', () => {
     expect(onSave).toHaveBeenCalledWith({ ...entry, flywayBaseline: false, generateTests: true })
   })
 
+  it('lists a CREATE VIEW by its name, and a SELECT under a comment by its table', () => {
+    // A script read from a database says what each view is in a comment right above its
+    // SELECT, which used to hide the view from the list.
+    open({
+      ...entry,
+      sql: [
+        'CREATE TABLE users (id INT PRIMARY KEY);',
+        'CREATE OR REPLACE VIEW sales.active_users AS SELECT id FROM users;',
+        'CREATE MATERIALIZED VIEW IF NOT EXISTS "UserTotals" AS SELECT count(*) AS n FROM users;',
+        '-- View hr.staff, read-only.',
+        'SELECT CAST(id AS BIGINT) AS id FROM hr.staff;',
+      ].join('\n'),
+    }, ['postgresql', 'data-jpa'])
+    expect(screen.getByText('active_users')).toBeTruthy()
+    expect(screen.getByText('UserTotals')).toBeTruthy()
+    expect(screen.getByText('staff')).toBeTruthy()
+    expect(screen.getAllByText('read-only view')).toHaveLength(3)
+  })
+
+  it('does not ask for a CREATE TABLE when the script is views only', () => {
+    open({ ...entry, sql: 'CREATE VIEW v AS (SELECT 1 AS one);', tables: [] }, ['postgresql', 'data-jpa'])
+    expect(screen.getByText('v')).toBeTruthy()
+    expect(screen.queryByText(/statements detected/)).toBeNull()
+  })
+
   it('says what each extra depends on', () => {
     open({ ...entry, apiMode: 'NONE', generateTests: true }, ['postgresql', 'data-jpa'])
     // No controllers without a REST mode: the box is off and cannot be ticked.

@@ -1219,6 +1219,18 @@ public class H2Config {
 - \`CHECK (col IN ('A','B'))\` → enum של Java (\`<Table><Column>\`) שנשמר עם \`@Enumerated(EnumType.STRING)\` — רק כשכל ערך הוא כבר שם Java תקין, כי מסד הנתונים מחזיק את הערכים כמו שהם; אחרת העמודה נשארת \`String\`.
 - עם ה-starter של \`validation\`: \`@NotNull\` (אף פעם לא על מפתח שנוצר אוטומטית), \`@Size(max)\` מהאורך של עמודת טקסט, ומפתחות זרים שהם חובה — על ה-DTO, או על הישות כשהיא נחשפת ישירות.
 
+### אינדקסים
+- \`CREATE INDEX idx ON books (title, published_on DESC)\` → \`@Table(indexes = @Index(name = "idx", columnList = "title, published_on DESC"))\`.
+- אינדקס ייחודי על עמודות רגילות הוא אילוץ ייחודיות, כמו למעלה.
+- אינדקס ש-JPA לא יכול לתאר — חלקי (\`WHERE …\`), על ביטוי (\`lower(email)\`), או מסוג אחר (\`USING gin\`, bitmap) — נכתב כהערה מעל הישות, כך שהמחלקה אומרת שהוא קיים במסד הנתונים.
+
+### Views
+- \`CREATE VIEW v AS SELECT …\` (גם \`OR REPLACE\`, \`MATERIALIZED\`, רשימת עמודות) → ישות לקריאה בלבד מעל ה-view לפי שמו: \`@Immutable\` ו-\`@Subselect("SELECT * FROM v")\`, עם endpoints של GET בלבד במצבי ה-API. הפקודה נשארת ב-baseline של Flyway.
+- \`SELECT\` בפני עצמו → ישות מאותו סוג מעל השאילתה עצמה, בשם הטבלה הראשונה שלה. הוא אינו חלק מה-baseline.
+- שדה מקבל את הסוג של מה שהוא בוחר: עמודה של טבלה (או של view קודם) באותו סקריפט, \`CAST(x AS type)\`,‏ \`count(…)\` (‏\`Long\`), \`min\` / \`max\` של עמודה. \`SELECT *\` מייצג את עמודות הטבלה. כל דבר אחר הוא \`String\` עם TODO לקבוע את הסוג.
+- העמודה הראשונה היא ה-\`@Id\` — ל-view אין מפתח משלו. שנו אותו בקוד כשעמודה אחרת מזהה שורה.
+- view שאי אפשר לתת שמות לעמודות שלו — \`SELECT *\` מטבלה שהסקריפט לא יוצר, ביטוי בלי alias — הוא 400 שאומר זאת; רשימת עמודות (\`CREATE VIEW v (a, b) AS …\`) פותרת את זה.
+
 ### Lombok
 ישויות משתמשות ב-\`@Data\`, \`@NoArgsConstructor\` ו-\`@AllArgsConstructor\`. Lombok היא שורת build מסוג \`__common__\`, כך שהיא קיימת בכל פרויקט. אסוציאציות מסומנות ב-\`@EqualsAndHashCode.Exclude\` וב-\`@ToString.Exclude\`, כך ש-\`equals\`, \`hashCode\` ו-\`toString\` לעולם לא טוענים את השורה שהן מצביעות עליה.`,
         codeExamples: [
@@ -1285,7 +1297,7 @@ public class Orders {
         title: 'קריאה ממסד נתונים חי',
         description: 'קריאת טבלאות ו-views מ-PostgreSQL, SQL Server, Oracle או DB2 במקום הדבקת DDL — ומקורות הסכמה (Schema sources) שאדמינים מגדירים לשם כך.',
         content: `### למפתח
-**Read from a database…** ליד תיבת ה-SQL (ו-**From a database** בייבוא ה-DDL של לשונית **Fullstack**) מתחבר למסד נתונים, מציג את הסכמות שלו ואז את הטבלאות וה-views שלו (ה-views מסומנים), וקורא את אלה שסומנו. מה שנקרא הופך לסקריפט שאדם היה מדביק — \`CREATE TABLE\` לכל טבלה עם המפתח שלה ואילוצי NOT NULL, UNIQUE ו-CHECK-list, המפתחות הזרים בין הטבלאות שנקראו כ-\`ALTER TABLE … ADD FOREIGN KEY\`, ו-\`SELECT\` לכל view — ומחליף את תיבת ה-SQL, עם **Undo**. המפתח יכול לקרוא ולערוך אותו לפני היצירה; האשף מייצר אז בדיוק את מה שהסקריפט הזה היה מייצר אילו הודבק.
+**Read from a database…** ליד תיבת ה-SQL (ו-**From a database** בייבוא ה-DDL של לשונית **Fullstack**) מתחבר למסד נתונים, מציג את הסכמות שלו ואז את הטבלאות וה-views שלו (ה-views מסומנים), וקורא את אלה שסומנו. מה שנקרא הופך לסקריפט שאדם היה מדביק — \`CREATE TABLE\` לכל טבלה עם המפתח שלה ואילוצי NOT NULL, UNIQUE ו-CHECK-list, המפתחות הזרים בין הטבלאות שנקראו כ-\`ALTER TABLE … ADD FOREIGN KEY\`, האינדקסים כ-\`CREATE INDEX\`, ערכי ברירת המחדל של העמודות, ההערות כ-\`COMMENT ON\`, ו-\`SELECT\` לכל view שממיר כל עמודה לסוג שלה (כך האשף יודע את סוגי השדות של ה-view) — ומחליף את תיבת ה-SQL, עם **Undo**. המפתח יכול לקרוא ולערוך אותו לפני היצירה; האשף מייצר אז בדיוק את מה שהסקריפט הזה היה מייצר אילו הודבק.
 
 מסד הנתונים הוא או **מקור** (source) שאדמין הגדיר, שנבחר לפי שם, או — כל עוד השרת מאפשר זאת — מסד שהוקלד ידנית (host, port, database / service name / DB2 library, user, password). סיסמה שהוקלדה נשלחת עם כל קריאה ולא נשמרת בשום מקום, לא בשרת ולא בדפדפן.
 
@@ -1299,6 +1311,7 @@ public class Orders {
 | \`menora.live-schema.allowed-hosts\` | ריק (כל host) | תבניות host מופרדות בפסיקים שחיבור מוקלד רשאי לציין (\`*.menora.co.il\`, \`10.20.*\`). כדאי להגדיר לכל סביבה: כשחיבורים מוקלדים מותרים, השרת מתחבר לאן שאומרים לו. מקורות אינם מוגבלים על ידי ההגדרה הזו. |
 | \`menora.live-schema.max-tables\` | \`300\` | מספר הטבלאות וה-views שקריאה אחת יכולה לקחת. |
 | \`menora.live-schema.max-concurrent-reads\` | \`4\` | קריאות בו-זמנית; השאר ממתינות 5 s ואז מקבלות 429. |
+| \`menora.live-schema.catalog-queries\` | \`true\` | מפתחות ואינדקסים נקראים בשאילתת קטלוג אחת לכל סכמה. \`false\` שואל את דרייבר ה-JDBC טבלה אחר טבלה — איטי יותר בסכמה גדולה, וזה גם מה שקריאה עוברת אליו מעצמה כשמסד נתונים דוחה שאילתה. |
 
 חיבור הוא לקריאה בלבד, נפתח לקריאה אחת, עם timeout של 10 s ל-login ו-30 s למשפט. כל קריאה נרשמת בלוג עם המקור או ה-host, הסכמה, המספר והמשתמש — לעולם לא הסיסמה.
 
@@ -1306,7 +1319,7 @@ public class Orders {
 הדרייברים של PostgreSQL, SQL Server, Oracle ו-DB2 for IBM i (jt400) מגיעים עם האפליקציה. סוג מסד נתונים שהדרייבר שלו לא נכלל בבנייה מוצג כ-"no driver on this server".
 
 ### מגבלות
-אינדקסים, ערכי ברירת מחדל, הערות, sequences ו-triggers אינם נקראים. באשף ה-SQL השדות של view הם \`String\` (הייבוא של fullstack נותן להם טיפוסים). עמודת enum של PostgreSQL הופכת לעמודת טקסט שמוגבלת ב-CHECK. DB2 for IBM i לא נקרא עדיין משרת אמיתי.`
+sequences ו-triggers אינם נקראים. ערך ברירת מחדל שהוא ביטוי (קריאה לפונקציה, sequence) לא מועתק לסקריפט: הערה ליד העמודה אומרת מה יש במסד הנתונים. גם אינדקס חלקי, אינדקס על ביטוי ואינדקס מסוג אחר (hash,‏ GIN,‏ bitmap) הם הערה. ב-SQL Server אין \`COMMENT ON\`, ולכן התיאורים שלו הם הערות בסקריפט. עמודות בינאריות של view, ועמודות מסוג שהקורא לא מכיר, אינן מומרות: אשף ה-SQL כותב אותן כ-\`String\` עם TODO. עמודת enum של PostgreSQL הופכת לעמודת טקסט שמוגבלת ב-CHECK. DB2 for IBM i לא נקרא עדיין משרת אמיתי.`
       },
       {
         id: 'sql-wizard-api',
@@ -2270,7 +2283,7 @@ Generate שולח את המודל ל-\`/starter-fullstack.zip\`; אחר כך כ�
 כבר יש לכם סכמה ואתם לא רוצים להקליד כל שדה. ה-drawer קורא אותה ומציג את הישויות שמצא; סמנו את אלה שיש לייבא (קשר לישות שלא סומנה מוצג מחוק בקו), ואז **Import N of M**. אם בעורך כבר יש ישויות, בחרו Replace או Append.
 
 ### שלושה מקורות
-- **Paste SQL** (או גרירת קובץ \`.sql\`) — הצהרות \`CREATE TABLE\`, עם דיאלקט. \`POST /metadata/fullstack/import-ddl\`.
+- **Paste SQL** (או גרירת קובץ \`.sql\`) — הצהרות \`CREATE TABLE\`, עם דיאלקט. \`CREATE VIEW\` (או \`SELECT\` בין ההצהרות) הופך לישות view לקריאה בלבד, שהשדות שלה מקבלים טיפוסים מהטבלאות שהיא קוראת. \`POST /metadata/fullstack/import-ddl\`.
 - **From a database** — פאנל הסכמה החיה (ראו **קריאה ממסד נתונים חי** של אשף ה-SQL): מקור או חיבור מוקלד, סכמה, הטבלאות וה-views. \`POST /metadata/fullstack/import-live\`. ה-views חוזרים לקריאה בלבד, עם טיפוסים לעמודות שלהם.
 - **A SELECT** — שאילתה אחת הופכת לישות view לקריאה בלבד (\`@Subselect\`). \`POST /metadata/fullstack/import-select\`.
 
