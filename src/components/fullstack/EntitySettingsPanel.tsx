@@ -8,8 +8,11 @@ import type { EntityErrors } from './validation'
 import { Labeled, inputClass } from './controls'
 import { askableFields } from './pageLayout'
 import { MAX_FORM_SECTIONS } from './formSections'
-import { ACCESS_LEVELS, ACCESS_LEVEL_LABELS, accessSummary, cleanAccess, readLevel, writeLevel } from './access'
-import type { FullstackAccessLevel } from '../../types'
+import {
+  ACCESS_LEVELS, ACCESS_LEVEL_LABELS, CREATOR, MAX_OWNERS, accessSummary, cleanAccess, defaultOwners, ownerChoices, readLevel,
+  rowMode, writeLevel,
+} from './access'
+import type { FullstackAccessLevel, FullstackRowMode } from '../../types'
 import { t, tn } from '../../i18n'
 
 interface Props {
@@ -89,6 +92,47 @@ export function EntitySettingsPanel({ entity, errors, onUpdate, onTickView }: Pr
             </select>
           </Labeled>
         </div>
+        {!isView && (
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3" data-entity-rows>
+            <Labeled label={t('Whose rows')} hint={t('Whether rows belong to users. Admins always see and change every row.')}>
+              <select aria-label={t('Whose rows')} className={inputClass()} value={rowMode(entity)}
+                      aria-invalid={errors?.access ? true : undefined}
+                      onChange={e => {
+                        const mode = e.target.value as 'ALL' | FullstackRowMode
+                        if (mode === 'ALL') return onUpdate({ access: cleanAccess({ ...entity.access, owners: undefined, rows: undefined }) })
+                        const owners = entity.access?.owners?.length ? entity.access.owners : defaultOwners(entity)
+                        onUpdate({ access: cleanAccess({ ...entity.access, owners, rows: mode }) })
+                      }}>
+                <option value="ALL">{t('Everyone with access sees every row')}</option>
+                <option value="OWN">{t('Users see and change only their own rows')}</option>
+                <option value="OWN_WRITES" disabled={entity.readOnly}>{t('Users see every row and change only their own')}</option>
+              </select>
+            </Labeled>
+            {rowMode(entity) !== 'ALL' && (
+              <Labeled label={t('A row belongs to')} hint={t('Whoever any of these names. A text field holds a user id; left empty on a new row, it is filled with whoever creates it.')}>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1" data-entity-owners>
+                  {ownerChoices(entity).map(choice => {
+                    const owners = entity.access?.owners ?? []
+                    const checked = owners.some(o => o.toLowerCase() === choice.name.toLowerCase())
+                    return (
+                      <label key={choice.name} className="flex items-center gap-1.5 text-xs text-on-surface cursor-pointer"
+                             title={choice.name === CREATOR ? t('Turns on the audit columns for this entity') : undefined}>
+                        <input type="checkbox" checked={checked}
+                               disabled={(!checked && owners.length >= MAX_OWNERS) || (choice.name === CREATOR && entity.readOnly)}
+                               onChange={e => onUpdate({ access: cleanAccess({
+                                 ...entity.access,
+                                 rows: rowMode(entity) === 'ALL' ? undefined : rowMode(entity) as FullstackRowMode,
+                                 owners: e.target.checked ? [...owners, choice.name] : owners.filter(o => o.toLowerCase() !== choice.name.toLowerCase()),
+                               }) })} />
+                        {choice.label}
+                      </label>
+                    )
+                  })}
+                </div>
+              </Labeled>
+            )}
+          </div>
+        )}
         {errors?.access && <p className="mt-1 text-xs text-error" data-error>{errors.access}</p>}
       </div>
 

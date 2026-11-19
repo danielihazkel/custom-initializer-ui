@@ -4,7 +4,7 @@ import { columnOf, joinColumnOf, pluralize, toCamelCase, toSnakeCase, uniqueName
 import { newUid } from './uid'
 import { ambiguousMoves, stateLabel, unreachableStates } from './workflow'
 import { isTextualType } from './fieldTypes'
-import { cleanAccess } from './access'
+import { cleanAccess, rowMode } from './access'
 import { DATABASE_LABELS, databaseOf, isKeywordOn, needsQuotes, tableOf } from './sqlNames'
 import { t, tn } from '../../i18n'
 
@@ -366,6 +366,18 @@ export function lintModel(entities: FullstackEntityDef[], scaffoldOpts: string[]
             { field: `${name}.${field.name.trim()}` }),
       })
     }
+  }
+
+  // Users kept to their own rows see the workflow's unassigned queue through the same limit.
+  for (const entity of entities) {
+    if (rowMode(entity) !== 'OWN' || !entity.workflow?.assigneeField?.trim() || !entity.name.trim()) continue
+    issues.push({
+      id: `own-rows-unassigned:${entity.name}`,
+      rule: 'own-rows-unassigned',
+      severity: 'info',
+      message: t('Users see only their own {entity} rows, so the unassigned queue shows a user only the rows they created — admins see all of it and hand rows out.',
+        { entity: entity.name }),
+    })
   }
 
   // Project-wide options that depend on the dependency list.

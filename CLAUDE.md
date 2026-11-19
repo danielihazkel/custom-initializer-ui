@@ -864,3 +864,11 @@ The UI side of *Round 14* in `backend/CLAUDE.md`.
 - Nothing else of the sweep needs the editor: the generated form, service and exports follow the model.
 
 Pinned by `sqlNames.test.ts`.
+
+### Phase 3: row-level access in the editor
+
+- **Model.** `FullstackAccess` gains `owners?: string[]` and `rows?: 'OWN' | 'OWN_WRITES'` (`types.ts`). `access.ts` reads the modes from the schema document (`SCHEMA.rowAccess`: `ROW_MODES`, `DEFAULT_ROW_MODE`, `CREATOR`, `MAX_OWNERS`) and holds `rowMode(entity)` (`ALL` when no owners), `ownerChoices(entity)` (the creator, then each stored STRING field that is not the key, computed or shown on a condition), `defaultOwners`, `syncAccess(before, after)` (a renamed owner field follows by uid, a removed one is dropped, and with the last owner the limit) and `rowAccessProblem` — the server's `RowAccessRules`, one message per rule. `cleanAccess` keeps owners and writes `rows` only when it is not the default; `accessSummary` adds "own rows only" / "own rows to change".
+- **Settings panel** (`EntitySettingsPanel.tsx`, under the two levels, not on a view): *Whose rows* (everyone / only their own / see all, change their own) and, once limited, *A row belongs to* — a checklist of the owner choices; limiting rows starts with the creator. Its problems show under the access controls (`EntityErrors.access`, which `accessProblem(entity, {composedBy, auditOff})` now fills for both the levels and the rows).
+- **Follow-ups.** `EntitiesEditor` runs `syncAccess` with the other per-edit syncs. `lint.ts` adds the info `own-rows-unassigned` (users kept to their own rows see the workflow's unassigned queue through the same limit); `access-needs-ldap` covers owners through `cleanAccess`.
+- **Guide.** The *Access* section (English and Hebrew) says how rows belong to users; it used to say that was code for the team to add.
+- Tests: `access.test.tsx` (the second `describe`). The fixture copy of the examples carries Approvals' new `access`.

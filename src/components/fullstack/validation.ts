@@ -584,7 +584,9 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       eErr.formSections = sectionsErr
       result.count += 1
     }
-    const accessErr = accessProblem(entity)
+    const composedBy = entities.find(other => other !== entity && (other.relations ?? [])
+      .some(r => r.type === 'ONE_TO_MANY' && r.composition && r.targetEntity.trim().toLowerCase() === entity.name.trim().toLowerCase()))
+    const accessErr = accessProblem(entity, { composedBy: composedBy?.name, auditOff: entity.opts?.audit === false })
     if (accessErr) {
       eErr.access = accessErr
       result.count += 1

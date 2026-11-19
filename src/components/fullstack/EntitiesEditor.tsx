@@ -20,6 +20,7 @@ import { syncFormSections } from './formSections'
 import { syncWorkflow } from './workflow'
 import { MAX_FILES, MAX_HELP, syncUniqueKeys } from './uniqueKeys'
 import { syncRules } from './rules'
+import { syncAccess } from './access'
 import { ModelEntities } from './modelEntities'
 import { WorkflowPanel, workflowSummary } from './WorkflowPanel'
 import { EntityUiPreview } from './EntityUiPreview'
@@ -163,7 +164,7 @@ export const EntitiesEditor = memo(function EntitiesEditor({
   // there, a removed one dropped.
   const onChange = (next: FullstackEntityDef[]) => onChangeRaw(next.map(e => {
     const before = e.uid ? entities.find(x => x.uid === e.uid) : undefined
-    return before && before !== e ? syncRules(before, syncUniqueKeys(before, syncWorkflow(before, syncFormSections(before, e)))) : e
+    return before && before !== e ? syncAccess(before, syncRules(before, syncUniqueKeys(before, syncWorkflow(before, syncFormSections(before, e))))) : e
   }))
   // The latest list for the Undo closures on removal toasts: they fire after later edits, and must
   // re-insert into the list as it is *then*, not as it was when the row went.

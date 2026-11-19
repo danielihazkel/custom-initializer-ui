@@ -497,10 +497,19 @@ export interface FullstackRelationDef {
 /** Who may call an entity's generated endpoints, weakest first (the schema's `accessLevels`). */
 export type FullstackAccessLevel = 'SIGNED_IN' | 'USER' | 'ADMIN'
 
+/** What a row's owners have that other users do not: the row at all, or only changing it. */
+export type FullstackRowMode = 'OWN' | 'OWN_WRITES'
+
 /** An entity's own levels; a missing one is its default (read for users, write for admins). */
 export interface FullstackAccess {
   read?: FullstackAccessLevel
   write?: FullstackAccessLevel
+  /** Whose a row is: `createdBy` (whoever created it) and/or text fields holding a user id.
+   *  With owners, users are kept to their own rows (`rows`); admins never are. */
+  owners?: string[]
+  /** `OWN` (the default with owners): users see and change only their own rows. `OWN_WRITES`:
+   *  they see every row and change only their own. */
+  rows?: FullstackRowMode
 }
 
 export interface FullstackEntityDef {
