@@ -22,8 +22,12 @@ export interface DetectedChannel {
   messages: string[]
   /** Why no code can be written for it (a parameterized address, Avro and JSON mixed), or null. */
   problem: string | null
-  /** `avro` when its messages are Avro records (single-object encoding, no registry); else `json`. */
+  /** `avro` when its messages are Avro records; else `json`. */
   format?: 'avro' | 'json'
+  /** `uuid` when a message's Kafka key is a UUID (`bindings.kafka.key`); else text. */
+  key?: string | null
+  /** The Kafka headers its messages carry, a correlation id's included. */
+  headers?: string[]
 }
 
 type Choices = Record<string, { produce: boolean; consume: boolean }>
@@ -52,6 +56,7 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
   const [payloadSubPackage, setPayloadSubPackage] = useState<string>(initial?.payloadSubPackage ?? 'events.model')
   const [groupId, setGroupId] = useState<string>(initial?.groupId ?? '')
   const [generateTests, setGenerateTests] = useState<boolean>(initial?.generateTests ?? false)
+  const [schemaRegistry, setSchemaRegistry] = useState<'confluent' | undefined>(initial?.schemaRegistry)
   // null: nothing chosen by hand — the project is the application the document describes.
   const [choices, setChoices] = useState<Choices | null>(() => toChoices(initial?.channels ?? []))
   const [channels, setChannels] = useState<DetectedChannel[]>([])
@@ -66,6 +71,7 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
       setPayloadSubPackage(initial?.payloadSubPackage ?? 'events.model')
       setGroupId(initial?.groupId ?? '')
       setGenerateTests(initial?.generateTests ?? false)
+      setSchemaRegistry(initial?.schemaRegistry)
       setChoices(toChoices(initial?.channels ?? []))
       setChannels([])
       setParseError(null)
@@ -146,6 +152,7 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
         groupId: groupId.trim(),
         channels: list,
         generateTests,
+        ...(schemaRegistry ? { schemaRegistry } : {}),
       })
     }
     onClose()
@@ -242,12 +249,27 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
             address. The <code className="text-primary">{depId}</code> dependency's own configuration is left as it is.
           </p>
           {channels.some(c => c.format === 'avro') && (
-            <p className="text-[10px] text-on-surface-variant mt-1 leading-relaxed" data-events-avro-note>
-              Avro payloads become <code className="text-primary">.avsc</code> files under{' '}
-              <code className="text-primary">src/main/avro</code>, made into classes by the avro-maven-plugin at build
-              time. They travel as bytes in Avro's single-object encoding with no schema registry, so both sides must
-              hold the same schema.
-            </p>
+            <div className="mt-1 space-y-1.5" data-events-avro-note>
+              <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                Avro payloads become <code className="text-primary">.avsc</code> files under{' '}
+                <code className="text-primary">src/main/avro</code>, made into classes by the avro-maven-plugin at build
+                time.{' '}
+                {schemaRegistry
+                  ? <>They go through Confluent's schema registry (<code className="text-primary">SCHEMA_REGISTRY_URL</code>);
+                    the local run starts one beside Kafka.</>
+                  : <>They travel as bytes in Avro's single-object encoding with no schema registry, so both sides must
+                    hold the same schema.</>}
+              </p>
+              <label className="flex items-center gap-2 text-[10px]">
+                <span className="font-bold uppercase tracking-widest text-secondary">Avro through</span>
+                <select value={schemaRegistry ?? ''} data-events-registry
+                  onChange={e => setSchemaRegistry(e.target.value === 'confluent' ? 'confluent' : undefined)}
+                  className="bg-surface-container-highest border border-outline-variant rounded px-2 py-1 text-[11px] text-on-surface">
+                  <option value="">No registry (single-object encoding)</option>
+                  <option value="confluent">Confluent schema registry</option>
+                </select>
+              </label>
+            </div>
           )}
         </div>
 
@@ -289,7 +311,8 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
                         <span className="font-mono font-semibold text-on-surface truncate">{c.address}</span>
                         {c.format === 'avro' && (
                           <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider py-px px-1.5 rounded-full bg-tertiary/15 text-tertiary"
-                            title="Avro records in the single-object encoding, no schema registry" data-channel-avro>
+                            title={schemaRegistry ? 'Avro records through the schema registry' : 'Avro records in the single-object encoding, no schema registry'}
+                            data-channel-avro>
                             Avro
                           </span>
                         )}
@@ -301,6 +324,13 @@ export function EventsWizardDrawer({ isOpen, onClose, depId, depName, initial, o
                         {c.sends && c.receives ? 'sent and received' : c.sends ? 'sent' : c.receives ? 'received' : 'no operation'}
                         {' by the application'}
                       </div>
+                      {(c.key === 'uuid' || (c.headers?.length ?? 0) > 0) && (
+                        <div className="text-[10px] text-on-surface-variant leading-relaxed" data-channel-extras>
+                          {c.key === 'uuid' && <>UUID key</>}
+                          {c.key === 'uuid' && (c.headers?.length ?? 0) > 0 && ' · '}
+                          {(c.headers?.length ?? 0) > 0 && <>headers: <span className="font-mono">{c.headers!.join(', ')}</span></>}
+                        </div>
+                      )}
                       {c.problem && (
                         <div className="text-[10px] text-warning leading-relaxed">
                           No code can be written for it: {c.problem}.

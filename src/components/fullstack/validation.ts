@@ -2,7 +2,7 @@ import type { FullstackEntityDef } from '../../types'
 import { formSectionsProblem } from './formSections'
 import { workflowProblem } from './workflow'
 import { accessProblem } from './access'
-import { MAX_HELP, uniqueKeysProblem } from './uniqueKeys'
+import { MAX_FILES, MAX_HELP, uniqueKeysProblem } from './uniqueKeys'
 import { derivationProblem, rulesProblem } from './rules'
 import { columnOf, joinColumnOf } from './naming'
 import { compositionProblem, linksBetween, resolveLink } from './childLists'
@@ -116,6 +116,7 @@ export interface FieldErrors {
   help?: string
   showWhen?: string
   formula?: string
+  maxFiles?: string
 }
 
 /** Mirrors FullstackRequestValidator.SQL_NAME: column names are spliced into native SQL. A quoted
@@ -372,7 +373,14 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       if (defErr) fErr.defaultValue = defErr
 
       if (field.help && field.help.trim().length > MAX_HELP) fErr.help = `At most ${MAX_HELP} characters`
-      const derived = derivationProblem(entity, field)
+      // Several files in one field (FullstackRequestValidator's maxFiles rules).
+      if (field.maxFiles != null) {
+        if (field.type !== 'FILE' && field.type !== 'IMAGE') fErr.maxFiles = 'Several files apply to FILE and IMAGE only'
+        else if (!Number.isInteger(field.maxFiles) || field.maxFiles < 1 || field.maxFiles > MAX_FILES) {
+          fErr.maxFiles = `Between 1 and ${MAX_FILES}`
+        } else if (field.showWhen?.trim()) fErr.maxFiles = 'A field with several files cannot be shown on a condition'
+      }
+      const derived = derivationProblem(entity, field, entities)
       if (derived) fErr[derived.part] = derived.message
       // A currency is a MONEY field's, three letters (the backend upper-cases it; blank = ILS).
       if (field.currency?.trim()) {
@@ -580,7 +588,7 @@ export function validateEntities(entities: FullstackEntityDef[], projectOpts: st
       eErr.uniqueKeys = keysErr
       result.count += 1
     }
-    const rulesErr = rulesProblem(entity, composed)
+    const rulesErr = rulesProblem(entity, entities)
     if (rulesErr) {
       eErr.rules = rulesErr
       result.count += 1

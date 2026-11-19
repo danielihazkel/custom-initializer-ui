@@ -18,8 +18,9 @@ import { FieldChips } from './FieldChips'
 import { EntitySettingsPanel, settingsSummary } from './EntitySettingsPanel'
 import { syncFormSections } from './formSections'
 import { syncWorkflow } from './workflow'
-import { MAX_HELP, syncUniqueKeys } from './uniqueKeys'
+import { MAX_FILES, MAX_HELP, syncUniqueKeys } from './uniqueKeys'
 import { syncRules } from './rules'
+import { ModelEntities } from './modelEntities'
 import { WorkflowPanel, workflowSummary } from './WorkflowPanel'
 import { EntityUiPreview } from './EntityUiPreview'
 import { EntityCodePanel } from './EntityCodePanel'
@@ -439,6 +440,7 @@ export const EntitiesEditor = memo(function EntitiesEditor({
   let visibleCount = 0
 
   return (
+    <ModelEntities.Provider value={entities}>
     <div className="space-y-6">
       {entities.map((entity, eIdx) => {
         if (visibleUids && !(entity.uid && visibleUids.has(entity.uid))) return null
@@ -522,6 +524,7 @@ export const EntitiesEditor = memo(function EntitiesEditor({
         </button>
       )}
     </div>
+    </ModelEntities.Provider>
   )
 })
 
@@ -1335,6 +1338,32 @@ function FieldMorePanel({ field, fErr, isString, isNumeric, isTextSearch, isFilt
             title="A hint under the field's input in the generated form."
             data-field-help
           />
+        </ConstraintBox>
+      )}
+      {(field.type === 'FILE' || field.type === 'IMAGE') && !field.primaryKey && (
+        <ConstraintBox label="Several files" error={fErr?.maxFiles}>
+          <span className="flex items-center gap-2" data-field-several-files>
+            <input
+              type="checkbox"
+              aria-label="Several files"
+              checked={field.maxFiles != null}
+              onChange={e => onUpdate({ maxFiles: e.target.checked ? 10 : undefined })}
+              title="The field holds a list of files instead of one (kept in a table of its own)."
+            />
+            {field.maxFiles != null && (
+              <input
+                type="number"
+                min={1}
+                max={MAX_FILES}
+                aria-label="At most"
+                aria-invalid={Boolean(fErr?.maxFiles)}
+                className={`${inputClass(fErr?.maxFiles)} w-20`}
+                value={field.maxFiles}
+                onChange={e => onUpdate({ maxFiles: e.target.value === '' ? 1 : Number(e.target.value) })}
+                title={`At most this many files (1–${MAX_FILES}).`}
+              />
+            )}
+          </span>
         </ConstraintBox>
       )}
       {!field.primaryKey && (

@@ -1473,7 +1473,7 @@ public class PetsController implements PetsApi {
 - עם ה-starter של \`validation\`: \`@NotNull\`, \`@Size\`, \`@Pattern\`, \`@Email\`, \`@Min\`/\`@Max\`, \`@DecimalMin\`/\`@DecimalMax\` ו-\`@Valid\` על רכיבי record ועל פרמטרים.
 
 ### Security schemes
-ה-security schemes של המסמך מוצהרים עבור springdoc (\`@SecuritySchemes\`, \`@SecurityRequirement\`), ו-client שנוצר שולח את פרטי ההזדהות מתוך properties (API keys, טוקני bearer/OAuth2, basic). הם מתועדים, לא נאכפים: קוד השרת לא בודק דבר.
+ה-security schemes של המסמך מוצהרים עבור springdoc (\`@SecuritySchemes\`, \`@SecurityRequirement\`), ו-client שנוצר שולח את פרטי ההזדהות מתוך properties (API keys, טוקני bearer, basic). ל-scheme של OAuth2 client credentials יש טוקן משלו: מגדירים \`client-id\` ו-\`client-secret\` וה-client מבקש טוקן מה-token endpoint, שומר אותו עד שפג ומבקש שוב אחרי 401 (בלי client id נשלח ה-\`token\` שהוגדר). כשפעולה מקבלת כמה סוגי הזדהות, נשלח הראשון שהוגדר. הם מתועדים, לא נאכפים: קוד השרת לא בודק דבר.
 
 ### Clients
 \`<Tag>Client\` עם מתודה לכל פעולה, אותם שמות פרמטרים, וה-path מורחב לפי הסדר של ה-path עצמו. RestTemplate או RestClient, שמוגדרים על ידי מחלקת config שנוצרת וקוראת את ה-property של ה-base URL.`
@@ -1884,7 +1884,7 @@ public class CountryServiceClient extends WebServiceGatewaySupport {
         callouts: [
           {
             type: 'info',
-            text: 'Kafka בלבד: ה-bindings וה-servers של המסמך עצמו אינם נקראים. גם headers של הודעות, סכמות של key, correlation ids ו-traits אינם נקראים. כמו מסמכי OpenAPI, גם מסמך AsyncAPI חייב להיות עצמאי.'
+            text: 'Kafka בלבד: ה-servers של המסמך אינם נקראים, וגם לא ה-bindings שלו מלבד ה-key של Kafka של הודעה. כמו מסמכי OpenAPI, מסמך AsyncAPI חייב להיות שלם בעצמו.'
           }
         ]
       },
@@ -1902,7 +1902,13 @@ public class CountryServiceClient extends WebServiceGatewaySupport {
 - producers שולחים את הרשומה כבתים ב-single-object encoding של Avro; listeners מפענחים אותה. כמה סוגי הודעות על channel אחד מובחנים לפי ה-fingerprint של הסכמה.
 
 ### בלי schema registry
-ה-topic נושא את ה-fingerprint של הסכמה, לא id של registry, ולכן ה-producer וה-consumer חייבים להחזיק באותה סכמה. consumer שצריך לקרוא סכמה ישנה יותר מוסיף אותה ל-decoder שלו ידנית (ה-\`AvroKafkaConfig\` שנוצר מסביר איך).`,
+ה-topic נושא את ה-fingerprint של הסכמה, לא id של registry, ולכן ה-producer וה-consumer חייבים להחזיק באותה סכמה. consumer שצריך לקרוא סכמה ישנה יותר מוסיף אותה ל-decoder שלו ידנית (ה-\`AvroKafkaConfig\` שנוצר מסביר איך).
+
+### או דרך ה-schema registry של Confluent
+**Avro through → Confluent schema registry** (\`eventOptions.<dep>.schemaRegistry: confluent\`) שולח את הרשומות עם ה-\`KafkaAvroSerializer\` של Confluent וקורא אותן כמחלקות שנוצרו. ה-registry הוא \`SCHEMA_REGISTRY_URL\` (ברירת מחדל \`http://localhost:8081\`); האפליקציה לא רושמת סכמות (\`SCHEMA_REGISTRY_AUTO_REGISTER\`) מלבד בהרצה המקומית, שה-\`compose.yaml\` שלה מפעיל registry לצד Kafka. ה-build מקבל את \`io.confluent:kafka-avro-serializer\` לפי גרסת Spring Boot של הפרויקט, מ-\`menora.events.confluent-repository\`.
+
+### Keys ו-Headers (JSON ו-Avro)
+ה-\`headers\` של הודעה (יחד עם אלה של ה-traits שלה), \`correlationId\` ב-header ו-\`bindings.kafka.key\` מסוג UUID נקראים: \`<Message>Headers\` (record מטויפס), \`send(key, payload, headers)\` לצד \`send(key, payload)\` — correlation id שנשאר ריק הוא UUID חדש — ו-\`handle(key, payload, headers)\` ב-listener של סוג הודעה אחד.`,
         callouts: [
           {
             type: 'warning',
@@ -1919,7 +1925,7 @@ public class CountryServiceClient extends WebServiceGatewaySupport {
 | שיטה | נתיב | מטרה |
 |---|---|---|
 | \`GET\` | \`/metadata/events-capable-deps\` | מזהי התלויות שזכאים לאשף (\`["kafka"]\`) |
-| \`POST\` | \`/starter-wizard.detect-channels\` | \`{ spec }\` → \`[{name, address, sends, receives, messages, format, problem}]\` עבור המגירה |
+| \`POST\` | \`/starter-wizard.detect-channels\` | \`{ spec }\` → \`[{name, address, sends, receives, messages, format, problem, key, headers}]\` עבור המגירה |
 | \`POST\` | \`/starter-wizard.zip\` / \`.preview\` | יצירה, עם \`asyncApiByDep\` ו-\`eventOptions\` |
 
 מסמך שאי אפשר להשתמש בו נענה ב-400 \`{ "error": "Invalid AsyncAPI document", "messages": [...] }\`, עם הסיבה: אין שדה \`asyncapi\`, גרסה שאינה 2.x/3.x, אין channels, \`schemaFormat\` שאינו נתמך, \`$ref\` אל מחוץ למסמך. בקשה ל-channel שלא קיים, או לאותו channel פעמיים, או מצב שבו לא נשאר מה לייצר, נענים גם הם ב-400.`,
@@ -2174,6 +2180,9 @@ Generate שולח את המודל ל-\`/starter-fullstack.zip\`; אחר כך כ�
 ### כללים, Show-When, שדות מחושבים
 - **Rules** — בדיקות על כמה שדות בשפת ביטויים קטנה (\`endsOn >= startsOn\`, \`when status == 'DONE': not isEmpty(estimate)\`), שנבדקות ע״י הטופס וע״י ה-backend לפני כל שמירה. ערך ריק גורם לכלל להתקיים.
 - **Show when** — שדה שמוצג רק כל עוד תנאי מתקיים, ומנוקה ע״י ה-backend כל עוד התנאי לא מתקיים.
+- **Linked rows** — חוק, show-when או נוסחה יכולים לקרוא שדה של הרשומה שקישור מצביע עליה (\`amount <= costCenter.budget\`); הטופס מביא את הרשומה כשבוחרים את הקישור, והשרת בודק אותו בכל שמירה.
+- **Rows inside a form** — שורות שנערכות בטופס של רשומת האב (composition) שומרות על החוקים, תנאי ה-show-when והשדות המחושבים שלהן; שמירת האב בודקת כל שורה.
+- **Several files** — שדה FILE או IMAGE יכול להחזיק רשימת קבצים (עד 50): הטופס מקבל כמה בבת אחת, הרשימה מציגה את התמונה הראשונה או את השמות, והפרטים את כל הקבצים.
 - **Computed as** — עמודה שמורה שה-backend קובע מנוסחה בכל שמירה, לקריאה בלבד בטופס.
 - **Unique together** — אילוץ על כמה שדות וקישורים, שנענה ב-409 שמציין אותם.
 
@@ -2442,8 +2451,13 @@ CREATE TABLE orders (
 ### למה לא פשוט ליצור שוב?
 צוות עורך את הקוד אחרי היצירה. יצירה מחדש והעתקת הקבצים החדשים מעל הישנים מאבדת את העריכות האלה. במקום זה, המחולל מייצר את **שתי** הגרסאות — הפרויקט כפי שהמודל הישן מייצר אותו וכפי שהמודל החדש מייצר אותו — ומחזיר רק את ההבדל, כ-patch ש-git ממזג לתוך הקוד של הצוות (\`git apply --3way\`). איפה שהצוות שינה את אותן שורות, git משאיר conflict markers לפתרון, כמו אחרי merge.
 
-### מה עדכון אינו
-שני הצדדים נוצרים **היום**, עם הקטלוג והתבניות של היום. לכן ה-patch הוא השינוי שה**מודל** עושה — תלות, שדה, ישות או דף חדשים — ולא השיפורים שהקטלוג או התבניות קיבלו מאז שהפרויקט נוצר לראשונה. \`UPDATE.md\` אומר אם הקטלוג (או התבניות) זזו מאז, לפי ה-hash שבקובץ המודל של הפרויקט.
+### עדכונים מביאים גם את התיקונים של המחולל
+קובץ המודל גם נותן שם לקבצים של הפרויקט (\`generator.snapshot\`), והשרת שומר את הקבצים של כל הורדה שנתיים מהשימוש האחרון בהם. עדכון משווה אז את המודל החדש, שנוצר היום, עם **הקבצים שהפרויקט באמת נוצר איתם** — כך שה-patch נושא את השינוי של המודל *וגם* את כל מה שהמחולל כותב אחרת מאז: תיקונים בתבניות, בקטלוג ובקוד שמאחוריהם. \`UPDATE.md\` מתחיל ב-"Where it starts" כשזה המצב, וההודעה של העדכון אומרת זאת.
+
+החלת עדכון מחליפה את קובץ המודל של הפרויקט בקובץ שנותן שם לתוצאה, ו-**Mark as applied** זוכר אותה, כך שהעדכון הבא מתחיל משם.
+
+### כשהקבצים לא נשמרו
+פרויקט שנוצר לפני שהשרת שמר קבצים — או שהקבצים שלו לא היו בשימוש מעבר לתקופת השמירה — מתעדכן בדרך הישנה: שני הצדדים נוצרים **היום**, עם הקטלוג והתבניות של היום, ולכן ה-patch הוא רק השינוי שה**מודל** עושה, ולא השיפורים מאז. \`UPDATE.md\` אומר אז אם הקטלוג (או התבניות) זזו מאז, לפי ה-hash שבקובץ המודל של הפרויקט.
 
 ### שינויים שקוד שנוצר שורד הכי טוב
 - פרויקטי OpenAPI על **Interfaces**: עדכון כותב מחדש את ממשקי \`<Tag>Api\` ולעולם לא נוגע ב-controller שהצוות מימש.
@@ -2637,7 +2651,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=compose
 בפעם הראשונה שמסד נתונים פוגש את סנכרון הקטלוג, אי אפשר להבחין בין עריכה של מנהל לבין התוכן של release ישן, ולכן **ההפעלה הזו לא משנה כלום**: היא רושמת כל שורה שנשלחה, וכותבת ללוג אזהרה עם מספר השורות השונות או החסרות. מכאן והלאה, השורות הולכות בעקבות ה-release כמתואר למעלה.
 
 ### סקירה ולקיחה של שורות שנשלחו
-עדיין אין מסך; ה-endpoints נמצאים מאחורי הכניסה לממשק הניהול:
+בממשק הניהול, **Catalog sync** מציג את השורות ששונות מה-release או חסרות, בקטלוג (Backend / Frontend) שסרגל הצד מציג. תגי הסטטוס מצמצמים את הרשימה (גם שורות Kept ו-In step נמצאות שם). סמנו שורות ובחרו **Take shipped** או **Keep mine** — שורה שמורה לא מדווחת יותר ולעולם לא מוחלפת, ו-**Follow the release again** מבטל זאת. **Compare** פותח שורה: השדות שלה כאן לצד השדות שנשלחו, והתוכן שלה כ-diff. **Take every shipped row** מחיל את ה-release על כל שורה ששונה או חסרה בשני הקטלוגים, אחרי שאלה.
+
+אותו הדבר פתוח גם לסקריפטים, מאחורי הכניסה לממשק הניהול:
 - \`GET /admin/catalog-sync\` — כל שורה שנשלחה עם הסטטוס שלה: \`IN_STEP\`, \`DIFFERS\`, \`MISSING\`, \`KEPT\`, \`DELETED\` (\`?status=DIFFERS,MISSING\` לצמצום).
 - \`GET /admin/catalog-sync/{key}\` — השורה שנשלחה והשורה הנוכחית זו לצד זו.
 - \`POST /admin/catalog-sync/apply\` \`{keys: […]}\` או \`{all: true}\` — לקיחת הגרסה שנשלחה (לעולם לא של שורה שסומנה כשמורה או כמחוקה, אלא אם צוינה בשמה).
@@ -2647,7 +2663,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=compose
         callouts: [
           {
             type: 'warning',
-            text: 'אחרי שדרוג של התקנה קיימת, בדקו את GET /admin/catalog-sync?status=DIFFERS,MISSING: תיקונים ש-release עשה בשורות שנשלחו (Dockerfiles, nginx, תצורות datasource) מגיעים למסד הנתונים הזה רק אחרי שמנהל מחיל אותם.'
+            text: 'אחרי שדרוג של התקנה קיימת, פתחו את Admin → Catalog sync: תיקונים ש-release עשה בשורות שנשלחו (Dockerfiles, nginx, תצורות datasource) מגיעים למסד הנתונים הזה רק אחרי שמנהל מחיל אותם.'
           }
         ]
       },

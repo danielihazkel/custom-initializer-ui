@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import type { FullstackEntityDef, FullstackPageDef } from '../../types'
 import { DEFAULT_PROJECT_META, makeSnapshot, parseExportedModel, requestFromSnapshot, toExportedModel, type FullstackSnapshot } from './snapshot'
 import {
-  BASELINE_KEY, countsOf, describeCounts, readBaseline, sideOfPath, updateRequest, writeBaseline, type UpdateBaseline,
+  BASELINE_KEY, appliedBaseline, countsOf, describeCounts, describeUpdateBase, readBaseline, requestKey, schemaVersionOf, sideOfPath,
+  updateRequest, writeBaseline, type UpdateBaseline,
 } from './updateBaseline'
 
 const pk: FullstackEntityDef['fields'][number] = { name: 'id', type: 'LONG', primaryKey: true, generated: true }
@@ -121,5 +122,65 @@ describe('an update’s answer', () => {
     expect(sideOfPath('base')).toEqual({ side: 'base' })
     expect(sideOfPath('entities[0]')).toEqual({ side: null, path: 'entities[0]' })
     expect(sideOfPath(undefined)).toEqual({ side: null, path: undefined })
+  })
+})
+
+describe('snapshots: an update starts from the files the project was generated with', () => {
+  const id = 'a'.repeat(64)
+  const result = 'b'.repeat(64)
+
+  it('reads generator.snapshot from a project model file and sends it as baseSnapshot', () => {
+    const file = JSON.stringify({ ...toExportedModel(snapshot), generator: { templatesHash: 'c'.repeat(64), snapshot: id } })
+    const parsed = parseExportedModel(file)
+    if ('error' in parsed) throw new Error(parsed.error)
+    expect(parsed.snapshotId).toBe(id)
+    const baseline: UpdateBaseline = { snapshot: parsed.snapshot, snapshotId: parsed.snapshotId, source: 'imported', at: 1 }
+    expect(updateRequest(baseline, snapshot)).toMatchObject({ baseSnapshot: id })
+    // Anything that is not an id the server writes is not sent.
+    const odd = parseExportedModel(JSON.stringify({ ...toExportedModel(snapshot), generator: { snapshot: '../x' } }))
+    if ('error' in odd) throw new Error(odd.error)
+    expect(odd.snapshotId).toBeUndefined()
+  })
+
+  it('keeps the id and a pending update across a reload', () => {
+    writeBaseline({ snapshot, snapshotId: id, pendingUpdate: { snapshotId: result, request: requestKey(snapshot) }, source: 'generated', at: 5 })
+    const back = readBaseline()!
+    expect(back.snapshotId).toBe(id)
+    expect(back.pendingUpdate).toEqual({ snapshotId: result, request: requestKey(snapshot) })
+    localStorage.setItem(BASELINE_KEY, JSON.stringify({ snapshot, snapshotId: 'nope', source: 'generated', at: 1 }))
+    expect(readBaseline()!.snapshotId).toBeUndefined()
+  })
+
+  it('marks an update applied with its result only for the model it was made for', () => {
+    const baseline: UpdateBaseline = {
+      snapshot, snapshotId: id, pendingUpdate: { snapshotId: result, request: requestKey(snapshot) }, source: 'generated', at: 1,
+    }
+    expect(appliedBaseline(baseline, snapshot).snapshotId).toBe(result)
+    const edited = makeSnapshot({ ...snapshot, meta: { ...snapshot.meta, description: 'edited since' } })
+    const applied = appliedBaseline(baseline, edited)
+    expect(applied.snapshotId).toBeUndefined()
+    expect(applied.pendingUpdate).toBeUndefined()
+    expect(applied.snapshot).toBe(edited)
+  })
+
+  it('carries the schema version a project has into its update, and the result version once applied', () => {
+    const file = JSON.stringify({ ...toExportedModel(snapshot), generator: { snapshot: id, schemaVersion: 3 } })
+    const parsed = parseExportedModel(file)
+    if ('error' in parsed) throw new Error(parsed.error)
+    expect(parsed.schemaVersion).toBe(3)
+    const old: UpdateBaseline = { snapshot, source: 'imported', at: 1, schemaVersion: 1,
+      pendingUpdate: { snapshotId: result, request: requestKey(snapshot), schemaVersion: 3 } }
+    expect(updateRequest(old, snapshot)).toMatchObject({ baseSchemaVersion: 1 })
+    // A model file from before versions: nothing sent, the server reads it as unknown.
+    expect(updateRequest({ snapshot, source: 'imported', at: 1 }, snapshot)).not.toHaveProperty('baseSchemaVersion')
+    expect(appliedBaseline(old, snapshot).schemaVersion).toBe(3)
+    expect(schemaVersionOf('3')).toBe(3)
+    expect(schemaVersionOf('x')).toBeUndefined()
+    expect(schemaVersionOf(0)).toBeUndefined()
+  })
+
+  it('says when an update started from the kept files', () => {
+    expect(describeUpdateBase(new Headers({ 'X-Update-Base': 'snapshot' }))).toContain('generator’s fixes')
+    expect(describeUpdateBase(new Headers({ 'X-Update-Base': 'regenerated' }))).toBe('')
   })
 })

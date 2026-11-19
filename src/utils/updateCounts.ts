@@ -25,3 +25,20 @@ export function describeCounts(c: UpdateCounts): string {
   ].filter(Boolean)
   return parts.length ? parts.join(', ') : 'nothing changed'
 }
+
+/**
+ * What an update compared the new model with (`X-Update-Base`), in words for its toast: the files
+ * the project was generated with, kept by the server since its download (the patch then carries
+ * the generator's fixes too), or nothing to say when it generated the old model again.
+ */
+export function describeUpdateBase(headers: Headers): string {
+  return headers.get('X-Update-Base') === 'snapshot'
+    ? ' — from the files the project was generated with, the generator’s fixes since included'
+    : ''
+}
+
+/** The `X-Snapshot` of a generated zip or an update, when it is one the server writes. */
+export function snapshotHeader(headers: Headers): string | undefined {
+  const id = headers.get('X-Snapshot')
+  return id && /^[0-9a-f]{64}$/.test(id) ? id : undefined
+}

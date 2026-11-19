@@ -93,4 +93,38 @@ describe('ImportFromDdlDrawer — parse, edit, re-parse', () => {
     expect(order.fields.map((f: { column?: string }) => f.column)).toEqual(['ORD_NO', 'FRF_QOD_MISHLOAH_FUTURE_USE_8'])
     expect(order.relations[0].joinColumn).toBe('CUST_REF')
   })
+
+  it('imports the unique keys, and drops one over a link whose table was left out', async () => {
+    const body = {
+      entities: [
+        { name: 'Customer', tableName: 'customers', fields: [{ name: 'id', ...wireField }] },
+        {
+          name: 'Order', tableName: 'orders',
+          fields: [
+            { name: 'id', ...wireField },
+            { ...wireField, name: 'orderNo', type: 'STRING', primaryKey: false },
+            { ...wireField, name: 'region', type: 'STRING', primaryKey: false },
+            { ...wireField, name: 'channel', type: 'STRING', primaryKey: false },
+          ],
+          relations: [{ type: 'MANY_TO_ONE', fieldName: 'customer', targetEntity: 'Customer', required: true }],
+          uniqueKeys: [['customer', 'orderNo'], ['channel', 'region']],
+        },
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/metadata/sql-dialects') return { ok: true, json: async () => ({ h2: 'H2' }) }
+      return { ok: true, json: async () => body }
+    }))
+    const onImport = vi.fn()
+    render(<ImportFromDdlDrawer isOpen onClose={vi.fn()} hasExisting={false} onImport={onImport} />)
+    fireEvent.change(screen.getByLabelText('DDL'), { target: { value: 'CREATE TABLE orders (id INT PRIMARY KEY);' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Parse' }))
+    await waitFor(() => expect(screen.getByText('Order')).toBeTruthy())
+    fireEvent.click(screen.getByLabelText('Import Customer'))
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 of 2' }))
+    await waitFor(() => expect(onImport).toHaveBeenCalled())
+    const [order] = onImport.mock.calls[0][0]
+    expect(order.relations).toEqual([])
+    expect(order.uniqueKeys).toEqual([{ fields: ['channel', 'region'] }])
+  })
 })

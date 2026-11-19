@@ -35,7 +35,8 @@ export function requirableNames(entity: FullstackEntityDef): string[] {
   const status = entity.workflow?.statusField
   const assignee = entity.workflow?.assigneeField
   return [
-    ...entity.fields.filter(f => f.name.trim() && !f.primaryKey && !f.readOnly && !same(f.name, status) && !same(f.name, assignee)).map(f => f.name),
+    // A field with several files is not one value a move can ask for.
+    ...entity.fields.filter(f => f.name.trim() && !f.primaryKey && !f.readOnly && f.maxFiles == null && !same(f.name, status) && !same(f.name, assignee)).map(f => f.name),
     ...(entity.relations ?? []).filter(r => r.type === 'MANY_TO_ONE' && r.fieldName.trim()).map(r => r.fieldName),
   ]
 }

@@ -1473,7 +1473,7 @@ Every object schema becomes a Java \`record\`. A property whose Java name differ
 - With the \`validation\` starter: \`@NotNull\`, \`@Size\`, \`@Pattern\`, \`@Email\`, \`@Min\`/\`@Max\`, \`@DecimalMin\`/\`@DecimalMax\` and \`@Valid\` on record components and parameters.
 
 ### Security Schemes
-The document's security schemes are declared for springdoc (\`@SecuritySchemes\`, \`@SecurityRequirement\`), and a generated client sends the credentials from properties (API keys, bearer/OAuth2 tokens, basic). They are documented, not enforced: the server code checks nothing.
+The document's security schemes are declared for springdoc (\`@SecuritySchemes\`, \`@SecurityRequirement\`), and a generated client sends the credentials from properties (API keys, bearer tokens, basic). An OAuth2 client-credentials scheme gets a token of its own: set \`client-id\` and \`client-secret\` and the client asks the token endpoint, keeps the token until it expires and asks again after a 401 (without a client id, a configured \`token\` is sent). When an operation accepts several kinds of credentials, the first one configured is sent. They are documented, not enforced: the server code checks nothing.
 
 ### Clients
 \`<Tag>Client\` with a method per operation, the same parameter names, the path expanded in the path's own order. RestTemplate or RestClient, configured by a generated config class reading the base-URL property.`
@@ -1884,7 +1884,7 @@ The two AsyncAPI versions describe direction in opposite words (2.x's \`publish\
         callouts: [
           {
             type: 'info',
-            text: 'Kafka only: the document\'s own bindings and servers are not read. Message headers, key schemas, correlation ids and traits are not read either. Like OpenAPI documents, an AsyncAPI document must be self-contained.'
+            text: 'Kafka only: the document\'s servers are not read, nor its bindings but a message\'s Kafka key. Like OpenAPI documents, an AsyncAPI document must be self-contained.'
           }
         ]
       },
@@ -1902,7 +1902,13 @@ A message whose \`schemaFormat\` is \`application/vnd.apache.avro…\` (\`+json\
 - Producers send the record as bytes in Avro's single-object encoding; listeners decode it. Several kinds of message on one channel are told apart by the schema fingerprint.
 
 ### No Schema Registry
-The topic carries the schema's fingerprint, not a registry id, so producer and consumer must hold the same schema. A consumer that must read an older schema adds it to its decoder by hand (the generated \`AvroKafkaConfig\` says how).`,
+The topic carries the schema's fingerprint, not a registry id, so producer and consumer must hold the same schema. A consumer that must read an older schema adds it to its decoder by hand (the generated \`AvroKafkaConfig\` says how).
+
+### Or Through Confluent's Schema Registry
+**Avro through → Confluent schema registry** (\`eventOptions.<dep>.schemaRegistry: confluent\`) sends the records with Confluent's \`KafkaAvroSerializer\` and reads them as the generated classes. The registry is \`SCHEMA_REGISTRY_URL\` (default \`http://localhost:8081\`, with \`SCHEMA_REGISTRY_USER_INFO\` for basic auth); the application registers no schema (\`SCHEMA_REGISTRY_AUTO_REGISTER\`) except in the local run, whose \`compose.yaml\` starts a registry beside Kafka. The build gets \`io.confluent:kafka-avro-serializer\` for the project's Spring Boot line, from \`menora.events.confluent-repository\`.
+
+### Keys and Headers (JSON and Avro)
+A message's \`headers\` (with its traits'), a \`correlationId\` in a header and a UUID \`bindings.kafka.key\` are read: \`<Message>Headers\` (a typed record), \`send(key, payload, headers)\` beside \`send(key, payload)\` — a correlation id left empty is a new UUID — and \`handle(key, payload, headers)\` on a listener of one kind of message.`,
         callouts: [
           {
             type: 'warning',
@@ -1919,7 +1925,7 @@ The topic carries the schema's fingerprint, not a registry id, so producer and c
 | Method | Path | Purpose |
 |---|---|---|
 | \`GET\` | \`/metadata/events-capable-deps\` | Dep ids eligible for the wizard (\`["kafka"]\`) |
-| \`POST\` | \`/starter-wizard.detect-channels\` | \`{ spec }\` → \`[{name, address, sends, receives, messages, format, problem}]\` for the drawer |
+| \`POST\` | \`/starter-wizard.detect-channels\` | \`{ spec }\` → \`[{name, address, sends, receives, messages, format, problem, key, headers}]\` for the drawer |
 | \`POST\` | \`/starter-wizard.zip\` / \`.preview\` | Generate, with \`asyncApiByDep\` and \`eventOptions\` |
 
 A document that cannot be used is a 400 \`{ "error": "Invalid AsyncAPI document", "messages": [...] }\`, with the reason: no \`asyncapi\` field, a version other than 2.x/3.x, no channels, an unsupported \`schemaFormat\`, a \`$ref\` out of the document. Asking for a channel that does not exist, or twice, or ending up with nothing to generate, is a 400 too.`,
@@ -2174,6 +2180,9 @@ An entity may carry a workflow: its status changes only through named **transiti
 ### Rules, Show-When, Computed Fields
 - **Rules** — checks over several fields in a small expression language (\`endsOn >= startsOn\`, \`when status == 'DONE': not isEmpty(estimate)\`), checked by the form and by the backend before every save. An empty value makes a rule hold.
 - **Show when** — a field shown only while a condition holds, cleared by the backend while it does not.
+- **Several files** — a FILE or IMAGE field can hold a list of files (up to 50): the form takes several at once, the list shows the first picture or the names, the details every file.
+- **Linked rows** — a rule, show-when or formula can read a field of the row a link points at (\`amount <= costCenter.budget\`); the form fetches that row when the link is picked, and the server checks it on every save.
+- **Rows inside a form** — rows edited in their parent's form (a composition) keep their own rules, show-when conditions and computed fields; saving the parent checks every row.
 - **Computed as** — a stored column the backend sets from a formula on every save, read-only in the form.
 - **Unique together** — a constraint over several fields and links, answered with a 409 that names them.
 
@@ -2442,8 +2451,13 @@ Every project the generator makes — plain, wizard, multi-module and fullstack 
 ### Why Not Generate Again?
 A team edits the code after generating. Generating again and copying the new files over loses those edits. Instead, the generator makes **both** versions — the project as the old model generates it and as the new model does — and answers with only the difference, as a patch git merges into the team's code (\`git apply --3way\`). Where the team changed the same lines, git leaves conflict markers to resolve, as after a merge.
 
-### What an Update Is Not
-Both sides are generated **today**, with today's catalog and templates. So the patch is the change the **model** makes — a new dependency, field, entity or page — not the improvements the catalog or templates have had since the project was first generated. \`UPDATE.md\` says whether the catalog (or the templates) moved since, from the hash in the project's model file.
+### Updates Bring the Generator's Fixes Too
+The model file also names the project's files (\`generator.snapshot\`), and the server keeps the files of every download for two years from their last use. An update then compares the new model, generated today, with **the files the project was actually generated with** — so the patch carries the model's change *and* everything the generator writes differently since: fixes to its templates, its catalog and the code behind them. \`UPDATE.md\` starts with "Where it starts" when this is the case, and the update's toast says so.
+
+Applying an update replaces the project's model file with one naming the result, and **Mark as applied** remembers it, so the next update starts from there.
+
+### When the Files Are Not Kept
+A project generated before the server kept files — or whose files went unused past the retention — is updated the old way: both sides are generated **today**, with today's catalog and templates, so the patch is the change the **model** makes only, not the improvements since. \`UPDATE.md\` then says whether the catalog (or the templates) moved since, from the hash in the project's model file.
 
 ### Changes Generated Code Survives Best
 - OpenAPI projects on **Interfaces**: an update rewrites the \`<Tag>Api\` interfaces and never touches the controller the team implemented.
@@ -2637,7 +2651,9 @@ The log is kept forever. A shipped template file the release re-seeds comes back
 The first time a database meets the catalog sync, it cannot tell an admin's edit from an older release's content, so **that start changes nothing**: it records every shipped row, and logs a warning with how many differ or are missing. From then on, rows follow as above.
 
 ### Reviewing and Taking Shipped Rows
-There is no screen yet; the endpoints are behind the admin login:
+In the admin panel, **Catalog sync** lists the rows that differ from the release or are missing, for the catalog (Backend / Frontend) the sidebar shows. Status chips narrow the list (Kept and In step rows are there too). Tick rows and choose **Take shipped** or **Keep mine** — a kept row is no longer reported and never replaced, and **Follow the release again** undoes that. **Compare** opens a row: its fields here beside the shipped ones, and its content as a diff. **Take every shipped row** applies the release to every row of both catalogs that differs or is missing, after asking.
+
+The same is open to scripts, behind the admin login:
 - \`GET /admin/catalog-sync\` — every shipped row with its status: \`IN_STEP\`, \`DIFFERS\`, \`MISSING\`, \`KEPT\`, \`DELETED\` (\`?status=DIFFERS,MISSING\` to narrow).
 - \`GET /admin/catalog-sync/{key}\` — the shipped and current row side by side.
 - \`POST /admin/catalog-sync/apply\` \`{keys: […]}\` or \`{all: true}\` — take the shipped version (never of a row marked kept or deleted unless named).
@@ -2647,7 +2663,7 @@ There is no screen yet; the endpoints are behind the admin login:
         callouts: [
           {
             type: 'warning',
-            text: 'After upgrading an existing installation, check GET /admin/catalog-sync?status=DIFFERS,MISSING: fixes a release made to shipped rows (Dockerfiles, nginx, datasource configs) reach that database only once an admin applies them.'
+            text: 'After upgrading an existing installation, open Admin → Catalog sync: fixes a release made to shipped rows (Dockerfiles, nginx, datasource configs) reach that database only once an admin applies them.'
           }
         ]
       },

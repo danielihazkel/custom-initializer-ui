@@ -1,7 +1,7 @@
 import type {
   EventsByDep, OpenApiByDep, OpenApiMode, ProjectSnapshot, SoapByDep, SoapMode, SqlApiMode, SqlByDep,
 } from '../../types'
-import { activeWizardEntries, buildWizardBody, defaultForm } from '../../utils/projectUtils'
+import { defaultForm } from '../../utils/projectUtils'
 
 /**
  * `menora-model.json` of a plain backend, as the generator writes it at a project's root
@@ -16,31 +16,14 @@ const isObject = (v: unknown): v is Json => !!v && typeof v === 'object' && !Arr
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback)
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 
-/**
- * The request a snapshot generates: what Generate sends, in the one shape `/starter.patch` and the
- * model file use. A multi-module project (no wizard in play, as on Generate) names its modules.
- */
-export function requestOfSnapshot(snapshot: ProjectSnapshot): Json {
-  const { form, selected, selectedOptions } = snapshot
-  const sql = activeWizardEntries(snapshot.sqlByDep, selected)
-  const openApi = activeWizardEntries(snapshot.openApiByDep, selected)
-  const soap = activeWizardEntries(snapshot.soapByDep, selected)
-  const events = activeWizardEntries(snapshot.eventsByDep, selected)
-  const body = buildWizardBody(form, selected, selectedOptions, sql, openApi, soap, events)
-  const hasWizard = [sql, openApi, soap, events].some(byDep => Object.keys(byDep).length > 0)
-  const multiModule = !hasWizard && snapshot.multiModuleEnabled && snapshot.selectedModules.length > 0
-  return multiModule ? { ...body, modules: [...snapshot.selectedModules] } : body
-}
-
-/** Whether two snapshots generate the same project — the request is what counts, not the editor's state. */
-export function sameProject(a: ProjectSnapshot, b: ProjectSnapshot): boolean {
-  return JSON.stringify(requestOfSnapshot(a)) === JSON.stringify(requestOfSnapshot(b))
-}
+export { requestOfSnapshot, sameProject } from './backendRequest'
 
 export interface ParsedBackendModel {
   snapshot: ProjectSnapshot
   /** `generator.catalogHash` of the file, when it has one. */
   catalogHash?: string
+  /** `generator.snapshot`: the files the server kept from the project's download. */
+  snapshotId?: string
 }
 
 /**
@@ -69,7 +52,12 @@ export function parseBackendModel(text: string): ParsedBackendModel | { error: s
   }
   const generator = isObject(parsed.generator) ? parsed.generator : {}
   const catalogHash = str(generator.catalogHash) || undefined
-  return { snapshot: snapshotOfRequest(request), ...(catalogHash ? { catalogHash } : {}) }
+  const snapshotId = /^[0-9a-f]{64}$/.test(str(generator.snapshot)) ? str(generator.snapshot) : undefined
+  return {
+    snapshot: snapshotOfRequest(request),
+    ...(catalogHash ? { catalogHash } : {}),
+    ...(snapshotId ? { snapshotId } : {}),
+  }
 }
 
 /** A model's request as the editor's snapshot. Fields the request leaves out take the form's defaults. */
@@ -188,6 +176,7 @@ function eventsOf(request: Json): { eventsByDep?: EventsByDep } {
             .map(c => ({ name: c.name as string, produce: c.produce === true, consume: c.consume === true }))
         : [],
       generateTests: o.generateTests === true,
+      ...(o.schemaRegistry === 'confluent' && { schemaRegistry: 'confluent' }),
     }
   }
   return Object.keys(out).length > 0 ? { eventsByDep: out } : {}

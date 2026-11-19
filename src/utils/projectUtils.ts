@@ -215,7 +215,7 @@ export async function triggerDownload(
   soapByDep?: SoapByDep,
   eventsByDep?: EventsByDep,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<{ snapshotId?: string }> {
   const request = buildProjectRequest(
     'zip', form, selected, selectedOptions, multiModule, sqlByDep, openApiByDep, soapByDep, eventsByDep)
   const res = await fetch(request.url, { ...request.init, signal })
@@ -224,6 +224,9 @@ export async function triggerDownload(
     throw new Error(err.kind ? `${err.kind}: ${err.message}` : err.message)
   }
   downloadBlob(await res.blob(), `${form.artifactId}.zip`)
+  // What the server kept of this project: an update of it starts from those files.
+  const id = res.headers?.get?.('X-Snapshot')
+  return id && /^[0-9a-f]{64}$/.test(id) ? { snapshotId: id } : {}
 }
 
 /** Hands a Blob to the browser as a file download (anchor click) and releases the object URL. */
@@ -389,6 +392,7 @@ function eventsBody(activeEvents: EventsByDep): Record<string, unknown> {
       // No list: the server follows the document (the project is the application it describes).
       ...(entry.channels.length > 0 ? { channels: entry.channels } : {}),
       ...(entry.generateTests ? { generateTests: true } : {}),
+      schemaRegistry: entry.schemaRegistry, // undefined: left out of the JSON
     }
   }
   return { asyncApiByDep, eventOptions }

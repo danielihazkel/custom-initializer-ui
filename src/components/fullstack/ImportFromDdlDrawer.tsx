@@ -98,6 +98,8 @@ interface WireEntity {
   sourceSql?: string | null
   /** MANY_TO_ONEs derived from single-column foreign keys between the pasted tables. */
   relations?: WireRelation[] | null
+  /** UNIQUE constraints over several columns, by the field / relation names the columns became. */
+  uniqueKeys?: string[][] | null
 }
 interface ImportResponse {
   entities: WireEntity[]
@@ -141,6 +143,9 @@ function toEditorEntities(wire: WireEntity[]): FullstackEntityDef[] {
         required: r.required || undefined,
         joinColumn: r.joinColumn ?? undefined,
       }))
+      : undefined,
+    uniqueKeys: e.uniqueKeys && e.uniqueKeys.length > 0
+      ? e.uniqueKeys.map(fields => ({ fields }))
       : undefined,
   }))
 }
@@ -226,10 +231,13 @@ export function ImportFromDdlDrawer({ isOpen, onClose, hasExisting, existingCoun
       // A relation to a table that was left out would point at nothing — drop it (the note
       // under the chip said so before the click).
       const kept = new Set(chosen.map(e => e.name.toLowerCase()))
-      const entities = chosen.map(e => ({
-        ...e,
-        relations: e.relations?.filter(r => kept.has(r.targetEntity.toLowerCase())),
-      }))
+      const entities = chosen.map(e => {
+        const relations = e.relations?.filter(r => kept.has(r.targetEntity.toLowerCase()))
+        // A unique key over a link that went with its table names nothing any more: dropped too.
+        const dropped = new Set((e.relations ?? []).filter(r => !relations?.includes(r)).map(r => r.fieldName))
+        const uniqueKeys = e.uniqueKeys?.filter(k => !k.fields.some(f => dropped.has(f)))
+        return { ...e, relations, uniqueKeys: uniqueKeys && uniqueKeys.length > 0 ? uniqueKeys : undefined }
+      })
       onImport(entities, mode, parsed.note)
       setSql('')
       setParsed(null)

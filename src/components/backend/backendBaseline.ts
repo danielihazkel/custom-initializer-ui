@@ -1,5 +1,5 @@
 import type { ProjectSnapshot } from '../../types'
-import { requestOfSnapshot } from './backendModel'
+import { requestOfSnapshot } from './backendRequest'
 
 /**
  * The model an existing backend project was generated from — the "before" of an update.
@@ -15,6 +15,12 @@ export interface BackendBaseline {
   /** `generator.catalogHash` of the project's model file, when known: lets the update's notes say
    *  whether the catalog is still the one the project was generated with. */
   catalogHash?: string
+  /** `generator.snapshot` of the project's model file (the `X-Snapshot` of its download): the
+   *  server kept those files, so an update starts from them and brings the generator's fixes too. */
+  snapshotId?: string
+  /** The last update downloaded: what the project becomes once it is applied, for *Mark as applied*.
+   *  `request` is the model it was made for. */
+  pendingUpdate?: { snapshotId: string; request: string }
   /** Where it came from, for the panel's wording. */
   source: 'generated' | 'imported'
   /** When it was set (epoch ms). */
@@ -33,6 +39,9 @@ export function readBackendBaseline(): BackendBaseline | null {
     return {
       snapshot: s,
       catalogHash: typeof parsed.catalogHash === 'string' ? parsed.catalogHash : undefined,
+      snapshotId: snapshotIdOf(parsed.snapshotId),
+      // Checked where it is used (backendUpdateActions.appliedBackendBaseline), off the entry chunk.
+      pendingUpdate: parsed.pendingUpdate,
       source: parsed.source === 'imported' ? 'imported' : 'generated',
       at: typeof parsed.at === 'number' ? parsed.at : 0,
     }
@@ -59,7 +68,13 @@ export function backendUpdateRequest(baseline: BackendBaseline, current: Project
     base: requestOfSnapshot(baseline.snapshot),
     target: requestOfSnapshot(current),
     ...(baseline.catalogHash ? { baseCatalogHash: baseline.catalogHash } : {}),
+    ...(baseline.snapshotId ? { baseSnapshot: baseline.snapshotId } : {}),
   }
+}
+
+/** A snapshot id as the server writes them, else undefined. */
+export function snapshotIdOf(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value) ? value : undefined
 }
 
 /**

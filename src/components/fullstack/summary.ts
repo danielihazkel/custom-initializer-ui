@@ -97,7 +97,8 @@ export function summarizeEntity(entity: FullstackEntityDef, projectOpts: string[
   const breakdown = entity.fields.find(f => f.type === 'ENUM') ?? entity.fields.find(f => f.type === 'BOOLEAN')
   const calendar = entity.fields.find(isTemporal)
   // A gallery shows the rows by their first image field.
-  const picture = entity.fields.find(f => f.type === 'IMAGE')
+  // A field with several pictures is a list: the gallery takes one picture per row.
+  const picture = entity.fields.find(f => f.type === 'IMAGE' && f.maxFiles == null)
   const requested: string[] = entity.listViews ?? (entity.listView ? [entity.listView] : ['table'])
   const views = requested.flatMap<{ name: string; by?: string }>(v => {
     if (v === 'kanban') return breakdown && !readOnly ? [{ name: 'kanban', by: breakdown.name }] : []

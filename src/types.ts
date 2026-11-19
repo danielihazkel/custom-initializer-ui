@@ -187,6 +187,8 @@ export interface EventsWizardEntry {
   /** Empty = every channel, as the application the document describes. */
   channels: EventsChannelChoice[]
   generateTests: boolean
+  /** Avro channels through Confluent's schema registry; absent = the single-object encoding, no registry. */
+  schemaRegistry?: 'confluent'
 }
 
 export type EventsByDep = Record<string, EventsWizardEntry>
@@ -337,7 +339,7 @@ export interface AdminDependencyCompatibility {
   projectKind?: ProjectKind
 }
 
-export type AdminTab = 'overview' | 'activity' | 'history' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates' | 'versions' | 'departments' | 'fullstack-examples' | 'schema-sources'
+export type AdminTab = 'overview' | 'activity' | 'history' | 'catalog-sync' | 'groups' | 'entries' | 'files' | 'builds' | 'suboptions' | 'compatibility' | 'templates' | 'modules' | 'palettes' | 'entity-templates' | 'versions' | 'departments' | 'fullstack-examples' | 'schema-sources'
 
 /** Discriminator for {@link AdminVersion} rows — backend Java/Boot plus frontend React/Node/package-manager lists. */
 export type VersionKind = 'JAVA' | 'BOOT' | 'REACT' | 'NODE' | 'PACKAGE_MANAGER'
@@ -420,6 +422,9 @@ export interface FullstackFieldDef {
   showWhen?: string
   /** An expression the field is computed from on every save (stored; never set by a client). */
   formula?: string
+  /** FILE / IMAGE only: the field holds several files, at most this many (1–`LIMITS.maxFiles`);
+   *  absent = one file. Kept in a table of its own in the generated backend. */
+  maxFiles?: number
   enumValues?: string[]
   /** Display labels per enum constant (`{ IN_PROGRESS: 'In progress' }` / Hebrew), shown by the
    *  generated dropdowns, filter chips, kanban lanes, table cells and detail rows. A constant
@@ -1048,6 +1053,33 @@ export interface ActivitySummary {
     lastEventId: number
   }[]
   retentionDays: number
+}
+
+/** Where a row this release ships stands in the database (`db/CatalogSync.Status`). */
+export type CatalogSyncStatus = 'IN_STEP' | 'DIFFERS' | 'MISSING' | 'KEPT' | 'DELETED'
+
+/** One shipped catalog row and where it stands (`GET /admin/catalog-sync`). */
+export interface CatalogSyncRow {
+  key: string
+  table: 'FILE_CONTRIBUTION' | 'BUILD_CUSTOMIZATION'
+  kind: ProjectKind
+  dependencyId: string | null
+  label: string
+  status: CatalogSyncStatus
+  rowId: number | null
+}
+
+export interface CatalogSyncReport {
+  enabled: boolean
+  summary: Partial<Record<CatalogSyncStatus, number>>
+  rows: CatalogSyncRow[]
+}
+
+/** One row with the shipped entity beside the database's (null when it has none). */
+export interface CatalogSyncDetail {
+  row: CatalogSyncRow
+  shipped: Record<string, unknown> | null
+  current: Record<string, unknown> | null
 }
 
 /** One change to a catalog row, from the catalog history (/admin/history). */

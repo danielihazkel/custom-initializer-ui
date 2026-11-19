@@ -7,6 +7,7 @@ const TABS: { id: AdminTab; label: string; icon: string; desc: string }[] = [
   { id: 'overview',   label: 'Overview',      icon: 'dashboard',      desc: 'Platform Dashboard' },
   { id: 'activity',   label: 'Activity',      icon: 'monitoring',     desc: 'Generation audit log' },
   { id: 'history',    label: 'History',       icon: 'history',        desc: 'Who changed the catalog' },
+  { id: 'catalog-sync', label: 'Catalog sync', icon: 'sync',          desc: 'Shipped rows vs. this database' },
   { id: 'groups',     label: 'Dep Groups',    icon: 'folder',         desc: 'Categories for UI' },
   { id: 'entries',    label: 'Dependencies',  icon: 'widgets',        desc: 'Main catalog' },
   { id: 'files',      label: 'File Contribs', icon: 'description',    desc: 'Custom project files' },

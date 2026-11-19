@@ -306,10 +306,10 @@ export default function App() {
     const slow = window.setTimeout(() => setGeneratingSlow(true), 700)
     try {
       const request = currentRequest()
-      await triggerDownload(...downloadArgs(), ctrl.signal)
+      const downloaded = await triggerDownload(...downloadArgs(), ctrl.signal)
       pushRecent(currentSnapshot)
       // The project now exists: a later change of the model is an update of it.
-      backendUpdate.rememberGenerated(currentSnapshot)
+      backendUpdate.rememberGenerated(currentSnapshot, downloaded?.snapshotId)
       const wizards = [sqlByDep, openApiByDep, soapByDep, eventsByDep]
         .flatMap(byDep => Object.keys(byDep ?? {}))
         .filter(depId => selectedDeps.includes(depId))

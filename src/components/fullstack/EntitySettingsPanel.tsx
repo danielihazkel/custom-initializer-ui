@@ -1,4 +1,6 @@
+import { useContext } from 'react'
 import type { FullstackEntityDef, FullstackFormSection, FullstackRule, FullstackUniqueKey } from '../../types'
+import { ModelEntities } from './modelEntities'
 import { MAX_UNIQUE_KEYS, keyableMembers } from './uniqueKeys'
 import { MAX_RULES, ruleProblems, type RuleProblem } from './rules'
 import { EXPR_FUNCTIONS } from './expr'
@@ -181,7 +183,8 @@ function RulesEditor({ entity, error, onChange }: {
   onChange: (rules: FullstackRule[] | undefined) => void
 }) {
   const rules = entity.rules ?? []
-  const problems = ruleProblems(entity)
+  // A rule may read a linked row (costCenter.budget): checked against the whole model.
+  const problems = ruleProblems(entity, useContext(ModelEntities))
   const set = (next: FullstackRule[]) => onChange(next.length ? next : undefined)
   const patch = (i: number, p: Partial<FullstackRule>) => set(rules.map((r, j) => {
     if (j !== i) return r

@@ -5,7 +5,8 @@ import { LIMITS } from './schema'
  * The model's expression language, as the editor checks it while a rule is typed — a mirror of
  * the backend's fullstack/expr (Expr.parse + ExprCheck), which has the last word when the project
  * is generated. One line over the row's own fields: `endsOn >= startsOn`, `status == 'REJECTED'`,
- * `not isEmpty(reason)`, `quantity * unitPrice > 100`.
+ * `not isEmpty(reason)`, `quantity * unitPrice > 100` — and, one step through a MANY_TO_ONE, the
+ * linked row's: `amount <= costCenter.budget`.
  */
 
 export type ExprType = 'NUMBER' | 'TEXT' | 'BOOL' | 'DATE' | 'DATETIME' | 'INSTANT' | 'TIME' | 'ENUM' | 'ANY'
@@ -62,7 +63,14 @@ export function lex(s: string): Token[] {
     }
     if (/[A-Za-z_]/.test(c)) {
       const start = i
-      while (i < s.length && /[A-Za-z0-9_]/.test(s[i])) i++
+      const name = () => { while (i < s.length && /[A-Za-z0-9_]/.test(s[i])) i++ }
+      name()
+      // One step through a link: costCenter.budget.
+      if (s[i] === '.' && /[A-Za-z_]/.test(s[i + 1] ?? '')) {
+        i++
+        name()
+        if (s[i] === '.' && /[A-Za-z_]/.test(s[i + 1] ?? '')) throw new ExprError('A link is followed one step only (like costCenter.budget)', i)
+      }
       out.push({ kind: 'name', text: s.slice(start, i), at: start })
       continue
     }
@@ -146,6 +154,7 @@ export function parse(text: string): Node {
       if (word === 'true' || word === 'false') return { k: 'lit', value: word === 'true', at: t.at }
       if (['and', 'or', 'not'].includes(word)) throw new ExprError(`Expected a value but found '${t.text}'`, t.at)
       if (isOp('(')) {
+        if (t.text.includes('.')) throw new ExprError(`'${t.text}' is not a function`, t.at)
         pos++
         const args: Node[] = []
         if (!isOp(')')) {
@@ -190,17 +199,56 @@ const DESCRIBE: Record<ExprType, string> = {
   INSTANT: 'an instant', TIME: 'a time of day', ENUM: 'an enum value', ANY: 'a value',
 }
 
-/** The fields an expression reads, in order; throws {@link ExprError} when it does not fit the entity or is not `expected`. */
-export function checkExpr(text: string, entity: FullstackEntityDef, expected: ExprType | null = 'BOOL'): string[] {
+/** What a MANY_TO_ONE leads to, by the relation's name, among `entities`. */
+function linksOf(entity: FullstackEntityDef, entities: readonly FullstackEntityDef[]): Map<string, FullstackEntityDef> {
+  const out = new Map<string, FullstackEntityDef>()
+  for (const r of entity.relations ?? []) {
+    if (r.type !== 'MANY_TO_ONE' || !r.fieldName.trim()) continue
+    const target = entities.find(e => e.name.trim().toLowerCase() === r.targetEntity.trim().toLowerCase())
+    if (target) out.set(r.fieldName, target)
+  }
+  return out
+}
+
+/**
+ * The row's own fields an expression reads, in order; throws {@link ExprError} when it does not fit
+ * the entity or is not `expected`. A linked row's field (`costCenter.budget`) is looked up in
+ * `entities` — the whole model (FullstackRequestValidator's links).
+ */
+export function checkExpr(text: string, entity: FullstackEntityDef, expected: ExprType | null = 'BOOL',
+                          entities: readonly FullstackEntityDef[] = []): string[] {
   const root = parse(text)
   const fields = new Map(entity.fields.map(f => [f.name, f]))
+  const links = linksOf(entity, entities)
+  const linked = new Map<string, FullstackFieldDef>()
   const refs: string[] = []
+  const fieldOf = (name: string) => (name.includes('.') ? linked.get(name) : fields.get(name))!
+  const path = (n: { name: string; at: number }): ExprType => {
+    const [relation, name] = n.name.split('.')
+    const target = links.get(relation)
+    if (!target) {
+      const loose = [...links.keys()].find(k => k.toLowerCase() === relation.toLowerCase())
+      throw new ExprError(`'${relation}' is not a link of this entity (a MANY_TO_ONE)${
+        loose ? ` (did you mean '${loose}'?)` : links.size ? ` \u2014 its links are ${[...links.keys()].join(', ')}` : ''}`, n.at)
+    }
+    const f = target.fields.find(x => x.name === name)
+    if (!f) {
+      const loose = target.fields.find(x => x.name.toLowerCase() === name.toLowerCase())
+      throw new ExprError(`'${name}' is not a field of ${target.name}${loose ? ` (did you mean '${loose.name}'?)` : ''}`, n.at)
+    }
+    const t = typeOfField(f)
+    if (t == null || f.type === 'TEXT' || f.type === 'MARKDOWN') {
+      throw new ExprError(`'${n.name}' (${f.type}) cannot be read through a link: only a short value can`, n.at)
+    }
+    linked.set(n.name, f)
+    return t
+  }
   const need = (actual: ExprType, wanted: ExprType, at: number, what: string) => {
     if (actual !== wanted) throw new ExprError(`${what} takes ${DESCRIBE[wanted]}, not ${DESCRIBE[actual]}`, at)
   }
   const enumLiteral = (enumSide: Node, textSide: Node) => {
     if (textSide.k !== 'lit' || enumSide.k !== 'ref') return
-    const f = fields.get(enumSide.name)!
+    const f = fieldOf(enumSide.name)
     const text = String(textSide.value)
     if (!(f.enumValues ?? []).some(v => v.toLowerCase() === text.toLowerCase())) {
       throw new ExprError(`'${text}' is not one of ${f.name}'s values (${(f.enumValues ?? []).join(', ')})`, textSide.at)
@@ -210,6 +258,7 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
     switch (n.k) {
       case 'lit': return typeof n.value === 'number' ? 'NUMBER' : typeof n.value === 'boolean' ? 'BOOL' : 'TEXT'
       case 'ref': {
+        if (n.name.includes('.')) return path(n)
         const f = fields.get(n.name)
         if (!f) {
           const loose = entity.fields.find(x => x.name.toLowerCase() === n.name.toLowerCase())
@@ -319,9 +368,10 @@ export function checkExpr(text: string, entity: FullstackEntityDef, expected: Ex
 }
 
 /** Why an expression does not fit, or undefined. */
-export function exprProblem(text: string, entity: FullstackEntityDef, expected: ExprType | null = 'BOOL'): string | undefined {
+export function exprProblem(text: string, entity: FullstackEntityDef, expected: ExprType | null = 'BOOL',
+                            entities: readonly FullstackEntityDef[] = []): string | undefined {
   try {
-    checkExpr(text, entity, expected)
+    checkExpr(text, entity, expected, entities)
     return undefined
   } catch (e) {
     if (e instanceof ExprError) return e.describe()
@@ -331,6 +381,11 @@ export function exprProblem(text: string, entity: FullstackEntityDef, expected: 
 
 /** The text with every reading of field `from` renamed to `to` (names inside texts and functions are left alone). */
 export function renameInExpr(text: string, from: string, to: string): string {
+  return renameNamesInExpr(text, name => (name === from ? to : name))
+}
+
+/** The text with each name read (a field, or `link.field`) passed through `rename`. */
+export function renameNamesInExpr(text: string, rename: (name: string) => string): string {
   let tokens: Token[]
   try {
     tokens = lex(text)
@@ -342,7 +397,9 @@ export function renameInExpr(text: string, from: string, to: string): string {
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]
     const call = tokens[i + 1]?.kind === 'op' && tokens[i + 1].text === '('
-    if (t.kind === 'name' && t.text === from && !call) {
+    if (t.kind !== 'name' || call) continue
+    const to = rename(t.text)
+    if (to !== t.text) {
       out += text.slice(last, t.at) + to
       last = t.at + t.text.length
     }

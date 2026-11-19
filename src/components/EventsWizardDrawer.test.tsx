@@ -131,6 +131,36 @@ describe('EventsWizardDrawer', () => {
     expect(container.querySelector('[data-events-avro-note]')?.textContent).toContain('no schema registry')
   })
 
+  it('offers Confluent schema registry for Avro, saves it, and shows each channel key and headers', async () => {
+    stubDetect({ ok: true, body: [
+      { ...CHANNELS[0], format: 'avro', key: 'uuid', headers: ['source', 'x-correlation-id'] },
+      { ...CHANNELS[1], format: 'json', headers: [] },
+    ] })
+    const onSave = vi.fn()
+    const { container } = render(<EventsWizardDrawer isOpen onClose={() => {}} depId="kafka" depName="Kafka" initial={entry} onSave={onSave} />)
+    await screen.findByText('orders.created')
+    expect(container.querySelector('[data-channel="orderCreated"] [data-channel-extras]')?.textContent)
+      .toBe('UUID key · headers: source, x-correlation-id')
+    expect(container.querySelector('[data-channel="orderEvents"] [data-channel-extras]')).toBeNull()
+    fireEvent.change(container.querySelector('[data-events-registry]')!, { target: { value: 'confluent' } })
+    expect(container.querySelector('[data-events-avro-note]')?.textContent).toContain("Confluent's schema registry")
+    fireEvent.click(screen.getByText('Save'))
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ schemaRegistry: 'confluent' }))
+  })
+
+  it('opens on the registry saved before, and drops it when set back to none', async () => {
+    stubDetect({ ok: true, body: [{ ...CHANNELS[0], format: 'avro' }] })
+    const onSave = vi.fn()
+    const { container } = render(<EventsWizardDrawer isOpen onClose={() => {}} depId="kafka" depName="Kafka"
+      initial={{ ...entry, schemaRegistry: 'confluent' }} onSave={onSave} />)
+    await screen.findByText('orders.created')
+    const select = container.querySelector('[data-events-registry]') as HTMLSelectElement
+    expect(select.value).toBe('confluent')
+    fireEvent.change(select, { target: { value: '' } })
+    fireEvent.click(screen.getByText('Save'))
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty('schemaRegistry')
+  })
+
   it('says nothing of Avro for a JSON-only document', async () => {
     stubDetect({ ok: true, body: CHANNELS })
     const { container } = render(<EventsWizardDrawer isOpen onClose={() => {}} depId="kafka" depName="Kafka" initial={entry} onSave={vi.fn()} />)

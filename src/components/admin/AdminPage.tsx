@@ -14,6 +14,7 @@ const TAB_LOADERS: Record<AdminTab, () => Promise<{ default: ComponentType }>> =
   'overview': () => import('./overview/OverviewTab').then(m => ({ default: m.OverviewTab })),
   'activity': () => import('./activity/ActivityTab').then(m => ({ default: m.ActivityTab })),
   'history': () => import('./history/HistoryTab').then(m => ({ default: m.HistoryTab })),
+  'catalog-sync': () => import('./catalogSync/CatalogSyncTab').then(m => ({ default: m.CatalogSyncTab })),
   'groups': () => import('./dependency-groups/DependencyGroupsTab').then(m => ({ default: m.DependencyGroupsTab })),
   'entries': () => import('./dependency-entries/DependencyEntriesTab').then(m => ({ default: m.DependencyEntriesTab })),
   'files': () => import('./file-contributions/FileContributionsTab').then(m => ({ default: m.FileContributionsTab })),

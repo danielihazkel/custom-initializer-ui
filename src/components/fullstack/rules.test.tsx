@@ -79,7 +79,7 @@ describe('rules', () => {
     expect(after.rules).toEqual([{ when: "status == 'REJECTED'", check: 'not isEmpty(rejectionReason)', message: 'Why?', field: 'rejectionReason' }])
   })
 
-  it('count in the editor’s validation; a composed child may have none', () => {
+  it('count in the editor’s validation; a composed child may have them too', () => {
     const parent: FullstackEntityDef = {
       uid: 'p', name: 'Batch',
       fields: [{ uid: 'p-id', name: 'id', type: 'LONG', primaryKey: true, generated: true }],
@@ -87,7 +87,8 @@ describe('rules', () => {
     }
     const ruled = claim({ rules: [{ check: 'endsOn >= startsOn', message: 'x' }] })
     expect(validateEntities([ruled]).entities[0]).toBeUndefined()
-    expect(validateEntities([parent, ruled]).entities[1]?.rules).toMatch(/inside their parent’s form/)
+    // The parent's save checks each row by them.
+    expect(validateEntities([parent, ruled]).entities[1]?.rules).toBeUndefined()
     expect(validateEntities([claim({ rules: [{ check: 'endsOn >= 3', message: 'x' }] })]).entities[0]?.rules)
       .toBe('Rule 1: Cannot compare a date with a number (at character 8)')
   })

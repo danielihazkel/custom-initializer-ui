@@ -44,7 +44,13 @@ import type { DesignerTarget } from './designer/LayoutDesigner'
 import type { FrontendAppearance } from './designer/FrontendSettings'
 import { renameEntityInRelations } from './relationRefs'
 import { renameLinkInChildLists } from './childLists'
-import { countsOf, describeCounts, readBaseline, sideOfPath, updateRequest, writeBaseline, type UpdateBaseline } from './updateBaseline'
+import { renameLinkedFieldInRules, renameLinkInRules } from './rules'
+import {
+  appliedBaseline, countsOf, describeCounts, describeUpdateBase, readBaseline, requestKey, schemaVersionOf, sideOfPath, updateRequest,
+  writeBaseline,
+  type UpdateBaseline,
+} from './updateBaseline'
+import { snapshotHeader } from '../../utils/updateCounts'
 import { UpdatePanel } from './UpdatePanel'
 import { describeServerTarget, locateServerIssue, type ServerIssue, type ServerTarget } from './serverIssue'
 import { readErrorBody } from '../../utils/previewErrors'
@@ -447,6 +453,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
             followPages(ps => renameRelationInPages(ps, nowEntity, wasRelation, nowRelation))
             // The one-to-manys that read this link by name.
             followTargets = [...followTargets, es => renameLinkInChildLists(es, nowEntity, wasRelation, nowRelation)]
+            // The rules that read through this link (costCenter.budget).
+            followTargets = [...followTargets, es => renameLinkInRules(es, nowEntity, wasRelation, nowRelation)]
           }
           continue
         }
@@ -462,6 +470,8 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
           if (!sharedName) followTargets = [...followTargets, es => renameEntityInRelations(es, wasEntity, nowEntity)]
         } else if (wasField != null && nowField?.trim() && wasField !== nowField) {
           followPages(ps => renameFieldInPages(ps, nowEntity, wasField, nowField))
+          // Other entities' rules that read this field through a link.
+          followTargets = [...followTargets, es => renameLinkedFieldInRules(es, nowEntity, wasField, nowField)]
         }
       }
     }
@@ -844,7 +854,10 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       // A generated project's own model file: what its code was made from, so later changes to
       // the model can be offered as an update to that code.
       if (result.fromProject) {
-        setBaseline({ snapshot: result.snapshot, templatesHash: result.templatesHash, source: 'imported', at: Date.now() })
+        setBaseline({
+          snapshot: result.snapshot, templatesHash: result.templatesHash, snapshotId: result.snapshotId,
+          schemaVersion: result.schemaVersion, source: 'imported', at: Date.now(),
+        })
       }
       // With a model already in the editor, offer Append (its entities join yours) as well as
       // the whole-model Replace — the same choice the DDL import gives.
@@ -1006,7 +1019,21 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       }
       const counts = countsOf(res.headers)
       downloadBlob(await res.blob(), `${meta.artifactId || 'project'}-update.zip`)
-      setToast({ message: `Update downloaded (${describeCounts(counts)}) — UPDATE.md inside says how to apply it`, type: 'success' })
+      // What the project becomes once applied: Mark as applied starts the next update from it.
+      const result = snapshotHeader(res.headers)
+      if (result) {
+        setBaseline({
+          ...baseline,
+          pendingUpdate: {
+            snapshotId: result, request: requestKey(snapshotRef.current),
+            schemaVersion: schemaVersionOf(res.headers.get('X-Schema-Version')),
+          },
+        })
+      }
+      setToast({
+        message: `Update downloaded (${describeCounts(counts)}${describeUpdateBase(res.headers)}) — UPDATE.md inside says how to apply it`,
+        type: 'success',
+      })
       return true
     } catch (err) {
       setToast({ message: `Update failed: ${err instanceof Error ? err.message : String(err)}`, type: 'error' })
@@ -1117,6 +1144,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
       // The project now in the user's hands was made from this model.
       setBaseline({
         snapshot: currentSnapshot, templatesHash: res.headers.get('X-Templates-Hash') ?? undefined,
+        snapshotId: snapshotHeader(res.headers), schemaVersion: schemaVersionOf(res.headers.get('X-Schema-Version')),
         source: 'generated', at: Date.now(),
       })
       setToast({ message: 'Fullstack project downloaded', type: 'success' })
@@ -1711,7 +1739,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
           onPreview={previewUpdate}
           onDownload={() => { void downloadUpdate() }}
           onMarkApplied={() => {
-            setBaseline({ ...baseline, snapshot: currentSnapshot, at: Date.now() })
+            setBaseline(appliedBaseline(baseline, currentSnapshot))
             setToast({ message: 'Later updates will start from this model', type: 'success' })
           }}
           onForget={() => setBaseline(null)}

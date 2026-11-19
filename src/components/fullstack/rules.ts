@@ -1,6 +1,6 @@
 import type { FullstackEntityDef, FullstackFieldDef, FullstackRule } from '../../types'
 import { LIMITS } from './schema'
-import { checkExpr, ExprError, renameInExpr, type ExprType } from './expr'
+import { checkExpr, ExprError, renameInExpr, renameNamesInExpr, type ExprType } from './expr'
 
 /** Mirrors FullstackRequestValidator.MAX_RULES / MAX_RULE_MESSAGE. */
 export const MAX_RULES = LIMITS.maxRules
@@ -13,40 +13,35 @@ export interface RuleProblem {
   message: string
 }
 
-/** The first problem of each rule, or an entity-wide one at index -1. */
-export function ruleProblems(entity: FullstackEntityDef, composedChild = false): RuleProblem[] {
+/** The first problem of each rule, or an entity-wide one at index -1. Rows edited inside their
+ *  parent's form have rules too: the parent's save checks each row by them. */
+export function ruleProblems(entity: FullstackEntityDef, entities: readonly FullstackEntityDef[] = []): RuleProblem[] {
   const rules = entity.rules ?? []
-  if (composedChild && entity.fields.some(f => f.showWhen?.trim() || f.formula?.trim())) {
-    return [{ index: -1, part: 'check', message: 'Rows edited inside their parent’s form cannot have show-when conditions or computed fields yet' }]
-  }
   if (rules.length === 0) return []
   if (entity.readOnly || entity.viewQuery != null) {
     return [{ index: -1, part: 'check', message: 'A read-only entity is never saved, so it has no rules to check' }]
   }
-  if (composedChild) {
-    return [{ index: -1, part: 'check', message: 'Rows edited inside their parent’s form cannot have rules yet: a save of the parent does not check them' }]
-  }
   if (rules.length > MAX_RULES) return [{ index: -1, part: 'check', message: `At most ${MAX_RULES} rules` }]
   const out: RuleProblem[] = []
   rules.forEach((rule, index) => {
-    const problem = ruleProblem(entity, rule)
+    const problem = ruleProblem(entity, rule, entities)
     if (problem) out.push({ index, ...problem })
   })
   return out
 }
 
-function ruleProblem(entity: FullstackEntityDef, rule: FullstackRule): Omit<RuleProblem, 'index'> | undefined {
+function ruleProblem(entity: FullstackEntityDef, rule: FullstackRule, entities: readonly FullstackEntityDef[]): Omit<RuleProblem, 'index'> | undefined {
   if (!rule.check.trim()) return { part: 'check', message: 'Write the condition every row must meet' }
   let refs: string[]
   try {
-    refs = checkExpr(rule.check, entity)
+    refs = checkExpr(rule.check, entity, 'BOOL', entities)
   } catch (e) {
     if (e instanceof ExprError) return { part: 'check', message: e.describe() }
     throw e
   }
   if (rule.when?.trim()) {
     try {
-      checkExpr(rule.when, entity)
+      checkExpr(rule.when, entity, 'BOOL', entities)
     } catch (e) {
       if (e instanceof ExprError) return { part: 'when', message: e.describe() }
       throw e
@@ -82,7 +77,8 @@ export function formulaType(type: FullstackFieldDef['type']): ExprType | null {
  * Why a field's show-when or formula would be rejected (FullstackRequestValidator.checkDerivations
  * and the workflow's check), by the part it is in; undefined when both are fine.
  */
-export function derivationProblem(entity: FullstackEntityDef, field: FullstackFieldDef): { part: 'showWhen' | 'formula'; message: string } | undefined {
+export function derivationProblem(entity: FullstackEntityDef, field: FullstackFieldDef,
+                                  entities: readonly FullstackEntityDef[] = []): { part: 'showWhen' | 'formula'; message: string } | undefined {
   const showWhen = field.showWhen?.trim()
   const formula = field.formula?.trim()
   if (!showWhen && !formula) return undefined
@@ -98,7 +94,7 @@ export function derivationProblem(entity: FullstackEntityDef, field: FullstackFi
   if (showWhen) {
     if (formula) return { part: 'showWhen', message: 'A computed field is not edited, so it has no show-when' }
     try {
-      if (checkExpr(showWhen, entity).includes(field.name)) return { part: 'showWhen', message: 'It reads the field itself' }
+      if (checkExpr(showWhen, entity, 'BOOL', entities).includes(field.name)) return { part: 'showWhen', message: 'It reads the field itself' }
     } catch (e) {
       if (e instanceof ExprError) return { part: 'showWhen', message: e.describe() }
       throw e
@@ -110,7 +106,7 @@ export function derivationProblem(entity: FullstackEntityDef, field: FullstackFi
     if (field.required) return { part: 'formula', message: 'A computed field is set by the server, so it is never required' }
     if (field.defaultValue != null && field.defaultValue !== '') return { part: 'formula', message: 'A computed field has no default' }
     try {
-      for (const ref of checkExpr(formula, entity, wanted)) {
+      for (const ref of checkExpr(formula, entity, wanted, entities)) {
         if (entity.fields.find(f => f.name === ref)?.formula?.trim()) {
           return { part: 'formula', message: `It reads “${ref}”, which is computed too (a formula reads entered fields only)` }
         }
@@ -124,8 +120,8 @@ export function derivationProblem(entity: FullstackEntityDef, field: FullstackFi
 }
 
 /** A one-line summary of an entity's rule problems for the validation count, or undefined. */
-export function rulesProblem(entity: FullstackEntityDef, composedChild = false): string | undefined {
-  const problems = ruleProblems(entity, composedChild)
+export function rulesProblem(entity: FullstackEntityDef, entities: readonly FullstackEntityDef[] = []): string | undefined {
+  const problems = ruleProblems(entity, entities)
   if (problems.length === 0) return undefined
   const p = problems[0]
   return p.index < 0 ? p.message : `Rule ${p.index + 1}: ${p.message}`
@@ -171,4 +167,50 @@ export function syncRules(before: FullstackEntityDef, after: FullstackEntityDef)
   })
   if (!changed) return after
   return { ...after, fields, ...(after.rules ? { rules } : {}) }
+}
+
+/** Each entity's rules, show-when conditions and formulas with every name passed through `rename`. */
+function renameInEntity(e: FullstackEntityDef, rename: (name: string) => string): FullstackEntityDef {
+  let changed = false
+  const fields = e.fields.map(f => {
+    const showWhen = f.showWhen ? renameNamesInExpr(f.showWhen, rename) : f.showWhen
+    const formula = f.formula ? renameNamesInExpr(f.formula, rename) : f.formula
+    if (showWhen === f.showWhen && formula === f.formula) return f
+    changed = true
+    return { ...f, ...(showWhen !== undefined ? { showWhen } : {}), ...(formula !== undefined ? { formula } : {}) }
+  })
+  const rules = (e.rules ?? []).map(rule => {
+    const check = renameNamesInExpr(rule.check, rename)
+    const when = rule.when ? renameNamesInExpr(rule.when, rename) : rule.when
+    if (check === rule.check && when === rule.when) return rule
+    changed = true
+    return { ...rule, check, ...(when !== undefined ? { when } : {}) }
+  })
+  return changed ? { ...e, fields, ...(e.rules ? { rules } : {}) } : e
+}
+
+/** `entity`'s link `from` renamed `to`: its expressions read `to.field` where they read `from.field`. */
+export function renameLinkInRules(entities: FullstackEntityDef[], entity: string, from: string, to: string): FullstackEntityDef[] {
+  let changed = false
+  const next = entities.map(e => {
+    if (e.name.trim().toLowerCase() !== entity.trim().toLowerCase()) return e
+    const out = renameInEntity(e, name => (name.startsWith(`${from}.`) ? `${to}.${name.slice(from.length + 1)}` : name))
+    changed ||= out !== e
+    return out
+  })
+  return changed ? next : entities
+}
+
+/** `target`'s field `from` renamed `to`: every entity that links to it reads `link.to` where it read `link.from`. */
+export function renameLinkedFieldInRules(entities: FullstackEntityDef[], target: string, from: string, to: string): FullstackEntityDef[] {
+  let changed = false
+  const next = entities.map(e => {
+    const links = (e.relations ?? []).filter(r => r.type === 'MANY_TO_ONE'
+      && r.targetEntity.trim().toLowerCase() === target.trim().toLowerCase()).map(r => r.fieldName)
+    if (links.length === 0) return e
+    const out = renameInEntity(e, name => (links.some(l => name === `${l}.${from}`) ? `${name.slice(0, name.indexOf('.'))}.${to}` : name))
+    changed ||= out !== e
+    return out
+  })
+  return changed ? next : entities
 }

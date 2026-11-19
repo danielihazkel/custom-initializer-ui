@@ -5,6 +5,8 @@ import { LIMITS } from './schema'
 export const MAX_UNIQUE_KEYS = LIMITS.maxUniqueKeys
 export const MAX_UNIQUE_KEY_FIELDS = LIMITS.maxUniqueKeyFields
 export const MAX_HELP = LIMITS.maxHelp
+/** The most files a field that holds several may take (`maxFiles`). */
+export const MAX_FILES = LIMITS.maxFiles
 
 /** What a unique key may name: the entity's non-key fields (but long texts) and its many-to-one links. */
 export function keyableMembers(entity: FullstackEntityDef): { name: string; label: string }[] {
@@ -78,6 +80,7 @@ export function uniqueKeysProblem(entity: FullstackEntityDef, composedChild = fa
       if (field) {
         if (field.primaryKey) return `${where} includes the primary key “${field.name}”, which is unique already`
         if (field.type === 'TEXT' || field.type === 'MARKDOWN') return `${where} includes “${field.name}”, a long text, which a database cannot index`
+        if (field.maxFiles != null) return `${where} includes “${field.name}”, which holds several files in a table of its own`
       } else if (!links.has(key)) {
         return `${where} names “${names[j]}”, which is not one of its fields or many-to-one links`
       }

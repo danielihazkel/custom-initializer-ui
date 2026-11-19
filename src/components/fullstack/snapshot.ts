@@ -260,7 +260,14 @@ export function parseExportedModel(text: string): ParsedModel | { error: string 
   const generator = parsed && typeof parsed === 'object' ? (parsed as { generator?: unknown }).generator : undefined
   const fromProject = generator != null && typeof generator === 'object'
   const hash = fromProject ? (generator as { templatesHash?: unknown }).templatesHash : undefined
-  const origin = { fromProject, ...(typeof hash === 'string' ? { templatesHash: hash } : {}) }
+  const snapshotId = fromProject ? (generator as { snapshot?: unknown }).snapshot : undefined
+  const schemaVersion = fromProject ? (generator as { schemaVersion?: unknown }).schemaVersion : undefined
+  const origin = {
+    fromProject,
+    ...(typeof schemaVersion === 'number' && Number.isInteger(schemaVersion) && schemaVersion > 0 ? { schemaVersion } : {}),
+    ...(typeof hash === 'string' ? { templatesHash: hash } : {}),
+    ...(typeof snapshotId === 'string' && /^[0-9a-f]{64}$/.test(snapshotId) ? { snapshotId } : {}),
+  }
   if (parsed && typeof parsed === 'object' && (parsed as { format?: unknown }).format === REQUEST_MODEL_FORMAT) {
     const request = (parsed as { request?: unknown }).request
     if (!request || typeof request !== 'object' || !Array.isArray((request as { entities?: unknown }).entities)) {
@@ -281,6 +288,10 @@ export interface ParsedModel {
   snapshot: FullstackSnapshot
   fromProject: boolean
   templatesHash?: string
+  /** `generator.snapshot`: the files the server kept from the project's download. */
+  snapshotId?: string
+  /** `generator.schemaVersion`: which version of the generator's own tables the project has. */
+  schemaVersion?: number
 }
 
 /**

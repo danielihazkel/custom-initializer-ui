@@ -5,6 +5,7 @@ import { parseBackendModel, requestOfSnapshot, sameProject, snapshotOfRequest } 
 import {
   backendUpdateRequest, readBackendBaseline, updateOffered, writeBackendBaseline, type BackendBaseline,
 } from './backendBaseline'
+import { appliedBackendBaseline, backendRequestKey } from './backendUpdateActions'
 
 function snapshot(over: Partial<ProjectSnapshot> = {}): ProjectSnapshot {
   return {
@@ -136,5 +137,33 @@ describe('backendBaseline', () => {
     expect(readBackendBaseline()).toBeNull()
     writeBackendBaseline(null)
     expect(localStorage.getItem('backend:baseline')).toBeNull()
+  })
+})
+
+describe('snapshots: an update starts from the files the project was generated with', () => {
+  const id = 'a'.repeat(64)
+  const result = 'b'.repeat(64)
+
+  it('reads generator.snapshot from the model file and sends it as baseSnapshot', () => {
+    const file = JSON.stringify({ format: 'menora-backend-model/1', kind: 'backend', request: requestOfSnapshot(snapshot()),
+      generator: { catalogHash: 'c'.repeat(64), snapshot: id } })
+    const parsed = parseBackendModel(file)
+    if ('error' in parsed) throw new Error(parsed.error)
+    expect(parsed.snapshotId).toBe(id)
+    const baseline: BackendBaseline = { snapshot: parsed.snapshot, snapshotId: id, source: 'imported', at: 1 }
+    expect(backendUpdateRequest(baseline, snapshot())).toMatchObject({ baseSnapshot: id })
+    expect(backendUpdateRequest({ ...baseline, snapshotId: undefined }, snapshot())).not.toHaveProperty('baseSnapshot')
+  })
+
+  it('keeps the id across a reload, and marks an update applied with its result for the same model only', () => {
+    const base: BackendBaseline = {
+      snapshot: snapshot(), snapshotId: id, pendingUpdate: { snapshotId: result, request: backendRequestKey(snapshot()) },
+      source: 'generated', at: 1,
+    }
+    writeBackendBaseline(base)
+    expect(readBackendBaseline()!.snapshotId).toBe(id)
+    expect(readBackendBaseline()!.pendingUpdate?.snapshotId).toBe(result)
+    expect(appliedBackendBaseline(base, snapshot()).snapshotId).toBe(result)
+    expect(appliedBackendBaseline(base, snapshot({ selected: ['web'] })).snapshotId).toBeUndefined()
   })
 })
