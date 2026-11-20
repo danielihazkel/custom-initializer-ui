@@ -80,8 +80,8 @@ the server issue, Start from my entities / a template, Use classic layout) that 
 full-screen portal dialog (`role="dialog" aria-modal`, body scroll lock, Tab loop, focus back to the opener):
 `DesignerLibrary` (page types, suggestions, My templates, widgets grouped Numbers/Charts/Lists/Other with the
 `widgetKindDisabledReason` shown, whole-layout templates), `PageStrip` over the canvas (`LayoutPreview` at
-`CANVAS_ZOOM`, `narrow` for the Mobile switch) and `DesignerInspector` (a widget: `WidgetCard bare`; a page:
-Basics `PageBasicsFields` / Layout `PageTypeForm widgetsOnCanvas` / Access `RolesField`), plus `IssuesPanel` and
+`CANVAS_ZOOM`, `narrow` for the Mobile switch) and `DesignerInspector` (a widget: `WidgetCard`; a page:
+Basics `PageBasicsFields` / Layout `PageTypeForm` / Access `RolesField`), plus `IssuesPanel` and
 `SitemapView` (nav sections via `GroupChip`, page moves via the `pages` drag list, nav style). Library cards drag
 with `dragPayload.ts` (`LibraryDrag`, kept in designer state; the event carries it too): widgets onto
 `LayoutPreview`'s `widgetDrop` (before/after the widget under the pointer, or the end slot), pages into the strip.
@@ -288,9 +288,9 @@ entity or parent goes through a `retarget*` helper (`retargetEntityList`, `retar
 `retargetMasterDetailChild`, `retargetRecord`, `stripDateRange` for the period picker) that keeps
 what still fits and names what it dropped in the `lossy` notice. The Roles field is always shown;
 without an LDAP dep (`ldapAuth === false`) its boxes are disabled and an "Add ldap-auth-rest"
-shortcut calls `onAddDep`. A dashboard with four or more widgets opens its cards collapsed to one
-summary line each (Expand/Collapse all; a new or re-kinded widget and the card a problem points at
-open — `expandRequest`). Wizard steps and record tabs have "Reset to default" buttons; the setup
+shortcut calls `onAddDep`. (The inline editor listed a dashboard's widgets as cards inside the page form, collapsed to one
+summary line each on a busy dashboard; that list went with it — widgets are edited from the canvas.)
+Wizard steps and record tabs have "Reset to default" buttons; the setup
 panel disables Dashboard Title/Overview once a layout exists (`hasPages`).
 Beside the list sits a **layout preview** (`LayoutPreview.tsx`, model in `layoutPreviewModel.ts` —
 not `layoutPreview.ts`, which collides with the component on Windows' case-insensitive FS): a
@@ -1024,4 +1024,4 @@ Pinned by `admin/fullstack-examples/FullstackExampleForm.test.tsx` (the card, th
 - Moved: the props a host hands the pages card and the designer are `PagesHostProps` in `pages/hostProps.ts` (it was `PagesEditorProps`; the inline-only `layout` is gone), and `summarizeLayout` is in `designer/PagesCard.tsx`, its one user.
 - 54 Hebrew entries nothing passes to `t` any more were dropped from `i18n/he/designer.ts` and `pages.ts`.
 - **Tests.** `PagesEditor.test.tsx` (75 cases) and the two cases of `PagesEditorBulk.test.tsx` that mounted the editor went with it; its four cases over pure functions are `pages/bulkPages.test.ts`. Most of the 75 were not about the inline shell: they drove the page forms and widget cards **the designer still uses** (`PageSettings`, the per-type forms, `WidgetCard`) through it. The rules under those forms are pinned by the `pageLayout*` tests and the designer by `LayoutDesigner.test.tsx`; the form-level cases themselves are not, unless they are ported to run through the designer (not done — they are in git history before this change).
-- **Now reached by nothing:** `DashboardForm`'s widget list inside the page form (the `!widgetsOnCanvas` branch — the designer edits widgets from the canvas) with its `expandRequest`. Left in place.
+- **The widget list inside the dashboard's page form went too** (it was the `!widgetsOnCanvas` branch, which only the inline editor took): `DashboardForm` is now the page's own settings — period picker, refresh, filters — and `PageTypeForm` lost `widgetsOnCanvas` and `expandRequest`. `WidgetCard` is one widget's settings alone (the inspector's); its header (drag handle, move, collapse with a one-line summary, duplicate, remove) and the props for it are gone, since the canvas does all of that. 20 more Hebrew entries were dropped with it.

@@ -133,7 +133,7 @@ export function PageBasicsFields({ page, index, pageKey, pages, errors, isStart,
 }
 
 /** The page type's own form — what a dashboard, list, report or other type is made of. */
-export function PageTypeForm({ page, index, pages, named, errors, update, lossy, removed, dnd, projectOpts, pushUndo, onChange, expandRequest, widgetsOnCanvas }: {
+export function PageTypeForm({ page, index, pages, named, errors, update, lossy, removed, dnd, projectOpts, pushUndo, onChange }: {
   page: FullstackPageDef
   index: number
   pages: FullstackPageDef[]
@@ -146,30 +146,12 @@ export function PageTypeForm({ page, index, pages, named, errors, update, lossy,
   projectOpts: string[]
   pushUndo: (label: string) => void
   onChange: (next: FullstackPageDef[]) => void
-  expandRequest?: { widget: number; n: number } | null
-  /** The layout designer edits a dashboard's widgets on its canvas: the form keeps the page's own settings. */
-  widgetsOnCanvas?: boolean
 }) {
   switch (page.type) {
     case 'entity-list':
       return <EntityListForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} dnd={dnd} projectOpts={projectOpts} pages={pages} pushUndo={pushUndo} onChange={onChange} />
     case 'dashboard':
-      return (
-        <DashboardForm
-          page={page}
-          index={index}
-          pages={pages}
-          projectOpts={projectOpts}
-          entities={named}
-          errors={errors}
-          update={update}
-          lossy={lossy}
-          removed={removed}
-          dnd={dnd}
-          expandRequest={expandRequest}
-          widgetsOnCanvas={widgetsOnCanvas}
-        />
-      )
+      return <DashboardForm page={page} index={index} entities={named} errors={errors} update={update} lossy={lossy} />
     case 'tabs':
       return <TabsForm page={page} index={index} pages={pages} errors={errors} update={update} dnd={dnd} removed={removed} />
     case 'master-detail':

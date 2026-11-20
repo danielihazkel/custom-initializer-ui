@@ -94,25 +94,17 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
           <WidgetCard
-            bare
             widget={widgetDef}
             wi={widget}
-            count={widgets.length}
             pages={pages.filter(p => p !== page)}
             projectOpts={model.projectOpts}
             entities={model.named}
             dateRange={page.dateRange}
             errors={errors}
-            atCap={widgets.length >= MAX_WIDGETS}
             dnd={model.dnd}
             list={`widgets:${index}`}
-            expanded
-            onToggle={() => {}}
             onChange={patch => model.setWidget(index, widget, patch)}
             onRetarget={patch => model.retargetWidgetAt(index, widget, patch)}
-            onMove={delta => model.reorderWidget(index, widget, widget + delta)}
-            onDuplicate={() => model.duplicateWidget(index, widget)}
-            onRemove={() => model.removeWidget(index, widget)}
           />
         </div>
         <div className="relative flex flex-wrap gap-2 border-t border-outline-variant px-4 pt-3" data-widget-clipboard>
@@ -304,7 +296,6 @@ export function DesignerInspector({ pages, model, index, widget, tab, onTab, onD
               projectOpts={model.projectOpts}
               pushUndo={model.pushUndo}
               onChange={model.onChange}
-              widgetsOnCanvas
             />
           </>
         )}

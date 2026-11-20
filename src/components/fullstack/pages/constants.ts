@@ -25,7 +25,4 @@ export const WIDGET_KINDS: { kind: FullstackWidgetDef['kind']; icon: string; rea
   { kind: 'list', icon: 'table_rows', get label() { return t('Embedded list') }, get short() { return t('List') }, get hint() { return t('An entity’s rows in a card — your columns, sort and filter') } },
 ]
 
-/** Widgets a dashboard has before its cards start collapsed; a short list reads fine open. */
-export const COLLAPSE_WIDGETS_FROM = 4
-
 export const aggHint = () => t('Count the rows, or sum / average / min / max a number column')

@@ -465,7 +465,6 @@ const dict: Dict = {
   'Nothing in the navigation': 'אין דבר בניווט',
   '{n} off the navigation': '{n} מחוץ לניווט',
   'Add a page to the layout': 'הוסף עמוד לפריסה',
-  'Collapse to one line': 'כווץ לשורה אחת',
   'Hide': 'הסתר',
   'Show': 'הצג',
 

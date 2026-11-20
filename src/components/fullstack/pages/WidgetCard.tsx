@@ -5,77 +5,35 @@ import { isSortableType } from '../fieldTypes'
 import { pluralize } from '../naming'
 import { dropIndicatorClass, useDragReorder } from '../useDragReorder'
 import {
-  MAX_RECENT_LIMIT, MAX_TEXT, MAX_WIDGETS, dateFields, defaultBarGroupBy, defaultSeries, defaultSpan, drillToPages,
+  MAX_RECENT_LIMIT, MAX_TEXT, dateFields, defaultBarGroupBy, defaultSeries, defaultSpan, drillToPages,
   defaultTopGroupBy, defaultLineGroupBy, defaultOptionLabel, funnelStageFields, linkablePages, LIST_WIDGET_LIMITS, MAX_LINKS,
   MAX_TITLE, filterableDateFields, groupByFields, listColumns, pageLabel, rankableKeys, sortableKeys,
   widgetKindDisabledReason, activityEntities, auditOn, defaultPivotColumns, MAX_ACTIVITY_ENTITIES, MIN_ACTIVITY_LIMIT,
 } from '../pageLayout'
-import { aggHint, ICON_BUTTON, SMALL_BUTTON, WIDGET_KINDS } from './constants'
-import { AggFields, BucketSelect, DragGrip, EntitySelect, MiniField, MoveButtons, PresetFilters, SpanPicker } from './fields'
-import { t, tn } from '../../../i18n'
-
-/** One line for a collapsed widget card: its kind, what it reads and how wide it is. */
-function widgetSummary(w: FullstackWidgetDef, span: number): string {
-  const kind = WIDGET_KINDS.find(k => k.kind === w.kind)?.short ?? w.kind
-  const width = t('width {n}', { n: span })
-  const noEntity = t('(no entity)')
-  if (w.kind === 'links') {
-    const n = w.pages?.length ?? 0
-    return `${kind} · ${w.title ? `“${w.title}” · ` : ''}${tn(n, '{n} page', '{n} pages')} · ${width}`
-  }
-  if (w.kind === 'list') {
-    const parts = [kind, w.entity || noEntity]
-    if (w.columns?.length) parts.push(tn(w.columns.length, '{n} column', '{n} columns'))
-    if (w.sort?.field) parts.push(t('by {field} {arrow}', { field: w.sort.field, arrow: w.sort.dir === 'desc' ? '↓' : '↑' }))
-    if (w.title) parts.push(`“${w.title}”`)
-    parts.push(width)
-    return parts.join(' · ')
-  }
-  if (w.kind === 'activity') {
-    const n = w.entities?.length
-    return `${kind} · ${w.title ? `“${w.title}” · ` : ''}${n ? tn(n, '{n} entity', '{n} entities') : t('every audited entity')} · ${width}`
-  }
-  if (w.kind === 'text') {
-    const text = (w.text ?? '').split('\n').find(line => line.trim()) ?? ''
-    return `${kind} · ${w.title || text.slice(0, 60) || t('empty')} · ${width}`
-  }
-  const parts = [kind, w.groupBy ? t('{entity} by {field}', { entity: w.entity || noEntity, field: w.groupBy }) : w.entity || noEntity]
-  if (w.agg && w.agg !== 'count') parts.push(t('{agg} of {field}', { agg: w.agg, field: w.field ?? '?' }))
-  if (w.trend) parts.push(t('trend per {bucket}', { bucket: w.trend }))
-  if (w.title) parts.push(`“${w.title}”`)
-  parts.push(width)
-  return parts.join(' · ')
-}
+import { aggHint, SMALL_BUTTON, WIDGET_KINDS } from './constants'
+import { AggFields, BucketSelect, DragGrip, EntitySelect, MiniField, PresetFilters, SpanPicker } from './fields'
+import { t } from '../../../i18n'
 
 /**
- * One dashboard widget as a card: a header (reorder, kind, duplicate, remove), then labelled
- * "Data" (what it measures) and "Display" (how it is shown) columns, then the rows it is limited to.
+ * One dashboard widget's settings, in the designer's inspector: its kind, then labelled "Data"
+ * (what it measures) and "Display" (how it is shown) columns, then the rows it is limited to.
+ * The canvas moves, copies and removes the widget.
  */
-export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, dateRange, errors, atCap, dnd, list, expanded: expandedProp, onToggle, onChange, onRetarget, onMove, onDuplicate, onRemove, bare }: {
+export function WidgetCard({ widget, wi, pages, projectOpts, entities, dateRange, errors, dnd, list, onChange, onRetarget }: {
   widget: FullstackWidgetDef
   wi: number
-  count: number
   /** The layout — a links widget picks the pages it opens from it. */
   pages: FullstackPageDef[]
   projectOpts: string[]
   entities: FullstackEntityDef[]
   dateRange: FullstackDateRange | undefined
   errors: Record<string, string>
-  atCap: boolean
+  /** For the columns of a list widget, which reorder by drag. */
   dnd: ReturnType<typeof useDragReorder>
   list: string
-  /** Collapsed, the card is its header and a one-line summary. */
-  expanded: boolean
-  onToggle: () => void
   onChange: (patch: Partial<FullstackWidgetDef>) => void
   onRetarget: (patch: { kind?: FullstackWidgetDef['kind']; entity?: string }) => void
-  onMove: (delta: number) => void
-  onDuplicate: () => void
-  onRemove: () => void
-  /** Just the settings — the layout designer's inspector, where the canvas moves, copies and removes the widget. */
-  bare?: boolean
 }) {
-  const expanded = bare || expandedProp
   const entity = entities.find(e => e.name === widget.entity)
   const own = `widget.${wi}`
   // Each control is marked by its own messages only; the card lists them all under it.
@@ -87,88 +45,40 @@ export function WidgetCard({ widget, wi, count, pages, projectOpts, entities, da
   const messages = [...new Set(Object.entries(errors)
     .filter(([k]) => (k === own || k.startsWith(`${own}.`)) && !k.startsWith(filterPrefix))
     .map(([, v]) => v))]
-  const invalid = messages.length > 0 || Object.keys(filterErrors).length > 0
-  const indicator = dnd.indicatorFor(list, wi)
   const fallbackSpan = defaultSpan(widget.kind)
   const span = widget.span ?? fallbackSpan
   const dates = filterableDateFields(entity)
   const pk = entity?.fields.find(f => f.primaryKey)?.name
-  const kindMeta = WIDGET_KINDS.find(k => k.kind === widget.kind) ?? { icon: 'widgets', label: widget.kind, short: widget.kind, hint: '' }
   const labelOf = (key: string) => keyOption(entity, key)
 
   return (
-    <div
-      {...(bare ? {} : dnd.rowProps(list, wi))}
-      data-widget={wi}
-      data-control={`widget.${wi}`}
-      className={bare ? 'space-y-3' : `space-y-2 rounded-lg border px-2.5 py-2 ${invalid ? 'border-error/50' : 'border-outline-variant'} ${
-        dnd.isDragging(list, wi) ? 'opacity-40' : ''} ${dropIndicatorClass(indicator)}`}
-    >
-      {!bare && <div className="flex flex-wrap items-center gap-1.5">
-        <span {...dnd.handleProps(list, wi)} className="cursor-grab text-secondary/70" aria-hidden="true" title={t('Drag to reorder')}>
-          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>drag_indicator</span>
-        </span>
-        <MoveButtons label={t('widget {n}', { n: wi + 1 })} canUp={wi > 0} canDown={wi < count - 1} onMove={onMove} />
-        <button
-          type="button"
-          onClick={onToggle}
-          className={ICON_BUTTON}
-          aria-expanded={expanded}
-          aria-label={expanded ? t('Collapse widget {n}', { n: wi + 1 }) : t('Expand widget {n}', { n: wi + 1 })}
-          title={expanded ? t('Collapse to one line') : t('Expand the settings')}
-          data-widget-toggle
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>{expanded ? 'expand_less' : 'expand_more'}</span>
-        </button>
-        <span className="material-symbols-outlined text-secondary" style={{ fontSize: '14px' }} aria-hidden="true">{kindMeta.icon}</span>
-        {expanded ? (
-          <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-on-surface">{kindMeta.label}</span>
-        ) : (
-          <span className="min-w-0 flex-1 truncate text-[11px] text-secondary" data-widget-summary>{widgetSummary(widget, span)}</span>
-        )}
-        <button
-          type="button"
-          onClick={onDuplicate}
-          disabled={atCap}
-          className={ICON_BUTTON}
-          aria-label={t('Duplicate widget {n}', { n: wi + 1 })}
-          title={atCap ? t('A dashboard can have at most {max} widgets', { max: MAX_WIDGETS }) : t('Duplicate this widget')}
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>content_copy</span>
-        </button>
-        <button type="button" onClick={onRemove} className={ICON_BUTTON} aria-label={t('Remove widget {n}', { n: wi + 1 })} title={t('Remove this widget')}>
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
-        </button>
-      </div>}
-
-      {expanded && (
-        <div role="radiogroup" aria-label={t('Widget kind')} className="inline-flex flex-wrap overflow-hidden rounded border border-outline-variant" data-widget-kind>
-          {WIDGET_KINDS.map(k => {
-            const on = widget.kind === k.kind
-            // A kind that cannot read this widget's entity (or, for a text widget, the first
-            // entity it would fall back to) says why instead of producing a problem.
-            const reason = on ? undefined : widgetKindDisabledReason(k.kind, entity ?? (widget.entity ? undefined : entities[0]), { entities, scaffoldOpts: projectOpts })
-            return (
-              <button
-                key={k.kind}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                aria-label={k.label}
-                aria-disabled={Boolean(reason)}
-                disabled={Boolean(reason)}
-                title={reason ?? k.hint}
-                onClick={() => onRetarget(k.kind !== 'text' && k.kind !== 'activity' && !widget.entity ? { kind: k.kind, entity: entities[0]?.name ?? '' } : { kind: k.kind })}
-                className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] disabled:opacity-40 ${on ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5 hover:text-primary'}`}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">{k.icon}</span>
-                {k.short}
-              </button>
-            )
-          })}
-        </div>
-      )}
-      {!expanded ? null : widget.kind === 'list' ? (
+    <div data-widget={wi} data-control={`widget.${wi}`} className="space-y-3">
+      <div role="radiogroup" aria-label={t('Widget kind')} className="inline-flex flex-wrap overflow-hidden rounded border border-outline-variant" data-widget-kind>
+        {WIDGET_KINDS.map(k => {
+          const on = widget.kind === k.kind
+          // A kind that cannot read this widget's entity (or, for a text widget, the first
+          // entity it would fall back to) says why instead of producing a problem.
+          const reason = on ? undefined : widgetKindDisabledReason(k.kind, entity ?? (widget.entity ? undefined : entities[0]), { entities, scaffoldOpts: projectOpts })
+          return (
+            <button
+              key={k.kind}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-label={k.label}
+              aria-disabled={Boolean(reason)}
+              disabled={Boolean(reason)}
+              title={reason ?? k.hint}
+              onClick={() => onRetarget(k.kind !== 'text' && k.kind !== 'activity' && !widget.entity ? { kind: k.kind, entity: entities[0]?.name ?? '' } : { kind: k.kind })}
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] disabled:opacity-40 ${on ? 'bg-primary/15 font-semibold text-primary' : 'text-secondary hover:bg-primary/5 hover:text-primary'}`}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">{k.icon}</span>
+              {k.short}
+            </button>
+          )
+        })}
+      </div>
+      {widget.kind === 'list' ? (
         <div className="space-y-2" data-widget-options>
           <div className="grid grid-cols-1 gap-2 @md:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
             <MiniField label={t('Entity')}>
