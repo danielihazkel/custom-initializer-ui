@@ -219,6 +219,13 @@ const dict: Dict = {
   'Endpoint methods throw UnsupportedOperationException until implemented.': 'מתודות ה-endpoint זורקות UnsupportedOperationException עד שימומשו.',
   'Detected Services': 'שירותים שזוהו',
   'No services detected yet…': 'עדיין לא זוהו שירותים…',
+  'Files the WSDL refers to': 'הקבצים שה-WSDL מפנה אליהם',
+  'Add files…': 'הוספת קבצים…',
+  'Path of the file': 'נתיב הקובץ',
+  'Make main': 'הפוך לראשי',
+  'Two files are named {name}.': 'שני קבצים נקראים {name}.',
+  'For a WSDL in several files: the WSDLs and schemas the document above imports or includes. Name each the way the reference to it reads from that document — `schemas/types.xsd`. They are written beside the WSDL and served with it.':
+    'ל-WSDL שמפוצל לכמה קבצים: קובצי ה-WSDL וה-schema שהמסמך שלמעלה מייבא או כולל. תנו לכל קובץ את השם שבו ההפניה אליו כתובה במסמך — `schemas/types.xsd`. הקבצים נכתבים לצד ה-WSDL ומוגשים יחד איתו.',
 
   // ── Events (AsyncAPI) wizard ──
   'Invalid AsyncAPI document': 'מסמך AsyncAPI לא תקין',

@@ -892,3 +892,13 @@ No new control. `SqlWizardDrawer.tsx`:
 - The Guide (both languages): *Indexes* and *Views* under the SQL wizard's *What Is Read, and What It Becomes*; the live-database topic's script contents, the `menora.live-schema.catalog-queries` setting and its limits; the fullstack DDL import's note on views.
 
 Pinned by two cases in `SqlWizardDrawer.test.tsx`.
+
+### Phase 6: a WSDL in several files
+
+- **Model.** `SoapWizardEntry.files?: Record<string, string>` — what the main document (`wsdl`) refers to, by the path the reference uses. Absent for one document, so entries saved before keep their shape.
+- **Drawer** (`SoapWizardDrawer.tsx`). *Upload file…* takes several files at once: the first `.wsdl` is the main document, the rest are rows under **Files the WSDL refers to** (`Add files…` adds more; a file of a name already listed replaces it). A row has its path (editable — a file is named the way its reference reads, `schemas/types.xsd`), its size, **Make main** (swaps it with the main document, which takes its name) and Remove. Rows are state with ids (`FileRow`), turned into the record on save and on detection (`filesOf`), which also names two rows that share a name instead of asking the server. Detection posts `{wsdl, files}` only when there are files. *Clear* drops the files with the WSDL.
+- **Carried by** `projectUtils.buildWizardBody` (`wsdlFilesByDep`, left `undefined` — so out of the JSON — without files), `backend/backendModel.ts` `soapOf` (reads a model file's `wsdlFilesByDep`, blank texts dropped), `useProjectState.normalizeSoapByDep` (keeps `files` as stored) and so the `bs` share link.
+- **Entry chunk.** `buildWizardBody` and `useProjectState` are first-paint code and the budget had 169 bytes left: the two keep and send the files without checking them; what comes from outside is checked where it is read — the model reader and the drawer (`rowsOf` takes text only), both lazy — and by the server. 101 bytes to spare after this.
+- Six new Hebrew entries in `i18n/he/backend.ts`. The Guide (both languages): *A WSDL in Several Files* under the SOAP wizard's REST API, and where the files are written.
+
+Pinned by `SoapWizardDrawer.test.tsx` (new) and `utils/soapFiles.test.ts` (request, model file, stored draft, share link).

@@ -340,8 +340,10 @@ export function buildWizardBody(
     baseUrlProperty: string
     contextPath: string
   }> = {}
+  let wsdlFilesByDep: Record<string, Record<string, string>> | undefined
   for (const [depId, entry] of Object.entries(activeSoap)) {
     wsdlByDep[depId] = entry.wsdl
+    if (entry.files) (wsdlFilesByDep ??= {})[depId] = entry.files
     soapOptionsBody[depId] = {
       endpointSubPackage: entry.endpointSubPackage,
       clientSubPackage: entry.clientSubPackage,
@@ -372,6 +374,9 @@ export function buildWizardBody(
     openApiOptions: openApiOptionsBody,
     wsdlByDep,
     soapOptions: soapOptionsBody,
+    // Only for a WSDL in several files: undefined is left out of the JSON, so requests without one
+    // keep the shape they had.
+    wsdlFilesByDep,
     // Only with an events entry: requests without one keep the shape they had.
     ...eventsBody(activeEvents),
   }

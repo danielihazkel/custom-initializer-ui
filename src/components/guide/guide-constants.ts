@@ -1635,7 +1635,7 @@ The UI calls \`GET /metadata/soap-capable-deps\` at page load — the button onl
 ### Flow At a Glance
 1. Developer selects \`web-services\` from the catalog.
 2. Clicks **Generate from WSDL…** on the dep's card.
-3. Pastes or uploads a WSDL (\`.wsdl\` or \`.xml\`).
+3. Pastes or uploads a WSDL (\`.wsdl\` or \`.xml\`). A WSDL that comes in several files: pick them all at once, or add the others under **Files the WSDL refers to** (see *A WSDL in Several Files* under REST API).
 4. A live **Detected Services** list appears (debounced 400ms) showing entries like \`CountryService.CountryPort: getCountry, listCountries\`.
 5. Picks a mode — **Endpoints**, **Client**, or **Both** — and (optionally) overrides sub-packages, the servlet context path (endpoint mode), and the base URL property (client mode).
 6. Save → the dep card shows a "WSDL attached" badge.
@@ -1684,6 +1684,7 @@ For each WSDL operation:
 
 ### Packages
 - WSDL → \`src/main/resources/wsdl/{kebab-cased-service-name}.wsdl\`
+- The files it refers to → \`src/main/resources/wsdl/{their path}\` (\`wsdl/schemas/types.xsd\`)
 - Endpoints → \`{packageName}.{endpointSubPackage}\` (default \`endpoint\`)
 - Client → \`{packageName}.{clientSubPackage}\` (default \`client\`)
 - JAXB payloads → \`{packageName}.{payloadSubPackage}\` (default \`generated\`) — generated at build time by JAX-WS plugin`,
@@ -1699,7 +1700,7 @@ For each WSDL operation:
 | \`GET\` | \`/metadata/soap-capable-deps\` | Dep IDs eligible for the wizard (intersected with deps in the catalog) |
 | \`POST\` | \`/starter-wizard.zip\` | Generate ZIP with endpoints/clients (shared by all four wizards) |
 | \`POST\` | \`/starter-wizard.preview\` | File tree + contents (same shape as \`/starter.preview\`) |
-| \`POST\` | \`/starter-wizard.detect-services\` | Server-side parse: \`{ wsdl }\` → \`["CountryService.CountryPort: getCountry, listCountries"]\` for the drawer's live preview |
+| \`POST\` | \`/starter-wizard.detect-services\` | Server-side parse: \`{ wsdl, files? }\` → \`["CountryService.CountryPort: getCountry, listCountries"]\` for the drawer's live preview |
 
 ### Why a New POST Endpoint
 WSDL documents routinely run into tens of kilobytes once the embedded XSD is non-trivial — well past typical URL length limits. Reusing the same wizard POST endpoint that already exists for SQL and OpenAPI keeps the wire shape consistent and side-steps URL size ceilings.
@@ -1707,7 +1708,24 @@ WSDL documents routinely run into tens of kilobytes once the embedded XSD is non
 ### Parse Errors
 If the WSDL is malformed, the backend returns HTTP 400 with a body like \`{ "error": "Invalid WSDL", "messages": ["WSDLException: faultCode=PARSER_ERROR: ..."] }\` — from detect-services as well (also for a WSDL with no \`<service>\`), so the drawer shows the messages instead of an empty list.
 
-A WSDL that refers to another file — \`wsdl:import\`, or \`xsd:import\` / \`include\` / \`redefine\` with a \`schemaLocation\` — is a 400 naming each reference. The server never opens a file or URL a pasted document points at; the schemas must be inside the WSDL.`,
+### A WSDL in Several Files
+A WSDL often refers to other documents: a \`wsdl:import\` of another WSDL, or an \`xsd:import\` / \`include\` / \`redefine\` of a schema file. The main document goes in \`wsdlByDep\`; the others go in \`wsdlFilesByDep\`, per dependency, each under its path relative to the main document — the path the reference to it uses:
+
+\`\`\`json
+"wsdlByDep":      { "web-services": "<wsdl:definitions …>" },
+"wsdlFilesByDep": { "web-services": { "port/country-port.wsdl": "<wsdl:definitions …>", "schemas/countries.xsd": "<xsd:schema …>" } }
+\`\`\`
+
+In the drawer, **Upload file…** takes several files at once: the first \`.wsdl\` becomes the main document (**Make main** on a row corrects a wrong guess) and the rest are listed under **Files the WSDL refers to**, where **Add files…** adds more. Name each file the way its reference reads.
+
+- A reference is followed from the folder of the file that makes it: \`../schemas/countries.xsd\` written in \`port/country-port.wsdl\` is the file \`schemas/countries.xsd\`.
+- The files are written to \`src/main/resources/wsdl/\` at their paths. The JAX-WS plugin reads the main document and follows its imports from there.
+- With endpoints (Endpoints or Both), every \`.wsdl\` and \`.xsd\` file is also served under its file name, so whoever fetches the WSDL can follow it: \`/ws/schemas/countries.xsd\`. Spring-WS finds a served file by its name alone, so two files of one name — or a file named like a service — are a 400 in those modes.
+- The server still never opens a file or a URL. A reference to an address (\`http://…\`, \`file:…\`, an absolute path), to a path outside the main document's folder, or to a file that was not sent is a 400 naming the document that makes it. \`detect-services\` takes the same files as \`files\`.
+- A file name is letters, digits, \`-\`, \`_\` and \`.\`, with \`/\` between folders, ending in \`.wsdl\`, \`.xsd\` or \`.xml\`. Up to 100 files; they count toward the 5 MB of one request.
+- The project's \`menora-model.json\` keeps the files, so **Import model…** and **Download update** carry them.
+
+A WSDL in one document that refers to a file is a 400 naming each reference, as before.`,
         codeExamples: [
           {
             title: 'Generate a project from a tiny CountryService WSDL (BOTH mode)',

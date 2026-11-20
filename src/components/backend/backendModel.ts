@@ -149,7 +149,9 @@ function openApiOf(request: Json): OpenApiByDep {
 
 function soapOf(request: Json): SoapByDep {
   const out: SoapByDep = {}
+  const filesByDep = isObject(request.wsdlFilesByDep) ? request.wsdlFilesByDep as Json : {}
   for (const [dep, wsdl, o] of wizardEntries(request, 'wsdlByDep', 'soapOptions')) {
+    const files = textFiles(filesByDep[dep])
     out[dep] = {
       wsdl,
       endpointSubPackage: str(o.endpointSubPackage, 'endpoint'),
@@ -158,9 +160,17 @@ function soapOf(request: Json): SoapByDep {
       mode: (str(o.mode, 'ENDPOINTS') as SoapMode),
       baseUrlProperty: str(o.baseUrlProperty, 'soap.client.base-url'),
       contextPath: str(o.contextPath, '/ws'),
+      ...(files && { files }),
     }
   }
   return out
+}
+
+/** The files a WSDL comes with — the non-blank texts of `raw`, by path; undefined when there are none. */
+function textFiles(raw: unknown): Record<string, string> | undefined {
+  const files = Object.entries(isObject(raw) ? raw : {})
+    .filter((file): file is [string, string] => typeof file[1] === 'string' && file[1].trim() !== '')
+  return files.length > 0 ? Object.fromEntries(files) : undefined
 }
 
 /** `eventsByDep` only when the request has an AsyncAPI document: snapshots without one keep their shape. */

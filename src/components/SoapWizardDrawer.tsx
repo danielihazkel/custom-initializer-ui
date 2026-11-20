@@ -14,6 +14,43 @@ interface Props {
   onSave: (entry: SoapWizardEntry | null) => void
 }
 
+/** A file the WSDL refers to: `id` keeps its row while its path is being typed. */
+interface FileRow {
+  id: number
+  path: string
+  text: string
+}
+
+let nextRowId = 1
+
+function rowsOf(files: Record<string, string> | undefined): FileRow[] {
+  // What a link or a stored draft holds is taken as it is until here: only text is a file.
+  return Object.entries(files ?? {}).filter(file => typeof file[1] === 'string')
+    .map(([path, text]) => ({ id: nextRowId++, path, text }))
+}
+
+/** The rows as the request carries them; the name two rows share, if any. */
+function filesOf(rows: FileRow[]): { files: Record<string, string>; duplicate: string | null } {
+  const files: Record<string, string> = {}
+  let duplicate: string | null = null
+  for (const row of rows) {
+    const path = row.path.trim()
+    if (!path) continue
+    if (path in files) duplicate = path
+    files[path] = row.text
+  }
+  return { files, duplicate }
+}
+
+function readText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(file)
+  })
+}
+
 function modes(): { id: SoapMode; label: string; hint: string }[] {
   return [
     { id: 'ENDPOINTS', label: t('Endpoints'), hint: t('Server — @Endpoint classes') },
@@ -24,6 +61,7 @@ function modes(): { id: SoapMode; label: string; hint: string }[] {
 
 export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onSave }: Props) {
   const [wsdl, setWsdl] = useState<string>(initial?.wsdl ?? '')
+  const [rows, setRows] = useState<FileRow[]>(() => rowsOf(initial?.files))
   const [endpointSubPackage, setEndpointSubPackage] = useState<string>(initial?.endpointSubPackage ?? 'endpoint')
   const [clientSubPackage, setClientSubPackage] = useState<string>(initial?.clientSubPackage ?? 'client')
   const [payloadSubPackage, setPayloadSubPackage] = useState<string>(initial?.payloadSubPackage ?? 'generated')
@@ -33,11 +71,13 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
   const [services, setServices] = useState<string[]>([])
   const [parseError, setParseError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const moreFilesInputRef = useRef<HTMLInputElement>(null)
 
   // Re-seed when drawer re-opens
   useEffect(() => {
     if (isOpen) {
       setWsdl(initial?.wsdl ?? '')
+      setRows(rowsOf(initial?.files))
       setEndpointSubPackage(initial?.endpointSubPackage ?? 'endpoint')
       setClientSubPackage(initial?.clientSubPackage ?? 'client')
       setPayloadSubPackage(initial?.payloadSubPackage ?? 'generated')
@@ -58,12 +98,19 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
       setParseError(null)
       return
     }
+    const { files, duplicate } = filesOf(rows)
+    if (duplicate) {
+      setParseError(t('Two files are named {name}.', { name: duplicate }))
+      setServices([])
+      return
+    }
     const controller = new AbortController()
     const handle = setTimeout(() => {
       fetch('/starter-wizard.detect-services', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wsdl: trimmed }),
+        // The files only when there are some: one document is the request it always was.
+        body: JSON.stringify(Object.keys(files).length > 0 ? { wsdl: trimmed, files } : { wsdl: trimmed }),
         signal: controller.signal,
       })
         .then(async res => {
@@ -88,7 +135,7 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
       clearTimeout(handle)
       controller.abort()
     }
-  }, [wsdl])
+  }, [wsdl, rows])
 
   const emitEndpoints = mode === 'ENDPOINTS' || mode === 'BOTH'
   const emitClient = mode === 'CLIENT' || mode === 'BOTH'
@@ -98,6 +145,7 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
     if (!trimmed) {
       onSave(null)
     } else {
+      const { files } = filesOf(rows)
       onSave({
         wsdl: trimmed,
         endpointSubPackage: endpointSubPackage.trim() || 'endpoint',
@@ -106,6 +154,7 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
         mode,
         baseUrlProperty: baseUrlProperty.trim() || 'soap.client.base-url',
         contextPath: contextPath.trim() || '/ws',
+        ...(Object.keys(files).length > 0 ? { files } : {}),
       })
     }
     onClose()
@@ -113,20 +162,49 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
 
   function handleClear() {
     setWsdl('')
+    setRows([])
     setServices([])
     setParseError(null)
   }
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      const text = reader.result
-      if (typeof text === 'string') setWsdl(text)
-    }
-    reader.readAsText(file)
+  /** Adds files to the list; one already there under the same name is replaced. */
+  function addRows(added: { path: string; text: string }[]) {
+    setRows(prev => {
+      const names = new Set(added.map(a => a.path))
+      return [...prev.filter(r => !names.has(r.path.trim())), ...added.map(a => ({ id: nextRowId++, ...a }))]
+    })
+  }
+
+  /**
+   * The main document, or a whole WSDL at once: of several files the first `.wsdl` is the main
+   * one (a row's "Make main" corrects a wrong guess) and the rest are what it refers to.
+   */
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? [])
     e.target.value = ''
+    if (picked.length === 0) return
+    const main = picked.find(f => f.name.toLowerCase().endsWith('.wsdl')) ?? picked[0]
+    const texts = await Promise.all(picked.map(readText))
+    setWsdl(texts[picked.indexOf(main)])
+    const others = picked.map((f, i) => ({ path: f.name, text: texts[i] })).filter((_, i) => picked[i] !== main)
+    if (others.length > 0) addRows(others)
+  }
+
+  async function handleMoreFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (picked.length === 0) return
+    const texts = await Promise.all(picked.map(readText))
+    addRows(picked.map((f, i) => ({ path: f.name, text: texts[i] })))
+  }
+
+  /** Swaps a file with the main document: the old main takes the file's name. */
+  function makeMain(row: FileRow) {
+    const previous = wsdl
+    setWsdl(row.text)
+    setRows(prev => previous.trim()
+      ? prev.map(r => (r.id === row.id ? { ...r, text: previous } : r))
+      : prev.filter(r => r.id !== row.id))
   }
 
   return (
@@ -279,7 +357,9 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
           <input
             ref={fileInputRef}
             type="file"
-            accept=".wsdl,.xml"
+            accept=".wsdl,.xsd,.xml"
+            multiple
+            aria-label={t('Upload file…')}
             className="hidden"
             onChange={handleFile}
           />
@@ -299,6 +379,68 @@ export function SoapWizardDrawer({ isOpen, onClose, depId, depName, initial, onS
             )}
             {codeText(t('JAXB payloads compile into `{package}`.', { package: payloadSubPackage || 'generated' }))}
             {emitEndpoints && <> {t('Endpoint methods throw UnsupportedOperationException until implemented.')}</>}
+          </p>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-bold uppercase tracking-widest text-secondary">
+              {t('Files the WSDL refers to')}
+            </label>
+            <button
+              type="button"
+              onClick={() => moreFilesInputRef.current?.click()}
+              className="text-[10px] text-secondary hover:text-on-surface transition-colors"
+            >
+              {t('Add files…')}
+            </button>
+          </div>
+          <input
+            ref={moreFilesInputRef}
+            type="file"
+            accept=".wsdl,.xsd,.xml"
+            multiple
+            aria-label={t('Add files…')}
+            className="hidden"
+            onChange={handleMoreFiles}
+          />
+          {rows.length > 0 && (
+            <ul className="space-y-1.5 mb-1.5">
+              {rows.map(row => (
+                <li key={row.id} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={row.path}
+                    onChange={e => setRows(prev => prev.map(r => (r.id === row.id ? { ...r, path: e.target.value } : r)))}
+                    aria-label={t('Path of the file')}
+                    placeholder="schemas/types.xsd"
+                    dir="ltr"
+                    className="flex-1 min-w-0 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-mono text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all"
+                  />
+                  <span className="text-[10px] text-on-surface-variant whitespace-nowrap" dir="ltr">
+                    {(row.text.length / 1024).toFixed(1)} KB
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => makeMain(row)}
+                    className="text-[10px] text-secondary hover:text-on-surface transition-colors whitespace-nowrap"
+                  >
+                    {t('Make main')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRows(prev => prev.filter(r => r.id !== row.id))}
+                    aria-label={t('Remove {name}', { name: row.path })}
+                    className="text-secondary hover:text-error transition-colors"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-[10px] text-on-surface-variant leading-relaxed">
+            {codeText(t('For a WSDL in several files: the WSDLs and schemas the document above imports or includes. Name each the way the reference to it reads from that document — `schemas/types.xsd`. They are written beside the WSDL and served with it.'))}
           </p>
         </div>
 

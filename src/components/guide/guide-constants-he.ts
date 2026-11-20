@@ -1635,7 +1635,7 @@ public class PetsController {
 ### זרימה במבט מהיר
 1. המפתח בוחר \`web-services\` מהקטלוג.
 2. לוחץ **Generate from WSDL…** על כרטיסיית התלות.
-3. מדביק או מעלה WSDL (\`.wsdl\` או \`.xml\`).
+3. מדביק או מעלה WSDL (\`.wsdl\` או \`.xml\`). ל-WSDL שמגיע בכמה קבצים: בוחרים את כולם בבת אחת, או מוסיפים את האחרים תחת **הקבצים שה-WSDL מפנה אליהם** (ראו *WSDL בכמה קבצים* תחת REST API).
 4. רשימה חיה של **Detected Services** (שירותים שזוהו) מופיעה (debounced 400ms) עם ערכים כגון \`CountryService.CountryPort: getCountry, listCountries\`.
 5. בוחר מצב — **Endpoints**, **Client**, או **Both** — ואופציונלית מחליף sub-packages, את ה-context path של ה-servlet (במצב endpoint), ואת מאפיין ה-base URL (במצב client).
 6. שמירה → כרטיסיית התלות מציגה תווית "WSDL attached".
@@ -1684,6 +1684,7 @@ public class PetsController {
 
 ### חבילות
 - WSDL → \`src/main/resources/wsdl/{kebab-cased-service-name}.wsdl\`
+- הקבצים שהוא מפנה אליהם → \`src/main/resources/wsdl/{הנתיב שלהם}\` (\`wsdl/schemas/types.xsd\`)
 - Endpoints → \`{packageName}.{endpointSubPackage}\` (ברירת מחדל \`endpoint\`)
 - Client → \`{packageName}.{clientSubPackage}\` (ברירת מחדל \`client\`)
 - payloads של JAXB → \`{packageName}.{payloadSubPackage}\` (ברירת מחדל \`generated\`) — נוצרים בזמן build על ידי ה-plugin של JAX-WS`,
@@ -1699,7 +1700,7 @@ public class PetsController {
 | \`GET\` | \`/metadata/soap-capable-deps\` | מזהי תלות זכאים לאשף (בחיתוך עם התלויות בקטלוג) |
 | \`POST\` | \`/starter-wizard.zip\` | יצירת ZIP עם endpoints/clients (משותף לכל ארבעת האשפים) |
 | \`POST\` | \`/starter-wizard.preview\` | עץ קבצים + תוכן (אותה צורה כמו \`/starter.preview\`) |
-| \`POST\` | \`/starter-wizard.detect-services\` | פרסור בצד השרת: \`{ wsdl }\` → \`["CountryService.CountryPort: getCountry, listCountries"]\` עבור התצוגה החיה במגירה |
+| \`POST\` | \`/starter-wizard.detect-services\` | פרסור בצד השרת: \`{ wsdl, files? }\` → \`["CountryService.CountryPort: getCountry, listCountries"]\` עבור התצוגה החיה במגירה |
 
 ### למה נקודת קצה POST חדשה
 מסמכי WSDL נכנסים בקלות לעשרות קילובייטים כשה-XSD המוטמע אינו טריוויאלי — הרבה מעבר למגבלות אורך URL טיפוסיות. שימוש חוזר באותה נקודת קצה POST של האשף שכבר קיימת עבור SQL ו-OpenAPI שומר על אחידות הצורה ב-wire ועוקף תקרות גודל URL.
@@ -1707,7 +1708,24 @@ public class PetsController {
 ### שגיאות פרסור
 אם ה-WSDL פגום, ה-backend מחזיר HTTP 400 עם גוף כגון \`{ "error": "Invalid WSDL", "messages": ["WSDLException: faultCode=PARSER_ERROR: ..."] }\` — גם מ-detect-services (וגם עבור WSDL ללא \`<service>\`), כך שהמגירה מציגה את ההודעות במקום רשימה ריקה.
 
-WSDL שמפנה לקובץ אחר — \`wsdl:import\`, או \`xsd:import\` / \`include\` / \`redefine\` עם \`schemaLocation\` — מקבל 400 שמציין כל הפניה. השרת לעולם לא פותח קובץ או URL שמסמך מודבק מצביע עליו; ה-schemas חייבים להיות בתוך ה-WSDL.`,
+### WSDL בכמה קבצים
+WSDL מפנה לעיתים קרובות למסמכים אחרים: \`wsdl:import\` של WSDL אחר, או \`xsd:import\` / \`include\` / \`redefine\` של קובץ schema. המסמך הראשי נשלח ב-\`wsdlByDep\`; האחרים נשלחים ב-\`wsdlFilesByDep\`, לפי תלות, כל אחד תחת הנתיב שלו ביחס למסמך הראשי — הנתיב שבו ההפניה אליו כתובה:
+
+\`\`\`json
+"wsdlByDep":      { "web-services": "<wsdl:definitions …>" },
+"wsdlFilesByDep": { "web-services": { "port/country-port.wsdl": "<wsdl:definitions …>", "schemas/countries.xsd": "<xsd:schema …>" } }
+\`\`\`
+
+במגירה, **העלאת קובץ…** מקבלת כמה קבצים בבת אחת: קובץ ה-\`.wsdl\` הראשון הופך למסמך הראשי (**הפוך לראשי** בשורה מתקן ניחוש שגוי) והשאר מופיעים תחת **הקבצים שה-WSDL מפנה אליהם**, שם **הוספת קבצים…** מוסיפה עוד. תנו לכל קובץ את השם שבו ההפניה אליו כתובה.
+
+- הפניה נפתרת מהתיקייה של הקובץ שבו היא כתובה: \`../schemas/countries.xsd\` שכתוב ב-\`port/country-port.wsdl\` הוא הקובץ \`schemas/countries.xsd\`.
+- הקבצים נכתבים ל-\`src/main/resources/wsdl/\` בנתיבים שלהם. ה-plugin של JAX-WS קורא את המסמך הראשי ועוקב משם אחרי ה-imports שלו.
+- כשיש endpoints (במצב Endpoints או Both), כל קובץ \`.wsdl\` ו-\`.xsd\` גם מוגש תחת שם הקובץ שלו, כך שמי שמוריד את ה-WSDL יכול לעקוב אחריו: \`/ws/schemas/countries.xsd\`. ‏Spring-WS מאתר קובץ מוגש לפי שמו בלבד, ולכן שני קבצים באותו שם — או קובץ ששמו כשם של שירות — מקבלים 400 במצבים האלה.
+- השרת עדיין לעולם לא פותח קובץ או URL. הפניה לכתובת (\`http://…\`, \`file:…\`, נתיב מוחלט), לנתיב מחוץ לתיקיית המסמך הראשי או לקובץ שלא נשלח מקבלת 400 שמציין את המסמך שבו היא כתובה. \`detect-services\` מקבל את אותם קבצים בשדה \`files\`.
+- שם קובץ מורכב מאותיות, ספרות, \`-\`, \`_\` ו-\`.\`, עם \`/\` בין תיקיות, ומסתיים ב-\`.wsdl\`, \`.xsd\` או \`.xml\`. עד 100 קבצים; הם נספרים במסגרת 5 ה-MB של בקשה אחת.
+- הקובץ \`menora-model.json\` של הפרויקט שומר את הקבצים, כך ש**ייבוא מודל…** ו**הורד עדכון** נושאים אותם.
+
+WSDL במסמך אחד שמפנה לקובץ מקבל 400 שמציין כל הפניה, כמו קודם.`,
         codeExamples: [
           {
             title: 'יצירת פרויקט מ-WSDL קטן של CountryService (מצב BOTH)',

@@ -165,6 +165,11 @@ export interface SoapWizardEntry {
   mode: SoapMode
   baseUrlProperty: string
   contextPath: string
+  /**
+   * A WSDL in several files: what `wsdl` (the main document) refers to — imported WSDLs and
+   * schemas — by the path the reference uses, relative to it. Absent for one document.
+   */
+  files?: Record<string, string>
 }
 
 export type SoapByDep = Record<string, SoapWizardEntry>

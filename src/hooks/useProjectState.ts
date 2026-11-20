@@ -61,6 +61,8 @@ function normalizeSoapByDep(raw: unknown): SoapByDep {
       mode: value.mode ?? 'ENDPOINTS',
       baseUrlProperty: value.baseUrlProperty ?? 'soap.client.base-url',
       contextPath: value.contextPath ?? '/ws',
+      // A WSDL's other files, as stored; the drawer and the server check them.
+      files: value.files,
     }
   }
   return out
