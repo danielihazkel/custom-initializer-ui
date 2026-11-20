@@ -8,6 +8,7 @@
     "lint": "eslint . --max-warnings 0",
     "build": "tsc --noEmit && vite build",
     "build:check": "npm run build && node scripts/check-bundle-budget.mjs",
+    "entry:report": "node scripts/entry-report.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

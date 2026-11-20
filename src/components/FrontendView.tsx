@@ -39,7 +39,7 @@ function runCommandFor(packageManager: string): string {
   return `${packageManager} install && ${packageManager} dev`
 }
 import { readErrorBody } from '../utils/previewErrors'
-import { downloadBlob } from '../utils/projectUtils'
+import { downloadBlob } from '../utils/download'
 
 // Opened on demand — keeps CodeMirror + grammars out of this view's chunk.
 const ProjectPreview = lazy(() => import('./ProjectPreview').then(m => ({ default: m.ProjectPreview })))

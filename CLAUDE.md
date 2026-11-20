@@ -751,8 +751,9 @@ Pinned by `src/i18n/i18n.test.ts` (the API, loading, `lang`/`dir`, migration), `
 
 ## Performance rules
 
-- **The entry chunk has a budget** — `npm run build:check` (see *Round 11, phase 0*). What is not needed
-  to paint the Backend tab is a `lazy()` chunk.
+- **The entry chunk has a budget** — `npm run build:check` (see *Round 11, phase 0*; 110,000 bytes since
+  *Round 14, phase 9*). What is not needed to paint the Backend tab is a `lazy()` chunk.
+  `npm run entry:report` lists what the chunk holds, module by module.
 - **Catalog lists are fetched once per session.** `useMetadata` (`getMetadata`) and `hooks/catalogCache.ts`
   (`useCatalog`, behind `useCompatibility`, `useStarterTemplates`, `useFrontendMetadata`, `useSqlDialects`,
   `useExtensions`, `useModuleTemplates`, `useOpenApiCapable`, `useSoapCapable`) share one promise per URL.
@@ -927,3 +928,59 @@ The UI side of *Phase 8* in `backend/CLAUDE.md` (the other three items need noth
 Pinned by `utils/teamAuth.test.tsx` and the "somebody else saved" case of `designer/LayoutDesigner.test.tsx`.
 
 **After phase 8.** Admin → Dependency Groups saves a group with its own fields only (`name`, `sortOrder`, `projectKind`); the row as listed also holds the group's dependencies as they were when the tab loaded, and the server no longer takes them from a group (*After phase 8* in `backend/CLAUDE.md`).
+
+### Phase 9: entry-chunk headroom, and the two largest files in parts
+
+No feature and no behaviour change: no text, control or request differs. Two test files were touched (an import path, and a preload of two lazy chunks); every other test, the 21 `pageLayout*` files and `FullstackView.test.tsx` among them, passes as it was.
+
+**The entry chunk: 120,440 → 103,574 bytes, and the budget is 110,000** (`scripts/check-bundle-budget.mjs`; it was 120,500 with 60 bytes to spare).
+
+- **`scripts/entry-report.mjs`** (`npm run entry:report`) says what the entry chunk is made of: bytes per source module from the build's source map (decoded in the script — no dependency), `--lines <module>` for where in one module they are, `--chunk <name>` for another chunk, `--dir <folder>` to read a build already made with `vite build --sourcemap`, and `--why <module>` for the chain of static imports that puts a module there. **Run it before arguing about the budget.**
+- **What left the entry chunk**, each to a chunk of its own, none of it needed to paint the Backend tab:
+  - `appExtras.ts` — `App`'s ⌘K commands (`global` and `backend` scopes) and the tour that opens by itself once. `App` fetches it in an effect right after the first render and registers through it (`extras`); a palette opened in the moments before lists what the others registered and fills in.
+  - `utils/projectDownload.ts` — `triggerDownload`, fetched on the Generate click. `downloadBlob` is `utils/download.ts` (it was in `projectUtils`, which is first-paint code).
+  - `components/PreviewErrorBanner.tsx` — the banner over the tab after a failed Explore.
+  - The toast stack's drawing: `App` calls `useToastProp` itself and mounts `Toaster` (lazy) once a toast has been shown (`ToastHost`). The `AppToast` adapter (and `admin/shared/StatusToast`) is unchanged; `App` just no longer goes through it.
+  - `components/DependencyWizards.tsx` — the four wizard drawers' mounting and the `backend-deps` ⌘K entries. Mounted from the start, drawing nothing; **`DependencySelector` keeps which wizard is open** (`openWizards`), so a click before the chunk arrives is not lost.
+  - `components/DependencyNotices.tsx` — the conflict / requires warnings and the primary-database radios at the top of the Selected panel, fetched the first time a selection needs them and kept mounted after (so they animate out). The driver tables are `utils/dbDrivers.ts`.
+  - `SuggestionStrip` — lazy in `DependencySelector`, mounted while there is a suggestion.
+  - `utils/fuzzy.ts` with `components/DependencySearchEmpty.tsx` — fetched together when the search box takes focus or holds text (`loadMatcher`). Until they arrive a query narrows nothing and Enter adds nothing: a late result, never a wrong one. (The palette's chunk, prefetched on idle as before, shares `fuzzy`.)
+  - `components/PresetExtras.tsx` — the presets strip's save prompt, Ctrl+S and its ⌘K entries. Mounted from the start, keyed like the Team panel; the strip keeps `savePromptOpen`.
+  - `backend/backendBaseline.ts` — read by `useBackendUpdate` only when this browser has kept a project (`localStorage['backend:baseline']`, checked by key so the module stays unfetched), or once one is generated or imported; `offered` is false until it has arrived. What an import does moved to `backendUpdateActions.importBackendModel`.
+- **A selected dependency's four wizard rows** are one `WizardRow` in `DependencySelector`.
+- **In tests** a lazy chunk's first import can take longer than `findBy`'s one second (`PresetExtras` brings framer-motion): a test file that needs one at once imports it at the top, as `PresetPicker.test.tsx` does.
+
+**`fullstack/pageLayout.ts` (3,406 lines) is a folder**, `fullstack/pageLayout/`, and the file itself the list of what the model exports — the same 157 names, so every `from './pageLayout'` reads as before. The declarations moved unchanged. Imports inside the folder run one way (no cycles):
+
+| Module | Holds |
+|---|---|
+| `limits` | the limits and fixed choices from the schema document |
+| `entityHelpers`, `pageKinds` | small questions every area asks (`singlePk`, `sameName`, `valuesOf`; `createsRows`, `canDuplicate`, `linkablePages`, `tabCandidates`, `pagesEmbedding`) — they import none of the others |
+| `listPresentation` | columns, sort, views, hidden actions |
+| `wizardFields` | what a create page may ask for, the default steps |
+| `dashboard` | widget and chart choices, the generator's defaults, dashboard filters, why a widget kind is refused |
+| `nav` | icons, the menu's sections and their moves |
+| `presets` | preset filters: kinds, values, problems |
+| `childTabs` | a record page's related lists and header numbers |
+| `validate` | `validatePages`, `fixAllProblems`, the rules (`collect`), `pageOfServerError` |
+| `advice` | `collectWarnings` and its thresholds |
+| `labels` | `describePage`, ids from titles, `seedLayout`, the page types' cards, undo labels |
+| `references` | renames followed into a layout, removing a page |
+| `newPages` | `blankPage`, the entity chooser, duplicating, splitting a list into tabs |
+| `suggestions` | suggested pages and widgets |
+| `retarget` | what survives a change of type, kind or entity |
+
+**A new function goes into the module of its area and into the list in `pageLayout.ts`.** A helper that two areas need goes to a module below both, not into either.
+
+**`FullstackView.tsx` (1,959 → 1,429 lines)** keeps the model's state and the screen; beside it:
+- `fullstackStorage.ts` — the localStorage keys (`LS`), `loadJson`, `persist`, `usePersistThrottled`, the stock model, `resolveInitialModel` (share link or stored draft).
+- `useModelPersistence.ts` — the persist effects, `persistFailed`, and the draft another tab saved (`externalDraft`).
+- `useFollowRenames.ts` — a rename followed into the layout, relations, child lists and rules.
+- **`useSnapshotHistory.ts`** — the undo stack, generic over the snapshot type: `{ history, pushUndoEntry, undo, redo, jumpHistory }` from `{ current, apply, equal, changeKey, describe, silentFromRef, followsRef, notify }`. Phase 11's examples form is its second user.
+- `useTemplateSets.ts` — the entity template sets and their Retry.
+- `useGenerateFlow.ts`, `useProjectUpdate.ts` — Generate with its Cancel, and the update of a project that exists (baseline, preview, download).
+- **Why the model's `useState` calls stayed in the view:** `react-hooks/exhaustive-deps` knows a setter or a ref is stable only when it is declared in the component. Returned from a custom hook, every one of them would have to be listed in dozens of dependency arrays. For the same reason `silentFromRef` and `followsModelRef` are created in the view and handed to the hooks.
+- The hooks are called where their effects used to be declared, so effects still run in the order they did. **Keep that when moving one.**
+- Not moved: the loaders (examples, presets, team models, JSON import) — plain functions over some thirty of the view's values; as a hook they would be an options object as long as the code.
+
+**Tried in a real browser** (headless Edge over the built `dist`, the API on a scratch database): first paint, the tour opening by itself, the palette's commands from all three lazy owners, search by initials and its empty state, the primary-database notice, a wizard drawer, the preset prompt, a toast, Generate with its next-steps card, the update offer after a change, and on the Fullstack tab an edit undone with Ctrl+Z and the draft kept. No page errors.

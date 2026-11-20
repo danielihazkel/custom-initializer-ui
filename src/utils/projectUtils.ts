@@ -1,5 +1,4 @@
 import type { InitializrMetadata, ProjectFormValues, ProjectSnapshot, SqlApiMode, SqlByDep, OpenApiByDep, SoapByDep, EventsByDep } from '../types'
-import { readErrorBody } from './previewErrors'
 import { t } from '../i18n'
 
 // Dependencies the SQL wizard's generated code needs for a given api mode:
@@ -195,52 +194,6 @@ ${body}`,
   }
   const url = `/${isMultiModule ? 'starter-multimodule' : 'starter'}.${target}?${params.toString()}`
   return { url, init: {}, kind: isMultiModule ? 'multimodule' : 'plain', key: url }
-}
-
-/**
- * Generates the project and hands the ZIP to the browser. Resolves once the download has
- * started; rejects with a user-facing message when the server refuses, so callers report the
- * failure instead of a false success — and with an `AbortError` when `signal` aborts.
- *
- * Every path is a `fetch` now. The plain one used to be an `<a download>` click, which told the
- * page nothing: no "building" state was possible, and a server error was saved to disk as a
- * broken `.zip`.
- */
-export async function triggerDownload(
-  form: ProjectFormValues,
-  selected: string[],
-  selectedOptions: Record<string, string[]>,
-  multiModule?: { enabled: boolean; modules: string[] },
-  sqlByDep?: SqlByDep,
-  openApiByDep?: OpenApiByDep,
-  soapByDep?: SoapByDep,
-  eventsByDep?: EventsByDep,
-  signal?: AbortSignal,
-): Promise<{ snapshotId?: string }> {
-  const request = buildProjectRequest(
-    'zip', form, selected, selectedOptions, multiModule, sqlByDep, openApiByDep, soapByDep, eventsByDep)
-  const res = await fetch(request.url, { ...request.init, signal })
-  if (!res.ok) {
-    const err = await readErrorBody(res)
-    throw new Error(err.kind ? `${err.kind}: ${err.message}` : err.message)
-  }
-  downloadBlob(await res.blob(), `${form.artifactId}.zip`)
-  // What the server kept of this project: an update of it starts from those files.
-  const id = res.headers?.get?.('X-Snapshot')
-  return id && /^[0-9a-f]{64}$/.test(id) ? { snapshotId: id } : {}
-}
-
-/** Hands a Blob to the browser as a file download (anchor click) and releases the object URL. */
-export function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  // Revoking synchronously can cancel the download in some browsers.
-  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 /**

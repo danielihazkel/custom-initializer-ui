@@ -24,10 +24,19 @@ import { fileURLToPath } from 'node:url'
  * in the Backend tab's first-paint code took the entry to 120 244 bytes. The dictionary itself is
  * a lazy chunk, fetched only in Hebrew.
  *
- * A jump of tens of KB usually means another import like the first: `vite build --sourcemap`
- * and look at which sources the entry chunk's map names.
+ * Round 14 lowered it, from 120 500 to 110 000. The entry had 60 bytes to spare, so every change
+ * to first-paint code was a fight over bytes. What the Backend tab does not need in order to
+ * paint moved to chunks of its own — the shell's ⌘K commands and tour start, the Generate
+ * download, the wizards' drawers and palette entries, the notices over the selected
+ * dependencies, the suggestions strip, the search's matcher and its empty state, the presets'
+ * save prompt, the update baseline's reader, the toast stack's drawing — which took the entry
+ * from 120 440 to about 103 600 bytes. The budget is that plus room for glue, not for features.
+ *
+ * A jump of tens of KB usually means another import like the first. `node scripts/entry-report.mjs`
+ * lists the entry chunk's bytes per module (`--lines <module>` inside one, `--why <module>` for
+ * who imports it).
  */
-const ENTRY_BUDGET = 120_500
+const ENTRY_BUDGET = 110_000
 
 const dist = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
 const assets = join(dist, 'assets')

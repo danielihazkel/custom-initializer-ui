@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { PresetPicker } from './PresetPicker'
+// The strip's lazy chunks, loaded before the tests start: the first test would otherwise spend its
+// one-second wait importing them (framer-motion among them) instead of finding the Team tab.
+import './PresetExtras'
+import './TeamPresetsPanel'
 import type { ProjectSnapshot, TeamPresetSummary } from '../types'
 
 const snapshot: ProjectSnapshot = {

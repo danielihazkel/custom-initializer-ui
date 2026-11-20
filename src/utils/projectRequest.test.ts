@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildProjectRequest, triggerDownload, wizardDepIds } from './projectUtils'
+import { buildProjectRequest, wizardDepIds } from './projectUtils'
+import { triggerDownload } from './projectDownload'
 import { curlFor } from './curl'
 import type { ProjectFormValues, SqlByDep } from '../types'
 

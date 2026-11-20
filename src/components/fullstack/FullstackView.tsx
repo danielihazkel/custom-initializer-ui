@@ -1,9 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FullstackNav } from '../../types'
 import { createPortal } from 'react-dom'
-import type {
-  EntityTemplateSetSummary, FullstackEntityDef, FullstackStarterRequest, Toast,
-} from '../../types'
+import type { FullstackEntityDef, FullstackStarterRequest, Toast } from '../../types'
 import { EntitiesEditor, countEntityErrors, newEntity, type EditorDensity, type EntityServerIssue, type NoticeAction } from './EntitiesEditor'
 import { EntityNavigator, entityMatches, useActiveEntity } from './EntityNavigator'
 import { SectionNav } from './SectionNav'
@@ -17,10 +15,10 @@ import { ConfirmDialog } from '../ConfirmDialog'
 import { PageHeader } from '../shared/PageHeader'
 import { useBusy } from '../../utils/busy'
 import { StatusToast } from '../admin/shared/StatusToast'
-import { newUid, reconcileUids, stripUids, withUids } from './uid'
+import { newUid, reconcileUids, withUids } from './uid'
 import { toCamelCase, uniqueName } from './naming'
 import {
-  DEFAULT_PROJECT_META, describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, requestFromSnapshot, snapshotChangeKey, snapshotsEqual, toExportedModel,
+  describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, requestFromSnapshot, snapshotChangeKey, snapshotsEqual, toExportedModel,
   type FullstackSnapshot, type ProjectMeta,
 } from './snapshot'
 import { lintModel, type LintIssue } from './lint'
@@ -34,29 +32,25 @@ import { SetupSummaryBar } from './SetupSummaryBar'
 import { describeSetup } from './setupSummary'
 import { NextStepsPanel, type GeneratedRun } from './NextStepsPanel'
 import { ShortcutsOverlay } from './ShortcutsOverlay'
-import { draftHasUnsavedWork } from './shareGuard'
-import { summarizeEntity } from './summary'
 import { frontendSetDefaults } from './frontendSetDefaults'
-import { MAX_ENCODED_LENGTH, clearShareFromLocation, readShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
-import { emptyHistory, isTypingTarget, record, redoStep, stepMany, undoStep, type History } from './undo'
+import { MAX_ENCODED_LENGTH, clearShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
+import { isTypingTarget } from './undo'
+import { DEFAULT_ENTITIES, DEFAULT_ENTITIES_JSON, DEFAULT_META, DEFAULT_SCAFFOLD_OPTS, LS, loadJson, persist, resolveInitialModel, type PendingLoad } from './fullstackStorage'
+import { useModelPersistence } from './useModelPersistence'
+import { useFollowRenames } from './useFollowRenames'
+import { useSnapshotHistory } from './useSnapshotHistory'
+import { useTemplateSets } from './useTemplateSets'
+import { useProjectUpdate } from './useProjectUpdate'
+import { useGenerateFlow } from './useGenerateFlow'
 import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
 import { PagesSection } from './designer/PagesSection'
 import type { DesignerTarget } from './designer/LayoutDesigner'
 import type { FrontendAppearance } from './designer/FrontendSettings'
-import { renameEntityInRelations } from './relationRefs'
-import { renameLinkInChildLists } from './childLists'
-import { renameLinkedFieldInRules, renameLinkInRules } from './rules'
-import {
-  appliedBaseline, countsOf, describeCounts, describeUpdateBase, readBaseline, requestKey, schemaVersionOf, sideOfPath, updateRequest,
-  writeBaseline,
-  type UpdateBaseline,
-} from './updateBaseline'
-import { snapshotHeader } from '../../utils/updateCounts'
+import { appliedBaseline } from './updateBaseline'
 import { UpdatePanel } from './UpdatePanel'
-import { describeServerTarget, locateServerIssue, type ServerIssue, type ServerTarget } from './serverIssue'
-import { readErrorBody } from '../../utils/previewErrors'
-import { renameEntityInPages, renameEnumValueInPages, renameFieldInPages, renameRelationInPages, seedLayout, validatePages } from './pageLayout'
-import { downloadBlob } from '../../utils/projectUtils'
+import { locateServerIssue, type ServerIssue, type ServerTarget } from './serverIssue'
+import { seedLayout, validatePages } from './pageLayout'
+import { downloadBlob } from '../../utils/download'
 import { copyToClipboard } from '../../utils/clipboard'
 import { useFrontendMetadata } from '../../hooks/useFrontendMetadata'
 import { useCompatibility } from '../../hooks/useCompatibility'
@@ -69,7 +63,7 @@ const ProjectPreview = lazy(() => import('../ProjectPreview').then(m => ({ defau
 const DatabaseDrawer = lazy(() => import('./DatabaseDrawer').then(m => ({ default: m.DatabaseDrawer })))
 const EntityRelationGraph = lazy(() => import('./EntityRelationGraph').then(m => ({ default: m.EntityRelationGraph })))
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
-import { readStoredPresetSnapshots, useFullstackPresets } from '../../hooks/useFullstackPresets'
+import { useFullstackPresets } from '../../hooks/useFullstackPresets'
 import { TeamModelError, useTeamModels } from '../../hooks/useTeamModels'
 import { notYours } from '../../utils/teamAuth'
 import { useFullstackExamples } from '../../hooks/useFullstackExamples'
@@ -77,134 +71,6 @@ import type { ExampleSettings, FullstackPageDef, TeamModelSummary } from '../../
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
 import { canonicalVersion, validateEntities, validateMeta, countMetaErrors, type MetaErrors } from './validation'
 import { t, tn, useLang } from '../../i18n'
-
-const DEFAULT_META: ProjectMeta = DEFAULT_PROJECT_META
-
-const DEFAULT_ENTITIES: FullstackEntityDef[] = [
-  {
-    name: 'User',
-    fields: [
-      { name: 'id', type: 'LONG', primaryKey: true, generated: true },
-      { name: 'email', type: 'STRING', required: true, unique: true, length: 200 },
-      { name: 'fullName', type: 'STRING', required: true, length: 120 },
-      { name: 'active', type: 'BOOLEAN' },
-    ],
-  },
-]
-
-// localStorage keys — namespaced so they don't collide with the Backend/Frontend tabs.
-const LS = {
-  meta: 'fullstack:meta',
-  nav: 'fullstack:nav',
-  dismissed: 'fullstack:dismissedWarnings',
-  entities: 'fullstack:entities',
-  deps: 'fullstack:deps',
-  backendSet: 'fullstack:backendSet',
-  frontendSet: 'fullstack:frontendSet',
-  opts: 'fullstack:opts',
-  palette: 'fullstack:palette',
-  pages: 'fullstack:pages',
-  collapsed: 'fullstack:collapsed',
-  setup: 'fullstack:setup',
-  graph: 'fullstack:graph',
-  density: 'fullstack:density',
-} as const
-
-function loadJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? JSON.parse(raw) as T : fallback
-  } catch {
-    return fallback
-  }
-}
-
-/** localStorage write that never throws: a model carrying imported `sourceSql` can exceed the
- *  quota, and an exception from inside a persist effect would take the whole view down on every
- *  keystroke. Losing the refresh-restore is the acceptable failure — but a visible one: the
- *  caller tracks the returned flag and the sticky bar says the draft is no longer being saved. */
-function persist(key: string, value: string): boolean {
-  try {
-    localStorage.setItem(key, value)
-    return true
-  } catch {
-    return false
-  }
-}
-
-/** Calls `write(value)` whenever `value` changes — at once when nothing was written in the last
- *  `ms`, else once per `ms` while the edits keep coming — and always on pagehide and unmount, so a
- *  reload or a tab switch never loses the last keystrokes. The entity list and the layout are
- *  serialized whole, which on every keystroke made typing in a big model stutter. Returns a
- *  flush for callers that need the latest value on disk right now. */
-function usePersistThrottled<T>(value: T, write: (value: T) => void, ms = 400): () => void {
-  const latest = useRef({ value, write })
-  latest.current = { value, write }
-  const pending = useRef(false)
-  const lastWrite = useRef(0)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const flush = useCallback(() => {
-    if (timer.current) { clearTimeout(timer.current); timer.current = null }
-    if (!pending.current) return
-    pending.current = false
-    lastWrite.current = Date.now()
-    latest.current.write(latest.current.value)
-  }, [])
-  useEffect(() => {
-    pending.current = true
-    if (timer.current) return
-    const wait = lastWrite.current + ms - Date.now()
-    if (wait <= 0) flush()
-    else timer.current = setTimeout(flush, wait)
-  }, [value, ms, flush])
-  useEffect(() => {
-    window.addEventListener('pagehide', flush)
-    return () => { window.removeEventListener('pagehide', flush); flush() }
-  }, [flush])
-  return flush
-}
-
-/** The stock entity model, normalized like a snapshot so "still untouched" is a plain compare. */
-const DEFAULT_ENTITIES_JSON = JSON.stringify(stripUids(DEFAULT_ENTITIES))
-
-/** The options a new model starts with: its tests (an API test per entity, form-check and list tests). */
-const DEFAULT_SCAFFOLD_OPTS: string[] = ['tests']
-
-/** A load that replaces the editor's model, held while the user confirms it. */
-type PendingLoad =
-  | { kind: 'example'; example: ExampleModel }
-  | { kind: 'preset'; snapshot: FullstackSnapshot }
-  | { kind: 'shared'; snapshot: FullstackSnapshot }
-
-/** The draft as localStorage holds it, in snapshot form — what a share link would replace. */
-function readStoredSnapshot(): FullstackSnapshot {
-  const item = (key: string) => { try { return localStorage.getItem(key) } catch { return null } }
-  return makeSnapshot({
-    meta: normalizeMeta(loadJson<Partial<ProjectMeta>>(LS.meta, DEFAULT_META)),
-    entities: loadJson<FullstackEntityDef[]>(LS.entities, DEFAULT_ENTITIES),
-    selectedDeps: loadJson<string[]>(LS.deps, []),
-    scaffoldOpts: loadJson<string[]>(LS.opts, DEFAULT_SCAFFOLD_OPTS),
-    backendSet: item(LS.backendSet) ?? 'spring-jpa-crud',
-    frontendSet: item(LS.frontendSet) ?? 'react-tailwind-crud',
-    colorPalette: item(LS.palette) ?? '',
-    pages: loadJson<FullstackPageDef[]>(LS.pages, []),
-    nav: loadJson<FullstackNav | null>(LS.nav, null) ?? undefined,
-    dismissedWarnings: loadJson<string[]>(LS.dismissed, []),
-  })
-}
-
-/** What the editor starts from. A share link (?fs=…) beats localStorage — that is the whole point
- *  of the link — unless the stored draft holds unsaved work (shareGuard.ts): then the draft loads
- *  and the link waits in a confirm dialog as `pendingShared`. */
-function resolveInitialModel(): { shared: FullstackSnapshot | null; pendingShared: FullstackSnapshot | null } {
-  const link = readShareFromLocation()
-  if (!link) return { shared: null, pendingShared: null }
-  const linked = makeSnapshot({ ...link, meta: normalizeMeta(link.meta) })
-  if (!draftHasUnsavedWork(readStoredSnapshot(), linked, readStoredPresetSnapshots(), DEFAULT_ENTITIES_JSON)) {
-    return { shared: link, pendingShared: null }
-  }
-  return { shared: null, pendingShared: linked }
-}
 
 export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string) => void } = {}) {
   const initRef = useRef<ReturnType<typeof resolveInitialModel> | undefined>(undefined)
@@ -216,9 +82,6 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const [entities, setEntities] = useState<FullstackEntityDef[]>(() => withUids(shared?.entities ?? loadJson(LS.entities, DEFAULT_ENTITIES)))
   const [backendSet, setBackendSet] = useState(() => shared?.backendSet ?? localStorage.getItem(LS.backendSet) ?? 'spring-jpa-crud')
   const [frontendSet, setFrontendSet] = useState(() => shared?.frontendSet ?? localStorage.getItem(LS.frontendSet) ?? 'react-tailwind-crud')
-  const [availableSets, setAvailableSets] = useState<EntityTemplateSetSummary[]>([])
-  const [setsLoading, setSetsLoading] = useState(true)
-  const [setsError, setSetsError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
   // Validation, lint and the setup summary are in the site's language: they are worked out again
@@ -260,7 +123,6 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const openAppearance = () => setDesignerRequest(prev => ({ n: (prev?.n ?? 0) + 1, target: { panel: 'appearance' } }))
   // Collapsed cards survive a refresh: entities persist with their uids, so the uid set stays valid.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(shared ? [] : loadJson<string[]>(LS.collapsed, [])))
-  const [history, setHistory] = useState<History<FullstackSnapshot>>(() => emptyHistory())
   const [confirmReset, setConfirmReset] = useState(false)
   const [pendingLoad, setPendingLoad] = useState<PendingLoad | null>(() => (pendingShared ? { kind: 'shared', snapshot: pendingShared } : null))
   const [shareStatus, setShareStatus] = useState<ShareWriteStatus>('written')
@@ -280,17 +142,6 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // that entity's issues.
   const [lintOpen, setLintOpen] = useState(false)
   const [lintFilterUid, setLintFilterUid] = useState<string | null>(null)
-  // The localStorage keys whose last write was refused (quota / disabled). Tracked per key: the
-  // entity list is what blows the quota, and a later *successful* write of the small meta key
-  // must not hide the notice while the model itself is still unsaved. Non-empty = the draft is no
-  // longer being saved, so the sticky bar says so and leaving the page asks first.
-  const [persistFailedKeys, setPersistFailedKeys] = useState<ReadonlySet<string>>(() => new Set())
-  const persistFailed = persistFailedKeys.size > 0
-  // What this tab last wrote for the entity list, so a `storage` event from another tab can be
-  // told apart from the echo of our own write.
-  const lastWrittenEntitiesRef = useRef<string | null>(null)
-  // Another tab saved a different draft under the same keys — held until the user picks a side.
-  const [externalDraft, setExternalDraft] = useState<{ meta: ProjectMeta; entities: FullstackEntityDef[] } | null>(null)
   // A JSON file parsed by Import JSON, held while the user picks Replace / Append.
   const [pendingJsonImport, setPendingJsonImport] = useState<FullstackSnapshot | null>(null)
   // The last successful Generate — drives the "Next steps" card. Memory only; a refresh clears it.
@@ -328,6 +179,7 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const bootVersions = useMemo(() => Array.from(new Set(rawBootVersions.map(canonicalVersion))), [rawBootVersions])
   const { metadata: feMetadata, error: feError, reload: reloadFe } = useFrontendMetadata()
   const { rules: compatibilityRules } = useCompatibility('BACKEND')
+  const { availableSets, setsLoading, setsError, loadTemplateSets } = useTemplateSets()
   const currentBackendSet = availableSets.find(s => s.setKey === backendSet)
   const currentFrontendSet = availableSets.find(s => s.setKey === frontendSet)
   const currentDefaults = currentBackendSet?.defaultDeps ?? []
@@ -367,44 +219,11 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const errorCount = entityErrors.count + countMetaErrors(metaErrors) + pageValidation.count
   const hasErrors = errorCount > 0
 
-  // Persist form state so a refresh doesn't lose the user's work (mirrors useProjectState).
-  // The model itself (meta + entities) is what matters for the storage-full notice; the small
-  // UI-state keys just try their luck.
-  usePersistThrottled(meta, m => setPersistFailedKeys(prev => trackPersist(prev, LS.meta, persist(LS.meta, JSON.stringify(m)))))
-  // `sourceSql` (the imported DDL) stays in memory only: it is the one prop big enough to blow
-  // the quota, and the server discards it anyway. The uids do persist — `collapsed` keys on them.
-  const flushEntities = usePersistThrottled(entities, list => {
-    const json = JSON.stringify(list.map(({ sourceSql: _s, ...e }) => e))
-    lastWrittenEntitiesRef.current = json
-    setPersistFailedKeys(prev => trackPersist(prev, LS.entities, persist(LS.entities, json)))
+  // The draft is kept in this browser as it changes (useModelPersistence.ts).
+  const { persistFailed, flushEntities, lastWrittenEntitiesRef, externalDraft, setExternalDraft } = useModelPersistence({
+    meta, entities, selectedDeps, backendSet, frontendSet, scaffoldOpts, colorPalette, pages, nav, dismissedWarnings,
+    collapsed, showGraph, setupOpen, density,
   })
-  // Two tabs on this page share the draft keys, and the last one to type used to win silently.
-  // A write we did not make ourselves surfaces as a banner with both drafts on offer — never an
-  // automatic merge.
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== LS.entities || e.newValue == null || e.newValue === lastWrittenEntitiesRef.current) return
-      try {
-        const theirs = JSON.parse(e.newValue) as FullstackEntityDef[]
-        if (!Array.isArray(theirs)) return
-        setExternalDraft({ meta: normalizeMeta(loadJson<Partial<ProjectMeta>>(LS.meta, DEFAULT_META)), entities: theirs })
-      } catch { /* not ours to interpret */ }
-    }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
-  }, [])
-  useEffect(() => { persist(LS.deps, JSON.stringify(selectedDeps)) }, [selectedDeps])
-  useEffect(() => { persist(LS.backendSet, backendSet) }, [backendSet])
-  useEffect(() => { persist(LS.frontendSet, frontendSet) }, [frontendSet])
-  useEffect(() => { persist(LS.opts, JSON.stringify(scaffoldOpts)) }, [scaffoldOpts])
-  useEffect(() => { persist(LS.palette, colorPalette) }, [colorPalette])
-  usePersistThrottled(pages, ps => { persist(LS.pages, JSON.stringify(ps)) })
-  useEffect(() => { persist(LS.nav, JSON.stringify(nav ?? null)) }, [nav])
-  useEffect(() => { persist(LS.dismissed, JSON.stringify(dismissedWarnings)) }, [dismissedWarnings])
-  useEffect(() => { persist(LS.collapsed, JSON.stringify([...collapsed])) }, [collapsed])
-  useEffect(() => { persist(LS.graph, JSON.stringify(showGraph)) }, [showGraph])
-  useEffect(() => { persist(LS.setup, setupOpen ? 'open' : 'closed') }, [setupOpen])
-  useEffect(() => { persist(LS.density, density) }, [density])
 
   // The whole editor state as one detached value — what presets/recents/undo/share links carry.
   const currentSnapshot = useMemo(
@@ -413,100 +232,17 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   )
   const snapshotRef = useRef(currentSnapshot)
   snapshotRef.current = currentSnapshot
+  // The snapshot a silent (already-recorded, or non-user) change starts from — matched by
+  // identity when the undo history sees the change, then cleared.
+  const silentFromRef = useRef<FullstackSnapshot | null>(null)
   // The live entity list (with uids) for callbacks that outlive a render — undo's uid reconciliation.
   const entitiesRef = useRef(entities)
   entitiesRef.current = entities
 
-  // A page layout names entities and fields; the editor renames them by uid, so the references
-  // follow instead of breaking. (A *deleted* entity is left in place and flagged — silently
-  // dropping the page that shows it would lose more than it saves.)
-  const namesByUidRef = useRef<Map<string, string>>(new Map())
-  // Set when the layout is rewritten to follow a rename, so undo files both as one step.
+  // A rename is followed into the layout and the other entities (useFollowRenames.ts). The flag
+  // is set when it rewrote something, so undo files the rename and what followed as one step.
   const followsModelRef = useRef(false)
-  const enumValuesByUidRef = useRef<Map<string, string[]>>(new Map())
-  useEffect(() => {
-    const before = namesByUidRef.current
-    const now = new Map<string, string>()
-    const enumsBefore = enumValuesByUidRef.current
-    const enumsNow = new Map<string, string[]>()
-    let follow: ((ps: FullstackPageDef[]) => FullstackPageDef[])[] = []
-    const followPages = (fn: (ps: FullstackPageDef[]) => FullstackPageDef[]) => { follow = [...follow, fn] }
-    // Relations name their target entity, so an entity rename follows into them too.
-    let followTargets: ((es: FullstackEntityDef[]) => FullstackEntityDef[])[] = []
-    for (const e of entities) {
-      // A name cleared on the way to a new one keeps its last spelling here, so the references
-      // that still say it follow once the new name is typed.
-      if (e.uid) now.set(e.uid, e.name.trim() ? e.name : (before.get(e.uid) ?? e.name))
-      for (const f of e.fields) {
-        if (!f.uid) continue
-        now.set(f.uid, `${e.name}.${f.name}`)
-        if (f.type !== 'ENUM' || !f.enumValues) continue
-        enumsNow.set(f.uid, f.enumValues)
-        // A value renamed in place: same list length, exactly one position changed.
-        const was = enumsBefore.get(f.uid)
-        if (!was || was === f.enumValues || was.length !== f.enumValues.length) continue
-        const diff = f.enumValues.flatMap((v, i) => (v !== was[i] ? [i] : []))
-        if (diff.length === 1) {
-          const [i] = diff
-          followPages(ps => renameEnumValueInPages(ps, e.name, f.name, was[i], f.enumValues![i]))
-        }
-      }
-      for (const r of e.relations ?? []) if (r.uid) now.set(r.uid, `${e.name}#${r.fieldName}`)
-    }
-    enumValuesByUidRef.current = enumsNow
-    if (before.size > 0) {
-      for (const [uid, name] of now) {
-        const was = before.get(uid)
-        if (!was || was === name) continue
-        if (was.includes('#')) {
-          const [, wasRelation] = was.split('#')
-          const [nowEntity, nowRelation] = name.split('#')
-          if (nowRelation?.trim()) {
-            followPages(ps => renameRelationInPages(ps, nowEntity, wasRelation, nowRelation))
-            // The one-to-manys that read this link by name.
-            followTargets = [...followTargets, es => renameLinkInChildLists(es, nowEntity, wasRelation, nowRelation)]
-            // The rules that read through this link (costCenter.budget).
-            followTargets = [...followTargets, es => renameLinkInRules(es, nowEntity, wasRelation, nowRelation)]
-          }
-          continue
-        }
-        const [wasEntity, wasField] = was.split('.')
-        const [nowEntity, nowField] = name.split('.')
-        if (wasField == null && nowEntity.trim()) {
-          followPages(ps => renameEntityInPages(ps, wasEntity, nowEntity))
-          // Only while the old name meant one entity: with two entities of that name there is
-          // no telling whose relations these are.
-          const sharedName = [...before].filter(([otherUid, other]) => otherUid !== uid
-            && !other.includes('.') && !other.includes('#')
-            && other.trim().toLowerCase() === wasEntity.trim().toLowerCase()).length > 0
-          if (!sharedName) followTargets = [...followTargets, es => renameEntityInRelations(es, wasEntity, nowEntity)]
-        } else if (wasField != null && nowField?.trim() && wasField !== nowField) {
-          followPages(ps => renameFieldInPages(ps, nowEntity, wasField, nowField))
-          // Other entities' rules that read this field through a link.
-          followTargets = [...followTargets, es => renameLinkedFieldInRules(es, nowEntity, wasField, nowField)]
-        }
-      }
-    }
-    namesByUidRef.current = now
-    if (follow.length > 0) {
-      // The layout follows the model edit that caused it: one undo step for both.
-      setPages(ps => {
-        const next = follow.reduce((acc, fn) => fn(acc), ps)
-        if (next !== ps) followsModelRef.current = true
-        return next
-      })
-    }
-    if (followTargets.length > 0) {
-      // Same undo step as the rename, like the layout. The flag is raised inside the updater —
-      // that runs with the next render, after this commit's recording effect has filed the
-      // rename itself.
-      setEntities(es => {
-        const next = followTargets.reduce((acc, fn) => fn(acc), es)
-        if (next !== es) followsModelRef.current = true
-        return next
-      })
-    }
-  }, [entities])
+  useFollowRenames(entities, setPages, setEntities, followsModelRef)
 
   // Keep the URL in step (debounced) so the header's Share button copies a link that reproduces
   // this model elsewhere. The frontend tab does the same with plain query params; the entity
@@ -604,69 +340,6 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     }
   }, [currentFrontendSet])
 
-  // ── Undo / redo ────────────────────────────────────────────────────────────
-  // Every change to the snapshot is recorded automatically: the effect below sees the new
-  // snapshot, and files the *previous* one as the "before" state. Rapid successive changes to
-  // the *same thing* (typing a name, retyping a default) coalesce into one entry — a burst stays
-  // open while changes keep arriving within BURST_IDLE_MS and keep hitting the same change key;
-  // an edit elsewhere (another field's checkbox) commits the burst and starts a new one, so
-  // three quick ticks on three fields stay three undo steps. Destructive actions (remove,
-  // import, load, reset) still push an explicitly labelled entry first via pushUndoEntry; the
-  // state change they cause is then skipped so it isn't recorded twice. Undo/redo restore
-  // through applySnapshot and are skipped the same way.
-  const BURST_IDLE_MS = 600
-  const historyRef = useRef(history)
-  historyRef.current = history
-  const lastSnapshotRef = useRef(currentSnapshot)
-  // The snapshot a silent (already-recorded, or non-user) change starts from — matched by
-  // identity in the recording effect, then cleared.
-  const silentFromRef = useRef<FullstackSnapshot | null>(null)
-  const burstRef = useRef<{ before: FullstackSnapshot; label: string; key: string } | null>(null)
-  const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const flushBurst = useCallback(() => {
-    if (burstTimerRef.current) { clearTimeout(burstTimerRef.current); burstTimerRef.current = null }
-    const burst = burstRef.current
-    if (!burst) return
-    burstRef.current = null
-    // Update the ref as well as the state: undo() reads the ref right after flushing, and a
-    // Ctrl+Z within the burst window must see the entry it just closed, not the pre-render one.
-    const next = record(historyRef.current, { label: burst.label, snapshot: burst.before })
-    historyRef.current = next
-    setHistory(next)
-  }, [])
-
-  useEffect(() => {
-    const prev = lastSnapshotRef.current
-    if (prev === currentSnapshot) return
-    lastSnapshotRef.current = currentSnapshot
-    if (silentFromRef.current === prev) { silentFromRef.current = null; return }
-    if (followsModelRef.current) {
-      // The layout following a model edit belongs to that edit's undo step (or to none, when
-      // the edit itself was recorded explicitly): keep the open burst, start no new one.
-      followsModelRef.current = false
-      if (burstRef.current) {
-        if (burstTimerRef.current) clearTimeout(burstTimerRef.current)
-        burstTimerRef.current = setTimeout(flushBurst, BURST_IDLE_MS)
-      }
-      return
-    }
-    if (snapshotsEqual(prev, currentSnapshot)) return
-    const key = snapshotChangeKey(prev, currentSnapshot)
-    if (burstRef.current && burstRef.current.key !== key) flushBurst()
-    if (!burstRef.current) burstRef.current = { before: prev, label: describeSnapshotChange(prev, currentSnapshot), key }
-    if (burstTimerRef.current) clearTimeout(burstTimerRef.current)
-    burstTimerRef.current = setTimeout(flushBurst, BURST_IDLE_MS)
-  }, [currentSnapshot, flushBurst])
-  useEffect(() => () => { if (burstTimerRef.current) clearTimeout(burstTimerRef.current) }, [])
-
-  const pushUndoEntry = useCallback((label: string) => {
-    flushBurst()
-    const before = snapshotRef.current
-    silentFromRef.current = before
-    setHistory(h => record(h, { label, snapshot: before }))
-  }, [flushBurst])
-
   /** Replaces the whole editor state. `keepView` (undo/redo) re-uses the current rows' uids for
    *  the rows that survive, so collapsed cards and open panels stay put instead of every card
    *  springing open; a load (preset, example, link) starts from a clean view. */
@@ -696,41 +369,19 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     baselineRef.current = null // adopt the loaded state as the new "nothing unsaved" point
   }, [])
 
-  const undo = useCallback(() => {
-    flushBurst()
-    const step = undoStep(historyRef.current, snapshotRef.current)
-    if (!step) return
-    silentFromRef.current = snapshotRef.current
-    setHistory(step.history)
-    applySnapshot(step.restore.snapshot, true)
-    setToast({ message: t('Undid: {change}', { change: step.restore.label }), type: 'success' })
-  }, [applySnapshot, flushBurst])
-
-  const redo = useCallback(() => {
-    flushBurst()
-    const step = redoStep(historyRef.current, snapshotRef.current)
-    if (!step) return
-    silentFromRef.current = snapshotRef.current
-    setHistory(step.history)
-    applySnapshot(step.restore.snapshot, true)
-    setToast({ message: t('Redid: {change}', { change: step.restore.label }), type: 'success' })
-  }, [applySnapshot, flushBurst])
-
-  /** Several undos (negative) or redos (positive) at once — the layout designer's history list. */
-  const jumpHistory = useCallback((steps: number) => {
-    flushBurst()
-    const step = stepMany(historyRef.current, snapshotRef.current, steps)
-    if (!step) return
-    silentFromRef.current = snapshotRef.current
-    setHistory(step.history)
-    applySnapshot(step.restore.snapshot, true)
-    setToast({
-      message: steps < 0
-        ? tn(step.labels.length, 'Undid {n} change', 'Undid {n} changes')
-        : tn(step.labels.length, 'Redid {n} change', 'Redid {n} changes'),
-      type: 'success',
-    })
-  }, [applySnapshot, flushBurst])
+  // ── Undo / redo ────────────────────────────────────────────────────────────
+  // Every change to the snapshot is recorded by useSnapshotHistory; destructive actions push a
+  // labelled entry first (pushUndoEntry), and undo and redo restore through applySnapshot.
+  const { history, pushUndoEntry, undo, redo, jumpHistory } = useSnapshotHistory<FullstackSnapshot>({
+    current: currentSnapshot,
+    apply: applySnapshot,
+    equal: snapshotsEqual,
+    changeKey: snapshotChangeKey,
+    describe: describeSnapshotChange,
+    silentFromRef,
+    followsRef: followsModelRef,
+    notify: message => setToast({ message, type: 'success' }),
+  })
 
   function handleImport(imported: FullstackEntityDef[], mode: ImportMode, note?: string) {
     pushUndoEntry(mode === 'replace' ? t('Replaced entities from import') : t('Appended imported entities'))
@@ -958,33 +609,6 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     scrollToElement(document.querySelector<HTMLElement>('[data-start-from]'), 'start')
   }
 
-  // Load the template-set list. Extracted so the inline Retry can re-run it; on failure
-  // we keep the hardcoded fallback options (the screen stays usable) and surface a
-  // persistent inline notice rather than a one-shot toast the user might miss.
-  // Each call aborts the previous in-flight request (Retry while loading, or unmount), so a
-  // slow earlier response can't land after a newer one or after the view is gone.
-  const setsAbortRef = useRef<AbortController | null>(null)
-  const loadTemplateSets = useCallback(() => {
-    setsAbortRef.current?.abort()
-    const controller = new AbortController()
-    setsAbortRef.current = controller
-    setSetsLoading(true)
-    setSetsError(null)
-    fetch('/metadata/entity-template-sets', { signal: controller.signal })
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
-      .then((data: EntityTemplateSetSummary[]) => { if (!controller.signal.aborted) setAvailableSets(data) })
-      .catch((err: Error) => { if (!controller.signal.aborted) setSetsError(err.message) })
-      .finally(() => { if (!controller.signal.aborted) setSetsLoading(false) })
-  }, [])
-
-  useEffect(() => {
-    loadTemplateSets()
-    return () => setsAbortRef.current?.abort()
-  }, [loadTemplateSets])
-
   const backendSets = availableSets.filter(s => s.kind === 'BACKEND_JAVA')
   const frontendSets = availableSets.filter(s => s.kind === 'FRONTEND_REACT')
 
@@ -992,78 +616,11 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     return requestFromSnapshot(currentSnapshot)
   }
 
-  // ── Updating a project that already exists ─────────────────────────────────
-  // The model the project in hand was generated from (see updateBaseline.ts). While the editor's
-  // model differs from it, UpdatePanel offers the difference as a patch instead of a fresh zip.
-  const [baseline, setBaselineState] = useState<UpdateBaseline | null>(() => readBaseline())
-  const [updating, setUpdating] = useState(false)
-  // What the open preview's Download does: a fresh project, or the update it is showing.
-  const [previewIsUpdate, setPreviewIsUpdate] = useState(false)
-  function setBaseline(next: UpdateBaseline | null) {
-    setBaselineState(next)
-    writeBaseline(next)
-  }
-
-  function previewUpdate() {
-    if (!baseline || !validateBeforeSubmit()) return
-    previewSnapshotRef.current = currentSnapshot
-    setPreviewIsUpdate(true)
-    void fetchComparison(requestFromSnapshot(baseline.snapshot), buildBody())
-  }
-
-  /** Returns true when the update zip downloaded. */
-  async function downloadUpdate(): Promise<boolean> {
-    if (!baseline || !validateBeforeSubmit()) return false
-    setUpdating(true)
-    try {
-      const res = await fetch('/starter-fullstack.patch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateRequest(baseline, snapshotRef.current)),
-      })
-      if (!res.ok) {
-        const failure = await readErrorBody(res)
-        const where = sideOfPath(failure.path)
-        if (where.side === 'base') {
-          // Nothing in the editor to point at: it is the stored model that no longer generates.
-          setToast({ message: t('The model the project was generated from is no longer accepted: {error}', { error: failure.message }), type: 'error' })
-          return false
-        }
-        const issue: ServerIssue = { message: failure.message, path: where.path }
-        const target = showServerIssue(issue)
-        setToast({
-          message: target && target.kind !== 'setting'
-            ? t('Update failed — the server rejected {what}', { what: describeServerTarget(target) })
-            : t('Update failed: {error}', { error: issue.message }),
-          type: 'error',
-        })
-        return false
-      }
-      const counts = countsOf(res.headers)
-      downloadBlob(await res.blob(), `${meta.artifactId || 'project'}-update.zip`)
-      // What the project becomes once applied: Mark as applied starts the next update from it.
-      const result = snapshotHeader(res.headers)
-      if (result) {
-        setBaseline({
-          ...baseline,
-          pendingUpdate: {
-            snapshotId: result, request: requestKey(snapshotRef.current),
-            schemaVersion: schemaVersionOf(res.headers.get('X-Schema-Version')),
-          },
-        })
-      }
-      setToast({
-        message: t('Update downloaded ({what}) — UPDATE.md inside says how to apply it', { what: describeCounts(counts) + describeUpdateBase(res.headers) }),
-        type: 'success',
-      })
-      return true
-    } catch (err) {
-      setToast({ message: t('Update failed: {error}', { error: err instanceof Error ? err.message : String(err) }), type: 'error' })
-      return false
-    } finally {
-      setUpdating(false)
-    }
-  }
+  // ── Updating a project that already exists (useProjectUpdate.ts) ────────────
+  const { baseline, setBaseline, updating, previewIsUpdate, setPreviewIsUpdate, previewUpdate, downloadUpdate } = useProjectUpdate({
+    currentSnapshot, snapshotRef, previewSnapshotRef, artifactId: meta.artifactId, validateBeforeSubmit, buildBody,
+    fetchComparison, showServerIssue, setToast,
+  })
 
   function toggleOpt(value: string) {
     setScaffoldOpts(prev => prev.includes(value) ? prev.filter(o => o !== value) : [...prev, value])
@@ -1122,84 +679,11 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     fetchPreview(buildBody())
   }
 
-  // The in-flight Generate request, so the sticky bar's Cancel can abort it (and unmount does).
-  const generateAbortRef = useRef<AbortController | null>(null)
-  useEffect(() => () => generateAbortRef.current?.abort(), [])
-  function cancelGenerate() {
-    generateAbortRef.current?.abort()
-  }
-
-  /** Returns true when the ZIP downloaded successfully — lets the preview modal stay
-   *  open (and show the error toast) on failure, and close only on success. */
-  async function generate(): Promise<boolean> {
-    if (!validateBeforeSubmit()) return false
-    generateAbortRef.current?.abort()
-    const controller = new AbortController()
-    generateAbortRef.current = controller
-    setGenerating(true)
-    try {
-      const body = buildBody()
-      const res = await fetch('/starter-fullstack.zip', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // The editor's own model rides along into the zip (menora-model.json), so Import JSON can
-        // reopen the project as it is here — locked page ids and dismissed warnings included.
-        body: JSON.stringify({ ...body, editorModel: toExportedModel(snapshotRef.current) }),
-        signal: controller.signal,
-      })
-      if (!res.ok) {
-        // The same reader Explore uses: detail, else the joined messages, else the error — and
-        // where in the request the problem is.
-        const failure = await readErrorBody(res)
-        throw Object.assign(new Error(failure.message), { path: failure.path })
-      }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${meta.artifactId}.zip`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      pushRecent(currentSnapshot)
-      // The project now in the user's hands was made from this model.
-      setBaseline({
-        snapshot: currentSnapshot, templatesHash: res.headers.get('X-Templates-Hash') ?? undefined,
-        snapshotId: snapshotHeader(res.headers), schemaVersion: schemaVersionOf(res.headers.get('X-Schema-Version')),
-        source: 'generated', at: Date.now(),
-      })
-      setToast({ message: t('Fullstack project downloaded'), type: 'success' })
-      setLastGenerated({
-        at: Date.now(),
-        artifactId: meta.artifactId || 'demo',
-        entityCount: entities.length,
-        endpoints: entities.flatMap(e => summarizeEntity(e, scaffoldOpts).endpoints.map(ep => ({ entity: e.name.trim() || 'Entity', ...ep }))),
-        snapshot: currentSnapshot,
-      })
-      requestAnimationFrame(() => scrollToElement(document.querySelector<HTMLElement>('[data-next-steps]'), 'nearest'))
-      return true
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        setToast({ message: t('Generation cancelled'), type: 'success' })
-        return false
-      }
-      const issue: ServerIssue = { message: (err as Error).message, path: (err as { path?: string }).path }
-      const target = showServerIssue(issue)
-      if (target && target.kind !== 'setting') {
-        setToast({ message: t('Generation failed — the server rejected {what}', { what: describeServerTarget(target) }), type: 'error' })
-      } else {
-        setToast({ message: t('Generation failed: {error}', { error: issue.message }), type: 'error' })
-      }
-      return false
-    } finally {
-      // A newer Generate may already own the ref — only the request that set it clears the state.
-      if (generateAbortRef.current === controller) {
-        generateAbortRef.current = null
-        setGenerating(false)
-      }
-    }
-  }
+  // Generate, and its Cancel (useGenerateFlow.ts).
+  const { generate, cancelGenerate } = useGenerateFlow({
+    currentSnapshot, snapshotRef, artifactId: meta.artifactId, entities, scaffoldOpts, validateBeforeSubmit, buildBody,
+    setGenerating, pushRecent, setBaseline, setLastGenerated, showServerIssue, setToast,
+  })
 
   function updateMeta(updates: Partial<ProjectMeta>) {
     setMeta(prev => ({ ...prev, ...updates }))
@@ -1943,17 +1427,3 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     </div>
   )
 }
-
-
-
-/** Adds or clears `key` in the failed-writes set, returning the same set when nothing changed. */
-function trackPersist(prev: ReadonlySet<string>, key: string, ok: boolean): ReadonlySet<string> {
-  if (ok === !prev.has(key)) return prev
-  const next = new Set(prev)
-  if (ok) next.delete(key)
-  else next.add(key)
-  return next
-}
-
-
-

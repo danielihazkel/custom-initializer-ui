@@ -2,23 +2,27 @@ import { useState, useMemo, useEffect, useCallback, useRef, useDeferredValue, la
 import { motion, AnimatePresence } from 'framer-motion'
 import type { DependencySelectorProps, DependencyGroup, EventsByDep, MetadataOption } from '../types'
 import { DependencyCard } from './DependencyCard'
-// The wizard drawers embed a CodeMirror editor (~1 MB of grammars); load them only when a
-// wizard is actually opened so the editor stack stays out of the initial bundle.
-const SqlWizardDrawer = lazy(() => import('./SqlWizardDrawer').then(m => ({ default: m.SqlWizardDrawer })))
-const OpenApiWizardDrawer = lazy(() => import('./OpenApiWizardDrawer').then(m => ({ default: m.OpenApiWizardDrawer })))
-const SoapWizardDrawer = lazy(() => import('./SoapWizardDrawer').then(m => ({ default: m.SoapWizardDrawer })))
-const EventsWizardDrawer = lazy(() => import('./EventsWizardDrawer').then(m => ({ default: m.EventsWizardDrawer })))
+// Not needed to paint the picker, so chunks of their own: the wizards (their drawers and ⌘K
+// entries — mounted from the start, drawing nothing until one opens) and the notices at the top
+// of the Selected panel (conflicts, a required dependency, the primary database).
+const DependencyWizards = lazy(() => import('./DependencyWizards').then(m => ({ default: m.DependencyWizards })))
+const DependencyNotices = lazy(() => import('./DependencyNotices').then(m => ({ default: m.DependencyNotices })))
+import type { OpenWizards, WizardKind } from './DependencyWizards'
 
 const NO_EVENTS_DEPS: string[] = []
 const NO_EVENTS: EventsByDep = {}
-import { SuggestionStrip } from './SuggestionStrip'
+// Shown only while a selected dependency recommends another.
+const SuggestionStrip = lazy(() => import('./SuggestionStrip').then(m => ({ default: m.SuggestionStrip })))
 import { useDependencyCompatibility } from '../hooks/useDependencyCompatibility'
-import { requiredSqlDeps, isSqlDepSatisfied } from '../utils/projectUtils'
-import { fuzzyMatch, substringMatch } from '../utils/fuzzy'
+import { DB_DRIVERS, DB_DRIVER_KINDS, DB_PRIMARY_OPTIONS, DB_SECONDARY_OPTIONS, DB_SUB_OPTION_IDS } from '../utils/dbDrivers'
+// The matcher is fetched when the search box is first used — the catalog paints without it — and
+// with it the "nothing matches" state, which only a search can lead to.
+const loadMatcher = () => Promise.all([import('../utils/fuzzy'), import('./DependencySearchEmpty')])
+  .then(([fuzzy, empty]) => ({ fuzzyMatch: fuzzy.fuzzyMatch, substringMatch: fuzzy.substringMatch, Empty: empty.DependencySearchEmpty }))
+type Matcher = Awaited<ReturnType<typeof loadMatcher>>
 import { useHotkeys } from '../hooks/useHotkeys'
 import { useDepFavorites } from '../hooks/useDepFavorites'
 import { usePopularDeps } from '../hooks/usePopularDeps'
-import { registerCommands, type PaletteAction } from '../commands'
 import { t, tn, useLang } from '../i18n'
 
 /** Where a search matched one dependency. */
@@ -37,39 +41,26 @@ function pickTitle(kind: PickKind): string {
 /** Dependency checkboxes Tab and the arrows can reach: those of the groups that are open. */
 const OPEN_CARD_INPUTS = '.collapse-rows:not([data-collapsed="true"]) input[data-dep-card]'
 
-const DB_DRIVERS = ['postgresql', 'mssql', 'db2', 'oracle', 'mongodb', 'h2'] as const
-const DB_PRIMARY_OPTIONS: Record<string, string> = {
-  postgresql: 'pg-primary',
-  mssql: 'mssql-primary',
-  db2: 'db2-primary',
-  oracle: 'oracle-primary',
-  mongodb: 'mongodb-primary',
-  h2: 'h2-primary'
+/** A selected dependency's wizard: the button that opens it, and what it already holds. */
+function WizardRow({ icon, label, note, onOpen }: { icon: string; label: string; note?: string | false; onOpen: () => void }) {
+  return (
+    <div className="mt-3 pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-2">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
+      >
+        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{icon}</span>
+        {label}
+      </button>
+      {note && (
+        <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
+          ✓ {note}
+        </span>
+      )}
+    </div>
+  )
 }
-const DB_SECONDARY_OPTIONS: Record<string, string> = {
-  postgresql: 'pg-secondary',
-  mssql: 'mssql-secondary',
-  db2: 'db2-secondary',
-  oracle: 'oracle-secondary',
-  mongodb: 'mongodb-secondary',
-  h2: 'h2-secondary'
-}
-const DB_SUB_OPTION_IDS = new Set([
-  ...Object.values(DB_PRIMARY_OPTIONS),
-  ...Object.values(DB_SECONDARY_OPTIONS),
-])
-const DB_DRIVER_KINDS: Record<string, 'jdbc' | 'mongodb'> = {
-  postgresql: 'jdbc',
-  mssql: 'jdbc',
-  db2: 'jdbc',
-  oracle: 'jdbc',
-  h2: 'jdbc',
-  mongodb: 'mongodb',
-}
-function dbKindLabel(kind: string): string {
-  return kind === 'jdbc' ? t('Primary JDBC Database') : kind === 'mongodb' ? t('Primary MongoDB Connection') : t('Primary Database')
-}
-
 
 export function DependencySelector({
   metadata,
@@ -94,13 +85,14 @@ export function DependencySelector({
   sqlParseError,
   recentDepIds = NO_RECENT,
 }: DependencySelectorProps) {
-  const lang = useLang()
+  useLang()
   const [search, setSearch] = useState<string>('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
-  const [wizardDepId, setWizardDepId] = useState<string | null>(null)
-  const [openApiWizardDepId, setOpenApiWizardDepId] = useState<string | null>(null)
-  const [soapWizardDepId, setSoapWizardDepId] = useState<string | null>(null)
-  const [eventsWizardDepId, setEventsWizardDepId] = useState<string | null>(null)
+  // Which wizard is open on which dependency. The drawers themselves are DependencyWizards'.
+  const [openWizards, setOpenWizards] = useState<OpenWizards>({})
+  const openWizard = useCallback((kind: WizardKind, depId: string | null) => {
+    setOpenWizards(prev => ({ ...prev, [kind]: depId ?? undefined }))
+  }, [])
 
   const toggleGroup = useCallback((name: string) => {
     setCollapsedGroups(prev => {
@@ -114,6 +106,10 @@ export function DependencySelector({
   // The list follows the search box a render behind, so typing stays instant while hundreds of
   // cards are filtered (and animated) in the background.
   const deferredSearch = useDeferredValue(search)
+  // Asked for when the box takes focus, so it is there by the first keystroke. Until it is, a
+  // query narrows nothing (and Enter adds nothing): never a wrong result, only a late one.
+  const [matcher, setMatcher] = useState<Matcher | null>(null)
+  const wantMatcher = useCallback(() => { void loadMatcher().then(m => setMatcher(() => m)) }, [])
   const isCollapsed = (name: string) => !deferredSearch.trim() && collapsedGroups.has(name)
 
   const groups = useMemo<DependencyGroup[]>(() => {
@@ -123,20 +119,25 @@ export function DependencySelector({
 
   const allDeps = useMemo<MetadataOption[]>(() => groups.flatMap(g => g.values ?? []), [groups])
 
+  useEffect(() => {
+    // (An empty catalog shows the same empty state, so it asks too.)
+    if ((search || groups.length === 0) && !matcher) wantMatcher()
+  }, [search, groups, matcher, wantMatcher])
+
   // A name matches loosely ("sdj" finds Spring Data JPA); a description, being prose, only by
   // the words typed. The catalog keeps its order — a list that reshuffles while typing is hard
   // to scan — and each hit remembers where it matched, for the highlight.
   const { filtered, hits } = useMemo((): { filtered: DependencyGroup[]; hits: Map<string, Hit> } => {
     const q = deferredSearch.trim()
-    if (!q) return { filtered: groups, hits: NO_HITS }
+    if (!q || !matcher) return { filtered: groups, hits: NO_HITS }
     const lowered = q.toLowerCase()
     const found = new Map<string, Hit>()
     const narrowed = groups
       .map(group => ({
         ...group,
         values: (group.values ?? []).filter(d => {
-          const name = fuzzyMatch(q, d.name)
-          const description = substringMatch(q, d.description ?? '')
+          const name = matcher.fuzzyMatch(q, d.name)
+          const description = matcher.substringMatch(q, d.description ?? '')
           if (!name && !description && !d.id.toLowerCase().includes(lowered)) return false
           found.set(d.id, { name: name?.ranges, description: description?.ranges })
           return true
@@ -144,7 +145,7 @@ export function DependencySelector({
       }))
       .filter(g => g.values.length > 0)
     return { filtered: narrowed, hits: found }
-  }, [groups, deferredSearch])
+  }, [groups, deferredSearch, matcher])
 
   // Stable toggle (reads the latest props through refs) so the memoised DependencyCards
   // don't all re-render whenever the selection changes.
@@ -179,14 +180,6 @@ export function DependencySelector({
     }
     return map
   }, [selected])
-
-  const primaryByKind = useMemo(() => {
-    const map: Record<string, string | null> = {}
-    for (const [kind, drivers] of Object.entries(driversByKind)) {
-      map[kind] = drivers.find(d => (selectedOptions[d] ?? []).includes(DB_PRIMARY_OPTIONS[d])) ?? null
-    }
-    return map
-  }, [driversByKind, selectedOptions])
 
   const driversByKindKey = Object.entries(driversByKind)
     .map(([k, d]) => `${k}:${d.join(',')}`)
@@ -238,7 +231,13 @@ export function DependencySelector({
   const { conflicts, requires, suggestions } = useDependencyCompatibility(
     compatibilityRules, selected, allDeps,
   )
-  const warnings = { conflicts, requires }
+  // The notices' chunk is fetched the first time the selection needs a word, and stays mounted
+  // from then on so what it shows can animate out.
+  const noticesNeeded = useRef(false)
+  if (conflicts.length > 0 || requires.length > 0 || Object.values(driversByKind).some(d => d.length >= 2)) {
+    noticesNeeded.current = true
+  }
+  const nameOf = useCallback((depId: string) => allDeps.find(d => d.id === depId)?.name ?? depId, [allDeps])
 
   // ── Quick picks: favourites, then what was used lately, then what is popular here ─────────
   const { favorites, toggle: toggleFavorite } = useDepFavorites()
@@ -284,7 +283,7 @@ export function DependencySelector({
     } else if (e.key === 'Enter' && search.trim()) {
       // Type, Enter: the top result is added (or removed) without leaving the box.
       e.preventDefault()
-      const first = filtered[0]?.values[0]
+      const first = matcher ? filtered[0]?.values[0] : undefined
       if (first) toggle(first.id)
     } else if (e.key === 'Escape' && search) {
       e.preventDefault()
@@ -305,29 +304,6 @@ export function DependencySelector({
     }
     inputs[e.key === 'ArrowDown' ? Math.min(at + 1, inputs.length - 1) : at - 1]?.focus()
   }
-
-  // ⌘K: the search box, and the wizard of every selected dependency that has one.
-  useEffect(() => {
-    const list: PaletteAction[] = [{
-      id: 'backend-search-deps', title: t('Search dependencies'), icon: 'search', group: t('Backend'),
-      shortcut: '/', run: focusSearch,
-    }]
-    for (const dep of selectedDeps) {
-      const wizard = (id: string, title: string, icon: string, open: (depId: string) => void) => list.push({
-        id: `backend-wizard-${id}-${dep.id}`, title, icon, group: t('Wizards'), run: () => open(dep.id),
-      })
-      if (sqlDialects[dep.id]) wizard('sql', t('{dep}: generate entities from SQL…', { dep: dep.name }), 'auto_fix_high', setWizardDepId)
-      if (openApiCapableDeps.includes(dep.id)) wizard('openapi', t('{dep}: generate from an OpenAPI spec…', { dep: dep.name }), 'integration_instructions', setOpenApiWizardDepId)
-      if (soapCapableDeps.includes(dep.id)) wizard('soap', t('{dep}: generate from a WSDL…', { dep: dep.name }), 'hub', setSoapWizardDepId)
-      if (eventsCapableDeps.includes(dep.id)) wizard('events', t('{dep}: generate from an AsyncAPI document…', { dep: dep.name }), 'cell_tower', setEventsWizardDepId)
-    }
-    return registerCommands(list, 'backend-deps')
-  }, [selectedDeps, sqlDialects, openApiCapableDeps, soapCapableDeps, eventsCapableDeps, focusSearch, lang])
-
-  const wizardDep = wizardDepId ? allDeps.find(d => d.id === wizardDepId) : null
-  const openApiWizardDep = openApiWizardDepId ? allDeps.find(d => d.id === openApiWizardDepId) : null
-  const soapWizardDep = soapWizardDepId ? allDeps.find(d => d.id === soapWizardDepId) : null
-  const eventsWizardDep = eventsWizardDepId ? allDeps.find(d => d.id === eventsWizardDepId) : null
 
   return (
     <>
@@ -364,83 +340,19 @@ export function DependencySelector({
           {/* Single scroll container — warnings + primary DB selector + deps list */}
           <div className="flex flex-col gap-3 flex-grow overflow-y-auto pe-2 tutorial-scroll">
 
-            {/* Compatibility warnings (conflicts + requires only; recommends live above search) */}
-            <AnimatePresence>
-              {(warnings.conflicts.length > 0 || warnings.requires.length > 0) && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="space-y-2 overflow-hidden flex-shrink-0"
-                >
-                  {warnings.conflicts.map((w, i) => (
-                    <div key={`c-${i}`} className="flex items-start gap-2 px-4 py-3 rounded-xl border border-error/30 bg-error/10 text-xs text-error shadow-sm">
-                      <span className="material-symbols-outlined flex-shrink-0 mt-0.5" style={{ fontSize: '16px' }}>warning</span>
-                      <span className="leading-relaxed font-medium">{w.desc}</span>
-                    </div>
-                  ))}
-                  {warnings.requires.map((w, i) => (
-                    <div key={`req-${i}`} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-warning/30 bg-warning/10 text-xs text-warning shadow-sm">
-                      <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: '16px' }}>error</span>
-                      <span className="flex-1 leading-relaxed font-medium">{w.desc}</span>
-                      <button
-                        type="button"
-                        onClick={() => onChange([...selected, w.target])}
-                        className="flex-shrink-0 text-[10px] font-bold px-3 py-1 rounded bg-warning text-background shadow-sm transition-transform active:scale-95 hover:brightness-110"
-                      >
-                        {t('ADD IT')}
-                      </button>
-                    </div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Primary Database selector — one panel per kind with ≥2 selected drivers */}
-            <AnimatePresence>
-              {Object.entries(driversByKind)
-                .filter(([, drivers]) => drivers.length >= 2)
-                .map(([kind, drivers]) => (
-                  <motion.div
-                    key={kind}
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="p-4 rounded-xl border border-secondary/30 bg-secondary/5 overflow-hidden flex-shrink-0"
-                  >
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="material-symbols-outlined text-secondary" style={{ fontSize: '16px' }}>database</span>
-                      <span className="text-xs font-bold uppercase tracking-widest text-secondary">{dbKindLabel(kind)}</span>
-                    </div>
-                    <div className="space-y-2">
-                      {drivers.map(drv => {
-                        const dep = allDeps.find(d => d.id === drv)
-                        const isPrimary = primaryByKind[kind] === drv
-                        return (
-                          <label key={drv} className="flex items-center gap-3 text-xs cursor-pointer group">
-                            <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${isPrimary
-                              ? 'border-secondary bg-secondary'
-                              : 'border-secondary/40 group-hover:border-secondary'
-                              }`}>
-                              {isPrimary && <div className="w-1.5 h-1.5 rounded-full bg-background" />}
-                            </div>
-                            <input
-                              type="radio"
-                              name={`primary-${kind}`}
-                              checked={isPrimary}
-                              onChange={() => handlePrimaryChange(kind, drv)}
-                              className="sr-only"
-                            />
-                            <span className="text-on-surface-variant font-medium group-hover:text-on-surface transition-colors">
-                              {dep?.name ?? drv}
-                            </span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </motion.div>
-                ))}
-            </AnimatePresence>
+            {noticesNeeded.current && (
+              <Suspense fallback={null}>
+                <DependencyNotices
+                  conflicts={conflicts}
+                  requires={requires}
+                  onAdd={depId => onChange([...selected, depId])}
+                  driversByKind={driversByKind}
+                  selectedOptions={selectedOptions}
+                  nameOf={nameOf}
+                  onPrimaryChange={handlePrimaryChange}
+                />
+              </Suspense>
+            )}
 
             <AnimatePresence mode="popLayout">
               {selectedDeps.length > 0 ? selectedDeps.map(dep => (
@@ -501,72 +413,36 @@ export function DependencySelector({
                     </div>
                   )}
                   {sqlDialects[dep.id] && (
-                    <div className="mt-3 pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setWizardDepId(dep.id)}
-                        className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>auto_fix_high</span>
-                        {sqlByDep[dep.id] ? t('Edit SQL entities…') : t('Generate entities from SQL…')}
-                      </button>
-                      {sqlByDep[dep.id] && (
-                        <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
-                          ✓ {tn(sqlByDep[dep.id].tables.length, '{n} table', '{n} tables')}
-                        </span>
-                      )}
-                    </div>
+                    <WizardRow
+                      icon="auto_fix_high"
+                      onOpen={() => openWizard('sql', dep.id)}
+                      label={sqlByDep[dep.id] ? t('Edit SQL entities…') : t('Generate entities from SQL…')}
+                      note={sqlByDep[dep.id] && tn(sqlByDep[dep.id].tables.length, '{n} table', '{n} tables')}
+                    />
                   )}
                   {openApiCapableDeps.includes(dep.id) && (
-                    <div className="mt-3 pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setOpenApiWizardDepId(dep.id)}
-                        className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>integration_instructions</span>
-                        {openApiByDep[dep.id] ? t('Edit OpenAPI controllers…') : t('Generate from OpenAPI spec…')}
-                      </button>
-                      {openApiByDep[dep.id] && (
-                        <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
-                          ✓ {t('spec attached')}
-                        </span>
-                      )}
-                    </div>
+                    <WizardRow
+                      icon="integration_instructions"
+                      onOpen={() => openWizard('openapi', dep.id)}
+                      label={openApiByDep[dep.id] ? t('Edit OpenAPI controllers…') : t('Generate from OpenAPI spec…')}
+                      note={openApiByDep[dep.id] && t('spec attached')}
+                    />
                   )}
                   {soapCapableDeps.includes(dep.id) && (
-                    <div className="mt-3 pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSoapWizardDepId(dep.id)}
-                        className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>hub</span>
-                        {soapByDep[dep.id] ? t('Edit SOAP services…') : t('Generate from WSDL…')}
-                      </button>
-                      {soapByDep[dep.id] && (
-                        <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
-                          ✓ {t('WSDL attached')}
-                        </span>
-                      )}
-                    </div>
+                    <WizardRow
+                      icon="hub"
+                      onOpen={() => openWizard('soap', dep.id)}
+                      label={soapByDep[dep.id] ? t('Edit SOAP services…') : t('Generate from WSDL…')}
+                      note={soapByDep[dep.id] && t('WSDL attached')}
+                    />
                   )}
                   {eventsCapableDeps.includes(dep.id) && (
-                    <div className="mt-3 pt-3 border-t border-outline-variant/60 flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setEventsWizardDepId(dep.id)}
-                        className="flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all active:scale-95"
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>cell_tower</span>
-                        {eventsByDep[dep.id] ? t('Edit events…') : t('Generate from AsyncAPI…')}
-                      </button>
-                      {eventsByDep[dep.id] && (
-                        <span className="text-[10px] text-secondary font-medium whitespace-nowrap">
-                          ✓ {t('document attached')}
-                        </span>
-                      )}
-                    </div>
+                    <WizardRow
+                      icon="cell_tower"
+                      onOpen={() => openWizard('events', dep.id)}
+                      label={eventsByDep[dep.id] ? t('Edit events…') : t('Generate from AsyncAPI…')}
+                      note={eventsByDep[dep.id] && t('document attached')}
+                    />
                   )}
                 </motion.div>
               )) : (
@@ -606,10 +482,14 @@ export function DependencySelector({
           </div>
 
           {/* Aggregated recommendations */}
-          <SuggestionStrip
-            suggestions={suggestions}
-            onAdd={(depId) => onChange([...selected, depId])}
-          />
+          {suggestions.length > 0 && (
+            <Suspense fallback={null}>
+              <SuggestionStrip
+                suggestions={suggestions}
+                onAdd={(depId) => onChange([...selected, depId])}
+              />
+            </Suspense>
+          )}
 
           {/* Search */}
           <div className="relative mb-6 group" data-tour="dep-search">
@@ -628,6 +508,7 @@ export function DependencySelector({
               placeholder={t('Search Web, Security, JPA...')}
               value={search}
               onChange={e => setSearch(e.target.value)}
+              onFocus={wantMatcher}
               onKeyDown={onSearchKeyDown}
               data-dep-search
             />
@@ -724,75 +605,36 @@ export function DependencySelector({
                 </div>
               )
             })}
-            {filtered.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
-                <span className="material-symbols-outlined text-secondary opacity-30 mb-3" style={{ fontSize: '48px' }}>search_off</span>
-                <p className="text-sm font-medium text-on-surface">{t('No results found')}</p>
-                <p className="text-xs text-secondary mt-1 max-w-[200px]">{t('We couldn\'t find any dependencies matching “{search}”', { search })}</p>
-                <button
-                  type="button"
-                  onClick={() => { setSearch(''); focusSearch() }}
-                  className="mt-3 px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-outline-variant text-secondary hover:text-primary hover:border-primary/50 transition-colors"
-                >
-                  {t('Clear search')}
-                </button>
-              </div>
+            {filtered.length === 0 && matcher && (
+              <matcher.Empty search={search} onClear={() => { setSearch(''); focusSearch() }} />
             )}
           </div>
         </div>
 
       </div>
       <Suspense fallback={null}>
-      {wizardDep && (
-        <SqlWizardDrawer
-          isOpen={wizardDepId !== null}
-          onClose={() => setWizardDepId(null)}
-          depId={wizardDep.id}
-          depName={wizardDep.name}
-          dialectName={sqlDialects[wizardDep.id] ?? ''}
-          initial={sqlByDep[wizardDep.id] ?? null}
+        <DependencyWizards
+          allDeps={allDeps}
+          selectedDeps={selectedDeps}
           selected={selected}
-          onSave={entry => {
-            onSqlByDepChange(wizardDep.id, entry)
-            if (entry) {
-              const missing = requiredSqlDeps(entry.apiMode ?? 'NONE')
-                .filter(d => !isSqlDepSatisfied(d, selected))
-              if (missing.length) onChange([...selected, ...missing])
-            }
-          }}
-          parseError={sqlParseError && sqlParseError.dep === wizardDep.id ? sqlParseError : null}
+          onChange={onChange}
+          open={openWizards}
+          onOpen={openWizard}
+          focusSearch={focusSearch}
+          sqlDialects={sqlDialects}
+          sqlByDep={sqlByDep}
+          onSqlByDepChange={onSqlByDepChange}
+          openApiCapableDeps={openApiCapableDeps}
+          openApiByDep={openApiByDep}
+          onOpenApiByDepChange={onOpenApiByDepChange}
+          soapCapableDeps={soapCapableDeps}
+          soapByDep={soapByDep}
+          onSoapByDepChange={onSoapByDepChange}
+          eventsCapableDeps={eventsCapableDeps}
+          eventsByDep={eventsByDep}
+          onEventsByDepChange={onEventsByDepChange}
+          sqlParseError={sqlParseError}
         />
-      )}
-      {openApiWizardDep && (
-        <OpenApiWizardDrawer
-          isOpen={openApiWizardDepId !== null}
-          onClose={() => setOpenApiWizardDepId(null)}
-          depId={openApiWizardDep.id}
-          depName={openApiWizardDep.name}
-          initial={openApiByDep[openApiWizardDep.id] ?? null}
-          onSave={entry => onOpenApiByDepChange(openApiWizardDep.id, entry)}
-        />
-      )}
-      {soapWizardDep && (
-        <SoapWizardDrawer
-          isOpen={soapWizardDepId !== null}
-          onClose={() => setSoapWizardDepId(null)}
-          depId={soapWizardDep.id}
-          depName={soapWizardDep.name}
-          initial={soapByDep[soapWizardDep.id] ?? null}
-          onSave={entry => onSoapByDepChange(soapWizardDep.id, entry)}
-        />
-      )}
-      {eventsWizardDep && (
-        <EventsWizardDrawer
-          isOpen={eventsWizardDepId !== null}
-          onClose={() => setEventsWizardDepId(null)}
-          depId={eventsWizardDep.id}
-          depName={eventsWizardDep.name}
-          initial={eventsByDep[eventsWizardDep.id] ?? null}
-          onSave={entry => onEventsByDepChange?.(eventsWizardDep.id, entry)}
-        />
-      )}
       </Suspense>
     </>
   )

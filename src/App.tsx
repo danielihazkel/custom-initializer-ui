@@ -33,7 +33,7 @@ const CommandPalette = lazy(() => loadCommandPalette().then(m => ({ default: m.C
 const ConfirmDialog = lazy(() => import('./components/ConfirmDialog').then(m => ({ default: m.ConfirmDialog })))
 const BackendUnreachable = lazy(() => import('./components/BackendUnreachable').then(m => ({ default: m.BackendUnreachable })))
 const AccessBlocked = lazy(() => import('./components/AccessBlocked').then(m => ({ default: m.AccessBlocked })))
-import { registerCommands, runCommand, useRegisteredCommands } from './commands'
+import { runCommand, useRegisteredCommands } from './commands'
 import { useBusy } from './utils/busy'
 import { withViewTransition } from './utils/viewTransition'
 import { livePreviewFor } from './utils/livePreviewCache'
@@ -56,12 +56,15 @@ import { useHotkeys } from './hooks/useHotkeys'
 const BackendShortcuts = lazy(() => import('./components/fullstack/ShortcutsOverlay').then(m => ({
   default: (props: { onClose: () => void }) => <m.ShortcutsOverlay {...props} shortcuts={m.BACKEND_SHORTCUTS} />,
 })))
-import { AppToast } from './components/AppToast'
+import { useToastProp, useToasts } from './toast'
+// Drawn only once something failed or a toast is up — not part of what the page needs to paint.
+const PreviewErrorBanner = lazy(() => import('./components/PreviewErrorBanner').then(m => ({ default: m.PreviewErrorBanner })))
+const Toaster = lazy(() => import('./components/Toaster').then(m => ({ default: m.Toaster })))
 import { InitializrSkeleton, ViewSkeleton } from './components/Skeletons'
 import { PageHeader } from './components/shared/PageHeader'
 import { PopoverMenu, type MenuItem } from './components/shared/PopoverMenu'
 
-import { triggerDownload, buildProjectRequest, captureSnapshot, validateForm } from './utils/projectUtils'
+import { buildProjectRequest, captureSnapshot, validateForm } from './utils/projectUtils'
 import type { PreviewResponse, Toast } from './types'
 import { setLang, t, useLang } from './i18n'
 
@@ -81,6 +84,14 @@ const NAV: { view: View; label: () => string; icon: string; toggle?: boolean }[]
 /** Hebrew ↔ English, with the page cross-fading into its new direction. */
 function switchLanguage(next: 'en' | 'he'): void {
   void setLang(next, update => withViewTransition(update, { name: 'view' }))
+}
+
+/** The toast stack (`toast.ts`) is drawn by a chunk that arrives with the first toast. */
+function ToastHost() {
+  const any = useToasts().length > 0
+  const ever = useRef(false)
+  if (any) ever.current = true
+  return ever.current ? <Suspense fallback={null}><Toaster /></Suspense> : null
 }
 
 export default function App() {
@@ -195,6 +206,7 @@ export default function App() {
   const [shareCopied, setShareCopied] = useState(false)
   const [generateSuccess, setGenerateSuccess] = useState(false)
   const [appToast, setAppToast] = useState<Toast | null>(null)
+  useToastProp(appToast, () => setAppToast(null))
   
   const [isDark, setIsDark] = useState<boolean>(() => {
     // The inline script in index.html already resolved & applied the theme class
@@ -258,35 +270,17 @@ export default function App() {
   }, [motionEnabled])
 
   function handleShare(): void {
-    const url = window.location.href
-    const onCopied = (): void => {
+    // The clipboard helper has the fallback that plain-http intranet hosts (no
+    // navigator.clipboard) and denied permissions need; it is fetched on the click.
+    void import('./utils/clipboard').then(m => m.copyToClipboard(window.location.href)).then(ok => {
+      if (!ok) {
+        setAppToast({ message: t("Couldn't copy link — copy it from the address bar"), type: 'error' })
+        return
+      }
       setShareCopied(true)
       setAppToast({ message: t('Link copied to clipboard'), type: 'success' })
       setTimeout(() => setShareCopied(false), 2000)
-    }
-    // Fallback for insecure contexts (plain-http intranet hosts have no navigator.clipboard)
-    // and denied permissions.
-    const fallback = (): void => {
-      try {
-        const ta = document.createElement('textarea')
-        ta.value = url
-        ta.style.position = 'fixed'
-        ta.style.opacity = '0'
-        document.body.appendChild(ta)
-        ta.select()
-        const ok = document.execCommand('copy')
-        document.body.removeChild(ta)
-        if (ok) onCopied()
-        else throw new Error('copy command rejected')
-      } catch {
-        setAppToast({ message: t("Couldn't copy link — copy it from the address bar"), type: 'error' })
-      }
-    }
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(url).then(onCopied).catch(fallback)
-    } else {
-      fallback()
-    }
+    })
   }
 
   // What the Backend tab knows of the project it last generated or imported (menora-model.json).
@@ -316,6 +310,8 @@ export default function App() {
     const slow = window.setTimeout(() => setGeneratingSlow(true), 700)
     try {
       const request = currentRequest()
+      // The download itself is fetched on the click (first-paint budget).
+      const { triggerDownload } = await import('./utils/projectDownload')
       const downloaded = await triggerDownload(...downloadArgs(), ctrl.signal)
       pushRecent(currentSnapshot)
       // The project now exists: a later change of the model is an update of it.
@@ -443,32 +439,19 @@ export default function App() {
 
   // ── Guidance: a tour per generator tab, once per browser, and a Help menu to run it again ──
   const [tour, setTour] = useState<'backend' | 'frontend' | 'fullstack' | null>(null)
+  // What the shell does beyond painting — its ⌘K commands, the tour that opens by itself once —
+  // arrives right after the first render (appExtras.ts).
+  const [extras, setExtras] = useState<typeof import('./appExtras') | null>(null)
+  useEffect(() => {
+    let live = true
+    void import('./appExtras').then(m => { if (live) setExtras(() => m) })
+    return () => { live = false }
+  }, [])
   useEffect(() => {
     const ready = TOUR_READY[view]
-    if (!ready) return
-    try {
-      if (localStorage.getItem(`tour:${ready.id}`) === 'done') return
-    } catch {
-      return
-    }
-    // Someone who followed a shared link came for that setup, not for a tour.
-    const params = new URLSearchParams(window.location.search)
-    params.delete('tab')
-    if ([...params.keys()].length > 0) return
-    // The tab may still be loading (a lazy chunk, the catalog): wait for one of its parts, and
-    // never open over a dialog.
-    let tries = 0
-    const timer = window.setInterval(() => {
-      tries += 1
-      if (document.querySelector(ready.anchor) && !document.querySelector('[role="dialog"]')) {
-        window.clearInterval(timer)
-        setTour(ready.id)
-      } else if (tries > 20) {
-        window.clearInterval(timer)
-      }
-    }, 600)
-    return () => window.clearInterval(timer)
-  }, [view])
+    if (!ready || !extras) return
+    return extras.watchForTour(ready, setTour)
+  }, [view, extras])
 
   function openShortcuts(): void {
     // Each generator tab owns its sheet; the other two register it as a command.
@@ -495,36 +478,17 @@ export default function App() {
 
   // ⌘K, on every tab: the tabs themselves and the app's own switches. Registered again when the
   // language changes, since the titles are in it.
-  useEffect(() => registerCommands([
-    ...NAV.map(item => ({
-      id: `go-${item.view}`, title: t('Go to {tab}', { tab: item.label() }), icon: item.icon, group: t('Go to'),
-      run: () => shell.current.goToView(item.view),
-    })),
-    { id: 'app-theme', title: t('Switch between light and dark'), icon: 'contrast', group: t('App'), run: () => shell.current.toggleTheme() },
-    { id: 'app-motion', title: t('Turn animations on or off'), icon: 'motion_photos_on', group: t('App'), run: () => setMotionEnabled(m => !m) },
-    { id: 'app-share', title: t('Copy a link to this setup'), icon: 'share', group: t('App'), run: () => shell.current.share() },
-    { id: 'app-tour', title: t('Take the tour of this tab'), icon: 'tour', group: t('App'), run: () => shell.current.startTour() },
-    {
-      // Not translated: whoever needs it may not read the language the site is in.
-      id: 'app-language', title: lang === 'he' ? 'Switch to English' : 'Switch to Hebrew', description: 'עברית · English · language · שפה',
-      icon: 'translate', group: t('App'), run: () => switchLanguage(lang === 'he' ? 'en' : 'he'),
-    },
-  ], 'global'), [lang])
+  useEffect(
+    () => extras?.registerGlobalCommands(NAV, shell, lang, () => setMotionEnabled(m => !m), switchLanguage),
+    [extras, lang],
+  )
 
-  // ⌘K on the Backend tab: the header's actions. The dependency picker, the presets and the model
-  // bar register their own (`backend-deps`, `backend-presets`, `backend-model`).
+  // ⌘K on the Backend tab: the header's actions.
   useEffect(() => {
-    if (view !== 'initializr') return
-    return registerCommands([
-      { id: 'backend-generate', title: t('Generate and download the project'), icon: 'download', group: t('Backend'), shortcut: 'Ctrl+Enter', run: () => { void shell.current.generate() } },
-      { id: 'backend-explore', title: t('Explore the generated files'), icon: 'folder_open', group: t('Backend'), shortcut: 'Ctrl+Shift+E', run: () => shell.current.explore() },
-      { id: 'backend-compare', title: t('Compare starter templates'), icon: 'compare_arrows', group: t('Backend'), run: () => setCompareOpen(true) },
-      { id: 'backend-multi-module', title: t('Turn the multi-module project on or off'), icon: 'account_tree', group: t('Backend'), run: () => setMultiModuleEnabled(v => !v) },
-      { id: 'backend-file-dock', title: t('Show or hide the project files'), description: t('The files this setup generates, kept current as you change it'), icon: 'account_tree', group: t('Backend'), run: () => shell.current.toggleDock() },
-      { id: 'backend-reset', title: t('Reset the project to defaults'), icon: 'restart_alt', group: t('Backend'), run: () => shell.current.reset() },
-      { id: 'backend-shortcuts', title: t('Keyboard shortcuts'), icon: 'keyboard', group: t('Backend'), shortcut: '?', run: () => setShortcutsOpen(true) },
-    ], 'backend')
-  }, [view, setMultiModuleEnabled, lang])
+    if (view !== 'initializr' || !extras) return
+    return extras.registerBackendCommands(
+      shell, () => setCompareOpen(true), () => setMultiModuleEnabled(v => !v), () => setShortcutsOpen(true))
+  }, [view, setMultiModuleEnabled, lang, extras])
 
   // The Backend tab's keys ("/" is the dependency picker's, Ctrl+S the preset picker's).
   useHotkeys([
@@ -860,29 +824,14 @@ export default function App() {
         ) : (
           <>
           {genericPreviewError && (
-            <div className="max-w-7xl mx-auto px-4 sm:px-8 relative z-10 mb-6">
-              <div role="alert" className="glass-panel border-error-container rounded-xl px-4 py-3 flex items-start gap-3">
-                <span className="material-symbols-outlined text-error mt-0.5" style={{ fontSize: '20px' }}>error</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-on-surface">{t("Couldn't generate preview")}</p>
-                  <p className="text-xs text-secondary mt-0.5 break-words">{genericPreviewError.message}</p>
-                </div>
-                <button
-                  onClick={retryPreview}
-                  disabled={previewLoading}
-                  className="px-3 py-1 rounded-lg text-xs font-medium bg-primary text-on-primary hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-60 shrink-0"
-                >
-                  {previewLoading ? t('Retrying…') : t('Retry')}
-                </button>
-                <button
-                  onClick={clearPreviewError}
-                  aria-label={t('Dismiss error')}
-                  className="p-1 rounded text-secondary hover:text-on-surface transition-colors shrink-0"
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>close</span>
-                </button>
-              </div>
-            </div>
+            <Suspense fallback={null}>
+              <PreviewErrorBanner
+                error={genericPreviewError}
+                retrying={previewLoading}
+                onRetry={retryPreview}
+                onDismiss={clearPreviewError}
+              />
+            </Suspense>
           )}
           <div className="max-w-7xl mx-auto px-4 sm:px-8 relative z-10">
             <BackendModelBar update={backendUpdate}>
@@ -1045,7 +994,7 @@ export default function App() {
         </Suspense>
       )}
 
-      <AppToast toast={appToast} onClear={() => setAppToast(null)} />
+      <ToastHost />
     </div>
     </MotionConfig>
   )

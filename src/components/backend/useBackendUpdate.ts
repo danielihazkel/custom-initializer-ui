@@ -1,9 +1,14 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ProjectSnapshot, Toast } from '../../types'
-// This hook is in the entry chunk: what an update does once asked is in ./backendUpdateActions,
-// fetched on the click, and nothing here imports from '../fullstack/' (the layout engine).
-import { readBackendBaseline, updateOffered, writeBackendBaseline, type BackendBaseline } from './backendBaseline'
+// This hook is in the entry chunk, and little else of the update is: the baseline's reader and
+// its comparison (./backendBaseline) are fetched when there is a baseline to read or keep, what
+// an update does once asked (./backendUpdateActions) on the click, and nothing here imports from
+// '../fullstack/' (the layout engine).
+import type { BackendBaseline } from './backendBaseline'
 import { t } from '../../i18n'
+
+const loadBaseline = () => import('./backendBaseline')
+type BaselineStore = Awaited<ReturnType<typeof loadBaseline>>
 
 /**
  * The Backend tab's memory of the project it last generated or imported, and what it can do with
@@ -15,12 +20,36 @@ export function useBackendUpdate(
   apply: (snapshot: ProjectSnapshot) => void,
   notify: (toast: Toast) => void,
 ) {
-  const [baseline, setBaseline] = useState<BackendBaseline | null>(readBackendBaseline)
+  const [baseline, setBaseline] = useState<BackendBaseline | null>(null)
+  const [store, setStore] = useState<BaselineStore | null>(null)
   const [busy, setBusy] = useState(false)
+  // Set once something was kept in this visit: the stored baseline, read later, must not undo it.
+  const kept = useRef(false)
+
+  // A browser that has kept no project — most first visits — fetches nothing here. The key is
+  // backendBaseline's BACKEND_BASELINE_KEY, spelled out so that module stays unfetched.
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('backend:baseline') === null) return
+    } catch {
+      return
+    }
+    let live = true
+    void loadBaseline().then(m => {
+      if (!live) return
+      setStore(() => m)
+      if (!kept.current) setBaseline(m.readBackendBaseline())
+    })
+    return () => { live = false }
+  }, [])
 
   const remember = useCallback((next: BackendBaseline | null) => {
+    kept.current = true
     setBaseline(next)
-    writeBackendBaseline(next)
+    void loadBaseline().then(m => {
+      setStore(() => m)
+      m.writeBackendBaseline(next)
+    })
   }, [])
 
   /** A project was just generated from this model: later changes are updates of it. */
@@ -33,22 +62,8 @@ export function useBackendUpdate(
    * one. The reader is fetched on the import (first-paint budget).
    */
   const importModel = useCallback(async (text: string): Promise<boolean> => {
-    const { parseBackendModel } = await import('./backendModel')
-    const parsed = parseBackendModel(text)
-    if ('error' in parsed) {
-      notify({ message: t("Couldn't import the model: {error}", { error: parsed.error }), type: 'error' })
-      return false
-    }
-    apply(parsed.snapshot)
-    remember({
-      snapshot: parsed.snapshot, catalogHash: parsed.catalogHash, snapshotId: parsed.snapshotId,
-      source: 'imported', at: Date.now(),
-    })
-    notify({
-      message: t('Opened {name} — change it and choose Download update', { name: parsed.snapshot.form.artifactId || t('the project') }),
-      type: 'success',
-    })
-    return true
+    const { importBackendModel } = await import('./backendUpdateActions')
+    return importBackendModel(text, apply, notify, remember)
   }, [apply, notify, remember])
 
   /** Returns true when the update zip downloaded. Its code is fetched on the click (first-paint budget). */
@@ -81,7 +96,7 @@ export function useBackendUpdate(
   return {
     baseline,
     /** The same project, with a model that has since changed. */
-    offered: updateOffered(baseline, current),
+    offered: store ? store.updateOffered(baseline, current) : false,
     busy,
     rememberGenerated,
     importModel,

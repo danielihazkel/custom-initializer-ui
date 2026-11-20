@@ -1,5 +1,5 @@
 import type { ProjectSnapshot, Toast } from '../../types'
-import { downloadBlob } from '../../utils/projectUtils'
+import { downloadBlob } from '../../utils/download'
 import { countsOf, describeCounts, describeUpdateBase, snapshotHeader } from '../../utils/updateCounts'
 import { backendUpdateRequest, type BackendBaseline } from './backendBaseline'
 import { requestOfSnapshot } from './backendRequest'
@@ -66,4 +66,32 @@ export async function downloadBackendUpdate(
     notify({ message: t('Update failed: {error}', { error: err instanceof Error ? err.message : String(err) }), type: 'error' })
     return false
   }
+}
+
+/**
+ * Opens a project's `menora-model.json`: the model becomes the tab's setup and the baseline of
+ * its next update. Resolves to false (and says why) when the text is not one.
+ */
+export async function importBackendModel(
+  text: string,
+  apply: (snapshot: ProjectSnapshot) => void,
+  notify: (toast: Toast) => void,
+  remember: (baseline: BackendBaseline | null) => void,
+): Promise<boolean> {
+  const { parseBackendModel } = await import('./backendModel')
+  const parsed = parseBackendModel(text)
+  if ('error' in parsed) {
+    notify({ message: t("Couldn't import the model: {error}", { error: parsed.error }), type: 'error' })
+    return false
+  }
+  apply(parsed.snapshot)
+  remember({
+    snapshot: parsed.snapshot, catalogHash: parsed.catalogHash, snapshotId: parsed.snapshotId,
+    source: 'imported', at: Date.now(),
+  })
+  notify({
+    message: t('Opened {name} — change it and choose Download update', { name: parsed.snapshot.form.artifactId || t('the project') }),
+    type: 'success',
+  })
+  return true
 }
