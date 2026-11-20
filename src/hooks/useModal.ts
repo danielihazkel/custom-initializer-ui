@@ -41,7 +41,19 @@ export function focusablesIn(root: HTMLElement): HTMLElement[] {
 }
 
 /** Open modals, bottom first. */
-const stack: symbol[] = []
+const stack: { token: symbol; ref: RefObject<HTMLElement | null> }[] = []
+
+/**
+ * Whether the modal drawn in `root` is the one the keyboard belongs to: the top of the stack, with
+ * no modal dialog on the page but the ones it lies over. For a modal with keys of its own — the
+ * layout designer's shortcuts, a drawer's Ctrl+Enter — which must stay quiet under another one.
+ * A dialog that is not on this stack (a tour's card) takes the keys from it too.
+ */
+export function ownsKeyboard(root: HTMLElement | null): boolean {
+  if (!root || stack[stack.length - 1]?.ref.current !== root) return false
+  const mine = stack.map(m => m.ref.current)
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]')).every(d => mine.includes(d))
+}
 let scrollLocks = 0
 let overflowBefore = ''
 
@@ -76,7 +88,7 @@ export function useModal(
   useEffect(() => {
     if (!active) return
     const token = Symbol('modal')
-    stack.push(token)
+    stack.push({ token, ref })
     const unlock = shouldLock ? lockScroll() : undefined
 
     const root = ref.current
@@ -86,7 +98,7 @@ export function useModal(
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (stack[stack.length - 1] !== token) return
+      if (stack[stack.length - 1]?.token !== token) return
       const el = ref.current
       if (!el) return
       if (e.key === 'Escape') {
@@ -116,7 +128,7 @@ export function useModal(
 
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      const at = stack.indexOf(token)
+      const at = stack.findIndex(m => m.token === token)
       if (at >= 0) stack.splice(at, 1)
       unlock?.()
       // StrictMode runs this cleanup once right after mounting, with the modal still open and on

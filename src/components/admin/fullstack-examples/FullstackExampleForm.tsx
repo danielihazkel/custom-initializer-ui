@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react'
-import type { FullstackNav } from '../../../types'
-import type { FullstackEntityDef, FullstackPageDef, TeamModelSummary } from '../../../types'
-import { PagesEditor } from '../../fullstack/PagesEditor'
-import { requestPages, validatePages } from '../../fullstack/pageLayout'
+import { Suspense, lazy, useState } from 'react'
+import type { TeamModelSummary } from '../../../types'
+import { PagesCard } from '../../fullstack/designer/PagesCard'
+import { getLang, isRtl, useLang } from '../../../i18n'
 import { FieldRow, inputClass, selectClass } from '../shared/FieldRow'
 import type { ExampleDraft } from './FullstackExamplesTab'
+import { useExampleDesign } from './useExampleDesign'
+
+// The designer comes when it is first opened: the form itself stays light.
+const ExampleDesigner = lazy(() => import('./ExampleDesigner'))
 
 interface Props {
   data: ExampleDraft
@@ -19,8 +22,10 @@ export function FullstackExampleForm({ data, errors, onChange, teamModels, onImp
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [pagesMode, setPagesMode] = useState<'visual' | 'json'>('visual')
-  const visual = useMemo(() => parseForVisualEditor(data.entitiesText, data.pagesText, data.settingsText), [data.entitiesText, data.pagesText, data.settingsText])
-  const showVisual = pagesMode === 'visual' && !('error' in visual)
+  // The layout as the designer edits it — or why it cannot (broken JSON is fixed in the text first).
+  const design = useExampleDesign(data, onChange)
+  // The pages card and the designer are the generator's own, so they are in the site's language.
+  useLang()
 
   async function importTeam(id: string) {
     if (!id) return
@@ -118,22 +123,31 @@ export function FullstackExampleForm({ data, errors, onChange, teamModels, onImp
               </button>
             ))}
           </div>
-          {pagesMode === 'visual' && 'error' in visual && (
-            <p className="text-xs text-secondary" data-pages-visual-unavailable>{visual.error} — edit it as JSON instead.</p>
+          {pagesMode === 'visual' && 'error' in design && (
+            <p className="text-xs text-secondary" data-pages-visual-unavailable>{design.error} — edit it as JSON instead.</p>
           )}
-          {showVisual && !('error' in visual) ? (
-            <PagesEditor
-              pages={visual.pages}
-              entities={visual.entities}
-              validation={validatePages(visual.pages, visual.entities, { scaffoldOpts: visual.scaffold })}
-              // The stored JSON is a request body, so the editor-only id lock stays out of it.
-              onChange={next => onChange({ pagesText: next.length ? JSON.stringify(requestPages(next), null, 2) : '' })}
-              pushUndo={() => {}}
-              onClear={() => onChange({ pagesText: '' })}
-              previewSettings={{ locale: visual.locale, projectOpts: visual.scaffold, skin: visual.menora ? 'menora' : 'tailwind' }}
-              nav={visual.nav}
-              layout="stacked"
-            />
+          {pagesMode === 'visual' && !('error' in design) ? (
+            <div dir={isRtl() ? 'rtl' : 'ltr'} lang={getLang()} data-example-pages>
+              <PagesCard
+                pages={design.pages}
+                entities={design.entities}
+                validation={design.validation}
+                onChange={design.setPages}
+                pushUndo={design.pushUndo}
+                onClear={design.clearPages}
+                previewSettings={{
+                  locale: design.locale, projectOpts: design.scaffold, skin: 'tailwind',
+                  dashboardTitle: design.look?.dashboardTitle, dashboardOverview: design.look?.dashboardOverview,
+                }}
+                nav={design.nav}
+                offersAppearance={design.look !== null}
+                designer={(target, onClose) => (
+                  <Suspense fallback={null}>
+                    <ExampleDesigner design={design} artifactId={data.exampleId?.trim() ?? ''} target={target} onClose={onClose} />
+                  </Suspense>
+                )}
+              />
+            </div>
           ) : (
             <textarea
               className={`${inputClass} font-mono text-xs`}
@@ -176,31 +190,4 @@ export function FullstackExampleForm({ data, errors, onChange, teamModels, onImp
       </FieldRow>
     </>
   )
-}
-
-/** What the visual page editor needs from the form's JSON fields — or why it cannot be shown
- *  (it edits a parsed layout, so broken JSON has to be fixed in the text first). */
-function parseForVisualEditor(entitiesText: string, pagesText: string | undefined, settingsText: string | undefined):
-  { entities: FullstackEntityDef[]; pages: FullstackPageDef[]; locale: 'en' | 'he'; scaffold: string[]; menora: boolean; nav?: FullstackNav } | { error: string } {
-  let entities: unknown
-  try { entities = JSON.parse(entitiesText || '[]') } catch { return { error: 'The entities are not valid JSON' } }
-  if (!Array.isArray(entities)) return { error: 'The entities are not a JSON array' }
-  let pages: unknown = []
-  if (pagesText?.trim()) {
-    try { pages = JSON.parse(pagesText) } catch { return { error: 'The pages are not valid JSON' } }
-  }
-  if (!Array.isArray(pages)) return { error: 'The pages are not a JSON array' }
-  let settings: Record<string, unknown> = {}
-  try { settings = settingsText?.trim() ? JSON.parse(settingsText) as Record<string, unknown> : {} } catch { /* preview falls back to defaults */ }
-  const safeEntities = (entities as FullstackEntityDef[])
-    .filter(e => e && typeof e.name === 'string')
-    .map(e => ({ ...e, fields: Array.isArray(e.fields) ? e.fields : [] }))
-  return {
-    entities: safeEntities,
-    pages: pages as FullstackPageDef[],
-    locale: settings.locale === 'he' ? 'he' : 'en',
-    scaffold: Array.isArray(settings.scaffold) ? (settings.scaffold as unknown[]).filter((x): x is string => typeof x === 'string') : [],
-    menora: typeof settings.frontendTemplateSet === 'string' && settings.frontendTemplateSet.includes('menora'),
-    nav: settings.nav && typeof settings.nav === 'object' ? settings.nav as FullstackNav : undefined,
-  }
 }

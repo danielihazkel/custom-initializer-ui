@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { FullstackPageType, FullstackWidgetDef } from '../../../types'
+import { ownsKeyboard, useModal } from '../../../hooks/useModal'
 import { useTeamTemplates, type TeamShare } from '../../../hooks/useTeamTemplates'
 import { ConfirmDialog } from '../../ConfirmDialog'
 import { cssEscape } from '../focus'
@@ -248,22 +249,16 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   }, [])
 
   // Modal for real: the page behind does not scroll, Tab stays inside, focus returns on close.
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null
-    const overflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    dialogRef.current?.focus()
-    return () => {
-      document.body.style.overflow = overflow
-      opener?.focus?.()
-    }
-  }, [])
+  // On the shared stack, so opened over another modal (the Admin examples drawer) the designer is
+  // the one the keys go to. Escape stays its own (below): it closes one thing at a time.
+  useModal(dialogRef, { initialFocus: false })
+  useEffect(() => { dialogRef.current?.focus() }, [])
   // The designer's keys (listed in FULLSTACK_SHORTCUTS): read through a ref, so the one listener
   // always sees the current selection.
   const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {})
   onKeyRef.current = (e: KeyboardEvent) => {
     // A confirm opened over the designer owns the keyboard.
-    if (document.querySelectorAll('[role="dialog"][aria-modal="true"]').length > 1) return
+    if (!ownsKeyboard(dialogRef.current)) return
     if (e.key === 'Escape' && !e.defaultPrevented) {
       if (isTypingTarget(e.target)) return
       e.preventDefault()
@@ -323,17 +318,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
     }
   }
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      onKeyRef.current(e)
-      if (e.key === 'Tab' && dialogRef.current) {
-        const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), select:not([disabled]), input:not([disabled]), textarea, [tabindex="0"]'))
-        if (focusable.length === 0) return
-        const first = focusable[0]
-        const last = focusable[focusable.length - 1]
-        if (e.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) { e.preventDefault(); last.focus() }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
-      }
-    }
+    const onKey = (e: KeyboardEvent) => onKeyRef.current(e)
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [])

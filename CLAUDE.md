@@ -86,7 +86,7 @@ Basics `PageBasicsFields` / Layout `PageTypeForm widgetsOnCanvas` / Access `Role
 with `dragPayload.ts` (`LibraryDrag`, kept in designer state; the event carries it too): widgets onto
 `LayoutPreview`'s `widgetDrop` (before/after the widget under the pointer, or the end slot), pages into the strip.
 The palette's page actions and Generate's jump to an error open the designer (`DesignerTarget`). Every change goes
-through `pages/usePagesModel.ts`, which `PagesEditor` uses too — the admin examples form keeps the inline editor.
+through `pages/usePagesModel.ts`, which `PagesEditor` uses too — the admin examples form kept the inline editor until *Round 14, phase 11*, and opens the designer now.
 The page forms use container queries (`@sm:` etc., `@container` on the hosts) so they stack in the 22rem
 inspector. Designer keys (`/`, Delete, Alt+←/→, Alt+Shift+←/→, Esc) are in `FULLSTACK_SHORTCUTS`. A third view,
 **Appearance** (`AppearanceView` + `FrontendSettings`), holds the generated app's look — frontend template set
@@ -136,7 +136,7 @@ strip drops onto a tabs page too (`PageStrip` `onChipDrag`). `placePart` applies
 (caps, nothing twice, the record's default tabs/tiles written out first, a step a field leaves empty
 dropped) and `usePagesModel.placePart` files it as one labelled undo step; a refusal shows in the notice.
 Pinned by `pageParts.test.ts`. The page inspector's **Code** tab (`designer/PageCode.tsx`, only when the
-host passes `codeRequest` — `FullstackView` hands its `buildBody`; the admin form does not) posts the request
+host passes `codeRequest` — `FullstackView` hands its `buildBody`, the admin form a request built from the example) posts the request
 to `/starter-fullstack.preview` on opening and again `PAGE_CODE_DEBOUNCE_MS` after each edit (not while the
 layout has problems), keeps the last answer dimmed meanwhile and shows `pageCode.ts` `pageCodeFiles`: the
 page's `src/app/screens/<PascalId>Screen.tsx` (the backend's `Naming.toPascalCase`, mirrored by
@@ -298,7 +298,7 @@ wireframe of the generated shell (dark sidebar, or the Menora top bar when the f
 `MENORA_DIGITAL`) with seeded sample data and titles that mirror `EntityScaffoldContext`'s defaults
 in en/he; clicking a part of it opens that control. The add gallery also offers `suggestPages`
 (master-detail/record where relations exist, a report, a trend dashboard). The admin examples form
-reuses `PagesEditor` (`layout="stacked"`) with a JSON fallback. A nav page can take a **group** and an
+reused `PagesEditor` (`layout="stacked"`) until *Round 14, phase 11*; it has the pages card and the designer now, with a JSON fallback. A nav page can take a **group** and an
 **icon** (`NavFields`; `NAV_ICONS` maps the backend's lucide whitelist to look-alike Material Symbols,
 `DEFAULT_NAV_ICON` is the type's own); `navSections` groups the nav exactly as the generated shell
 does (a group gathered where it first appears), and hiding a page drops both. Dashboards have a
@@ -1000,3 +1000,21 @@ Every addition to a screen's model is optional and absent when it does not apply
 Not drawn: pictures on board and inbox cards; a parent's live total over its rows; the second side's picker of a many-to-many. **Fixed with it** (older than the phase, added at Daniel's word): the canvas's form page listed a workflow's status and assignee, which the generated form leaves out — its fields are now `askableFields` without the two.
 
 Pinned by `LayoutPreviewCatchUp.test.tsx` (the model and the drawing, 13 cases). Looked at in a real browser on the Approvals example: the three tools, the funnel and time in state, the receipts' drop zone in the form and the attachment in the record's details.
+
+### Phase 11: the Admin examples form opens the full-screen designer
+
+Config → Fullstack Examples edited an example's layout in the inline `PagesEditor`, squeezed into the drawer: no undo, no Appearance, no Code tab, no navigation settings. The form's *Visual* mode is now the Fullstack tab's pages card, and **Open designer** opens the same `LayoutDesigner` over the drawer.
+
+- **`designer/PagesCard.tsx`** is the card that was `PagesSection` (the sitemap chips, the problem count, *Start from my entities*, the templates, *Use classic layout*), without the designer: it takes `designer: (target, onClose) => ReactNode` and does not import `LayoutDesigner`. `PagesSection` is now the card plus the designer mounted directly — what the Fullstack tab uses, unchanged for it. `offersAppearance` shows the card's *Appearance* button for a host that builds its `appearance` only once the designer is open.
+- **`admin/fullstack-examples/useExampleDesign.ts`** gives the designer what `FullstackView` gives it, from the form's three JSON texts:
+  - the parsed entities, pages and validation — or why the layout cannot be designed (text that does not parse is fixed as JSON first, as before). The pages the designer handed over last are kept as objects while the text is still that layout, so a page keeps its row (selection, open cards) across an edit;
+  - `setPages` (the stored JSON is a request body: `requestPages`), `clearPages`, and the look and navigation **written into the example's settings**: `frontendTemplateSet` (a brand set brings its language and RTL, `frontendSetDefaults`), `colorPalette` (none = the set's own), `locale`, `dashboardTitle` / `dashboardOverview`, `rtl` in `scaffold` (an emptied list is no `scaffold` key — an example without one leaves the user's options alone) and `nav`. Keys it does not know (`backendTemplateSet`) stay as they are. **Settings that are not a JSON object are left alone:** no Appearance view, no navigation controls, the text untouched;
+  - **undo and redo** — `useSnapshotHistory`'s second user. The snapshot is the two texts the designer writes (`pagesText`, `settingsText`), so an undo puts back exactly what was there; the labels and the burst keys are the Fullstack tab's (`describeSnapshotChange` / `snapshotChangeKey` over the texts read as a `FullstackSnapshot`). Edits typed into the JSON boxes are steps too. What an undo did is a toast (`showToast`);
+  - `request(deps)` — the generation request the example stands for (`requestFromSnapshot`: the example's id as the artifact, its name, the stock project settings), for the Code tab and the spec sheet.
+- **`admin/fullstack-examples/ExampleDesigner.tsx`** (default export, `lazy()` in the form) is mounted while the designer is open: it asks for the template sets and the palettes only then (`useTemplateSets`, `useFrontendMetadata`), builds the `FrontendAppearance` and the preview settings (skin, palette), hands `codeRequest` the backend set's default dependencies, and binds Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y outside a field while it is open.
+- **Chunks.** `LayoutDesigner` is a chunk of its own (about 123 KB); the Fullstack tab's chunk imports it, and the Admin form fetches it — and not the Fullstack tab's chunk — on the first *Open designer*, or sooner: `AdminPage`'s idle prefetch, which used to warm the inline editor, warms `ExampleDesigner` now. The entry chunk is unchanged.
+- **Two modals at once.** `LayoutDesigner` is on `useModal`'s stack (scroll lock, Tab trap and focus return are the hook's now; its layered Escape stays its own). `useModal.ts` exports **`ownsKeyboard(root)`**: the top of the stack, with no other modal dialog on the page but the ones under it — a dialog that is not on the stack (a tour's card) still takes the keys. The designer's shortcuts ask it instead of "is there a second dialog", which made them give up over any drawer; `AdminFormDrawer`'s Ctrl+Enter asks it too, so the drawer under the designer (or under a confirm) does not save. **A modal with keys of its own asks `ownsKeyboard`.**
+- **Language.** The card and the designer are the generator's own, so they follow the site's language: the card is wrapped in the site's `dir` / `lang` inside the English, left-to-right drawer, and the designer is a portal on the page. Config around them stays English. No new text: nothing was added to the Hebrew dictionary.
+- The inline `PagesEditor` component now has no user but its own tests (`PagesEditor.test.tsx`, `PagesEditorBulk.test.tsx`); `summarizeLayout` and the props type still come from its file. Not removed.
+
+Pinned by `admin/fullstack-examples/FullstackExampleForm.test.tsx` (the card, the designer writing pages and settings back, undo, unparsable settings, the Code tab's request, and the designer over the drawer: its keys, Escape closing it alone, the drawer's Ctrl+Enter waiting, Tab staying inside). `LayoutDesigner.test.tsx` passes untouched. Tried in a real browser on the Approvals example, in English and in Hebrew: the card in the drawer, the designer over it, Play, an edit and its undo, the Code tab answered by the server, Appearance, and that the Fullstack tab's chunk is never fetched.

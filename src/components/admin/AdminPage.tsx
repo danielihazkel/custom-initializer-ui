@@ -35,12 +35,13 @@ const TABS = Object.fromEntries(
   Object.entries(TAB_LOADERS).map(([id, load]) => [id, lazy(load)]),
 ) as Record<AdminTab, LazyExoticComponent<ComponentType>>
 
-/** Loads every tab's chunk (and with it the code and layout editors) while the browser is idle. */
+/** Loads every tab's chunk (and with it the code editor and the examples' layout designer) while
+ *  the browser is idle. */
 function prefetchTabs() {
   const load = () => {
     for (const loader of Object.values(TAB_LOADERS)) loader().catch(() => {})
     import('./file-contributions/CodeEditor').catch(() => {})
-    import('../fullstack/PagesEditor').catch(() => {})
+    import('./fullstack-examples/ExampleDesigner').catch(() => {})
   }
   if ('requestIdleCallback' in window) {
     const id = window.requestIdleCallback(load, { timeout: 3000 })

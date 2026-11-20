@@ -2454,7 +2454,7 @@ On every start, each shipped file row is compared with what the database holds:
 \`POST /admin/entity-template-sets/reset\` takes every set back to the shipped files, discarding edits (there is no button for it). \`initializr.fullstack.template-sync=off\` turns the sync off. The **Fullstack Examples** follow the same rule (an edited example is kept), except that a deleted example is not added back.
 
 ### Fullstack Examples
-**Config → Fullstack Examples** manages the Start-from examples: entities, an optional page layout and editor settings. Every save is checked like a generation request, so a stored example always generates; a Team model's entities can be copied in.
+**Config → Fullstack Examples** manages the Start-from examples: entities, an optional page layout and editor settings. Every save is checked like a generation request, so a stored example always generates; a Team model's entities can be copied in. The page layout is designed in the Fullstack tab's own full-screen layout designer (**Open designer** on the form's pages card), with its undo, Appearance view and Code tab; the look and the navigation set there are kept in the example's settings. The JSON boxes remain for editing by hand.
 
 ### Export / Import
 The configuration export carries the sets, their files and default dependencies, and the fullstack examples. It does not carry team models, team templates or team presets.

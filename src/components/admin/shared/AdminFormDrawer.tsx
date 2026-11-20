@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useModal } from '../../../hooks/useModal'
+import { ownsKeyboard, useModal } from '../../../hooks/useModal'
 
 interface AdminFormDrawerProps {
   title: string
@@ -40,10 +40,10 @@ export function AdminFormDrawer({
   // and focus returns to the opener. The first field is focused below, once the panel is in.
   useModal(drawerRef, { active: isOpen, onClose: saving ? undefined : onClose, initialFocus: false })
 
-  // Cmd/Ctrl + Enter to save
+  // Cmd/Ctrl + Enter to save — not from under another modal (the layout designer, a confirm)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return
+      if (!isOpen || !ownsKeyboard(drawerRef.current)) return
 
       const isCmdOrCtrl = e.metaKey || e.ctrlKey
       if (!saving && isCmdOrCtrl && e.key === 'Enter') {
