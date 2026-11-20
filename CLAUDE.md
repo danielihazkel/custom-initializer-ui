@@ -925,3 +925,5 @@ The UI side of *Phase 8* in `backend/CLAUDE.md` (the other three items need noth
 - Four new Hebrew entries (two in `he/shell.ts`, shared by the three areas; two in `he/fullstack.ts`). The Guide: who may change team data, typed connections off by default, the login limit, the request size limit.
 
 Pinned by `utils/teamAuth.test.tsx` and the "somebody else saved" case of `designer/LayoutDesigner.test.tsx`.
+
+**After phase 8.** Admin → Dependency Groups saves a group with its own fields only (`name`, `sortOrder`, `projectKind`); the row as listed also holds the group's dependencies as they were when the tab loaded, and the server no longer takes them from a group (*After phase 8* in `backend/CLAUDE.md`).

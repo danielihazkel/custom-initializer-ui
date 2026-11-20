@@ -80,7 +80,9 @@ export function DependencyGroupsTab() {
       if (isNew) {
         await create(editing as Omit<AdminDependencyGroup, 'id'>)
       } else {
-        await update(editing.id!, editing)
+        // The group's own fields only: the row as listed also holds its dependencies as they
+        // were when this tab loaded, and those are saved on the Dependencies tab.
+        await update(editing.id!, { name: editing.name, sortOrder: editing.sortOrder, projectKind: editing.projectKind })
       }
       setToast({ message: 'Saved successfully', type: 'success' })
       closeDrawer()
