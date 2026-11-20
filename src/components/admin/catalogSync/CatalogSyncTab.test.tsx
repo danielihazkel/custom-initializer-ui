@@ -102,6 +102,78 @@ describe('CatalogSyncTab', () => {
     expect(document.querySelector('[data-sync-content]')!.textContent).toContain('bootstrap-servers')
   })
 
+  it('narrows to one table, and says what a row whose dependency is gone lacks', async () => {
+    const dependencies: CatalogSyncReport = {
+      enabled: true,
+      summary: { DIFFERS: 2, PARENT_GONE: 1, DELETED: 1 },
+      rows: [
+        { key: 'g', table: 'DEPENDENCY_GROUP', kind: 'BACKEND', dependencyId: null, label: 'backend group Messaging', status: 'DIFFERS', rowId: 3 },
+        { key: 'r', table: 'DEPENDENCY_ENTRY', kind: 'BACKEND', dependencyId: 'redis', label: 'backend dependency redis', status: 'DELETED', rowId: null },
+        { key: 'o', table: 'SUB_OPTION', kind: 'BACKEND', dependencyId: 'kafka', label: 'backend option kafka / consumer-example', status: 'DIFFERS', rowId: 8 },
+        { key: 'f', table: 'FILE_CONTRIBUTION', kind: 'BACKEND', dependencyId: 'redis', label: 'backend file redis → RedisConfig.java',
+          status: 'PARENT_GONE', rowId: null, reason: "the dependency 'redis' is not in the catalog" },
+      ],
+    }
+    const calls = stub(url => {
+      if (url === '/admin/catalog-sync/apply') {
+        return new Response(JSON.stringify({ written: 1, skipped: [dependencies.rows[3]], summary: {} }))
+      }
+      if (url === '/admin/catalog-sync/g') {
+        return new Response(JSON.stringify({
+          row: dependencies.rows[0],
+          current: { id: 3, name: 'Queues and streams', sortOrder: 3, projectKind: 'BACKEND' },
+          shipped: { id: null, name: 'Messaging', sortOrder: 3, projectKind: 'BACKEND' },
+        }))
+      }
+      return new Response(JSON.stringify(dependencies))
+    })
+    render(<CatalogSyncTab />)
+    const table = await waitFor(() => {
+      const el = document.querySelector('[data-sync-rows]') as HTMLElement
+      expect(within(el).getByText('backend group Messaging')).toBeTruthy()
+      return el
+    })
+    // Like a deleted row, one whose parent is gone is the admin's own doing: listed on request, with what is missing.
+    expect(within(table).queryByText("the dependency 'redis' is not in the catalog")).toBeNull()
+    fireEvent.click(document.querySelector('[data-sync-status="PARENT_GONE"]')!)
+    expect(within(table).getByText("the dependency 'redis' is not in the catalog")).toBeTruthy()
+    expect(within(table).queryByText('backend dependency redis')).toBeNull()
+
+    // One table at a time; each says how many of its rows need a look.
+    expect(document.querySelector('[data-sync-table="SUB_OPTION"]')!.textContent).toBe('Sub-option 1')
+    expect(document.querySelector('[data-sync-table="COMPATIBILITY_RULE"]')!.textContent).toBe('Compatibility rule')
+    fireEvent.click(document.querySelector('[data-sync-table="SUB_OPTION"]')!)
+    expect(within(table).getByText('backend option kafka / consumer-example')).toBeTruthy()
+    expect(within(table).queryByText('backend group Messaging')).toBeNull()
+    expect(document.querySelector('[data-sync-status="DIFFERS"]')!.textContent).toContain('1')
+    fireEvent.click(document.querySelector('[data-sync-table="ALL"]')!)
+
+    // A group is a table of fields like any row: no content to diff.
+    fireEvent.click(within(document.querySelector('[data-sync-row="g"]') as HTMLElement).getByRole('button', { name: 'Compare' }))
+    const fields = await waitFor(() => {
+      const el = document.querySelector('[data-sync-fields]') as HTMLElement
+      expect(el).toBeTruthy()
+      return el
+    })
+    expect(within(fields).getByText('name').closest('tr')!.getAttribute('data-changed')).toBe('true')
+    expect(within(fields).getByText('Queues and streams')).toBeTruthy()
+    expect(document.querySelector('[data-sync-content]')).toBeNull()
+    fireEvent.click(screen.getByLabelText('Close'))
+
+    // Taking rows answers which of them could not be written, and why.
+    fireEvent.click(screen.getByLabelText('Pick backend file redis → RedisConfig.java'))
+    fireEvent.click(screen.getByLabelText('Pick backend group Messaging'))
+    fireEvent.click(within(document.querySelector('[data-sync-bulk]') as HTMLElement).getByRole('button', { name: 'Take shipped' }))
+    const skipped = await waitFor(() => {
+      const el = document.querySelector('[data-sync-skipped]') as HTMLElement
+      expect(el).toBeTruthy()
+      return el
+    })
+    expect(skipped.textContent).toContain('1 row was not written')
+    expect(skipped.textContent).toContain("backend file redis → RedisConfig.java — the dependency 'redis' is not in the catalog")
+    expect(JSON.parse(calls.find(c => c.url === '/admin/catalog-sync/apply')!.body!).keys.sort()).toEqual(['f', 'g'])
+  })
+
   it('says when the sync is switched off', async () => {
     stub(() => new Response(JSON.stringify({ ...report, enabled: false })))
     render(<CatalogSyncTab />)

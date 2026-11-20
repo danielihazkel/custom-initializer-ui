@@ -3,26 +3,34 @@ import { getAuthHeaders, handle401, invalidateAdminCache } from '../../../hooks/
 import { invalidateMetadata } from '../../../hooks/useMetadata'
 import { DiffContentViewer } from '../../DiffContentViewer'
 import { useAdminKind } from '../AdminKindContext'
-import type { CatalogSyncDetail, CatalogSyncReport, CatalogSyncRow, CatalogSyncStatus } from '../../../types'
+import type { CatalogSyncDetail, CatalogSyncReport, CatalogSyncRow, CatalogSyncStatus, CatalogSyncTable } from '../../../types'
 
 /**
- * Where the catalog's file contributions and build customizations stand against the ones this
- * release ships (`/admin/catalog-sync`, *Catalog sync* in backend/CLAUDE.md). A row nobody edited
- * follows the release by itself; this screen is for the rest: take the shipped version, or keep
- * your own (it is then no longer reported, and never replaced).
+ * Where the catalog's rows — dependency groups and entries, sub-options, compatibility rules, file
+ * contributions and build customizations — stand against the ones this release ships
+ * (`/admin/catalog-sync`, *Catalog sync* in backend/CLAUDE.md). A row nobody edited follows the
+ * release by itself; this screen is for the rest: take the shipped version, or keep your own (it is
+ * then no longer reported, and never replaced).
  */
 export const STATUSES: Record<CatalogSyncStatus, { label: string; tone: string; hint: string }> = {
   DIFFERS: { label: 'Differs', tone: 'bg-warning/15 text-warning', hint: 'Edited here, or from before the release tracked it' },
   MISSING: { label: 'Missing', tone: 'bg-primary/15 text-primary', hint: 'Shipped, never added to this database' },
+  PARENT_GONE: { label: 'Parent gone', tone: 'bg-error/15 text-error', hint: 'Its dependency (or its group) is not in this catalog, so it is not added' },
   DELETED: { label: 'Deleted', tone: 'bg-error/15 text-error', hint: 'Added once, deleted since' },
   KEPT: { label: 'Kept', tone: 'bg-tertiary/15 text-tertiary', hint: 'Yours: no longer replaced' },
   IN_STEP: { label: 'In step', tone: 'bg-surface-container-high text-secondary', hint: 'The shipped row' },
 }
-const ORDER: CatalogSyncStatus[] = ['DIFFERS', 'MISSING', 'DELETED', 'KEPT', 'IN_STEP']
-const TABLES: Record<CatalogSyncRow['table'], string> = {
+const ORDER: CatalogSyncStatus[] = ['DIFFERS', 'MISSING', 'PARENT_GONE', 'DELETED', 'KEPT', 'IN_STEP']
+/** In the order the sync writes them: a row comes after what it needs. */
+const TABLES: Record<CatalogSyncTable, string> = {
+  DEPENDENCY_GROUP: 'Dependency group',
+  DEPENDENCY_ENTRY: 'Dependency',
+  SUB_OPTION: 'Sub-option',
+  COMPATIBILITY_RULE: 'Compatibility rule',
   FILE_CONTRIBUTION: 'File contribution',
   BUILD_CUSTOMIZATION: 'Build customization',
 }
+const TABLE_ORDER = Object.keys(TABLES) as CatalogSyncTable[]
 /** Fields shown in the detail table; `content` gets a diff of its own and `id` says nothing. */
 const HIDDEN_FIELDS = new Set(['id', 'content'])
 
@@ -32,18 +40,19 @@ async function getJson<T>(url: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
-async function post(url: string, body: object): Promise<{ ok: true; count: number } | { error: string }> {
+async function post(url: string, body: object): Promise<{ ok: true; count: number; skipped: CatalogSyncRow[] } | { error: string }> {
   const res = handle401(await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(body),
   }))
-  const data = (await res.json().catch(() => null)) as { detail?: string; written?: number; marked?: number } | null
+  const data = (await res.json().catch(() => null)) as
+    { detail?: string; written?: number; marked?: number; skipped?: CatalogSyncRow[] } | null
   if (!res.ok) return { error: data?.detail ?? `HTTP ${res.status}` }
   // The catalog moved: the other admin tabs and the generator read it afresh.
   invalidateAdminCache()
   invalidateMetadata()
-  return { ok: true, count: data?.written ?? data?.marked ?? 0 }
+  return { ok: true, count: data?.written ?? data?.marked ?? 0, skipped: data?.skipped ?? [] }
 }
 
 export function CatalogSyncTab() {
@@ -55,6 +64,9 @@ export function CatalogSyncTab() {
   const [open, setOpen] = useState<CatalogSyncRow | null>(null)
   const [confirmAll, setConfirmAll] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  // What the last "take shipped" could not write: rows whose dependency or group is not there.
+  const [skipped, setSkipped] = useState<CatalogSyncRow[]>([])
+  const [table, setTable] = useState<CatalogSyncTable | 'ALL'>('ALL')
   const [busy, setBusy] = useState(false)
   const [tick, setTick] = useState(0)
 
@@ -69,12 +81,19 @@ export function CatalogSyncTab() {
 
   // The rows of the kind the admin is looking at (the sidebar's Backend / Frontend switch).
   const ofKind = useMemo(() => (report?.rows ?? []).filter(r => r.kind === kind), [report, kind])
+  // …and of the table picked. The status counts follow it; the table counts say what is out of step where.
+  const ofTable = useMemo(() => (table === 'ALL' ? ofKind : ofKind.filter(r => r.table === table)), [ofKind, table])
   const counts = useMemo(() => {
     const out: Partial<Record<CatalogSyncStatus, number>> = {}
-    for (const r of ofKind) out[r.status] = (out[r.status] ?? 0) + 1
+    for (const r of ofTable) out[r.status] = (out[r.status] ?? 0) + 1
+    return out
+  }, [ofTable])
+  const openByTable = useMemo(() => {
+    const out: Partial<Record<CatalogSyncTable, number>> = {}
+    for (const r of ofKind) if (r.status !== 'IN_STEP' && r.status !== 'KEPT') out[r.table] = (out[r.table] ?? 0) + 1
     return out
   }, [ofKind])
-  const rows = useMemo(() => ofKind.filter(r => shown.has(r.status)), [ofKind, shown])
+  const rows = useMemo(() => ofTable.filter(r => shown.has(r.status)), [ofTable, shown])
   const pickedRows = rows.filter(r => picked.has(r.key))
   const outOfStep = (counts.DIFFERS ?? 0) + (counts.MISSING ?? 0)
   // What "every shipped row" takes: both catalogs, as the server counts them.
@@ -89,6 +108,7 @@ export function CatalogSyncTab() {
         return
       }
       setMessage(done(result.count))
+      setSkipped(result.skipped)
       setPicked(new Set())
       setOpen(null)
       setConfirmAll(false)
@@ -125,8 +145,9 @@ export function CatalogSyncTab() {
         <div>
           <h2 className="text-2xl font-bold text-on-surface tracking-tight">Catalog Sync</h2>
           <p className="text-sm text-secondary mt-1 max-w-3xl">
-            The file contributions and build customizations this release ships, against this database. A row nobody edited follows the
-            release on start; the rows below are the ones that need your call — take the shipped version, or keep your own.
+            The catalog this release ships — dependency groups and dependencies, sub-options, compatibility rules, file contributions and
+            build customizations — against this database. A row nobody edited follows the release on start; the rows below are the ones
+            that need your call — take the shipped version, or keep your own.
           </p>
         </div>
         <button type="button" disabled={busy || outOfStepAll === 0} onClick={() => setConfirmAll(true)} data-sync-apply-all
@@ -144,10 +165,34 @@ export function CatalogSyncTab() {
       {message && (
         <div role="status" className="flex items-center justify-between p-3 rounded-xl bg-primary/10 border border-primary/30 text-sm text-on-surface">
           {message}
-          <button type="button" onClick={() => setMessage(null)} className="text-xs text-secondary hover:text-on-surface">Dismiss</button>
+          <button type="button" onClick={() => { setMessage(null); setSkipped([]) }} className="text-xs text-secondary hover:text-on-surface">Dismiss</button>
+        </div>
+      )}
+      {skipped.length > 0 && (
+        <div role="status" data-sync-skipped className="p-3 rounded-xl bg-warning/10 border border-warning/30 text-sm text-on-surface space-y-1">
+          <p className="font-semibold">
+            {skipped.length} row{skipped.length === 1 ? ' was' : 's were'} not written: what {skipped.length === 1 ? 'it belongs' : 'they belong'} to is not in this catalog.
+            Take the dependency (or the group) as well, and they can follow.
+          </p>
+          <ul className="list-disc ps-5 text-xs">
+            {skipped.map(r => (
+              <li key={r.key}><span className="font-mono">{r.label}</span>{r.reason ? ` — ${r.reason}` : ''}</li>
+            ))}
+          </ul>
         </div>
       )}
       {error && <div className="p-3 rounded-xl bg-error/10 border border-error/30 text-error text-sm">Failed to load the catalog sync: {error}</div>}
+
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Show rows of">
+        {(['ALL', ...TABLE_ORDER] as const).map(id => (
+          <button key={id} type="button" aria-pressed={table === id} onClick={() => setTable(id)} data-sync-table={id}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${table === id
+              ? 'border-primary/40 bg-primary/10 text-on-surface' : 'border-outline-variant text-secondary hover:text-on-surface'}`}>
+            {id === 'ALL' ? 'Every table' : TABLES[id]}
+            {id !== 'ALL' && (openByTable[id] ?? 0) > 0 && <span className="tabular-nums opacity-70"> {openByTable[id]}</span>}
+          </button>
+        ))}
+      </div>
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Show rows that are">
         {ORDER.map(s => (
@@ -204,7 +249,10 @@ export function CatalogSyncTab() {
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUSES[r.status].tone}`}>{STATUSES[r.status].label}</span>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs break-all">{r.label}</td>
+                  <td className="px-4 py-3 text-xs">
+                    <span className="font-mono break-all">{r.label}</span>
+                    {r.reason && <span className="block text-error mt-0.5" data-sync-reason>{r.reason}</span>}
+                  </td>
                   <td className="px-4 py-3 text-xs text-secondary">{r.dependencyId ?? '—'}</td>
                   <td className="px-4 py-3 text-xs text-secondary whitespace-nowrap">{TABLES[r.table]}</td>
                   <td className="px-4 py-3 text-right">
@@ -280,7 +328,7 @@ function RowDetail({ row, busy, onClose, onApply, onKeep }: {
             <h3 className="text-lg font-bold text-on-surface font-mono break-all">{row.label}</h3>
             <p className="text-sm text-secondary mt-1">
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase mr-2 ${STATUSES[row.status].tone}`}>{STATUSES[row.status].label}</span>
-              {STATUSES[row.status].hint}
+              {row.reason ?? STATUSES[row.status].hint}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="p-1 text-secondary hover:text-on-surface">
@@ -290,7 +338,10 @@ function RowDetail({ row, busy, onClose, onApply, onKeep }: {
 
         <div className="flex flex-wrap gap-2">
           {row.status !== 'IN_STEP' && (
-            <button type="button" disabled={busy} onClick={onApply} className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-semibold disabled:opacity-40">
+            // Alone, a row whose dependency or group is gone cannot be written: pick it with that row in the list.
+            <button type="button" disabled={busy || row.status === 'PARENT_GONE'} onClick={onApply}
+              title={row.status === 'PARENT_GONE' ? `Take what it belongs to first: ${row.reason ?? ''}` : undefined}
+              className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-semibold disabled:opacity-40">
               Take shipped
             </button>
           )}

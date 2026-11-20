@@ -105,7 +105,7 @@ Dependency groups are purely organizational — they do not affect what gets gen
 ### Out-of-the-Box Groups
 The system seeds the following groups on first startup: **Menora Standards**, **Web**, **Data**, **Messaging**, **Security**, **Observability**, **Communication** and **Utilities**.
 
-Groups and dependency entries are seeded once, into an empty database. Unlike file contributions and build customizations, they do not follow a release afterwards (see **Catalog Sync**): a dependency a new release ships is added by an admin, or by importing a configuration.
+Groups and dependency entries are seeded into an empty database, and from then on follow the release like file contributions and build customizations do (see **Catalog Sync**): a dependency a new release ships is added on start, and one nobody edited is brought up to date. A database from before this takes one start to record what it has, changing nothing; what differs from the release is then listed in Admin → Catalog sync.
 
 ### Ordering
 Groups appear in the dependency picker in \`sortOrder\` ascending order. Use the **drag-to-reorder** feature in the Dep Groups admin tab — drag a row to the desired position, then click **Save Order**.`,
@@ -2669,33 +2669,43 @@ The log is kept forever. A shipped template file the release re-seeds comes back
       {
         id: 'catalog-sync',
         title: 'Catalog Sync: Rows That Follow a Release',
-        description: 'How file contributions and build customizations move with the release, and how an admin keeps their own.',
+        description: 'How the catalog\'s rows move with the release, and how an admin keeps their own.',
         content: `### What Follows a Release
 | Catalog | On start |
 |---|---|
-| File contributions, build customizations | **Catalog sync**: a shipped row nobody edited is rewritten to the release's version; a new shipped row is added; an edited row is left alone and reported |
+| Dependency groups and entries, sub-options, compatibility rules, file contributions, build customizations | **Catalog sync**: a shipped row nobody edited is rewritten to the release's version; a new shipped row is added; an edited row is left alone and reported; a row no longer shipped is removed when nobody edited it and nothing uses it |
 | Fullstack template sets | **Template sync**: unedited files follow, edited ones are kept, deleted shipped files come back |
 | Fullstack examples | Unedited examples follow; edited ones are kept; deleted ones stay deleted |
 | Versions | New shipped versions are added |
-| Groups, entries, sub-options, compatibility rules, starter and module templates | Seeded once, into an empty database — never changed by a release |
+| Starter and module templates | Seeded once, into an empty database — never changed by a release |
 
 ### The First Start of an Existing Database
 The first time a database meets the catalog sync, it cannot tell an admin's edit from an older release's content, so **that start changes nothing**: it records every shipped row, and logs a warning with how many differ or are missing. From then on, rows follow as above.
 
+This is per table. File contributions and build customizations have been synced for some releases; dependency groups, entries, sub-options and compatibility rules take their first look on the first start of the release that added them — on a database that is otherwise long past its baseline.
+
+### A Row and What It Belongs To
+An entry belongs to its group; a sub-option, a compatibility rule, a file contribution and a build customization belong to their dependency. Rows are written parents first, so a dependency a release adds arrives with everything of its.
+
+- **Parent gone.** A shipped row whose dependency (or, for an entry, whose group) is not in the catalog — an admin deleted it — is not added. Its status is **Parent gone**, with what is missing. Take the dependency back together with its rows and they are written in one go.
+- **A renamed group is still the shipped group.** It shows as **Differs** and keeps its name (or is marked **Kept**); the entries a release ships for it land in it, not in a second group of the old name.
+- **An entry in another group.** Moved by an admin, it differs and stays where it is. Moved by a release, it follows when nobody touched it.
+- **A row a release stops shipping** is removed when nobody edited it and nothing still uses it: a dependency only when no option, rule, file, build row, starter template, module or template set names it; a group only when it is empty.
+
 ### Reviewing and Taking Shipped Rows
-In the admin panel, **Catalog sync** lists the rows that differ from the release or are missing, for the catalog (Backend / Frontend) the sidebar shows. Status chips narrow the list (Kept and In step rows are there too). Tick rows and choose **Take shipped** or **Keep mine** — a kept row is no longer reported and never replaced, and **Follow the release again** undoes that. **Compare** opens a row: its fields here beside the shipped ones, and its content as a diff. **Take every shipped row** applies the release to every row of both catalogs that differs or is missing, after asking.
+In the admin panel, **Catalog sync** lists the rows that differ from the release or are missing, for the catalog (Backend / Frontend) the sidebar shows. A row of table chips narrows it to one table (dependency groups, dependencies, sub-options, compatibility rules, file contributions, build customizations), each with the number of its rows that need a look; status chips narrow it further (Parent gone, Deleted, Kept and In step rows are there too). Tick rows and choose **Take shipped** or **Keep mine** — a kept row is no longer reported and never replaced, and **Follow the release again** undoes that. **Compare** opens a row: its fields here beside the shipped ones, and its content as a diff. **Take every shipped row** applies the release to every row of both catalogs that differs or is missing, after asking. When some of the rows taken could not be written — their dependency or group is not there — a notice lists them and why. A dependency taken here is offered by the generator at once.
 
 The same is open to scripts, behind the admin login:
-- \`GET /admin/catalog-sync\` — every shipped row with its status: \`IN_STEP\`, \`DIFFERS\`, \`MISSING\`, \`KEPT\`, \`DELETED\` (\`?status=DIFFERS,MISSING\` to narrow).
+- \`GET /admin/catalog-sync\` — every shipped row with its \`table\` and status: \`IN_STEP\`, \`DIFFERS\`, \`MISSING\`, \`KEPT\`, \`DELETED\`, \`PARENT_GONE\` (with a \`reason\`) (\`?status=DIFFERS,MISSING\` to narrow).
 - \`GET /admin/catalog-sync/{key}\` — the shipped and current row side by side.
-- \`POST /admin/catalog-sync/apply\` \`{keys: […]}\` or \`{all: true}\` — take the shipped version (never of a row marked kept or deleted unless named).
+- \`POST /admin/catalog-sync/apply\` \`{keys: […]}\` or \`{all: true}\` — take the shipped version (never of a row marked kept or deleted unless named). Answers \`{written, skipped, summary}\`; \`skipped\` are the rows whose parent is gone.
 - \`POST /admin/catalog-sync/keep\` \`{keys: […]}\` — mark rows as the admin's own: no longer reported, never replaced (\`kept: false\` undoes it).
 
 \`initializr.catalog.sync=off\` turns it off. Everything the sync writes is in History (source "catalog-sync" or "release-sync").`,
         callouts: [
           {
             type: 'warning',
-            text: 'After upgrading an existing installation, open Admin → Catalog sync: fixes a release made to shipped rows (Dockerfiles, nginx, datasource configs) reach that database only once an admin applies them.'
+            text: 'After upgrading an existing installation, open Admin → Catalog sync: fixes a release made to shipped rows (Dockerfiles, nginx, datasource configs — and dependency descriptions, coordinates, sub-options and rules) reach rows that differed at that first look only once an admin applies them.'
           }
         ]
       },

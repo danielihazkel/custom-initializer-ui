@@ -1072,17 +1072,24 @@ export interface ActivitySummary {
 }
 
 /** Where a row this release ships stands in the database (`db/CatalogSync.Status`). */
-export type CatalogSyncStatus = 'IN_STEP' | 'DIFFERS' | 'MISSING' | 'KEPT' | 'DELETED'
+export type CatalogSyncStatus = 'IN_STEP' | 'DIFFERS' | 'MISSING' | 'KEPT' | 'DELETED' | 'PARENT_GONE'
+
+/** The catalog tables the sync covers, in the order it writes them (`CatalogSeedEntity.RowTable`). */
+export type CatalogSyncTable =
+  | 'DEPENDENCY_GROUP' | 'DEPENDENCY_ENTRY' | 'SUB_OPTION' | 'COMPATIBILITY_RULE'
+  | 'FILE_CONTRIBUTION' | 'BUILD_CUSTOMIZATION'
 
 /** One shipped catalog row and where it stands (`GET /admin/catalog-sync`). */
 export interface CatalogSyncRow {
   key: string
-  table: 'FILE_CONTRIBUTION' | 'BUILD_CUSTOMIZATION'
+  table: CatalogSyncTable
   kind: ProjectKind
   dependencyId: string | null
   label: string
   status: CatalogSyncStatus
   rowId: number | null
+  /** What a PARENT_GONE row lacks: "the dependency 'redis' is not in the catalog". */
+  reason?: string | null
 }
 
 export interface CatalogSyncReport {

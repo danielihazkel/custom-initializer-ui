@@ -902,3 +902,14 @@ Pinned by two cases in `SqlWizardDrawer.test.tsx`.
 - Six new Hebrew entries in `i18n/he/backend.ts`. The Guide (both languages): *A WSDL in Several Files* under the SOAP wizard's REST API, and where the files are written.
 
 Pinned by `SoapWizardDrawer.test.tsx` (new) and `utils/soapFiles.test.ts` (request, model file, stored draft, share link).
+
+### Phase 7: the Catalog sync tab covers the whole dependency catalog
+
+`admin/catalogSync/CatalogSyncTab.tsx` (Config, so English only):
+- **Six tables.** `CatalogSyncTable` (`types.ts`) and `TABLES` name them in the order the sync writes them: dependency group, dependency, sub-option, compatibility rule, file contribution, build customization. A row of table chips (`data-sync-table`, *Every table* first) narrows the list to one; each chip shows how many of its rows are neither in step nor kept. The status counts follow the table picked.
+- **Parent gone.** `CatalogSyncStatus` gains `PARENT_GONE` — a row whose dependency (or, for a dependency, whose group) is not in the catalog. Like *Deleted* it is the admin's own doing, so its chip is off at first. The row shows what is missing under its label (`data-sync-reason`, the server's `reason`); in the Compare drawer *Take shipped* is disabled for it, with the reason as its title — alone it cannot be written.
+- **What was skipped.** `post` keeps the `skipped` rows of an apply's answer, and a notice (`data-sync-skipped`) lists them with their reasons: taken together with their dependency they would have been written.
+- **Compare** needed nothing: a group and a dependency come as a map of fields, which the field table already draws; there is no content to diff.
+- The Guide's *Catalog Sync* topic and the catalog topic's note on groups and entries (both languages).
+
+Pinned by the "narrows to one table" case of `catalogSync/CatalogSyncTab.test.tsx`.
