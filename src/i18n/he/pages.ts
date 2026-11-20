@@ -1181,24 +1181,7 @@ const dict: Dict = {
   '{n} of {max} picked': '{n} מתוך {max} נבחרו',
 
   // ── Page list ──
-  'Pick “{page}” for a bulk action': 'בחר את „{page}” לפעולה מרובה',
-  'Pick for a bulk action (hide, group, roles, duplicate, delete)': 'בחר לפעולה מרובה (הסתרה, קבוצה, תפקידים, שכפול, מחיקה)',
-  'The generated app opens on this page': 'האפליקציה שנוצרת נפתחת בעמוד הזה',
-  'Only users with these roles see this page': 'רק משתמשים עם התפקידים האלה רואים את העמוד',
-  'Hidden from the navigation — opened from a Page links widget or a list’s New button': 'מוסתר מהניווט — נפתח מווידג\'ט קישורים לעמודים או מכפתור „חדש” של רשימה',
-  'Link only': 'קישור בלבד',
-  'Hidden from the navigation — opens inside a tabs page': 'מוסתר מהניווט — נפתח בתוך עמוד לשוניות',
-  'Tab only': 'לשונית בלבד',
-  'Record pages open from a row, so they are never in the navigation': 'עמודי רשומה נפתחים משורה, ולכן אף פעם לא מופיעים בניווט',
-  'From a row': 'משורה',
-  'The layout warnings above say what to check': 'אזהרות הפריסה שלמעלה מפרטות מה לבדוק',
-  '{n} warning': '{n} אזהרה',
-  '{n} warnings': '{n} אזהרות',
   'Made “{page}” the start page': '„{page}” הוגדר כעמוד הפתיחה',
-  'Hide from the navigation (link only)': 'הסתר מהניווט (קישור בלבד)',
-  'Hide from the navigation (tab only)': 'הסתר מהניווט (לשונית בלבד)',
-  'Duplicate {page}': 'שכפל את {page}',
-  'Remove this page': 'הסר את העמוד',
 
   // ── Page settings ──
   "Keep this page's settings to add it again later (this browser)": 'שמור את הגדרות העמוד כדי להוסיף אותו שוב בהמשך (בדפדפן הזה)',
@@ -1216,8 +1199,6 @@ const dict: Dict = {
   'lower-case letters, digits and dashes': 'אותיות קטנות, ספרות ומקפים',
   'Page description': 'תיאור העמוד',
   'Optional line under the heading': 'שורה אופציונלית מתחת לכותרת',
-  'sample data · click a part to edit it': 'נתוני דוגמה · לחצו על חלק כדי לערוך אותו',
-  'Close the preview': 'סגור את התצוגה המקדימה',
 
   // ── Record form ──
   'Rows of this entity open on this page': 'שורות של הישות הזו נפתחות בעמוד הזה',

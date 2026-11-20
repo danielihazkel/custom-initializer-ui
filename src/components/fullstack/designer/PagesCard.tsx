@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ConfirmDialog } from '../../ConfirmDialog'
 import { LAYOUT_TEMPLATES, buildLayoutTemplate } from '../layoutTemplates'
 import { PAGE_TYPE_META, describePage, inNav, navSections, pageLabel, seedLayout } from '../pageLayout'
-import { summarizeLayout, type PagesEditorProps } from '../PagesEditor'
+import type { PagesHostProps } from '../pages/hostProps'
 import { scrollToElement } from '../scroll'
 import { ICON_BUTTON, SMALL_BUTTON } from '../pages/constants'
 import { TemplateGallery } from '../pages/TemplateGallery'
@@ -10,11 +10,29 @@ import type { DesignerTarget } from './LayoutDesigner'
 import type { FrontendAppearance } from './FrontendSettings'
 import { t, tn, useLang } from '../../../i18n'
 
-export interface PagesSectionProps extends PagesEditorProps {
+export interface PagesSectionProps extends PagesHostProps {
   /** The generated app's look — edited in the designer's Appearance view. */
   appearance?: FrontendAppearance
   /** Bumped (a new `n`) to open the designer on `target` — the Setup panel's "Edit in designer". */
   designerRequest?: { n: number; target: DesignerTarget } | null
+}
+
+/** Nav page names the summary lists before it says "and N more". */
+const SUMMARY_NAMES = 5
+
+/** One line for the card: what the generated app's navigation will hold. */
+export function summarizeLayout(pages: PagesHostProps['pages']): string {
+  if (pages.length === 0) return t('Classic layout — a dashboard plus one list page per entity.')
+  const labels = pages.filter(inNav).map(pageLabel)
+  const more = labels.length - SUMMARY_NAMES
+  const offNav = pages.length - labels.length
+  const parts = [
+    labels.length > 0
+      ? (more > 0 ? t('{names} and {n} more', { names: labels.slice(0, SUMMARY_NAMES).join(', '), n: more }) : labels.join(', '))
+      : t('Nothing in the navigation'),
+    offNav > 0 ? t('{n} off the navigation', { n: offNav }) : '',
+  ]
+  return parts.filter(Boolean).join(' · ')
 }
 
 /**

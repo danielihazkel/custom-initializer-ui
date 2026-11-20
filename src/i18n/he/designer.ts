@@ -1,4 +1,4 @@
-/** Hebrew for the layout designer (fullstack/designer/*), PagesEditor and the chrome of LayoutPreview — not the generated app's own words in it, which follow the model's locale. See ./index.ts for the glossary. */
+/** Hebrew for the layout designer (fullstack/designer/*), its pages card and the chrome of LayoutPreview — not the generated app's own words in it, which follow the model's locale. See ./index.ts for the glossary. */
 import type { Dict } from '../index'
 
 const dict: Dict = {
@@ -459,53 +459,15 @@ const dict: Dict = {
   'Opened from other pages:': 'נפתחים מעמודים אחרים:',
   'How the pages connect': 'איך העמודים מחוברים',
 
-  // ── PagesEditor ──
+  // ── The pages card ──
   'Classic layout — a dashboard plus one list page per entity.': 'פריסה קלאסית — דשבורד ועמוד רשימה לכל ישות.',
   '{names} and {n} more': '{names} ועוד {n}',
   'Nothing in the navigation': 'אין דבר בניווט',
   '{n} off the navigation': '{n} מחוץ לניווט',
-  'The generated app opens on the first page in the navigation. A hidden page shows up only as a tab of a tabs page, and a record page opens from a row of its entity.':
-    'האפליקציה שתיווצר נפתחת בעמוד הראשון בניווט. עמוד מוסתר מופיע רק כלשונית של עמוד לשוניות, ועמוד רשומה נפתח משורה של הישות שלו.',
-  '{n} problem here': '{n} בעיה כאן',
-  '{n} problems here': '{n} בעיות כאן',
-  '{n} warning here': '{n} אזהרה כאן',
-  '{n} warnings here': '{n} אזהרות כאן',
-  'Open a preview of the generated app': 'פתח תצוגה מקדימה של האפליקציה שתיווצר',
-  'Open preview': 'פתח תצוגה מקדימה',
-  'Hide the layout preview': 'הסתר את התצוגה המקדימה של הפריסה',
-  'Show a preview of the generated app': 'הצג תצוגה מקדימה של האפליקציה שתיווצר',
-  'Hide preview': 'הסתר תצוגה מקדימה',
-  'Replace this layout with one built from a template (undoable)': 'החלף את הפריסה בפריסה שנבנית מתבנית (ניתן לביטול)',
   'Add a page to the layout': 'הוסף עמוד לפריסה',
-  'Add page': 'הוסף עמוד',
-  'Collapse frontend pages': 'כווץ את עמודי הפרונטאנד',
-  'Expand frontend pages': 'הרחב את עמודי הפרונטאנד',
   'Collapse to one line': 'כווץ לשורה אחת',
-  'Expand the page layout': 'הרחב את פריסת העמודים',
   'Hide': 'הסתר',
   'Show': 'הצג',
-  'Pages are built from your entities — name at least one entity in the Entities section above, then add pages here.':
-    'עמודים נבנים מהישויות שלכם — תנו שם לישות אחת לפחות באזור הישויות למעלה, ואז הוסיפו עמודים כאן.',
-  'This layout has the maximum of {n} pages — remove one to add another.': 'בפריסה הזו יש את המספר המרבי של {n} עמודים — הסירו אחד כדי להוסיף אחר.',
-  'Add a {type} page like “{name}”': 'הוסף עמוד {type} כמו “{name}”',
-  'Open this page at the problem': 'פתח את העמוד במקום הבעיה',
-  'a dashboard plus one list page per entity.': 'דשבורד ועמוד רשימה לכל ישות.',
-  'See what the classic layout generates': 'ראו מה הפריסה הקלאסית יוצרת',
-  'Classic layout preview': 'תצוגה מקדימה של הפריסה הקלאסית',
-  'Sample data · this is the app you get without a page layout': 'נתונים לדוגמה · זו האפליקציה שמתקבלת בלי פריסת עמודים',
-  'Or start from a layout template': 'או התחילו מתבנית פריסה',
-  'builds a new one from your entities; Undo brings this one back.': 'בונה פריסה חדשה מהישויות שלכם; ביטול יחזיר את הנוכחית.',
-  'How the generated app lays out its navigation': 'איך האפליקציה שתיווצר פורסת את הניווט שלה',
-  'Nav style': 'סגנון ניווט',
-  'Nav sections with a group name fold': 'אזורי ניווט עם שם קבוצה מתקפלים',
-  'The sections of the generated navigation, in order. Rename a group here to rename it on every page; move a section past its neighbour.':
-    'אזורי הניווט שייווצר, לפי הסדר. שנו כאן שם של קבוצה כדי לשנות אותו בכל עמוד; הזיזו אזור מעבר לשכן שלו.',
-  'Nav groups': 'קבוצות ניווט',
-  'Find a page — title, route, entity, type or group': 'חיפוש עמוד — כותרת, נתיב, ישות, סוג או קבוצה',
-  '{n} of {count}': '{n} מתוך {count}',
-  'No page matches “{query}”.': 'אין עמוד שמתאים ל-“{query}”.',
-  'Layout preview': 'תצוגה מקדימה של הפריסה',
-  'Sample data · click a part to edit it': 'נתונים לדוגמה · לחצו על חלק כדי לערוך אותו',
 
   // ── LayoutPreview: the editor's chrome over the canvas (not the generated app's words) ──
   'Rename — Enter saves, Escape cancels, blank goes back to the default': 'שינוי שם — Enter שומר, Escape מבטל, ריק חוזר לברירת המחדל',

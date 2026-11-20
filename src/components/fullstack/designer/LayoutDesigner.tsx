@@ -10,7 +10,7 @@ import { LayoutPreview, type EditTarget } from '../LayoutPreview'
 import { pageFromTemplate } from '../layoutTemplates'
 import { buildPlayLinks } from '../playLinks'
 import { PAGE_TYPE_META, defaultSpan, newPageChoices, widgetKindDisabledReason, pageFromSuggestion, pageLabel, pagesEmbedding } from '../pageLayout'
-import type { PagesEditorProps } from '../PagesEditor'
+import type { PagesHostProps } from '../pages/hostProps'
 import { handleRadioKeys, syncRadioTabStops } from '../rovingRadios'
 import { focusWithoutClipping } from '../scroll'
 import { ICON_BUTTON, SMALL_BUTTON, WIDGET_KINDS } from '../pages/constants'
@@ -42,7 +42,7 @@ export interface DesignerTarget {
   panel?: 'add' | 'issues' | 'find' | 'templates' | 'widgets' | 'appearance'
 }
 
-type DesignerProps = Omit<PagesEditorProps, 'revealRequest' | 'addRequest' | 'previewRequest' | 'findRequest' | 'layout'> & {
+type DesignerProps = Omit<PagesHostProps, 'revealRequest' | 'addRequest' | 'previewRequest' | 'findRequest'> & {
   /** The generated app's look, edited in the Appearance view. Absent: no Appearance view. */
   appearance?: FrontendAppearance
   target: DesignerTarget
@@ -98,7 +98,7 @@ export function historyMenuItems(undoEntries: string[], redoEntries: string[], o
  * The full-screen layout designer: the library of page types, widgets and templates on the left,
  * the page strip over a live canvas of the generated app in the middle, and the selected page's
  * or widget's settings on the right. Every change goes through the shared page model, so undo,
- * validation and the request are the inline editor's.
+ * validation and the request are the host's.
  */
 export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo, previewSettings, history, serverIssue, ldapAuth, onAddDep, onOpenGuide, nav, onNavChange, appearance, dismissedWarnings, onDismissedWarningsChange, codeRequest, target, onClose }: DesignerProps) {
   const lang = useLang()

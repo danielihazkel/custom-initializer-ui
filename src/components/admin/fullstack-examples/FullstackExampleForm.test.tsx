@@ -102,7 +102,7 @@ describe('FullstackExampleForm — the layout designer', () => {
     const inspector = within(designer).getByRole('complementary', { name: 'Inspector' })
     fireEvent.change(within(inspector).getByLabelText('Page title'), { target: { value: 'Stock' } })
     expect(pagesOf()[0]).toMatchObject({ title: 'Stock', id: 'stock' })
-    // The inline editor had no undo; the designer's is the form's own stack.
+    // The designer's undo is the form's own stack.
     await waitFor(() => expect((designer.querySelector('[data-designer-undo]') as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(designer.querySelector('[data-designer-undo]')!)
     expect(latest.pagesText).toBe(items)

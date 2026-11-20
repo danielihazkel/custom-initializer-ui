@@ -273,7 +273,7 @@ function PartEndSlot({ target, at, label, className = '' }: { target: PartTarget
   )
 }
 
-/** The designer's extra widget tools (the inline editor passes none). */
+/** The designer's extra widget tools (a preview that is only looked at passes none). */
 export interface WidgetTools {
   duplicate: (page: number, index: number) => void
   /** Opens the designer's kind menu under `anchor` (the button pressed). */

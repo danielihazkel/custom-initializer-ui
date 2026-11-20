@@ -8,7 +8,7 @@ import { SectionNav } from './SectionNav'
 import { focusWithoutClipping, scrollToElement } from './scroll'
 import { cssEscape, focusRowWhenRendered } from './focus'
 import { FullstackPresets, type SaveTarget } from './FullstackPresets'
-import { ImportFromDdlDrawer, type ImportMode, type ImportVariant } from './ImportFromDdlDrawer'
+import { ImportFromDdlDrawer, type ImportVariant } from './ImportFromDdlDrawer'
 import type { DatabaseMode } from './DatabaseDrawer'
 import { ViewSkeleton } from '../Skeletons'
 import { ConfirmDialog } from '../ConfirmDialog'
@@ -18,7 +18,7 @@ import { StatusToast } from '../admin/shared/StatusToast'
 import { newUid, reconcileUids, withUids } from './uid'
 import { toCamelCase, uniqueName } from './naming'
 import {
-  describeSnapshotChange, makeSnapshot, normalizeMeta, parseExportedModel, requestFromSnapshot, snapshotChangeKey, snapshotsEqual, toExportedModel,
+  describeSnapshotChange, makeSnapshot, normalizeMeta, requestFromSnapshot, snapshotChangeKey, snapshotsEqual, toExportedModel,
   type FullstackSnapshot, type ProjectMeta,
 } from './snapshot'
 import { lintModel, type LintIssue } from './lint'
@@ -35,14 +35,14 @@ import { ShortcutsOverlay } from './ShortcutsOverlay'
 import { frontendSetDefaults } from './frontendSetDefaults'
 import { MAX_ENCODED_LENGTH, clearShareFromLocation, writeShareToLocation, type ShareWriteStatus } from './shareLink'
 import { isTypingTarget } from './undo'
-import { DEFAULT_ENTITIES, DEFAULT_ENTITIES_JSON, DEFAULT_META, DEFAULT_SCAFFOLD_OPTS, LS, loadJson, persist, resolveInitialModel, type PendingLoad } from './fullstackStorage'
+import { DEFAULT_ENTITIES, DEFAULT_ENTITIES_JSON, DEFAULT_META, DEFAULT_SCAFFOLD_OPTS, LS, loadJson, persist, resolveInitialModel } from './fullstackStorage'
 import { useModelPersistence } from './useModelPersistence'
 import { useFollowRenames } from './useFollowRenames'
 import { useSnapshotHistory } from './useSnapshotHistory'
 import { useTemplateSets } from './useTemplateSets'
 import { useProjectUpdate } from './useProjectUpdate'
 import { useGenerateFlow } from './useGenerateFlow'
-import { cloneExample, cloneExamplePages, type ExampleModel } from './examples'
+import { useModelLoaders } from './useModelLoaders'
 import { PagesSection } from './designer/PagesSection'
 import type { DesignerTarget } from './designer/LayoutDesigner'
 import type { FrontendAppearance } from './designer/FrontendSettings'
@@ -64,10 +64,10 @@ const DatabaseDrawer = lazy(() => import('./DatabaseDrawer').then(m => ({ defaul
 const EntityRelationGraph = lazy(() => import('./EntityRelationGraph').then(m => ({ default: m.EntityRelationGraph })))
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
 import { useFullstackPresets } from '../../hooks/useFullstackPresets'
-import { TeamModelError, useTeamModels } from '../../hooks/useTeamModels'
+import { useTeamModels } from '../../hooks/useTeamModels'
 import { notYours } from '../../utils/teamAuth'
 import { useFullstackExamples } from '../../hooks/useFullstackExamples'
-import type { ExampleSettings, FullstackPageDef, TeamModelSummary } from '../../types'
+import type { FullstackPageDef } from '../../types'
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
 import { canonicalVersion, validateEntities, validateMeta, countMetaErrors, type MetaErrors } from './validation'
 import { t, tn, useLang } from '../../i18n'
@@ -124,7 +124,6 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // Collapsed cards survive a refresh: entities persist with their uids, so the uid set stays valid.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(shared ? [] : loadJson<string[]>(LS.collapsed, [])))
   const [confirmReset, setConfirmReset] = useState(false)
-  const [pendingLoad, setPendingLoad] = useState<PendingLoad | null>(() => (pendingShared ? { kind: 'shared', snapshot: pendingShared } : null))
   const [shareStatus, setShareStatus] = useState<ShareWriteStatus>('written')
   const [showGraph, setShowGraph] = useState<boolean>(() => loadJson<boolean>(LS.graph, false))
   // Setup is a once-per-project job, so it collapses to a summary bar and gives the viewport to
@@ -142,8 +141,6 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   // that entity's issues.
   const [lintOpen, setLintOpen] = useState(false)
   const [lintFilterUid, setLintFilterUid] = useState<string | null>(null)
-  // A JSON file parsed by Import JSON, held while the user picks Replace / Append.
-  const [pendingJsonImport, setPendingJsonImport] = useState<FullstackSnapshot | null>(null)
   // The last successful Generate — drives the "Next steps" card. Memory only; a refresh clears it.
   const [lastGenerated, setLastGenerated] = useState<GeneratedRun | null>(null)
   // The model as it stood when the last preview was fetched — lets each entity's Code panel
@@ -169,9 +166,6 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const { presets, recents, persistFailed: presetsPersistFailed, savePreset, deletePreset, restorePreset, deleteRecent, restoreRecent, pushRecent } = useFullstackPresets()
   const team = useTeamModels()
   const exampleModels = useFullstackExamples()
-  // A team save that hit an existing name, held while the user decides whether to overwrite it.
-  const [teamConflict, setTeamConflict] = useState<{ name: string; description: string; existing: TeamModelSummary } | null>(null)
-  const [confirmDeleteTeam, setConfirmDeleteTeam] = useState<TeamModelSummary | null>(null)
 
   const { bootVersions: rawBootVersions, javaVersions, packagings } = useAdminMetadata()
   // The client metadata spells Boot versions "3.2.1.RELEASE"; the fullstack endpoint and the template
@@ -383,194 +377,16 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
     notify: message => setToast({ message, type: 'success' }),
   })
 
-  function handleImport(imported: FullstackEntityDef[], mode: ImportMode, note?: string) {
-    pushUndoEntry(mode === 'replace' ? t('Replaced entities from import') : t('Appended imported entities'))
-    const stamped = withUids(imported)
-    setEntities(prev => (mode === 'replace' ? stamped : [...prev, ...stamped]))
-    if (stamped[0]?.uid) revealRow(stamped[0].uid)
-    const n = imported.length
-    const base = mode === 'replace'
-      ? tn(n, 'Replaced with {n} entity', 'Replaced with {n} entities')
-      : tn(n, 'Appended {n} entity', 'Appended {n} entities')
-    setToast({ message: note ? `${base}. ${note}` : base, type: 'success' })
-  }
-
-  function loadExample(example: ExampleModel) {
-    pushUndoEntry(t('Loaded the {example} example', { example: example.name }))
-    setEntities(withUids(cloneExample(example)))
-    // An example replaces the model, layout included: one without pages means the classic shell.
-    setPages(cloneExamplePages(example))
-    applyExampleSettings(example.settings)
-    setCollapsed(new Set())
-    baselineRef.current = null
-    setToast({
-      message: example.pages?.length
-        ? t('Loaded the {example} example ({entities} entities and {pages} pages)', { example: example.name, entities: example.entities.length, pages: example.pages.length })
-        : t('Loaded the {example} example ({entities} entities)', { example: example.name, entities: example.entities.length }),
-      type: 'success',
-    })
-  }
-
-  /** The editor settings an example carries. Only the keys present change; a template set or
-   *  palette this installation doesn't have is skipped rather than selected blind. */
-  function applyExampleSettings(settings: ExampleSettings | null | undefined) {
-    // An example replaces the navigation too: one without says the default sidebar.
-    setNav(settings?.nav ? { ...settings.nav } : undefined)
-    setDismissedWarnings([])
-    if (!settings) return
-    const metaPatch: Partial<ProjectMeta> = {}
-    if (settings.locale) metaPatch.locale = settings.locale
-    if (settings.dashboardTitle !== undefined) metaPatch.dashboardTitle = settings.dashboardTitle
-    if (settings.dashboardOverview !== undefined) metaPatch.dashboardOverview = settings.dashboardOverview
-    if (Object.keys(metaPatch).length > 0) setMeta(m => ({ ...m, ...metaPatch }))
-    if (settings.scaffold) setScaffoldOpts([...settings.scaffold])
-    if (settings.backendTemplateSet && backendSets.some(x => x.setKey === settings.backendTemplateSet)) {
-      setBackendSet(settings.backendTemplateSet)
-    }
-    if (settings.frontendTemplateSet && frontendSets.some(x => x.setKey === settings.frontendTemplateSet)) {
-      setFrontendSet(settings.frontendTemplateSet)
-    }
-    if (settings.colorPalette && palettes.some(x => x.id === settings.colorPalette)) {
-      setColorPalette(settings.colorPalette)
-    }
-  }
-
   function clearPageLayout() {
     pushUndoEntry(t('Switched to the classic page layout'))
     setPages([])
   }
 
-  function loadPreset(snapshot: FullstackSnapshot, label = t('Loaded a preset')) {
-    pushUndoEntry(label)
-    applySnapshot(snapshot)
-    setToast({ message: t('Loaded {name}', { name: snapshot.meta.artifactId || t('preset') }), type: 'success' })
-  }
-
-  function runLoad(load: PendingLoad) {
-    if (load.kind === 'example') loadExample(load.example)
-    else if (load.kind === 'shared') loadPreset(load.snapshot, t('Opened the shared model'))
-    else loadPreset(load.snapshot)
-  }
-  /** "Keep mine" on a share link: the draft stays, the link leaves the URL. */
-  function dismissPendingLoad() {
-    if (pendingLoad?.kind === 'shared') clearShareFromLocation()
-    setPendingLoad(null)
-  }
-  /** Entry point for the presets strip: confirms first when it would discard unsaved edits. */
-  function requestLoad(load: PendingLoad) {
-    if (hasUnsavedWork) setPendingLoad(load)
-    else runLoad(load)
-  }
-
-  // ── Team models (server-side, shared with everyone) ───────────────────────
-  async function saveToTeam(name: string, description: string) {
-    const snapshot = currentSnapshot
-    try {
-      await team.save(name, description, snapshot)
-      baselineRef.current = snapshot // now captured somewhere — no "unsaved work" prompt for it
-      setToast({ message: t('Saved "{name}" for the team', { name }), type: 'success' })
-    } catch (err) {
-      const existing = err instanceof TeamModelError && err.status === 409
-        ? team.models.find(m => m.name.toLowerCase() === name.toLowerCase())
-        : undefined
-      if (existing) {
-        setTeamConflict({ name, description, existing })
-        return
-      }
-      setToast({ message: t("Couldn't save to the team: {error}", { error: (err as Error).message }), type: 'error' })
-    }
-  }
-  async function overwriteTeamModel() {
-    const conflict = teamConflict
-    if (!conflict) return
-    setTeamConflict(null)
-    const snapshot = currentSnapshot
-    try {
-      await team.update(conflict.existing.id, conflict.name, conflict.description, snapshot)
-      baselineRef.current = snapshot
-      setToast({ message: t('Updated "{name}" for the team', { name: conflict.name }), type: 'success' })
-    } catch (err) {
-      setToast({ message: t("Couldn't update the team model: {error}", { error: (err as Error).message }), type: 'error' })
-    }
-  }
-  function loadTeamModel(model: TeamModelSummary) {
-    team.load(model.id)
-      .then(snapshot => requestLoad({ kind: 'preset', snapshot }))
-      .catch((err: Error) => setToast({ message: t('Couldn\'t load "{name}": {error}', { name: model.name, error: err.message }), type: 'error' }))
-  }
-  async function deleteTeamModel() {
-    const model = confirmDeleteTeam
-    if (!model) return
-    setConfirmDeleteTeam(null)
-    try {
-      await team.remove(model.id)
-      setToast({ message: t('Deleted "{name}" for everyone', { name: model.name }), type: 'success' })
-    } catch (err) {
-      setToast({ message: t('Couldn\'t delete "{name}": {error}', { name: model.name, error: (err as Error).message }), type: 'error' })
-    }
-  }
-
-  // ── Portable model: JSON export / import, curl ────────────────────────────
+  // ── Portable model: JSON export, curl (the import is a loader) ────────────
   function exportJson() {
     const json = JSON.stringify(toExportedModel(currentSnapshot), null, 2)
     downloadBlob(new Blob([json], { type: 'application/json' }), `${meta.artifactId || 'model'}.fullstack.json`)
     setToast({ message: t('Model exported'), type: 'success' })
-  }
-
-  function importJson(file: File) {
-    file.text().then(text => {
-      const result = parseExportedModel(text)
-      if ('error' in result) {
-        setToast({ message: t("Couldn't import {file}: {error}", { file: file.name, error: result.error }), type: 'error' })
-        return
-      }
-      // A generated project's own model file: what its code was made from, so later changes to
-      // the model can be offered as an update to that code.
-      if (result.fromProject) {
-        setBaseline({
-          snapshot: result.snapshot, templatesHash: result.templatesHash, snapshotId: result.snapshotId,
-          schemaVersion: result.schemaVersion, source: 'imported', at: Date.now(),
-        })
-      }
-      // With a model already in the editor, offer Append (its entities join yours) as well as
-      // the whole-model Replace — the same choice the DDL import gives.
-      if (entities.length > 0 && result.snapshot.entities.length > 0) setPendingJsonImport(result.snapshot)
-      else requestLoad({ kind: 'preset', snapshot: result.snapshot })
-    }).catch(() => setToast({ message: t("Couldn't read {file}", { file: file.name }), type: 'error' }))
-  }
-  function appendJsonImport() {
-    const snapshot = pendingJsonImport
-    if (!snapshot) return
-    setPendingJsonImport(null)
-    handleImport(JSON.parse(JSON.stringify(snapshot.entities)) as FullstackEntityDef[], 'append')
-  }
-
-  // Deleting a browser preset is one click, so it is undoable from the toast instead of confirmed.
-  function deletePresetWithUndo(id: string) {
-    const removed = deletePreset(id)
-    if (!removed) return
-    setToast({
-      message: t('Deleted preset "{name}"', { name: removed.preset.name }),
-      type: 'success',
-      action: { label: t('Undo'), onClick: () => restorePreset(removed.preset, removed.index) },
-    })
-  }
-
-  function deleteRecentWithUndo(id: string) {
-    const removed = deleteRecent(id)
-    if (!removed) return
-    setToast({
-      message: t('Removed "{name}" from recents', { name: removed.preset.name }),
-      type: 'success',
-      action: { label: t('Undo'), onClick: () => restoreRecent(removed.preset, removed.index) },
-    })
-  }
-
-  function savePresetAndReport(name: string, snapshot: FullstackSnapshot) {
-    const { persisted } = savePreset(name, snapshot)
-    setToast(persisted
-      ? { message: t('Saved preset "{name}"', { name }), type: 'success' }
-      : { message: t('Saved preset "{name}" for this session only — browser storage is full, so it won\'t survive a refresh. Export JSON to keep it.', { name }), type: 'error' })
   }
 
   async function copyCurl() {
@@ -620,6 +436,25 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
   const { baseline, setBaseline, updating, previewIsUpdate, setPreviewIsUpdate, previewUpdate, downloadUpdate } = useProjectUpdate({
     currentSnapshot, snapshotRef, previewSnapshotRef, artifactId: meta.artifactId, validateBeforeSubmit, buildBody,
     fetchComparison, showServerIssue, setToast,
+  })
+
+  // ── Bringing a model in, keeping one somewhere (useModelLoaders.ts) ─────────
+  const {
+    pendingLoad, setPendingLoad, pendingJsonImport, setPendingJsonImport,
+    teamConflict, setTeamConflict, confirmDeleteTeam, setConfirmDeleteTeam,
+    handleImport, loadPreset, runLoad, dismissPendingLoad, requestLoad,
+    saveToTeam, overwriteTeamModel, loadTeamModel, deleteTeamModel,
+    importJson, appendJsonImport, deletePresetWithUndo, deleteRecentWithUndo, savePresetAndReport,
+  } = useModelLoaders({
+    currentSnapshot, entityCount: entities.length, hasUnsavedWork, pendingShared, applySnapshot, pushUndoEntry, baselineRef,
+    set: {
+      entities: setEntities, pages: setPages, nav: setNav, dismissedWarnings: setDismissedWarnings, meta: setMeta,
+      scaffoldOpts: setScaffoldOpts, backendSet: setBackendSet, frontendSet: setFrontendSet, colorPalette: setColorPalette,
+      collapsed: setCollapsed,
+    },
+    backendSets, frontendSets, palettes, revealRow, setToast, setBaseline,
+    presets: { savePreset, deletePreset, restorePreset, deleteRecent, restoreRecent },
+    team,
   })
 
   function toggleOpt(value: string) {
