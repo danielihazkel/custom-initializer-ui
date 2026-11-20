@@ -4,6 +4,7 @@ import { useTeamPresets } from '../hooks/useTeamPresets'
 import { registerCommands, type PaletteAction } from '../commands'
 import { PresetChip, relativeTime } from './presetCards'
 import { t, tn, useLang } from '../i18n'
+import { notYours } from '../utils/teamAuth'
 
 interface TeamPresetsPanelProps {
   /** Whether the Team tab is open: the panel is mounted from the start (for the count and the
@@ -98,8 +99,10 @@ export default function TeamPresetsPanel({ visible, reloadKey, onLoad, onCount }
           </div>
           {item.createdBy && <p className="mt-1.5 text-[10px] text-secondary truncate">{t('by {user}', { user: item.createdBy })}</p>}
         </button>
+        {/* Somebody else's: the × stays, disabled, and says whose it is. */}
         <button onClick={() => setConfirmingDelete(item.id)} aria-label={t('Delete {name}', { name: item.name })}
-          className="absolute top-1.5 end-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error/10 hover:text-error transition-all">
+          disabled={notYours(item) !== undefined} title={notYours(item)}
+          className="absolute top-1.5 end-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error/10 hover:text-error disabled:hover:bg-transparent disabled:hover:text-secondary disabled:cursor-not-allowed transition-all">
           <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
         </button>
       </div>

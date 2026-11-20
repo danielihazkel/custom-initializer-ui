@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { TeamModelSummary } from '../types'
 import { t } from '../i18n'
 import { parseExportedModel, toExportedModel, type FullstackSnapshot } from '../components/fullstack/snapshot'
+import { teamHeaders } from '../utils/teamAuth'
 
 export const TEAM_MODELS_URL = '/metadata/fullstack/models'
 
@@ -18,8 +19,6 @@ async function failure(res: Response): Promise<TeamModelError> {
   return new TeamModelError(body?.detail || body?.error || `HTTP ${res.status}`, res.status)
 }
 
-const JSON_HEADERS = { 'Content-Type': 'application/json' }
-
 /**
  * Fullstack models shared through the server, for the presets strip's "Team" tab. Unlike
  * `useFullstackPresets` (this browser's localStorage) these are visible to everyone who opens the
@@ -35,7 +34,7 @@ export function useTeamModels() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(TEAM_MODELS_URL)
+      const res = await fetch(TEAM_MODELS_URL, { headers: teamHeaders() })
       if (!res.ok) throw await failure(res)
       setModels(await res.json() as TeamModelSummary[])
     } catch (err) {
@@ -50,7 +49,7 @@ export function useTeamModels() {
   const save = useCallback(async (name: string, description: string, snapshot: FullstackSnapshot): Promise<TeamModelSummary> => {
     const res = await fetch(TEAM_MODELS_URL, {
       method: 'POST',
-      headers: JSON_HEADERS,
+      headers: teamHeaders(true),
       body: JSON.stringify({ name, description: description.trim() || undefined, snapshot: toExportedModel(snapshot) }),
     })
     if (!res.ok) throw await failure(res)
@@ -62,7 +61,7 @@ export function useTeamModels() {
   const update = useCallback(async (id: number, name: string, description: string, snapshot: FullstackSnapshot): Promise<TeamModelSummary> => {
     const res = await fetch(`${TEAM_MODELS_URL}/${id}`, {
       method: 'PUT',
-      headers: JSON_HEADERS,
+      headers: teamHeaders(true),
       body: JSON.stringify({ name, description: description.trim() || undefined, snapshot: toExportedModel(snapshot) }),
     })
     if (!res.ok) throw await failure(res)
@@ -72,7 +71,7 @@ export function useTeamModels() {
   }, [])
 
   const remove = useCallback(async (id: number): Promise<void> => {
-    const res = await fetch(`${TEAM_MODELS_URL}/${id}`, { method: 'DELETE' })
+    const res = await fetch(`${TEAM_MODELS_URL}/${id}`, { method: 'DELETE', headers: teamHeaders() })
     if (!res.ok && res.status !== 404) throw await failure(res)
     setModels(prev => prev.filter(m => m.id !== id))
   }, [])

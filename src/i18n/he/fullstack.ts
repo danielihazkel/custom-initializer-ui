@@ -555,6 +555,8 @@ const dict: Dict = {
     'עדיין לא שותף דבר. שמרו את המודל הנוכחי דרך "שמירת המודל…" ← צוות וכל מי שפותח את המחולל יראה אותו כאן.',
   'No description': 'אין תיאור',
   'Saved by {user}': 'נשמר על ידי {user}',
+  '"{name}" is taken': 'השם "{name}" כבר תפוס',
+  'Save yours under another name.': 'שמרו את שלכם בשם אחר.',
   'Delete {name} for everyone': 'מחק את {name} לכולם',
   'Delete for everyone': 'מחק לכולם',
   'No presets yet. Model your entities and click "Save this model…" above.': 'אין עדיין תצורות. בנו את הישויות ולחצו על "שמירת המודל…" למעלה.',

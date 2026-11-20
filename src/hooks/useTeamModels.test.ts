@@ -75,7 +75,7 @@ describe('useTeamModels', () => {
     await waitFor(() => expect(result.current.models).toHaveLength(1))
     fetchMock.mockResolvedValueOnce({ ok: true, status: 204 } as Response)
     await act(async () => { await result.current.remove(7) })
-    expect(fetchMock.mock.calls[1]).toEqual(['/metadata/fullstack/models/7', { method: 'DELETE' }])
+    expect(fetchMock.mock.calls[1]).toEqual(['/metadata/fullstack/models/7', { method: 'DELETE', headers: {} }])
     expect(result.current.models).toEqual([])
   })
 

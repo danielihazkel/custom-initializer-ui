@@ -236,6 +236,10 @@ const dict: Dict = {
   'Copy {label} command': 'העתק את פקודת ה{label}',
   '{label} command': 'פקודת ה{label}',
   'Color Palette': 'פלטת צבעים',
+
+  // ── What the team shares (models, presets, templates): whose it is to change ──
+  'Saved by {user} — only they or a signed-in admin can change or delete it': 'נשמר על ידי {user} — רק הם או מנהל מחובר יכולים לשנות או למחוק אותו',
+  'Only whoever saved it or a signed-in admin can change or delete it': 'רק מי ששמר אותו או מנהל מחובר יכולים לשנות או למחוק אותו',
 }
 
 export default dict

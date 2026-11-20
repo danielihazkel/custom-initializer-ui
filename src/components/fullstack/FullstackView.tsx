@@ -71,6 +71,7 @@ const EntityRelationGraph = lazy(() => import('./EntityRelationGraph').then(m =>
 import { useFullstackPreview } from '../../hooks/useFullstackPreview'
 import { readStoredPresetSnapshots, useFullstackPresets } from '../../hooks/useFullstackPresets'
 import { TeamModelError, useTeamModels } from '../../hooks/useTeamModels'
+import { notYours } from '../../utils/teamAuth'
 import { useFullstackExamples } from '../../hooks/useFullstackExamples'
 import type { ExampleSettings, FullstackPageDef, TeamModelSummary } from '../../types'
 import { useAdminMetadata } from '../../hooks/useAdminMetadata'
@@ -1819,7 +1820,21 @@ export function FullstackView({ onOpenGuide }: { onOpenGuide?: (topicId: string)
         />
       )}
 
-      {teamConflict && (
+      {/* The name is somebody else's model: it is theirs (or an admin's) to overwrite. */}
+      {teamConflict && notYours(teamConflict.existing) !== undefined && (
+        <ConfirmDialog
+          title={t('"{name}" is taken', { name: teamConflict.existing.name })}
+          message={`${notYours(teamConflict.existing)}. ${t('Save yours under another name.')}`}
+          confirmLabel={t('Rename…')}
+          onConfirm={() => {
+            const conflict = teamConflict
+            setTeamConflict(null)
+            requestSave('team', { name: conflict.name, description: conflict.description })
+          }}
+          onCancel={() => setTeamConflict(null)}
+        />
+      )}
+      {teamConflict && notYours(teamConflict.existing) === undefined && (
         <ConfirmDialog
           title={t('Replace the team model "{name}"?', { name: teamConflict.existing.name })}
           message={teamConflict.existing.createdBy

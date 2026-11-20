@@ -796,6 +796,20 @@ describe('Layout designer — team templates', () => {
     expect(calls[calls.length - 1]).toEqual({ url: '/metadata/fullstack/templates/3', method: 'DELETE', body: undefined })
   })
 
+  it('keeps Delete and Update off a team template somebody else saved', async () => {
+    // The server says whose each row is: dana's page and widget are not this caller's to change.
+    vi.stubGlobal('fetch', vi.fn(async () => json(200, shared.map(tpl => ({ ...tpl, canEdit: tpl.createdBy === null })))))
+    render(<Harness initial={two} />)
+    const designer = openDesigner()
+    await waitFor(() => expect(designer.querySelector('[data-team-widgets]')).toBeTruthy())
+
+    const locked = within(library(designer)).getByRole('button', { name: 'Delete the team template “Open count”' }) as HTMLButtonElement
+    expect(locked.disabled).toBe(true)
+    expect(locked.title).toBe('Saved by dana — only they or a signed-in admin can change or delete it')
+    // One nobody is named for is anyone's.
+    expect((within(library(designer)).getByRole('button', { name: 'Delete the team template “Invoices”' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('says when the team’s templates did not load', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json(500, { error: 'boom' })))
     render(<Harness initial={two} />)

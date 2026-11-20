@@ -1174,7 +1174,7 @@ The UI calls \`GET /metadata/sql-dialects\` at page load to learn which dependen
           },
           {
             type: 'warning',
-            text: 'The documents pasted into the wizards of one request (SQL, OpenAPI, WSDL, AsyncAPI) may total 5 MB (menora.wizard.max-documents-size); past that the request is a 400.'
+            text: 'The documents pasted into the wizards of one request (SQL, OpenAPI, WSDL, AsyncAPI) may total 5 MB (menora.wizard.max-documents-size); past that the request is a 400. Any request body larger than 32 MB (menora.request.max-body-size) is refused with 413 before it is read; the admin configuration import takes 100 MB (menora.request.max-import-size).'
           }
         ]
       },
@@ -1299,7 +1299,7 @@ With a REST API mode, a \`@WebMvcTest\` per controller.
         content: `### For the Developer
 **Read from a database…** beside the SQL box (and **From a database** in the Fullstack tab's DDL import) connects to a database, lists its schemas and then its tables and views (views marked), and reads the ticked ones. What was read becomes the script a person would have pasted — a \`CREATE TABLE\` per table with its key, NOT NULL, UNIQUE and CHECK-list constraints, the foreign keys between the tables read as \`ALTER TABLE … ADD FOREIGN KEY\`, the indexes as \`CREATE INDEX\`, column defaults, comments as \`COMMENT ON\`, and a \`SELECT\` per view that casts each column to its type (how the wizard types the view's fields) — and replaces the SQL box, with **Undo**. The developer can read and edit it before generating; the wizard then generates exactly what that script pasted would.
 
-The database is either a **source** an admin set up, picked by name, or — while the server allows it — one typed in by hand (host, port, database / service name / DB2 library, user, password). A typed password is sent with each call and kept nowhere, not on the server and not in the browser.
+The database is either a **source** an admin set up, picked by name, or — only where the server was told to allow it; it is off as shipped — one typed in by hand (host, port, database / service name / DB2 library, user, password). A typed password is sent with each call and kept nowhere, not on the server and not in the browser.
 
 ### For the Admin: Config → Schema sources
 A source holds where a database is (type, host, port, database or service name, DB2 library) and the user. **The password is never stored**: *Password from* names where the server reads it — an environment variable \`SCHEMA_SOURCE_…\` or a property \`menora.live-schema.secrets.…\`; any other name is refused. The list shows whether that password is actually set on this server. **Test connection** tries the form, saved or not, and reports the schema count or the driver's error. Sources are recorded in History and are **not** part of the configuration export (they name this environment's databases).
@@ -1307,7 +1307,7 @@ A source holds where a database is (type, host, port, database or service name, 
 ### Server Settings
 | Property | Default | Meaning |
 |---|---|---|
-| \`menora.live-schema.typed-connections\` | \`true\` | Whether anyone may type in a database. Off: the admins' sources only. |
+| \`menora.live-schema.typed-connections\` | \`false\` | Whether anyone may type in a database. Off, as shipped: the admins' sources only — a server that connects wherever a caller says is a way to probe the network it stands in. A deployment that relied on typing databases in sets it to \`true\` (\`MENORA_LIVESCHEMA_TYPEDCONNECTIONS=true\`), with \`allowed-hosts\`. |
 | \`menora.live-schema.allowed-hosts\` | empty (any) | Comma-separated host patterns a typed connection may name (\`*.menora.co.il\`, \`10.20.*\`). Worth setting per environment: with typed connections on, the server connects wherever it is told. Sources are not limited by it. |
 | \`menora.live-schema.max-tables\` | \`300\` | Tables and views one read may take. |
 | \`menora.live-schema.max-concurrent-reads\` | \`4\` | Reads at once; the rest wait 5 s, then get a 429. |
@@ -2605,9 +2605,11 @@ The Backend and Fullstack tabs' next-steps cards show these commands after a Gen
 | **Share links** — the current setup in the URL | the header's Share button | the \`bs\` (Backend) and \`fs\` (Fullstack) parameters |
 
 ### How They Behave
-- Anyone who can open the generator can read, save and delete them — they are not behind the admin login. A delete asks for confirmation, since it removes the item for everyone.
-- Names are unique within each kind, ignoring case: a taken name is refused, or offered as an overwrite.
-- The \`userinfo\` header names who saved each one.
+- Anyone who can open the generator can read and save them — they are not behind the admin login.
+- **Changing or deleting one is for whoever saved it, or a signed-in admin.** Anyone else gets a 403 that names the creator, and the screens say so beforehand: Delete, Overwrite and Update are disabled on somebody else's item, with whose it is. An admin signed in under Config on the same browser can change any of them. An item saved with nobody named — before this, or without the single sign-on gateway — stays open to everyone.
+- A delete asks for confirmation, since it removes the item for everyone.
+- Names are unique within each kind, ignoring case: a taken name is refused, or offered as an overwrite when the item is yours.
+- The \`userinfo\` header names who saved each one (\`createdBy\`) and who changed it last (\`updatedBy\`); each answer says whether the caller may edit it (\`canEdit\`).
 - Team models are limited to 1 MB, templates to 64 KB.
 
 ### What They Are Not
@@ -2641,7 +2643,7 @@ A Backend link carries the form, dependencies and options as plain parameters; w
 A sign-in returns a signed token that carries its own expiry (\`admin.token-ttl\`, 12 hours) and the admin's name, so any instance behind a load balancer accepts it. Changing the password or \`admin.token-secret\` signs everyone out. The header shows who is signed in.
 
 ### Protection
-- The password is compared in constant time. After \`admin.login.max-failures\` (10) wrong passwords from one address within \`admin.login.window\` (5 minutes), that address gets 429 until the window passes. Behind a proxy, set \`server.forward-headers-strategy\` or all admins share one count.
+- The password is compared in constant time. After \`admin.login.max-failures\` (10) wrong passwords from one address within \`admin.login.window\` (5 minutes), that address gets 429 until the window passes; sign-ins as oneself that are refused are counted the same way, apart from the password. After \`admin.login.max-failures-total\` (100) wrong passwords from every address together, the password signs nobody in for the rest of the window — signing in as oneself still works (\`0\` switches that ceiling off). The counts are kept in the database, so several instances share them. Behind a proxy, set \`server.forward-headers-strategy\` (\`native\` or \`framework\`, and only where nothing but the proxy reaches the application) or all admins share one count.
 - A warning is logged at start while the password is still \`changeme\`.
 - The H2 console is off in the shipped configuration (it is a SQL prompt on the catalog); a developer turns it on with \`--spring.h2.console.enabled=true\`.`
       },

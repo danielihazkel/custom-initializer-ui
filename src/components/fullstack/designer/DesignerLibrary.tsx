@@ -11,6 +11,7 @@ import { useDrawnPages, type PagesModel } from '../pages/usePagesModel'
 import { fitWidget, widgetName, type WidgetClip } from '../widgetClipboard'
 import { startLibraryDrag, type LibraryDrag } from './dragPayload'
 import { t, tn, useLang } from '../../../i18n'
+import { notYours } from '../../../utils/teamAuth'
 
 export type LibraryTab = 'pages' | 'widgets' | 'templates'
 
@@ -111,7 +112,13 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
     .filter((tpl): tpl is Extract<TeamTemplate, { kind: 'widget' }> => tpl.kind === 'widget' && matches(query, tpl.name, tpl.createdBy ?? ''))
     .map(tpl => ({ ...tpl, fit: fitWidget(tpl.content, pages, named) }))
   const by = (tpl: TeamTemplate) => (tpl.createdBy ? ` · ${t('by {name}', { name: tpl.createdBy })}` : '')
-  const teamRemove = (tpl: TeamTemplate) => (
+  const teamRemove = (tpl: TeamTemplate) => notYours(tpl) !== undefined ? (
+    // Somebody else's: the bin stays, disabled, and says whose it is.
+    <button type="button" disabled className="shrink-0 cursor-not-allowed rounded-lg p-1.5 text-secondary/50"
+      aria-label={t('Delete the team template “{name}”', { name: tpl.name })} title={notYours(tpl)} data-team-locked={tpl.id}>
+      <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">delete</span>
+    </button>
+  ) : (
     <button
       type="button"
       onClick={() => { if (confirmRemove === tpl.id) { setConfirmRemove(null); team?.onRemove(tpl.id) } else setConfirmRemove(tpl.id) }}
@@ -124,14 +131,18 @@ export function DesignerLibrary({ pages, model, tab, onTab, page, pageIndex, ent
     </button>
   )
   const shareButton = (item: TeamShare) => {
-    const replaces = (team?.templates ?? []).some(tpl => tpl.kind === item.kind && tpl.name.toLowerCase() === item.name.toLowerCase())
+    const existing = (team?.templates ?? []).find(tpl => tpl.kind === item.kind && tpl.name.toLowerCase() === item.name.toLowerCase())
+    const replaces = existing !== undefined
+    // The team's template of this name is somebody else's: it is theirs to replace.
+    const locked = existing ? notYours(existing) : undefined
     return (
       <button
         type="button"
         onClick={() => team?.onShare(item)}
-        className="shrink-0 rounded-lg p-1.5 text-secondary hover:bg-primary/5 hover:text-primary"
+        disabled={locked !== undefined}
+        className="shrink-0 rounded-lg p-1.5 text-secondary hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-secondary"
         aria-label={replaces ? t('Update the team\'s “{name}”', { name: item.name }) : t('Share “{name}” with the team', { name: item.name })}
-        title={replaces ? t('Replace the team’s template of this name with yours') : t('Share with the team')}
+        title={locked ?? (replaces ? t('Replace the team’s template of this name with yours') : t('Share with the team'))}
       >
         <span className="material-symbols-outlined" style={{ fontSize: '15px' }} aria-hidden="true">group_add</span>
       </button>

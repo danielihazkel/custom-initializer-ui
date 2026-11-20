@@ -913,3 +913,15 @@ Pinned by `SoapWizardDrawer.test.tsx` (new) and `utils/soapFiles.test.ts` (reque
 - The Guide's *Catalog Sync* topic and the catalog topic's note on groups and entries (both languages).
 
 Pinned by the "narrows to one table" case of `catalogSync/CatalogSyncTab.test.tsx`.
+
+### Phase 8: team data says whose it is
+
+The UI side of *Phase 8* in `backend/CLAUDE.md` (the other three items need nothing here: the live-schema drawers follow the options endpoint, a 413 and a 429 show the server's words).
+
+- **`utils/teamAuth.ts`** — `teamHeaders(json?)`: the headers of a call for team data, with `Authorization: Bearer <adminToken>` when an admin is signed in on this browser (read straight from `sessionStorage`, so the Config tab's code is not loaded for it); `notYours(row)`: why a row is not the caller's to change — the tooltip of its disabled control — or `undefined` (also for a server that sends no `canEdit`). Not imported by first-paint code.
+- **Types.** `TeamPresetSummary`, `TeamModelSummary` and `TeamTemplate` gain optional `updatedBy` and `canEdit`.
+- **Hooks.** `useTeamModels`, `useTeamTemplates` and `useTeamPresets` (and `saveTeamPreset`) send `teamHeaders` on every call — the listing too, since `canEdit` is answered for whoever asks.
+- **Screens.** A row that is somebody else's keeps its control, disabled, with whose it is as the title: the × of a team preset (`TeamPresetsPanel`) and of a team model (`FullstackPresets`), the bin of a team template and the *Update* of a library card whose name the team's template has (`DesignerLibrary`, `data-team-locked`). Saving a team model under a name somebody else's model has opens a dialog that says so and offers *Rename…* instead of *Overwrite* (`FullstackView`). A change refused all the same (the list was stale, the token expired) shows the server's 403 detail through the existing error paths.
+- Four new Hebrew entries (two in `he/shell.ts`, shared by the three areas; two in `he/fullstack.ts`). The Guide: who may change team data, typed connections off by default, the login limit, the request size limit.
+
+Pinned by `utils/teamAuth.test.tsx` and the "somebody else saved" case of `designer/LayoutDesigner.test.tsx`.

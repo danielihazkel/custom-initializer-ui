@@ -5,6 +5,7 @@ import type { TeamModelSummary } from '../../types'
 import type { FullstackSnapshot } from './snapshot'
 import type { ExampleModel } from './examples'
 import { t, tn } from '../../i18n'
+import { notYours } from '../../utils/teamAuth'
 
 interface Props {
   presets: FullstackPreset[]
@@ -354,8 +355,10 @@ export function FullstackPresets({
                     type="button"
                     onClick={() => onDeleteTeam(model)}
                     aria-label={t('Delete {name} for everyone', { name: model.name })}
-                    title={t('Delete for everyone')}
-                    className="absolute top-1.5 end-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error/10 hover:text-error transition-all"
+                    // Somebody else's: the × stays, disabled, and says whose it is.
+                    disabled={notYours(model) !== undefined}
+                    title={notYours(model) ?? t('Delete for everyone')}
+                    className="absolute top-1.5 end-1.5 p-1 rounded text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error/10 hover:text-error disabled:hover:bg-transparent disabled:hover:text-secondary disabled:cursor-not-allowed transition-all"
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
                   </button>

@@ -236,6 +236,10 @@ export interface TeamPresetSummary {
   createdBy: string | null
   createdAt: string
   updatedAt: string
+  /** Who changed it last (the gateway's user, or the admin who did). */
+  updatedBy?: string | null
+  /** Whether whoever asked may change or delete it: its creator, an admin, or anyone when nobody is named. */
+  canEdit?: boolean
 }
 
 // ── Admin entity types ────────────────────────────────────────────────────────
@@ -627,6 +631,10 @@ export interface TeamModelSummary {
   createdBy: string | null
   createdAt: string
   updatedAt: string
+  /** Who changed it last (the gateway's user, or the admin who did). */
+  updatedBy?: string | null
+  /** Whether whoever asked may change or delete it: its creator, an admin, or anyone when nobody is named. */
+  canEdit?: boolean
 }
 
 /** A layout-designer template shared with the team (`/metadata/fullstack/templates`): a page or a
@@ -638,6 +646,10 @@ export type TeamTemplate = {
   createdBy: string | null
   createdAt: string
   updatedAt: string
+  /** Who changed it last (the gateway's user, or the admin who did). */
+  updatedBy?: string | null
+  /** Whether whoever asked may change or delete it: its creator, an admin, or anyone when nobody is named. */
+  canEdit?: boolean
 } & ({ kind: 'page'; content: FullstackPageDef } | { kind: 'widget'; content: FullstackWidgetDef })
 
 export interface EntityTemplateSetSummary {

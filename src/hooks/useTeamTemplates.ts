@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FullstackPageDef, FullstackWidgetDef, TeamTemplate } from '../types'
+import { teamHeaders } from '../utils/teamAuth'
 
 export const TEAM_TEMPLATES_URL = '/metadata/fullstack/templates'
 
@@ -16,7 +17,6 @@ async function failure(res: Response): Promise<TeamTemplateError> {
   return new TeamTemplateError(body?.detail || body?.error || `HTTP ${res.status}`, res.status)
 }
 
-const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
 const isTemplate = (t: unknown): t is TeamTemplate =>
   !!t && typeof t === 'object' && typeof (t as TeamTemplate).id === 'number' && typeof (t as TeamTemplate).name === 'string'
@@ -39,7 +39,7 @@ export function useTeamTemplates() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(TEAM_TEMPLATES_URL)
+      const res = await fetch(TEAM_TEMPLATES_URL, { headers: teamHeaders() })
       if (!res.ok) throw await failure(res)
       const body = await res.json() as unknown
       setTemplates(Array.isArray(body) ? body.filter(isTemplate) : [])
@@ -60,7 +60,7 @@ export function useTeamTemplates() {
     const existing = find(item.kind, item.name)
     const res = await fetch(existing ? `${TEAM_TEMPLATES_URL}/${existing.id}` : TEAM_TEMPLATES_URL, {
       method: existing ? 'PUT' : 'POST',
-      headers: JSON_HEADERS,
+      headers: teamHeaders(true),
       body: JSON.stringify({ kind: item.kind, name: existing?.name ?? item.name.trim(), description: existing?.description ?? undefined, content: item.content }),
     })
     if (!res.ok) throw await failure(res)
@@ -70,7 +70,7 @@ export function useTeamTemplates() {
   }, [find])
 
   const remove = useCallback(async (id: number): Promise<void> => {
-    const res = await fetch(`${TEAM_TEMPLATES_URL}/${id}`, { method: 'DELETE' })
+    const res = await fetch(`${TEAM_TEMPLATES_URL}/${id}`, { method: 'DELETE', headers: teamHeaders() })
     if (!res.ok && res.status !== 404) throw await failure(res)
     setTemplates(prev => prev.filter(t => t.id !== id))
   }, [])

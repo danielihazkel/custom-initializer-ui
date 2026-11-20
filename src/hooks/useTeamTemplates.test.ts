@@ -61,7 +61,7 @@ describe('useTeamTemplates', () => {
 
     fetchMock.mockResolvedValueOnce({ ok: true, status: 204 } as Response)
     await act(async () => { await result.current.remove(3) })
-    expect(fetchMock.mock.calls[fetchMock.mock.calls.length - 1]).toEqual(['/metadata/fullstack/templates/3', { method: 'DELETE' }])
+    expect(fetchMock.mock.calls[fetchMock.mock.calls.length - 1]).toEqual(['/metadata/fullstack/templates/3', { method: 'DELETE', headers: {} }])
     expect(result.current.templates).toEqual([])
   })
 
