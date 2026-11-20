@@ -162,7 +162,7 @@ export function PagesEditor({ pages, entities, validation, onChange, pushUndo, o
   const [pageQuery, setPageQuery] = useState('')
 
   const model = usePagesModel({
-    pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, ldapAuth,
+    pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, ldapAuth, nav,
     onOpenKey: key => { setOpenKey(key); setPreviewKey(key) },
     // The new page must be on screen to open: a page search that would hide it is cleared.
     onAdd: () => { setAddOpen(false); setPageQuery('') },

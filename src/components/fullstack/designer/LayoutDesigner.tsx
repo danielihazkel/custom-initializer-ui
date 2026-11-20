@@ -148,7 +148,7 @@ export function LayoutDesigner({ pages, entities, validation, onChange, pushUndo
   useEffect(() => { if (searchFocus) librarySearchRef.current?.focus() }, [searchFocus])
 
   const model = usePagesModel({
-    pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, ldapAuth,
+    pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, ldapAuth, nav,
     onOpenKey: key => { setSelectedKey(key); setSelectedWidget(null); setInspectorTab('basics') },
     onAdd: () => { setEntityForm(null); setTabsForm(null) },
     onRemovedKey: key => setSelectedKey(prev => (prev === key ? null : prev)),

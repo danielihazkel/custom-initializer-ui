@@ -16,7 +16,7 @@ export interface PreviewColumn {
   kind: PreviewColumnKind
 }
 
-export type PreviewControlKind = 'text' | 'textarea' | 'number' | 'checkbox' | 'date' | 'datetime' | 'select' | 'uuid'
+export type PreviewControlKind = 'text' | 'textarea' | 'number' | 'checkbox' | 'date' | 'datetime' | 'select' | 'uuid' | 'file' | 'image'
 
 export interface PreviewControl {
   name: string
@@ -32,6 +32,8 @@ export interface PreviewControl {
   /** Small caption under the control: length limit, numeric bounds, pattern, email. */
   hint?: string
   isRelation?: boolean
+  /** A file or picture field that takes several: how many at most. */
+  many?: number
 }
 
 export interface UiPreview {
@@ -76,9 +78,14 @@ function controlKind(f: FullstackFieldDef): PreviewControlKind {
     case 'LOCAL_DATE_TIME': case 'INSTANT': return 'datetime'
     case 'ENUM': return 'select'
     case 'UUID': return 'uuid'
+    case 'FILE': return 'file'
+    case 'IMAGE': return 'image'
     default: return 'text'
   }
 }
+
+/** A file or picture field that takes more than one. */
+const severalFiles = (f: FullstackFieldDef) => (f.type === 'FILE' || f.type === 'IMAGE') && (f.maxFiles ?? 1) > 1
 
 function controlHint(f: FullstackFieldDef): string | undefined {
   const parts: string[] = []
@@ -88,6 +95,7 @@ function controlHint(f: FullstackFieldDef): string | undefined {
   else if (f.min != null) parts.push(`≥ ${f.min}`)
   else if (f.max != null) parts.push(`≤ ${f.max}`)
   if (f.pattern) parts.push(`/${f.pattern}/`)
+  if (severalFiles(f)) parts.push(`≤ ${f.maxFiles} files`)
   return parts.length ? parts.join(' · ') : undefined
 }
 
@@ -125,6 +133,7 @@ export function buildUiPreview(entity: FullstackEntityDef, ctx: UiPreviewContext
       options: f.type === 'ENUM' ? (f.enumValues ?? []).map(v => enumLabel(f, v)) : undefined,
       value: f.type === 'ENUM' && f.defaultValue?.trim() ? enumLabel(f, f.defaultValue.trim()) : (f.defaultValue?.trim() || undefined),
       hint: controlHint(f),
+      ...(severalFiles(f) ? { many: f.maxFiles } : {}),
     }))
   for (const r of entity.relations ?? []) {
     // A one-to-many is read-only: a count in the list, a table in the details, nothing in the form.

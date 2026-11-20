@@ -179,6 +179,14 @@ function MockField({ control: c, lockedText, inputClass }: { control: PreviewCon
           {!c.isRelation && <option value="">—</option>}
           {(c.options ?? []).map(o => <option key={o} value={o}>{o}</option>)}
         </select>
+      ) : c.control === 'file' || c.control === 'image' ? (
+        // The generated field is a drop zone; one that takes several shows what it holds first.
+        <span className="flex items-center gap-1 rounded border border-dashed border-outline-variant px-2 py-1.5 text-secondary" data-preview-drop-zone={c.many ? `${c.control}s` : c.control}>
+          {c.many != null && [0, 1].map(i => (
+            <span key={i} className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true" data-preview-thumbnail>{c.control === 'image' ? 'image' : 'description'}</span>
+          ))}
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }} aria-hidden="true">{c.control === 'image' ? 'add_photo_alternate' : 'upload_file'}</span>
+        </span>
       ) : (
         <input
           disabled

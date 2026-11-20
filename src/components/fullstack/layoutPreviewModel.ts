@@ -1,4 +1,4 @@
-import type { FullstackAgg, FullstackBucket, FullstackChartKind, FullstackEntityDef, FullstackFieldDef, FullstackListDetail, FullstackListSort, FullstackListView, FullstackPageDef, FullstackPageType } from '../../types'
+import type { FullstackAgg, FullstackBucket, FullstackChartKind, FullstackEntityDef, FullstackFieldDef, FullstackListDetail, FullstackListSort, FullstackListView, FullstackNav, FullstackPageDef, FullstackPageType } from '../../types'
 import { enumLabel } from './enumLabels'
 import { humanize, relationLabel } from './naming'
 import { describePresetValue, pageLabel as linkLabel } from './pageLayout'
@@ -34,7 +34,8 @@ import { auditText, detailText, sampleRaw, seeded } from './previewSample'
 import {
   CALENDAR_MODES, DEFAULT_INBOX_QUEUES, cardFieldOptions, defaultCardFields, defaultInboxFields, defaultLaneField, defaultSearchEntities, laneValues,
 } from './newPageTypes'
-import { isDecimalType, isNumericType, isTextualType } from './fieldTypes'
+import { isAttachmentType, isDecimalType, isNumericType, isTextualType } from './fieldTypes'
+import { entityOptApplicability } from './summary'
 
 /**
  * View-model for the Fullstack tab's layout preview: a wireframe of the app the page layout
@@ -53,6 +54,28 @@ export interface LayoutPreviewContext {
   warnPages?: ReadonlySet<number>
   /** "Now" for the sample rows' dates (tests pin it); absent: today. */
   today?: Date
+  /** The layout's navigation settings: the header draws the tools it switches on. */
+  nav?: FullstackNav
+}
+
+/** How a form draws a field: a plain box, or the drop zone of a file or picture field (one, or several). */
+export type PreviewInput = 'text' | 'file' | 'image' | 'files' | 'images'
+
+/** Rows edited inside their parent's form (a composition): the child's columns and a few rows. */
+export interface PreviewRows {
+  title: string
+  columns: string[]
+  rows: string[][]
+  /** The button under the rows. */
+  add: string
+}
+
+/** The header's tools, as the layout's `nav` switched them on. */
+export interface PreviewTools {
+  /** "Go to anything" — the palette's button. */
+  palette?: string
+  bell?: { label: string; count: number }
+  user?: { label: string; name: string }
 }
 
 export interface PreviewNavItem {
@@ -82,6 +105,11 @@ export type PreviewWidget = WidgetBase & (
   | { kind: 'kpi'; value: string; /** "▲ 12%" when the tile compares periods. */ delta: string | null
       /** The trend line's values, oldest first, when the tile draws one. */ trend: number[] | null }
   | { kind: 'progress'; value: string; target: string; percent: number }
+  | { kind: 'gauge'; value: string; target: string; percent: number }
+  /** A funnel's stages, first to last: each counts everything that got that far. */
+  | { kind: 'funnel'; stages: PreviewBar[] }
+  /** How long rows stay in each state they leave: the time as the app words it, and its share of the longest. */
+  | { kind: 'timeInState'; rows: { label: string; time: string; share: number }[] }
   | { kind: 'top'; rows: PreviewBar[] }
   | { kind: 'bar'; bars: PreviewBar[] }
   | { kind: 'donut'; bars: PreviewBar[] }
@@ -100,7 +128,8 @@ export interface PreviewTable {
   /** The entity's plural label. */
   title: string
   columns: string[]
-  /** Per column, what it holds: the Menora table draws an enum as a chip and right-aligns numbers. */
+  /** Per column, what it holds: the Menora table draws an enum as a chip and right-aligns numbers;
+   *  a file or picture column draws what the app draws for it. */
   kinds: PreviewColumnKind[]
   rows: string[][]
   /** The view the list opens in (the page's, else the entity's first). */
@@ -122,6 +151,8 @@ export interface PreviewTable {
   hasExport: boolean
   /** Under the rows: rows per page, and where a row opens ("20 per page · rows open their page"). */
   footer: string
+  /** The "Changed by me" toggle of an audited entity's list; absent without audit. */
+  changedByMe?: string
 }
 
 export type PreviewScreen =
@@ -145,11 +176,13 @@ export type PreviewScreen =
     type: 'record'; title: string; description?: string; heading: string; back: string | null; tabs: string[]
     /** The details tab: fields in the entity's form sections (a section's first field carries its
      *  title), else its first fields. */
-    details: { label: string; value: string; section?: string }[]
+    details: { label: string; value: string; section?: string; /** A file or picture field. */ input?: PreviewInput }[]
     /** Per related tab (tabs[1..]), the rows it lists — the child's table without the link back. */
     tabTables: (PreviewTable | null)[]
     /** The number tiles above the tabs. */
     stats: { title: string; value: string }[]
+    /** The Change history tab, after the related ones, when the entity keeps its history. */
+    history?: { label: string; rows: { what: string; who: string; when: string }[] }
   }
   | {
     type: 'inbox'; title: string; description?: string
@@ -163,8 +196,11 @@ export type PreviewScreen =
   }
   | {
     type: 'form'; title: string; description?: string
-    /** The form's field labels, in its sections (one untitled group without sections). */
-    groups: { title?: string; fields: string[] }[]
+    /** The form's field labels, in its sections (one untitled group without sections). `inputs`,
+     *  index-aligned with `fields`, is there when a field is not a plain box. */
+    groups: { title?: string; fields: string[]; inputs?: PreviewInput[] }[]
+    /** The rows edited with the record, under the fields (its compositions). */
+    rows?: PreviewRows[]
     save: string; cancel: string
   }
   | {
@@ -175,6 +211,11 @@ export type PreviewScreen =
     fields: string[]
     /** Every step's field labels, in order (the review is not among them). */
     stepFields: string[][]
+    /** Index-aligned with `stepFields`, when a field is not a plain box. */
+    stepInputs?: PreviewInput[][]
+    /** The rows edited with the record: each a step of its own, after the field steps and
+     *  before the review (not among `steps`, which are the layout's own). */
+    rowsSteps?: PreviewRows[]
     /** What the review step shows: each asked field with a sample value. */
     review: { label: string; value: string }[]
     /** The review step's button. */
@@ -236,11 +277,17 @@ export interface LayoutPreview {
   sections: PreviewNavSection[]
   /** One per page, index-aligned with the layout. */
   screens: PreviewScreen[]
-  strings: { viewAll: string; search: string; filters: string; total: string; startPage: string; export: string; states: PreviewStateStrings }
+  strings: {
+    viewAll: string; search: string; filters: string; total: string; startPage: string; export: string; states: PreviewStateStrings
+    /** A file or picture field's drop zone. */
+    attach: { file: string; image: string; drop: string }
+  }
+  /** The header's tools; absent when the layout switches none on. */
+  tools?: PreviewTools
 }
 
 /** What a list column holds. */
-export type PreviewColumnKind = 'text' | 'enum' | 'number'
+export type PreviewColumnKind = 'text' | 'enum' | 'number' | 'file' | 'image' | 'files' | 'images'
 
 /** What the canvas draws its data parts as: sample rows, or the generated app's empty, loading
  *  or failed state. */
@@ -282,6 +329,9 @@ const STRINGS = {
     importX: 'Import {x}', importChooseFile: 'Choose a file', importMatchColumns: 'Match columns', importReview: 'Review',
     importDropFile: 'Drop a CSV file of {x} here, or click to choose one', columns: 'Columns', export: 'Export',
     calendarMonth: 'Month', calendarWeek: 'Week', calendarAgenda: 'Agenda', calendarTimeline: 'Timeline',
+    timeInStateOf: 'Time in each state — {x}', changeHistory: 'Change history', changeCreated: 'Created', changeUpdated: 'Changed',
+    changedByMe: 'Changed by me', addRow: 'Add row', chooseFile: 'Choose a file', chooseImage: 'Choose an image', dropHere: 'or drop it here',
+    paletteOpen: 'Go to anything', notifications: 'Notifications', signedInAs: 'Signed in as',
   },
   he: {
     dashboard: 'לוח בקרה', xByY: '{x} לפי {y}', xByYAndZ: '{x} לפי {y} ו{z}', recentX: '{x} – אחרונים', xOverTime: '{x} לאורך זמן',
@@ -302,6 +352,9 @@ const STRINGS = {
     importX: 'ייבוא {x}', importChooseFile: 'בחירת קובץ', importMatchColumns: 'התאמת עמודות', importReview: 'בדיקה',
     importDropFile: 'גררו לכאן קובץ CSV של {x}, או לחצו לבחירה', columns: 'עמודות', export: 'ייצוא',
     calendarMonth: 'חודש', calendarWeek: 'שבוע', calendarAgenda: 'סדר יום', calendarTimeline: 'ציר זמן',
+    timeInStateOf: 'זמן בכל מצב — {x}', changeHistory: 'היסטוריית שינויים', changeCreated: 'נוצר', changeUpdated: 'שונה',
+    changedByMe: 'שיניתי אני', addRow: 'הוספת שורה', chooseFile: 'בחירת קובץ', chooseImage: 'בחירת תמונה', dropHere: 'או לגרור לכאן',
+    paletteOpen: 'מעבר מהיר', notifications: 'התראות', signedInAs: 'מחובר/ת בתור',
   },
 } as const
 
@@ -389,6 +442,34 @@ export function buildLayoutPreview(
     return t(agg === 'sum' ? 'aggSum' : agg === 'avg' ? 'aggAvg' : agg === 'min' ? 'aggMin' : 'aggMax', { x })
   }
 
+  /** How a form draws `f`: a file or picture field is a drop zone, for one file or for several. */
+  const inputOf = (f: FullstackFieldDef | undefined): PreviewInput => {
+    if (!f || !isAttachmentType(f.type)) return 'text'
+    const several = (f.maxFiles ?? 1) > 1
+    return f.type === 'IMAGE' ? (several ? 'images' : 'image') : (several ? 'files' : 'file')
+  }
+  /** `inputs` only where a field is not a plain box, so forms without one keep their shape. */
+  const inputsOf = (e: FullstackEntityDef, names: string[]): PreviewInput[] | undefined => {
+    const inputs = names.map(name => inputOf(fieldOf(e, name)))
+    return inputs.some(kind => kind !== 'text') ? inputs : undefined
+  }
+  /** A scaffold option as it resolves for one entity (its own override, else the project's). */
+  const optOn = (e: FullstackEntityDef, key: 'history') =>
+    (e.opts?.[key] ?? ctx.projectOpts.includes(key)) && entityOptApplicability(e)[key].applicable
+  /** The rows a record's form edits in place — its compositions — each with the child's first columns. */
+  const composedRows = (e: FullstackEntityDef): PreviewRows[] =>
+    (e.relations ?? []).filter(r => r.type === 'ONE_TO_MANY' && r.composition && r.fieldName.trim()).flatMap(r => {
+      const child = entityOf(r.targetEntity)
+      if (!child) return []
+      const shown = child.fields.filter(f => !(f.primaryKey && f.generated)).slice(0, 4)
+      return [{
+        title: relationLabel(r),
+        columns: shown.map(f => fieldLabel(f)),
+        rows: [1, 2].map(row => shown.map(f => cell(child, f, row))),
+        add: t('addRow'),
+      }]
+    })
+
   /** How a list page opens (its presentation), when it sets any of it. */
   interface ListOpening { columns?: string[]; view?: FullstackListView; sort?: FullstackListSort; detail?: FullstackListDetail; pageSize?: number }
 
@@ -404,7 +485,7 @@ export function buildLayoutPreview(
       return {
         key: f.name,
         label: fieldLabel(f),
-        kind: f.type === 'ENUM' ? 'enum' : !f.primaryKey && (isNumericType(f.type)) ? 'number' : 'text',
+        kind: f.type === 'ENUM' ? 'enum' : !f.primaryKey && (isNumericType(f.type)) ? 'number' : inputOf(f),
         value: (row: number) => (pinned != null ? detailText(f, pinned, ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') }) : cell(e, f, row)),
         detail: (row: number) => (pinned != null ? detailText(f, pinned, ctx.locale, { yes: t('trueLabel'), no: t('falseLabel') }) : detail(e, f, row)),
       }
@@ -456,13 +537,15 @@ export function buildLayoutPreview(
         opening.detail === 'side' ? null
           : opening.detail === 'record' || (opening.detail == null && hasRecordPage(e)) ? t('opensRecord') : t('opensDrawer'),
       ].filter(Boolean).join(' · '),
+      ...(auditOn(e, ctx.projectOpts) ? { changedByMe: t('changedByMe') } : {}),
     }
   }
 
-  function recordDetails(e: FullstackEntityDef): { label: string; value: string; section?: string }[] {
+  function recordDetails(e: FullstackEntityDef): { label: string; value: string; section?: string; input?: PreviewInput }[] {
     const sections = e.formSections ?? []
-    if (sections.length === 0) return e.fields.slice(0, 6).map(f => ({ label: fieldLabel(f), value: detail(e, f, 1) }))
-    const out: { label: string; value: string; section?: string }[] = []
+    const attached = (f: FullstackFieldDef | undefined) => (inputOf(f) === 'text' ? {} : { input: inputOf(f) })
+    if (sections.length === 0) return e.fields.slice(0, 6).map(f => ({ label: fieldLabel(f), value: detail(e, f, 1), ...attached(f) }))
+    const out: { label: string; value: string; section?: string; input?: PreviewInput }[] = []
     for (const s of sections) {
       s.fields.forEach((name, i) => {
         const f = fieldOf(e, name)
@@ -473,6 +556,7 @@ export function buildLayoutPreview(
           label: f ? fieldLabel(f) : humanize(name),
           value: f ? detail(e, f, 1) : target ? rowLabel(target, 1) : '—',
           ...(i === 0 && s.title ? { section: s.title } : {}),
+          ...attached(f),
         })
       })
     }
@@ -609,13 +693,13 @@ export function buildLayoutPreview(
                 trend: w.trend ? series(w.trend, w.agg, valueField, `${seed}:trend`).map(p => p.value) : null,
               }
             }
-            // A gauge is drawn as the tile it fills in for: a number against its full scale.
+            // A gauge and a progress bar say the same thing in two shapes: a number against its target.
             case 'gauge':
             case 'progress': {
               const target = Number(w.target)
               const percent = Math.round(20 + seeded(seed)() * 75)
               return {
-                ...base, kind: 'progress', title: w.title || measured,
+                ...base, kind: w.kind, title: w.title || measured,
                 value: Number.isFinite(target) && target > 0 ? formatNumber(Math.round((target * percent) / 100), ctx.locale) : '—',
                 target: Number.isFinite(target) && target > 0 ? formatNumber(target, ctx.locale) : '?',
                 percent,
@@ -652,24 +736,33 @@ export function buildLayoutPreview(
             case 'funnel': {
               const group = fieldOf(e, w.groupBy ?? funnelStageFields(e)[0]?.name)
               if (!group) return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name} has no enum field for the stages` }
-              const now = breakdown(group, w.agg, valueField, seed)
+              // The stages in the field's own order (a chart sorts by size; a funnel does not).
+              const sized = new Map(breakdown(group, w.agg, valueField, seed).map(b => [b.label, b.value]))
+              const order = group.type === 'BOOLEAN' ? [t('trueLabel'), t('falseLabel')] : (group.enumValues ?? []).slice(0, 6).map(v => enumLabel(group, v))
+              const now = order.map(label => ({ label, value: sized.get(label) ?? 0 }))
               return {
-                ...base, kind: 'bar',
+                ...base, kind: 'funnel',
                 title: w.title || t('xByY', { x: measured, y: fieldLabel(group) }),
-                bars: now.map((b, i) => ({ label: b.label, value: now.slice(i).reduce((sum, x) => sum + x.value, 0) })),
+                stages: now.map((b, i) => ({ label: b.label, value: now.slice(i).reduce((sum, x) => sum + x.value, 0) })),
               }
             }
-            // Time in state: a bar per state rows leave, in days.
+            // Time in state: a row per state rows leave, with how long they stay.
             case 'timeInState': {
               const status = fieldOf(e, e.workflow?.statusField)
               if (!status || !e.workflow?.trackMoves) {
                 return { ...base, kind: 'broken', title: w.title || plural, message: `${e.name}’s workflow keeps no log of its moves` }
               }
               const rand = seeded(seed)
+              // The states something moves out of, in the field's order; the app words a duration by its size.
+              const left = new Set(e.workflow.transitions.flatMap(tr => tr.from.map(s => s.toUpperCase())))
+              const states = (status.enumValues ?? []).filter(v => left.has(v.toUpperCase())).slice(0, 5)
+              const days = new Intl.NumberFormat(ctx.locale, { style: 'unit', unit: 'day', unitDisplay: 'short', maximumFractionDigits: 1 })
+              const lasted = states.map(v => ({ label: enumLabel(status, v), amount: Math.round((1 + rand() * 9) * 10) / 10 }))
+              const longest = Math.max(1, ...lasted.map(s => s.amount))
               return {
-                ...base, kind: 'bar',
-                title: w.title || (ctx.locale === 'he' ? `זמן בכל מצב — ${plural}` : `Time in each state — ${plural}`),
-                bars: breakdown(status, undefined, undefined, seed).slice(0, -1).map(b => ({ label: b.label, value: Math.round(1 + rand() * 9) })),
+                ...base, kind: 'timeInState',
+                title: w.title || t('timeInStateOf', { x: plural }),
+                rows: lasted.map(s => ({ label: s.label, time: days.format(s.amount), share: s.amount / longest })),
               }
             }
             case 'bar':
@@ -857,6 +950,15 @@ export function buildLayoutPreview(
                 value: kpiValue(s.agg, valueField, `${seedBase}:stat:${si}`),
               }
             }),
+          ...(optOn(e, 'history') ? {
+            history: {
+              label: t('changeHistory'),
+              rows: [
+                { what: t('changeUpdated'), who: 'dana.levi', when: auditText(1, true, ctx.locale, ctx.today) },
+                { what: t('changeCreated'), who: 'dev-user', when: auditText(1, false, ctx.locale, ctx.today) },
+              ],
+            },
+          } : {}),
         }
       }
       case 'form': {
@@ -866,8 +968,10 @@ export function buildLayoutPreview(
           const f = fieldOf(e, name)
           return f ? fieldLabel(f) : humanize(name)
         }
-        // The generated form's groups: its sections, then whatever they leave out.
-        const askable = askableFields(e).map(a => a.name)
+        // The generated form's groups: its sections, then whatever they leave out. A workflow's
+        // status and assignee are not in the form (transitions, claiming and reassigning set them).
+        const locked = [e.workflow?.statusField, e.workflow?.assigneeField]
+        const askable = askableFields(e).filter(a => a.relation || !locked.includes(a.name)).map(a => a.name)
         const sections = (e.formSections ?? []).map(s => ({ title: s.title || undefined, fields: s.fields.filter(n => askable.includes(n)) }))
         const placed = new Set(sections.flatMap(s => s.fields))
         const rest = askable.filter(n => !placed.has(n))
@@ -876,7 +980,12 @@ export function buildLayoutPreview(
           type: 'form',
           title: page.title || t('newX', { x: labels(e).singular }),
           description,
-          groups: groups.map(g => ({ ...(g.title ? { title: g.title } : {}), fields: g.fields.slice(0, 8).map(labelOf) })),
+          groups: groups.map(g => {
+            const names = g.fields.slice(0, 8)
+            const inputs = inputsOf(e, names)
+            return { ...(g.title ? { title: g.title } : {}), fields: names.map(labelOf), ...(inputs ? { inputs } : {}) }
+          }),
+          ...(composedRows(e).length > 0 ? { rows: composedRows(e) } : {}),
           save: t('save'),
           cancel: t('cancel'),
         }
@@ -897,6 +1006,8 @@ export function buildLayoutPreview(
           steps: [...steps.map((s, i) => s.title || t('stepX', { x: String(i + 1) })), t('review')],
           fields: (steps[0]?.fields ?? []).map(labelOf),
           stepFields: steps.map(st => st.fields.map(labelOf)),
+          ...(steps.some(st => inputsOf(e, st.fields)) ? { stepInputs: steps.map(st => inputsOf(e, st.fields) ?? st.fields.map((): PreviewInput => 'text')) } : {}),
+          ...(composedRows(e).length > 0 ? { rowsSteps: composedRows(e) } : {}),
           review: steps.flatMap(st => st.fields).map(name => {
             const f = fieldOf(e, name)
             const r = (e.relations ?? []).find(x => x.fieldName === name)
@@ -1114,6 +1225,14 @@ export function buildLayoutPreview(
     })),
   }))
 
+  // The header's tools. A bell with nothing to count (no workflow has an assignee) is not
+  // generated — the request leaves it out — so it is not drawn.
+  const tools: PreviewTools = {
+    ...(ctx.nav?.commandPalette ? { palette: t('paletteOpen') } : {}),
+    ...(ctx.nav?.notifications && named.some(e => e.workflow?.assigneeField) ? { bell: { label: t('notifications'), count: 3 } } : {}),
+    ...(ctx.nav?.userMenu ? { user: { label: t('signedInAs'), name: 'dev-user' } } : {}),
+  }
+
   return {
     // The generated index.html turns right-to-left on the rtl opt, not on the chrome language.
     rtl: ctx.projectOpts.includes('rtl'),
@@ -1127,7 +1246,9 @@ export function buildLayoutPreview(
         noActivity: t('noActivity'), couldNotLoad: t('couldNotLoad'), retry: t('retry'), errorServer: t('errorServer'),
         nothingScheduled: t('nothingScheduled'), emptyLane: t('emptyLane'), nothingMatches: t('nothingMatches', { q: '{q}' }),
       },
+      attach: { file: t('chooseFile'), image: t('chooseImage'), drop: t('dropHere') },
     },
+    ...(Object.keys(tools).length > 0 ? { tools } : {}),
   }
 }
 

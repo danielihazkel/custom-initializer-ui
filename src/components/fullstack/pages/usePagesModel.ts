@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import type { FullstackEntityDef, FullstackPageDef, FullstackPageType, FullstackWidgetDef } from '../../../types'
+import type { FullstackEntityDef, FullstackNav, FullstackPageDef, FullstackPageType, FullstackWidgetDef } from '../../../types'
 import { entityOption } from '../fieldOptions'
 import { buildLayoutPreview } from '../layoutPreviewModel'
 import { placePart as placePagePart, renamePart as renamePagePart, type PagePart } from '../pageParts'
@@ -55,6 +55,8 @@ export interface PagesModelOptions {
   onRemovedKey?: (key: string) => void
   /** Whether an LDAP auth dependency is selected — "Fix all" validates with it, as the host does. */
   ldapAuth?: boolean
+  /** The layout's navigation settings: the canvas draws the header tools it switches on. */
+  nav?: FullstackNav
 }
 
 /** Why a page is not in the navigation, said where its preview is shown; undefined when it is. */
@@ -96,7 +98,7 @@ export function useDrawnPages(pages: FullstackPageDef[]): FullstackPageDef[] {
   return deferred
 }
 
-export function usePagesModel({ pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, onOpenKey, onAdd, onRemovedKey, ldapAuth }: PagesModelOptions) {
+export function usePagesModel({ pages, entities, validation, onChange, pushUndo, previewSettings, serverIssue, onOpenKey, onAdd, onRemovedKey, ldapAuth, nav }: PagesModelOptions) {
   // The suggestions and templates below carry the editor's words.
   const lang = useLang()
   const keys = useStableKeys(pages, p => p.id)
@@ -531,8 +533,8 @@ export function usePagesModel({ pages, entities, validation, onChange, pushUndo,
   const warnPages = useMemo(() => new Set(validation.warnings.map(w => w.page).filter((p): p is number => p != null)), [validation.warnings])
   const drawnPages = useDrawnPages(pages)
   const preview = useMemo(
-    () => buildLayoutPreview(drawnPages, entities, { locale: settings.locale, projectOpts: settings.projectOpts, warnPages }),
-    [drawnPages, entities, settings.locale, settings.projectOpts, warnPages],
+    () => buildLayoutPreview(drawnPages, entities, { locale: settings.locale, projectOpts: settings.projectOpts, warnPages, nav }),
+    [drawnPages, entities, settings.locale, settings.projectOpts, warnPages, nav],
   )
   // `lang`: a suggestion's name and blurb are in the editor's words.
   // eslint-disable-next-line react-hooks/exhaustive-deps

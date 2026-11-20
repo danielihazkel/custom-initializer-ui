@@ -1,6 +1,6 @@
 import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import type { ContentBlock, ContentRun } from './contentMarkdown'
-import { highlights, previewPartOf, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewDataState, type PreviewScreen, type PreviewStateStrings, type PreviewTable, type PreviewWidget } from './layoutPreviewModel'
+import { highlights, previewPartOf, type EditTarget, type LayoutPreview as LayoutPreviewModel, type PreviewBar, type PreviewDataState, type PreviewInput, type PreviewRows, type PreviewScreen, type PreviewStateStrings, type PreviewTable, type PreviewTools, type PreviewWidget } from './layoutPreviewModel'
 import { dropIndicatorClass, useDragReorder, type DragReorder } from './useDragReorder'
 import type { PagePlayLinks } from './playLinks'
 import { MAX_STEPS, MAX_TITLE } from './pageLayout'
@@ -458,6 +458,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
           <div className="flex items-center gap-2 border-b border-outline-variant bg-white px-2.5 py-1.5">
             <span className="shrink-0 rounded px-1 text-[10px] font-black" style={{ color: MENORA.purple }}>menora</span>
             <nav className="flex min-w-0 gap-1 overflow-x-auto" aria-label={t('Preview navigation')}>{navItems}</nav>
+            {preview.tools && <ShellTools tools={preview.tools} className="text-[#37374e]" />}
           </div>
           {body}
           <div className="h-3" style={{ background: MENORA.ink }} />
@@ -467,6 +468,7 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
           <div className="flex items-center gap-2 px-2.5 py-1.5" style={{ background: shellBackground('to right') }} data-preview-shell>
             {!palette && <span className="h-1 w-6 shrink-0 rounded-full" style={{ background: 'linear-gradient(90deg,#9A83F7,#FEDB41)' }} />}
             <nav className="flex min-w-0 gap-1 overflow-x-auto" aria-label={t('Preview navigation')} data-preview-topbar>{navItems}</nav>
+            {preview.tools && <ShellTools tools={preview.tools} className="text-slate-200" />}
           </div>
           {body}
         </div>
@@ -481,7 +483,15 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
             {!palette && <div className="mb-1.5 h-1 rounded-full" style={{ background: 'linear-gradient(90deg,#9A83F7,#FEDB41)' }} />}
             {navItems}
           </nav>
-          {body}
+          {preview.tools ? (
+            // The sidebar shell's header: drawn only for its tools.
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="flex items-center border-b border-outline-variant px-2 py-1" data-preview-header>
+                <ShellTools tools={preview.tools} className="text-secondary" />
+              </div>
+              {body}
+            </div>
+          ) : body}
         </div>
       )}
     </div>
@@ -494,6 +504,84 @@ export function LayoutPreview({ preview, selected, onSelect, onEdit, highlight, 
 }
 
 // ── Screens ─────────────────────────────────────────────────────────────────
+
+/** The header's tools — the palette's button, the bell with what waits, who is signed in. */
+function ShellTools({ tools, className }: { tools: PreviewTools; className: string }) {
+  return (
+    <div className={`ms-auto flex shrink-0 items-center gap-1.5 ${className}`} data-preview-tools>
+      {tools.palette && (
+        <span className="inline-flex items-center gap-0.5 rounded border border-current px-1 text-[8px] opacity-80" title={tools.palette} data-preview-tool="palette">
+          <span className="material-symbols-outlined" style={{ fontSize: '10px' }} aria-hidden="true">search</span>
+          <kbd dir="ltr">Ctrl K</kbd>
+        </span>
+      )}
+      {tools.bell && (
+        <span className="relative inline-flex" title={tools.bell.label} data-preview-tool="bell">
+          <span className="material-symbols-outlined" style={{ fontSize: '13px' }} aria-hidden="true">notifications</span>
+          <span className="absolute -end-1 -top-0.5 rounded-full bg-error px-0.5 text-[7px] font-bold leading-tight text-white">{tools.bell.count}</span>
+        </span>
+      )}
+      {tools.user && (
+        <span className="inline-flex items-center gap-0.5 text-[8px]" title={`${tools.user.label} ${tools.user.name}`} data-preview-tool="user">
+          <span className="material-symbols-outlined" style={{ fontSize: '13px' }} aria-hidden="true">account_circle</span>
+          <span dir="ltr">{tools.user.name}</span>
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** A form's box for one field: plain, or the drop zone of a file or picture field. */
+function FieldBox({ input = 'text', attach }: { input?: PreviewInput; attach: LayoutPreviewModel['strings']['attach'] }) {
+  if (input === 'text') return <div className="h-3 rounded border border-outline-variant bg-surface-container-lowest" />
+  const picture = input === 'image' || input === 'images'
+  const several = input === 'files' || input === 'images'
+  return (
+    <div className="flex items-center gap-1 rounded border border-dashed border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-[8px] text-secondary" data-preview-drop-zone={input}>
+      {several && [0, 1].map(i => (
+        <span key={i} className="flex h-3 w-3 shrink-0 items-center justify-center rounded-sm bg-surface-container-high" data-preview-thumbnail>
+          <span className="material-symbols-outlined" style={{ fontSize: '9px' }} aria-hidden="true">{picture ? 'image' : 'description'}</span>
+        </span>
+      ))}
+      <span className="material-symbols-outlined shrink-0" style={{ fontSize: '10px' }} aria-hidden="true">{picture ? 'add_photo_alternate' : 'upload_file'}</span>
+      <span className="truncate">{picture ? attach.image : attach.file} {attach.drop}</span>
+    </div>
+  )
+}
+
+/** A value that is a file or a picture, as a list cell and the details show it. */
+function Attachment({ kind, children }: { kind: PreviewInput; children: ReactNode }) {
+  const picture = kind === 'image' || kind === 'images'
+  return (
+    <span className="inline-flex max-w-full items-center gap-0.5" data-preview-attachment={kind}>
+      <span className={`flex shrink-0 items-center justify-center ${picture ? 'h-3 w-3 rounded-sm bg-surface-container-high' : ''}`}>
+        <span className="material-symbols-outlined" style={{ fontSize: '9px' }} aria-hidden="true">{picture ? 'image' : 'attach_file'}</span>
+      </span>
+      <span className="truncate">{children}</span>
+      {(kind === 'files' || kind === 'images') && <span className="shrink-0 text-secondary">+2</span>}
+    </span>
+  )
+}
+
+/** The rows a record's form edits in place: a small table of inputs and its Add button. */
+function RowsEditor({ rows, accent }: { rows: PreviewRows; accent: string }) {
+  return (
+    <div className="space-y-0.5" data-preview-rows>
+      <p className="text-[9px] font-semibold text-on-surface">{rows.title}</p>
+      <div className="grid gap-x-1 gap-y-0.5 text-[8px]" style={{ gridTemplateColumns: `repeat(${Math.max(1, rows.columns.length)}, minmax(0, 1fr)) auto` }}>
+        {rows.columns.map(c => <span key={c} className="truncate text-secondary">{c}</span>)}
+        <span />
+        {rows.rows.map((row, i) => (
+          <Fragment key={i}>
+            {row.map((cell, j) => <span key={j} className="truncate rounded border border-outline-variant bg-surface-container-lowest px-0.5 text-on-surface">{cell}</span>)}
+            <span className="material-symbols-outlined text-secondary" style={{ fontSize: '9px' }} aria-hidden="true">close</span>
+          </Fragment>
+        ))}
+      </div>
+      <p className="text-[8px] font-semibold" style={{ color: accent }}>+ {rows.add}</p>
+    </div>
+  )
+}
 
 interface ScreenProps {
   screen: PreviewScreen
@@ -698,9 +786,9 @@ function Screen({ screen, page, preview, onEdit, highlight, onSelect, accent, me
     case 'inbox':
       return <InboxScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} />
     case 'form':
-      return <FormScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} />
+      return <FormScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} attach={preview.strings.attach} />
     case 'wizard':
-      return <WizardScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} parts={parts?.slot === 'step-field' ? parts : undefined} />
+      return <WizardScreen screen={screen} link={link} heading={heading} accent={accent} menora={menora} attach={preview.strings.attach} parts={parts?.slot === 'step-field' ? parts : undefined} />
     case 'report': {
       const charts = parts?.slot === 'chart' ? parts : undefined
       const chartCount = 1 + screen.moreCharts.length
@@ -1014,8 +1102,11 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
   parts?: PartTarget
 }) {
   const [active, setActive] = useState(0)
-  const current = Math.min(active, screen.tabs.length - 1)
-  const tabTable = current > 0 ? screen.tabTables[current - 1] : undefined
+  // The details, the related lists, then — when the entity keeps one — the change history.
+  const tabs = screen.history ? [...screen.tabs, screen.history.label] : screen.tabs
+  const current = Math.min(active, tabs.length - 1)
+  const onHistory = Boolean(screen.history) && current === tabs.length - 1
+  const tabTable = current > 0 && !onHistory ? screen.tabTables[current - 1] : undefined
   const play = useContext(Play)
   const here = play?.links[link.page]
   const back = playLink(play, here?.back, t('Back'))
@@ -1052,9 +1143,11 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
       {statParts && <PartEndSlot target={statParts} at={screen.stats.length} label={t('Drop here to add a number above the tabs')} />}
       <div className="flex items-end gap-1">
         <div role="tablist" className="flex min-w-0 flex-1 gap-3 border-b border-outline-variant" data-preview-record-tabs>
-          {screen.tabs.map((label, i) => {
+          {tabs.map((label, i) => {
+            // The history tab is the app's own: no related list is dropped on it.
+            const related = i <= childCount
             // The details tab drops in front of the first related list; a related tab before or after itself.
-            const line = i === 0 ? (childCount === 0 && tabParts?.at === 0 ? 'after' : null) : partIndicator(tabParts, i - 1, childCount)
+            const line = !related ? null : i === 0 ? (childCount === 0 && tabParts?.at === 0 ? 'after' : null) : partIndicator(tabParts, i - 1, childCount)
             return (
               <button
                 key={i}
@@ -1062,7 +1155,8 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
                 role="tab"
                 aria-selected={i === current}
                 onClick={() => setActive(i)}
-                {...(tabParts ? partDropProps(tabParts, i === 0 ? () => 0 : halfOf(i - 1)) : {})}
+                data-preview-history-tab={related ? undefined : ''}
+                {...(tabParts && related ? partDropProps(tabParts, i === 0 ? () => 0 : halfOf(i - 1)) : {})}
                 className={`-mb-px truncate border-b-2 pb-1 text-[10px] font-semibold ${i === current ? '' : 'border-transparent text-secondary'} ${line ? `px-1 ${dropIndicatorClass(line, 'x')}` : ''}`}
                 style={i === current ? { borderBottomColor: accent, color: accent } : undefined}
               >
@@ -1083,11 +1177,21 @@ function RecordScreen({ screen, link, preview, accent, menora, parts }: {
               {d.section && <p className="col-span-2 mt-0.5 text-[9px] font-semibold text-on-surface first:mt-0" data-preview-section>{d.section}</p>}
               <div className="min-w-0">
                 <dt className="truncate text-[9px] uppercase tracking-wide text-secondary">{d.label}</dt>
-                <dd className="truncate text-[10px] text-on-surface">{d.value}</dd>
+                <dd className="truncate text-[10px] text-on-surface">{d.input ? <Attachment kind={d.input}>{d.value}</Attachment> : d.value}</dd>
               </div>
             </Fragment>
           ))}
         </dl>
+      ) : onHistory && screen.history ? (
+        <ul className="space-y-1 rounded border border-outline-variant p-2" data-preview-history>
+          {screen.history.rows.map((row, i) => (
+            <li key={i} className="flex items-baseline gap-1.5 text-[9px]">
+              <span className="font-semibold text-on-surface">{row.what}</span>
+              <span className="text-secondary" dir="ltr">{row.who}</span>
+              <span className="ms-auto tabular-nums text-secondary">{row.when}</span>
+            </li>
+          ))}
+        </ul>
       ) : tabTable ? (
         <div data-preview-record-tab={current}>
           <MiniTable table={tabTable} preview={preview} accent={accent} menora={menora} rowTo={here?.childRows[current - 1]} />
@@ -1152,12 +1256,13 @@ function InboxScreen({ screen, link, heading, accent, menora }: {
 }
 
 /** A form page: the entity's whole form, in its sections, with Cancel and Save. */
-function FormScreen({ screen, link, heading, accent, menora }: {
+function FormScreen({ screen, link, heading, accent, menora, attach }: {
   screen: Extract<PreviewScreen, { type: 'form' }>
   link: LinkProps
   heading: ReactNode
   accent: string
   menora: boolean
+  attach: LayoutPreviewModel['strings']['attach']
 }) {
   const primary = menora ? { background: MENORA.yellow, color: MENORA.ink } : { background: accent, color: 'white' }
   // In Play mode Save lands where the generated form does: the row's page, else its list.
@@ -1171,15 +1276,16 @@ function FormScreen({ screen, link, heading, accent, menora }: {
           <fieldset key={gi} className="space-y-1">
             {g.title && <legend className="text-[9px] font-semibold text-on-surface">{g.title}</legend>}
             <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-              {g.fields.map(label => (
+              {g.fields.map((label, fi) => (
                 <div key={label}>
                   <p className="text-[9px] text-secondary">{label}</p>
-                  <div className="h-3 rounded border border-outline-variant bg-surface-container-lowest" />
+                  <FieldBox input={g.inputs?.[fi]} attach={attach} />
                 </div>
               ))}
             </div>
           </fieldset>
         ))}
+        {screen.rows?.map((rows, i) => <RowsEditor key={i} rows={rows} accent={accent} />)}
         <div className="flex justify-end gap-1 pt-1">
           <FakeButton outline>{screen.cancel}</FakeButton>
           <button
@@ -1198,19 +1304,25 @@ function FormScreen({ screen, link, heading, accent, menora }: {
 }
 
 /** A wizard: its steps can be walked through, ending on the review. */
-function WizardScreen({ screen, link, heading, accent, menora, parts }: {
+function WizardScreen({ screen, link, heading, accent, menora, parts, attach }: {
   screen: Extract<PreviewScreen, { type: 'wizard' }>
   link: LinkProps
   heading: ReactNode
   accent: string
   menora: boolean
+  attach: LayoutPreviewModel['strings']['attach']
   /** A field dragged in: each step takes it, and so does a new step after the last. */
   parts?: PartTarget
 }) {
   const [active, setActive] = useState(0)
-  const last = screen.steps.length - 1
+  // The layout's own steps, then one per list of rows edited with the record, then the review.
+  const own = screen.steps.length - 1
+  const rowsSteps = screen.rowsSteps ?? []
+  const steps = [...screen.steps.slice(0, own), ...rowsSteps.map(r => r.title), screen.steps[own]]
+  const last = steps.length - 1
   const step = Math.min(active, last)
   const reviewing = step === last
+  const rowsStep = step >= own && !reviewing ? rowsSteps[step - own] : undefined
   const primary = menora ? { background: MENORA.yellow, color: MENORA.ink } : { background: accent, color: 'white' }
   // In Play mode Save lands where the generated wizard does: the new row's page, else its list.
   const play = useContext(Play)
@@ -1223,12 +1335,12 @@ function WizardScreen({ screen, link, heading, accent, menora, parts }: {
       {heading}
       <div className="flex items-start gap-1">
         <ol className="flex min-w-0 flex-1 flex-wrap gap-1" data-preview-steps>
-          {screen.steps.map((s, i) => {
-            // The review is not a step a field can go to, nor one to rename.
-            const target = into && i < last ? into : undefined
+          {steps.map((s, i) => {
+            // Neither the review nor a rows step is a step a field can go to, or one to rename.
+            const target = into && i < own ? into : undefined
             const owner = `${link.page}:steps.${i}.title`
-            const renames = rename && i < last ? rename : undefined
-            const label = i < last ? <RenameSlot page={link.page} control={`steps.${i}.title`} value={s}>{s}</RenameSlot> : s
+            const renames = rename && i < own ? rename : undefined
+            const label = i < own ? <RenameSlot page={link.page} control={`steps.${i}.title`} value={s}>{s}</RenameSlot> : s
             if (renames?.editing?.owner === owner) {
               return <li key={i} className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold">{i + 1} {label}</li>
             }
@@ -1252,8 +1364,8 @@ function WizardScreen({ screen, link, heading, accent, menora, parts }: {
               </li>
             )
           })}
-          {into && last < MAX_STEPS && (
-            <li><PartEndSlot target={into} at={last} label={t('New step')} className="rounded-full py-0.5" /></li>
+          {into && own < MAX_STEPS && (
+            <li><PartEndSlot target={into} at={own} label={t('New step')} className="rounded-full py-0.5" /></li>
           )}
         </ol>
         <Editable {...link} control="steps" label={t('Edit the steps')} className="shrink-0 px-1 text-secondary">
@@ -1270,10 +1382,12 @@ function WizardScreen({ screen, link, heading, accent, menora, parts }: {
               </div>
             ))}
           </dl>
-        ) : (screen.stepFields[step] ?? []).map(label => (
+        ) : rowsStep ? (
+          <RowsEditor rows={rowsStep} accent={accent} />
+        ) : (screen.stepFields[step] ?? []).map((label, fi) => (
           <div key={label}>
             <p className="text-[9px] text-secondary">{label}</p>
-            <div className="h-3 rounded border border-outline-variant bg-surface-container-lowest" />
+            <FieldBox input={screen.stepInputs?.[step]?.[fi]} attach={attach} />
           </div>
         ))}
         <div className="flex justify-between pt-1">
@@ -1357,10 +1471,10 @@ const SPAN = ['col-span-1', 'col-span-2', 'col-span-3', 'col-span-4']
 
 const MAX_SPAN = SPAN.length
 /** The widgets whose whole card drills into the rows behind it. */
-const DRILLS = new Set<PreviewWidget['kind']>(['kpi', 'progress', 'bar', 'donut', 'stacked', 'pivot', 'line', 'top'])
+const DRILLS = new Set<PreviewWidget['kind']>(['kpi', 'progress', 'gauge', 'funnel', 'bar', 'donut', 'stacked', 'pivot', 'line', 'top'])
 /** The widgets that read rows, and so have an empty, loading and failed state of their own (a list
  *  widget's table draws its own). */
-const STATEFUL = new Set<PreviewWidget['kind']>(['kpi', 'progress', 'top', 'bar', 'donut', 'stacked', 'pivot', 'activity', 'line', 'recent'])
+const STATEFUL = new Set<PreviewWidget['kind']>(['kpi', 'progress', 'gauge', 'funnel', 'timeInState', 'top', 'bar', 'donut', 'stacked', 'pivot', 'activity', 'line', 'recent'])
 
 /** A data widget outside the Data state: an empty count reads 0, a progress bar 0 of its target. */
 function WidgetState({ widget, states }: { widget: PreviewWidget; states: PreviewStateStrings }) {
@@ -1487,6 +1601,46 @@ function Widget({ widget, accent, viewAll, preview, menora, dnd, list, gridRef, 
               <div className="h-full rounded-full" style={{ width: `${Math.min(widget.percent, 100)}%`, background: accent }} />
             </div>
           </>
+        )}
+        {widget.kind === 'gauge' && (
+          <div className="flex flex-col items-center" data-preview-gauge>
+            {/* A half ring, filled as far as the number has come toward its target. */}
+            <svg viewBox="0 0 40 22" className="h-6 w-12" aria-hidden="true" style={{ direction: 'ltr' }}>
+              <path d="M4 20 A16 16 0 0 1 36 20" fill="none" stroke="currentColor" strokeOpacity="0.15" strokeWidth="4" strokeLinecap="round" />
+              <path d="M4 20 A16 16 0 0 1 36 20" fill="none" stroke={accent} strokeWidth="4" strokeLinecap="round"
+                    strokeDasharray={`${(Math.PI * 16 * Math.min(widget.percent, 100)) / 100} ${Math.PI * 16}`} />
+            </svg>
+            <p className="text-[11px] font-bold tabular-nums text-on-surface">
+              {widget.value} <span className="text-[9px] font-normal text-secondary">/ {widget.target}</span>
+            </p>
+          </div>
+        )}
+        {widget.kind === 'funnel' && (
+          <ol className="mt-0.5 space-y-0.5" data-preview-funnel>
+            {widget.stages.slice(0, 5).map((s, i) => (
+              <li key={i} className="flex items-center gap-1 text-[8px]">
+                <span className="w-10 shrink-0 truncate text-secondary">{s.label}</span>
+                {/* Centred, so the bars narrow from both sides like a funnel. */}
+                <span className="flex min-w-0 flex-1 justify-center">
+                  <span className="h-2 rounded-sm" style={{ width: `${Math.max(8, (s.value / Math.max(1, widget.stages[0]?.value ?? 1)) * 100)}%`, background: accent, opacity: 1 - i * 0.12 }} />
+                </span>
+                <span className="w-5 shrink-0 text-end tabular-nums text-on-surface">{s.value}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+        {widget.kind === 'timeInState' && (
+          <ul className="mt-0.5 space-y-0.5" data-preview-time-in-state>
+            {widget.rows.map((r, i) => (
+              <li key={i} className="flex items-center gap-1 text-[8px]">
+                <span className="w-10 shrink-0 truncate text-secondary">{r.label}</span>
+                <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-container">
+                  <span className="block h-full rounded-full" style={{ width: `${Math.round(r.share * 100)}%`, background: accent }} />
+                </span>
+                <span className="shrink-0 tabular-nums text-on-surface">{r.time}</span>
+              </li>
+            ))}
+          </ul>
         )}
         {widget.kind === 'top' && (
           <ol className="mt-0.5 space-y-0.5">
@@ -1803,6 +1957,8 @@ function ListState({ table, states, primary, menora, compact }: {
   )
 }
 
+const isAttachment = (kind: PreviewTable['kinds'][number] | undefined) => kind === 'file' || kind === 'image' || kind === 'files' || kind === 'images'
+
 function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNote, newTo }: {
   table: PreviewTable
   preview: LayoutPreviewModel
@@ -1836,6 +1992,9 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
           </span>
         )}
         {!table.showSearch && <span className="flex-1" />}
+        {table.changedByMe && !compact && (
+          <span className="shrink-0 rounded border border-outline-variant px-1 py-0.5 text-[8px] text-secondary" data-preview-changed-by-me>{table.changedByMe}</span>
+        )}
         {table.hasExport && <FakeButton outline>{preview.strings.export}</FakeButton>}
         {table.newLabel && <span {...create.props} className={`inline-flex rounded-full ${create.cls}`}><FakeButton style={primary}>{table.newLabel}</FakeButton></span>}
       </div>
@@ -1913,7 +2072,8 @@ function MiniTable({ table, preview, accent, menora, compact, link, rowTo, rowNo
                   <td key={j} className={`truncate py-0.5 text-on-surface ${menora && table.kinds[j] === 'number' ? 'text-end tabular-nums' : ''}`}>
                     {menora && table.kinds[j] === 'enum' && cell !== '—'
                       ? <span className="rounded-full px-1.5 py-px font-semibold" style={MENORA_CHIP} data-preview-chip-cell>{cell}</span>
-                      : cell}
+                      : isAttachment(table.kinds[j]) && cell !== '—' ? <Attachment kind={table.kinds[j] as PreviewInput}>{cell}</Attachment>
+                        : cell}
                   </td>
                 ))}
               </tr>
